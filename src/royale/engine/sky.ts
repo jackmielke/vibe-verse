@@ -58,7 +58,30 @@ export interface DropZeroSkyService extends SkyService {
   readonly zenithColor: THREE.Color;
   /** Seconds per full 0..1 day. 0 (the default) freezes time of day. */
   timeScale: number;
+  /**
+   * Jump to a named hour. The dome is analytic, so every time of day already
+   * worked — what a preset buys is a *tested* one: a time whose sun elevation,
+   * shadow length, haze and grade have all been looked at together. See
+   * TIME_PRESETS.
+   */
+  setPreset(name: TimePreset): void;
+  /** The presets this build ships, for a menu or a capture harness. */
+  readonly presets: readonly TimePreset[];
 }
+
+/**
+ * The hours this world has been graded for.
+ *
+ * `golden` is the house look and the one every screenshot has ever been taken
+ * in. The others exist because a world with exactly one hour in it reads as a
+ * set: the light never changes, so the eye stops believing it is light at all.
+ *
+ * Each is a normalised time of day and each has a matching branch in
+ * post-processing's grade — `noon` in particular is not just "the same picture
+ * brighter", it is a different contrast, a different vignette and a different
+ * split-tone, because midday sun genuinely does all three.
+ */
+export type TimePreset = "golden" | "noon" | "afternoon" | "dusk";
 
 /** Payload shape emitted on `dz:sun` once per frame. */
 export interface SunScreenEvent {
@@ -81,6 +104,32 @@ export interface SunScreenEvent {
  * single highest-leverage constant in this file.
  */
 const DEFAULT_TIME = 0.3;
+
+/**
+ * The named hours, as normalised time of day. Sun elevations quoted are what
+ * `applyTime` actually produces once SUN_ARC_TILT has had its say, measured
+ * rather than intended.
+ *
+ *  - `golden`    (16.4 deg) — the default. Long raking shadows, warm rim on
+ *                every silhouette, and the hour the whole palette was built in.
+ *  - `noon`      (66.0 deg) — hard, short shadows straight down, near-neutral
+ *                key, deep blue zenith and almost no haze. It is the hour that
+ *                proves the shadows are real: a stencil looks obviously fake
+ *                when it is short and hard, and fine when it is long and soft.
+ *  - `afternoon` (29.3 deg) — the sun has crossed to the west, so every shadow
+ *                in the world points the other way and the same street reads as
+ *                a different place. Warm but not yet gold.
+ *  - `dusk`      ( 2.3 deg) — the disc on the horizon: maximum turbidity,
+ *                maximum aerial depth, and the key almost horizontal.
+ */
+const TIME_PRESETS: Record<TimePreset, number> = {
+  golden: 0.3,
+  noon: 0.5,
+  afternoon: 0.66,
+  dusk: 0.744,
+};
+
+const PRESET_NAMES = Object.keys(TIME_PRESETS) as TimePreset[];
 
 /**
  * Time of day does NOT advance by default. A battle royale match is fifteen
@@ -303,6 +352,36 @@ const CLOUD_TIERS: Record<QualityTier, {
   high: { octaves: 4, levels: 3, taps: 2, cirrus: true, sprites: 26, domeSegments: 48 },
   ultra: { octaves: 4, levels: 4, taps: 2, cirrus: true, sprites: 38, domeSegments: 64 },
 };
+
+/**
+ * Airborne dust and pollen, in points. One draw call whatever the count, and
+ * `low` gets none of it — a phone spends its budget on the island.
+ *
+ * The count is deliberately modest. Motes are not a particle *effect*: they
+ * are the thing that proves the air between you and the treeline is a
+ * substance rather than an absence, and two thousand specks a few metres
+ * across do that as well as twenty thousand would while costing a tenth of the
+ * fill rate.
+ */
+const MOTE_TIERS: Record<QualityTier, number> = { low: 0, medium: 520, high: 1200, ultra: 1900 };
+
+/**
+ * Half-extent of the cell the mote field wraps around the camera, metres. The
+ * field is infinite for the price of a fixed point count: every mote is
+ * modulo'd back into a box centred on the camera in the vertex shader, so you
+ * can sprint the length of the island and never run out from under it.
+ *
+ * The vertical extent is much smaller than the horizontal because dust is a
+ * ground phenomenon — it comes off the ground, and a mote at eye height 40 m
+ * up a build tower is a firefly, not a mote.
+ */
+const MOTE_CELL_XZ = 46;
+const MOTE_CELL_Y = 22;
+
+/** Beyond this the sprite is sub-pixel and only contributes shimmer. */
+const MOTE_FAR = 42;
+/** …and inside this it is in your face and reads as a dirty lens. */
+const MOTE_NEAR = 1.6;
 
 /** How far the sun may travel before the environment map is considered stale. */
 const ENV_TIME_EPSILON = 0.0018;
@@ -1097,6 +1176,135 @@ void main() {
 `;
 
 // ---------------------------------------------------------------------------
+// Dust and pollen
+// ---------------------------------------------------------------------------
+
+/**
+ * Motes in the air, and the reason they are here rather than in a particle
+ * system: **they are shadow-tested against the key's own cascade.**
+ *
+ * A field of sparkles drifting uniformly through the frame is a screensaver.
+ * What makes dust read as *volume* is that it stops where the sunlight stops —
+ * so a mote under the treeline goes dim and a mote in the gap between two
+ * trees stays bright, and the shape the bright ones make is the shape of the
+ * light coming through. That is a light shaft, drawn by the geometry that is
+ * already casting the shadows, for one draw call and no volumetric march.
+ *
+ * The tap is `key.shadow`'s own map and matrix — three renders it every frame
+ * before anything else in the scene, and stores RGBA-packed depth in a colour
+ * attachment, which is why this unpacks rather than compares. When the map
+ * does not exist yet (frame zero, or a renderer with shadows off) `uShadowOn`
+ * is 0 and every mote is simply lit; the field degrades to the screensaver
+ * rather than to a black screen.
+ *
+ * Everything is in the vertex shader except the shadow tap and the sprite
+ * mask, because there are ~1200 vertices and a great many more fragments.
+ */
+const MOTE_VERT = /* glsl */ `
+attribute float aSeed;
+
+uniform vec3  uCamPos;
+uniform vec3  uSunDir;
+uniform float uTime;
+uniform vec2  uCell;       // xz half-extent, y half-extent
+uniform float uSize;
+uniform float uDensity;    // master gate: quality x daylight x switchboard
+uniform mat4  uShadowMatrix;
+
+varying float vGlow;
+varying vec3  vShadowCoord;
+
+void main() {
+  vec3 p = position;
+  float s = aSeed;
+
+  // Per-mote brownian drift plus a common breeze, so the field never reads as
+  // a rigid lattice being translated. All of it is cheap trigonometry: dust
+  // does not need a simulation, it needs to not be still.
+  p.x += sin(uTime * (0.11 + s * 0.19) + s * 41.0) * 1.7 + uTime * 0.34;
+  p.y += sin(uTime * (0.17 + s * 0.26) + s * 23.0) * 0.85;
+  p.z += cos(uTime * (0.09 + s * 0.16) + s * 11.0) * 1.7 + uTime * 0.13;
+
+  // Wrap the cell around the camera. An unbounded field for a fixed count.
+  vec3 half3 = vec3(uCell.x, uCell.y, uCell.x);
+  vec3 rel = mod(p - uCamPos + half3, half3 * 2.0) - half3;
+  // Bias the slab downward: dust comes off the ground, so the eye should be
+  // near the top of the column rather than in the middle of it.
+  rel.y -= uCell.y * 0.30;
+  vec3 world = uCamPos + rel;
+
+  vec4 mv = modelViewMatrix * vec4(world, 1.0);
+  float dist = max(-mv.z, 0.001);
+  gl_Position = projectionMatrix * mv;
+
+  // Forward scattering. A mote is a lens: it is overwhelmingly brightest when
+  // the sun is behind it, which is to say when you are looking toward the sun.
+  // The 0.09 floor is the skylight every mote catches from every direction —
+  // without it the field vanishes entirely the moment you turn around, and a
+  // world whose dust only exists in one bearing is worse than no dust.
+  vec3 vdir = normalize(world - uCamPos);
+  float phase = pow(max(dot(vdir, uSunDir), 0.0), 5.0);
+
+  // Never right in front of the eye (reads as a dirty lens) and gone before it
+  // is sub-pixel (reads as shimmer).
+  float near = smoothstep(${MOTE_NEAR.toFixed(2)}, ${(MOTE_NEAR * 2.6).toFixed(2)}, dist);
+  float far = 1.0 - smoothstep(${(MOTE_FAR * 0.55).toFixed(1)}, ${MOTE_FAR.toFixed(1)}, dist);
+
+  vGlow = uDensity * (0.09 + 0.91 * phase) * near * far;
+
+  vec4 sc = uShadowMatrix * vec4(world, 1.0);
+  vShadowCoord = sc.xyz / max(sc.w, 1e-4);
+
+  // Perspective-correct size with a floor of one pixel: a point smaller than a
+  // pixel is not drawn smaller, it is drawn dimmer, and the driver will not do
+  // that for us.
+  gl_PointSize = clamp(uSize / dist, 1.0, 6.0);
+}
+`;
+
+const MOTE_FRAG = /* glsl */ `
+precision highp float;
+#include <packing>
+
+uniform sampler2D uShadowMap;
+uniform float uShadowOn;
+uniform float uShadowBias;
+uniform vec3  uSunColor;
+
+varying float vGlow;
+varying vec3  vShadowCoord;
+
+void main() {
+  if (vGlow <= 0.0015) discard;
+
+  // Round, soft-edged, and no texture: a gaussian falloff off gl_PointCoord is
+  // indistinguishable from a sprite at four pixels across and costs no VRAM.
+  vec2 d = gl_PointCoord - 0.5;
+  float r2 = dot(d, d);
+  if (r2 > 0.25) discard;
+  float sprite = exp(-r2 * 13.0);
+
+  float lit = 1.0;
+  if (uShadowOn > 0.5) {
+    vec3 sc = vShadowCoord;
+    bool inside = sc.x > 0.0 && sc.x < 1.0 && sc.y > 0.0 && sc.y < 1.0 && sc.z < 1.0 && sc.z > -1.0;
+    if (inside) {
+      // Packed depth in a colour attachment — three's shadow maps are not
+      // depth textures, so this unpacks rather than compares.
+      float ref = unpackRGBAToDepth(texture2D(uShadowMap, sc.xy));
+      lit = step(sc.z - uShadowBias, ref);
+    }
+  }
+  // A mote in shade is not black, it is *not a spark*. Crushing it to zero
+  // turns the beam into a hard stencil with a cut edge, which is exactly the
+  // thing this effect exists to avoid.
+  lit = mix(0.16, 1.0, lit);
+
+  gl_FragColor = vec4(uSunColor * vGlow * sprite * lit, 1.0);
+}
+`;
+
+// ---------------------------------------------------------------------------
 // CPU mirror of the scattering model
 // ---------------------------------------------------------------------------
 
@@ -1257,6 +1465,11 @@ const createSky: SystemFactory = (ctx) => {
     focus(point: THREE.Vector3) {
       focusPoint.copy(point);
       focusValid = true;
+    },
+    presets: PRESET_NAMES,
+    setPreset(name: TimePreset) {
+      const t = TIME_PRESETS[name];
+      if (typeof t === "number") service.setTime(t);
     },
   };
   ctx.services.sky = service;
@@ -1437,6 +1650,88 @@ const createSky: SystemFactory = (ctx) => {
     sprites.instanceMatrix.needsUpdate = true;
     if (sprites.instanceColor) sprites.instanceColor.needsUpdate = true;
     ctx.scene.add(sprites);
+  }
+
+  // ------------------------------------------------------------- dust motes
+  const moteCount = MOTE_TIERS[quality] ?? 0;
+  const moteUniforms = {
+    uCamPos: { value: new THREE.Vector3() },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uSunColor: { value: new THREE.Color(1, 0.9, 0.75) },
+    uTime: { value: 0 },
+    uCell: { value: new THREE.Vector2(MOTE_CELL_XZ, MOTE_CELL_Y) },
+    // Point size at one metre, in pixels; divided by distance in the shader.
+    // A real mote at five metres subtends a small fraction of a pixel, and
+    // drawing it at that size draws nothing — a sub-pixel point is rasterised
+    // as one pixel at full alpha or not at all, never as a dimmer one. 14
+    // lands a mote at 3 px across at five metres and 1.4 px at ten, which is
+    // the range where they read as specks in the air rather than as noise.
+    uSize: { value: 14 },
+    uDensity: { value: 1 },
+    uShadowMatrix: { value: new THREE.Matrix4() },
+    uShadowMap: { value: null as THREE.Texture | null },
+    uShadowOn: { value: 0 },
+    /**
+     * In the shadow camera's normalised [0,1] depth. The cascade spans about
+     * 2.3 km of depth, so this is roughly a metre along the light ray.
+     *
+     * It can be this small — an order of magnitude under what a *surface*
+     * needs — because a mote is not in the shadow map. Nothing here can
+     * self-shadow, so the only error to cover is the map's own precision, and
+     * three packs its depth into RGBA at effectively 32 bits. Every metre
+     * spent here is a metre of beam edge that leaks past the tree casting it.
+     */
+    uShadowBias: { value: 0.0004 },
+  };
+
+  let moteGeometry: THREE.BufferGeometry | null = null;
+  let moteMaterial: THREE.ShaderMaterial | null = null;
+  let motes: THREE.Points | null = null;
+  /** Independently switchable from the `dz:fx` switchboard, like every pass. */
+  let motesEnabled = true;
+
+  if (moteCount > 0) {
+    moteGeometry = new THREE.BufferGeometry();
+    const pos = new Float32Array(moteCount * 3);
+    const seed = new Float32Array(moteCount);
+    for (let i = 0; i < moteCount; i++) {
+      // Uniform inside the wrap cell. Anything cleverer is undone by the
+      // modulo in the vertex shader, which is the point of the modulo.
+      pos[i * 3] = (ctx.rng() - 0.5) * MOTE_CELL_XZ * 2;
+      pos[i * 3 + 1] = (ctx.rng() - 0.5) * MOTE_CELL_Y * 2;
+      pos[i * 3 + 2] = (ctx.rng() - 0.5) * MOTE_CELL_XZ * 2;
+      seed[i] = ctx.rng();
+    }
+    moteGeometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    moteGeometry.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1));
+
+    moteMaterial = new THREE.ShaderMaterial({
+      uniforms: moteUniforms,
+      vertexShader: MOTE_VERT,
+      fragmentShader: MOTE_FRAG,
+      transparent: true,
+      // Additive, because dust *adds* scattered light to whatever is behind it;
+      // an alpha-blended mote would darken the frame it is supposed to catch.
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      // Depth-TESTED: a mote behind a wall is behind the wall. Losing this is
+      // what makes cheap particle dust read as a screen overlay.
+      depthTest: true,
+      fog: false,
+      toneMapped: true,
+    });
+
+    motes = new THREE.Points(moteGeometry, moteMaterial);
+    motes.name = "dz:dust";
+    // Positions are wrapped around the camera in the vertex shader, so the
+    // bounding sphere three would compute describes a box at world zero.
+    motes.frustumCulled = false;
+    // After the water surface (renderOrder 1) and before decals, tracers and
+    // damage numbers. Dust in the air over the bay has to composite ON the
+    // water, not under it — and it must not sit so late that it draws over a
+    // tracer, which is gameplay information and this is not.
+    motes.renderOrder = 2;
+    ctx.scene.add(motes);
   }
 
   // ---------------------------------------------------------------- lights
@@ -1725,6 +2020,17 @@ const createSky: SystemFactory = (ctx) => {
     );
     spriteUniforms.uAmbient.value.copy(ambientColor).multiplyScalar(1.05);
     spriteUniforms.uHorizon.value.copy(horizonColor);
+
+    // ---- Dust -------------------------------------------------------------
+    // Motes are lit by whatever the key is, at a fraction of its intensity —
+    // they are a scattering term, not a surface. The daylight factor is what
+    // makes them disappear at night rather than glowing in the dark, which is
+    // the single most common way airborne dust gets shipped wrong.
+    moteUniforms.uSunDir.value.copy(keyDirection);
+    moteUniforms.uSunColor.value
+      .copy(lightColor)
+      .multiplyScalar(0.30 + 0.24 * Math.max(0, keyDirection.y));
+    moteUniforms.uDensity.value = motesEnabled ? 0.05 + 0.95 * daylight : 0;
   }
 
   // ------------------------------------------------------- shadow cascade
@@ -1991,6 +2297,27 @@ const createSky: SystemFactory = (ctx) => {
     const s = typeof payload === "number" ? payload : (payload as { scale?: number })?.scale;
     if (typeof s === "number" && Number.isFinite(s)) service.timeScale = s;
   });
+  const offPreset = ctx.on("dz:preset", (payload) => {
+    const name =
+      typeof payload === "string" ? payload : (payload as { preset?: string })?.preset;
+    if (typeof name === "string" && name in TIME_PRESETS) service.setPreset(name as TimePreset);
+  });
+  /**
+   * The dust field rides post-processing's `dz:fx` switchboard even though it
+   * is drawn in the scene, because "which pass put that in my frame" is a
+   * question a capture harness asks from the outside, and having one switch
+   * that reaches everything beats having two that each reach half.
+   */
+  const offFx = ctx.on("dz:fx", (payload) => {
+    const e = payload as { effect?: string; enabled?: unknown } | undefined;
+    if (!e || typeof e.effect !== "string") return;
+    const key = e.effect.trim().toLowerCase();
+    if (key !== "motes" && key !== "all") return;
+    motesEnabled = !!e.enabled;
+    // Re-derive the density immediately rather than waiting for the sun to
+    // move, which with the default timeScale of 0 is never.
+    applyTime(service.time);
+  });
 
   const sys: System = {
     name: "sky",
@@ -2015,6 +2342,21 @@ const createSky: SystemFactory = (ctx) => {
       skyUniforms.uCamXZ.value.set(cam.position.x, cam.position.z);
       skyUniforms.uCamY.value = cam.position.y;
       spriteUniforms.uTime.value = c.elapsed;
+
+      if (motes) {
+        moteUniforms.uCamPos.value.copy(cam.position);
+        moteUniforms.uTime.value = c.elapsed;
+        // The cascade's map and matrix, both live references three refreshes
+        // during its own shadow pass — which runs at the top of every
+        // `renderer.render`, i.e. before this material is ever drawn with them.
+        // Frame zero has no map at all, hence the gate rather than a bind.
+        const map = key.shadow.map?.texture ?? null;
+        moteUniforms.uShadowMap.value = map;
+        moteUniforms.uShadowMatrix.value = key.shadow.matrix;
+        moteUniforms.uShadowOn.value = map && key.visible && key.castShadow ? 1 : 0;
+        // A mote field with nothing in it is a draw call for no pixels.
+        motes.visible = moteUniforms.uDensity.value > 0.001;
+      }
 
       updateShadowFrustum();
       updateFog(dt);
@@ -2043,9 +2385,12 @@ const createSky: SystemFactory = (ctx) => {
     dispose() {
       offSetTime();
       offTimeScale();
+      offPreset();
+      offFx();
 
       ctx.scene.remove(skyMesh, key, key.target, fill, fill.target, hemi);
       if (sprites) ctx.scene.remove(sprites);
+      if (motes) ctx.scene.remove(motes);
 
       envScene.remove(envSky);
       skyGeometry.dispose();
@@ -2053,6 +2398,8 @@ const createSky: SystemFactory = (ctx) => {
       spriteGeometry?.dispose();
       spriteMaterial?.dispose();
       sprites?.dispose();
+      moteGeometry?.dispose();
+      moteMaterial?.dispose();
       noise.dispose();
       atlas?.dispose();
       // DirectionalLight.dispose() releases the shadow map render target, which

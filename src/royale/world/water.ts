@@ -90,6 +90,22 @@ const OPEN_WATER_HALF_WIDTH = 26;
  */
 const OCEAN_DILATE = 46;
 
+/**
+ * How far the swash sheet lifts over the sand at the top of a set, in metres.
+ *
+ * This is the whole shoreline effect and it is deliberately a *height*, not a
+ * distance. Lift the water and let it intersect the terrain, and the waterline
+ * that comes out is the real geometric one — it finds every cove, rock and
+ * sandbar the terrain built without this file being told any of them exist.
+ *
+ * The number is small because the beaches here are flat. 0.30 was the first
+ * one tried: the east coast runs at about 1 in 60, so it put nearly twenty
+ * metres of sand under water at the top of every set and the frame came back
+ * as a snowfield. At 0.16 the line travels a believable few metres, and it
+ * still travels — which is the thing being fixed.
+ */
+const SWASH_HEIGHT = 0.16;
+
 /** Seconds an actor ripple ring lives. */
 const RIPPLE_LIFE = 2.2;
 /** How often a swimming actor sheds a new ring. */
@@ -112,13 +128,22 @@ interface WaterTier {
   ripples: number;
   /** Whether the fragment shader runs the land-reflection march. */
   landReflection: boolean;
+  /**
+   * Caustic budget, in texture fetches per shaded pixel of shallow water:
+   *   1 — one web, squared. Reads as moving light; does not read as filaments.
+   *   2 — two counter-scrolling webs multiplied. The real thing, monochrome.
+   *   3 — as 2, with the red and blue channels sampled either side along the
+   *       refraction, which is where a caustic's colour fringe comes from.
+   * Only pixels shallow enough to see the bottom pay any of it.
+   */
+  caustics: 1 | 2 | 3;
 }
 
 const TIERS: Record<QualityTier, WaterTier> = {
-  low: { segments: 96, rings: 78, bake: 256, detail: 128, waves: 3, ripples: 0, landReflection: false },
-  medium: { segments: 140, rings: 106, bake: 320, detail: 256, waves: 4, ripples: 0, landReflection: false },
-  high: { segments: 196, rings: 142, bake: 384, detail: 256, waves: 5, ripples: 6, landReflection: true },
-  ultra: { segments: 272, rings: 182, bake: 512, detail: 512, waves: 5, ripples: 8, landReflection: true },
+  low: { segments: 96, rings: 78, bake: 256, detail: 128, waves: 3, ripples: 0, landReflection: false, caustics: 1 },
+  medium: { segments: 140, rings: 106, bake: 320, detail: 256, waves: 4, ripples: 0, landReflection: false, caustics: 2 },
+  high: { segments: 196, rings: 142, bake: 384, detail: 256, waves: 5, ripples: 6, landReflection: true, caustics: 2 },
+  ultra: { segments: 272, rings: 182, bake: 512, detail: 512, waves: 5, ripples: 8, landReflection: true, caustics: 3 },
 };
 
 /**
@@ -208,6 +233,82 @@ function periodicWorley(u: number, v: number, cells: number, seed: number): numb
     }
   }
   return Math.min(1, Math.sqrt(best) * cells);
+}
+
+/**
+ * Tiling Worley returning F1 *and* F2. The gap between them is small exactly
+ * on the boundaries between cells, which is where a caustic net's filaments
+ * live — F1 alone only ever gives blobs at cell centres.
+ */
+function periodicWorley2(u: number, v: number, cells: number, seed: number): [number, number] {
+  const cx = Math.floor(u * cells);
+  const cy = Math.floor(v * cells);
+  let f1 = 9;
+  let f2 = 9;
+  for (let oy = -1; oy <= 1; oy++) {
+    for (let ox = -1; ox <= 1; ox++) {
+      const gx = cx + ox;
+      const gy = cy + oy;
+      const wx = ((gx % cells) + cells) % cells;
+      const wy = ((gy % cells) + cells) % cells;
+      const px = (gx + hash2(wx, wy, seed)) / cells;
+      const py = (gy + hash2(wx, wy, seed + 4451)) / cells;
+      const dx = px - u;
+      const dy = py - v;
+      const d = dx * dx + dy * dy;
+      if (d < f1) {
+        f2 = f1;
+        f1 = d;
+      } else if (d < f2) {
+        f2 = d;
+      }
+    }
+  }
+  return [Math.min(1, Math.sqrt(f1) * cells), Math.min(1, Math.sqrt(f2) * cells)];
+}
+
+/**
+ * Caustic map — the net of focused sunlight that lands on a seabed.
+ *
+ * A caustic is an image of the *surface*, projected onto whatever is under it,
+ * and its structure is the fold lines of that projection: thin, bright, closed
+ * loops, not blobs. So this is built from the Worley F2−F1 ridge (a web of cell
+ * boundaries) on a domain warped by fBm so the cells stop reading as cells,
+ * and two of them are stored at different scales — the shader multiplies the
+ * pair as it scrolls them against each other, and a filament only survives
+ * where both webs fold at once. That is what keeps the pattern sparse and
+ * bright instead of an even mesh, which is the giveaway of a one-layer caustic.
+ *
+ * R coarse web, G fine web, B slow patch intensity, A grain.
+ */
+function makeCausticTexture(size: number, seed: number): THREE.DataTexture {
+  const data = new Uint8Array(size * size * 4);
+  const ridge = (u: number, v: number, cells: number, warp: number, sd: number): number => {
+    const wu = u + (periodicFbm(u, v, 5, 3, sd + 3) - 0.5) * warp;
+    const wv = v + (periodicFbm(u + 0.41, v + 0.17, 5, 3, sd + 9) - 0.5) * warp;
+    const [f1, f2] = periodicWorley2(((wu % 1) + 1) % 1, ((wv % 1) + 1) % 1, cells, sd);
+    // 2.6 sets the filament width: the ridge is bright only where the two
+    // nearest cells are within ~0.4 of a cell of each other.
+    return Math.pow(1 - Math.min(1, (f2 - f1) * 2.6), 2.2);
+  };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const v = y / size;
+      const i = (y * size + x) * 4;
+      data[i] = Math.round(ridge(u, v, 7, 0.22, seed) * 255);
+      data[i + 1] = Math.round(ridge(v * 1.03 + 0.29, u * 0.97 + 0.61, 13, 0.16, seed + 617) * 255);
+      data[i + 2] = Math.round(periodicFbm(u, v, 4, 4, seed + 61) * 255);
+      data[i + 3] = Math.round(periodicFbm(u, v, 20, 3, seed + 77) * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 /**
@@ -703,6 +804,7 @@ uniform vec4  uWaveA[WAVE_COUNT];   // xy = direction, z = amplitude, w = wavele
 uniform vec2  uWaveB[WAVE_COUNT];   // x = steepness, y = speed multiplier
 uniform float uWaveGain;
 uniform float uMaxAmplitude;
+uniform float uSwash;
 
 varying vec3 vWorldPos;
 varying vec3 vWaveNormal;
@@ -779,11 +881,30 @@ void main() {
     crest += a * sinP;
   }
 
+  // ---- Swash: the sheet that runs up the beach and drains back ------------
+  // A waterline pinned to one contour is the loudest tell in a rendered coast:
+  // real water arrives and leaves. Rather than paint a moving edge, lift the
+  // whole sheet a few tens of centimetres and let it intersect the sand. The
+  // edge that comes out is the true geometric one, so it fits every cove, rock
+  // and sandbar the terrain built without this file knowing any of them exist.
+  //
+  // Two sets whose periods do not divide into each other, running SHOREward:
+  // phase = wt + kx puts the crest at a shore distance that falls as t runs.
+  // Fresh water is excluded — a river bank does not have surf on it, and a
+  // lifted river floods its own banks.
+  float coastal = 1.0 - smoothstep(0.0, 34.0, max(shore.x, 0.0));
+  float set1 = pow(sin(uTime * 0.55 + shore.x * 0.055) * 0.5 + 0.5, 2.0);
+  float set2 = pow(sin(uTime * 0.34 + shore.x * 0.038 + 2.1) * 0.5 + 0.5, 3.0);
+  float wash = max(set1, set2 * 0.9) * coastal * (1.0 - shore.w);
+  displaced.y += uSwash * wash;
+
   n.y = 1.0 - fold;
   vWaveNormal = normalize(n);
   vWorldPos = displaced;
   vSurf = vec4(depth, seabed.y, shore.x, shore.w);
-  vWave = vec4(clamp(crest / max(0.05, uMaxAmplitude * gain), -1.0, 1.0), fold, viewDist, seabed.z);
+  // w carries the swash, normalised: the fragment stage needs to know how far
+  // up the sand the sheet currently is, and nothing needs the land height.
+  vWave = vec4(clamp(crest / max(0.05, uMaxAmplitude * gain), -1.0, 1.0), fold, viewDist, wash);
   vShoreDir = shore.yz;
 
   vec4 mvPosition = viewMatrix * vec4(displaced, 1.0);
@@ -801,6 +922,7 @@ uniform float uTime;
 uniform float uSeaLevel;
 uniform sampler2D uRippleMap;
 uniform sampler2D uFoamMap;
+uniform sampler2D uCausticMap;
 
 uniform vec3  uSunDir;
 uniform vec3  uSunColor;
@@ -817,6 +939,9 @@ uniform vec3  uDeepColor;
 uniform vec3  uSandColor;
 uniform vec3  uFoamColor;
 uniform vec3  uFreshColor;
+uniform vec3  uSssColor;
+uniform vec3  uWetSandColor;
+uniform vec3  uSeabedColor;
 
 uniform float uDetailStrength;
 uniform float uFoamWidth;
@@ -863,7 +988,9 @@ vec3 skyRadiance(vec3 dir) {
  */
 vec3 cloudyReflection(vec3 P, vec3 R, vec3 sky) {
   float up = max(R.y, 0.02);
-  float t = min((900.0 - (P.y - uSeaLevel)) / up, 26000.0);
+  // Capped short: past this the cloud plane is so foreshortened that one pixel
+  // spans several cloud cells and the reflection aliases into noise.
+  float t = min((900.0 - (P.y - uSeaLevel)) / up, 9000.0);
   vec2 cp = P.xz + R.xz * t;
   float patchMask = texture2D(uFoamMap, cp * 0.00042 + uTime * vec2(0.00035, 0.00021)).b;
   float wisp = texture2D(uFoamMap, cp * 0.00135 - uTime * vec2(0.00052, 0.00033)).g;
@@ -872,6 +999,56 @@ vec3 cloudyReflection(vec3 P, vec3 R, vec3 sky) {
   cover *= smoothstep(0.02, 0.28, R.y);
   vec3 lit = uCloudColor * mix(0.72, 1.25, sat(dot(normalize(vec3(R.x, 0.35, R.z)), uSunDir) * 0.5 + 0.5));
   return mix(sky, lit * mix(0.35, 1.0, sat(uDaylight)), cover * 0.8);
+}
+
+/**
+ * Caustics — the moving net of focused sunlight on the bottom.
+ *
+ * Two webs from the baked caustic map, scrolled against each other and
+ * multiplied: a filament survives only where both fold at once, which is what
+ * makes the pattern sparse and bright rather than an even mesh. Three things
+ * make it read as depth rather than as a texture:
+ *
+ *   • the cells GROW with depth, because the cone of light spreads on the way
+ *     down — this is the cue that tells you how deep the water is without a
+ *     single colour changing;
+ *   • it DEFOCUSES with depth, because a caustic is an image of the surface
+ *     and the bottom is the screen it is projected on: sharp at ankle depth,
+ *     a soft wash at four metres;
+ *   • at the top tier the red and blue samples are taken either side along the
+ *     refraction, so the filaments carry the colour fringe that real ones do.
+ *
+ * The point passed in is the SEABED point, not the surface point: anchoring
+ * to the bottom is what stops the whole net sliding about with the camera.
+ */
+vec3 causticLight(vec2 p, float d, vec3 rd) {
+  float scale = 0.055 / (1.0 + d * 0.055);
+  vec2 driftA = vec2(0.011, 0.008) * uTime;
+  vec2 driftB = vec2(0.013, 0.017) * uTime;
+#if CAUSTIC_QUALITY >= 3
+  vec2 e = normalize(rd.xz + vec2(1e-4)) * (0.10 + d * 0.05);
+  float b = texture2D(uCausticMap, p * scale * 1.63 - driftB).g;
+  vec3 w = vec3(
+    texture2D(uCausticMap, (p - e) * scale + driftA).r,
+    texture2D(uCausticMap, p * scale + driftA).r,
+    texture2D(uCausticMap, (p + e) * scale + driftA).r
+  ) * b;
+#elif CAUSTIC_QUALITY == 2
+  float a = texture2D(uCausticMap, p * scale + driftA).r;
+  float b = texture2D(uCausticMap, p * scale * 1.63 - driftB).g;
+  vec3 w = vec3(a * b);
+#else
+  // One fetch. Reads as light moving on the bottom; does not read as filaments.
+  float a = texture2D(uCausticMap, p * scale + driftA).r;
+  vec3 w = vec3(a * a);
+#endif
+  float focus = 1.0 - smoothstep(0.6, 14.0, d);
+  vec3 c = pow(clamp(w * 2.35, 0.0, 1.0), vec3(mix(1.7, 3.4, focus)));
+  c = mix(c * 0.42, c, focus);
+  // A caustic is sunlight: it dies with the water column above it. 0.11/m put
+  // the net out of sight by two metres, which is a silty English estuary; the
+  // water this island is supposed to be sitting in holds it to six or eight.
+  return c * exp(-d * 0.075) * 1.45;
 }
 
 /** Two scrolling octaves of the ripple map, plus a fine third close in. */
@@ -892,6 +1069,12 @@ void main() {
   float fresh = vSurf.w;
   float crest = vWave.x;
   float fold = vWave.y;
+  // How far up the sand the swash sheet currently is, 0..1.
+  float wash = vWave.w;
+  // Landward of the waterline: the wash itself. Only the part the terrain has
+  // not already occluded survives to be shaded, so this is exactly the thin
+  // sheet over the sand and nothing else.
+  float film = sat(-shoreDist * 0.32);
 
   // ---- Normal --------------------------------------------------------------
   // Fine ripples die within a kilometre so the horizon cannot alias; the
@@ -957,9 +1140,9 @@ void main() {
     vec3 tir = uDeepColor * 2.4 + uMidColor * 0.4;
     vec3 col = mix(tir, mix(through, uShallowColor * 1.2, 0.25), snell);
 
-    float caus = texture2D(uRippleMap, vWorldPos.xz * 0.055 + uTime * vec2(0.020, -0.013)).a
-               * texture2D(uRippleMap, vWorldPos.xz * 0.031 - uTime * vec2(0.016, 0.021)).a;
-    col += uSunColor * pow(sat(caus * 2.4 - 0.55), 2.5) * 0.9 * sat(uDaylight);
+    // The same net the seabed gets, seen from underneath as the light crossing
+    // the water in front of the mask.
+    col += uSunColor * causticLight(vWorldPos.xz, 3.0, vec3(0.0, -1.0, 0.0)) * 0.85 * sat(uDaylight);
     col *= ambient;
 
     gl_FragColor = vec4(col, 1.0);
@@ -973,18 +1156,57 @@ void main() {
   // Above water
   // ==========================================================================
 
+  // ---- Refraction ----------------------------------------------------------
+  // The view ray bends where it enters the water, so what you see on the bottom
+  // is not what is directly under the pixel. Bending it properly is what makes
+  // the seabed swim with the swell instead of reading as a photograph glued to
+  // the underside of a sheet of glass — and because the offset is rd.xz / -rd.y
+  // it stretches by itself as the view goes grazing, which is exactly what
+  // refraction does and the reason a lagoon looks like one from the shore.
+  vec3 rd = refract(-viewDir, N, 0.7519);          // air → water, 1.0 / 1.333
+  vec2 bedP = vWorldPos.xz;
+  float bedDepth = depth;
+  if (depth < 34.0) {
+    vec2 off = rd.xz / max(-rd.y, 0.09) * min(depth, 30.0);
+    // Cap it. Three degrees above the water the analytic offset runs to
+    // hundreds of metres and drags the next bay's seabed into these shallows.
+    off *= min(1.0, 15.0 / max(length(off), 0.001));
+    bedP = vWorldPos.xz + off;
+    // Re-read the bottom where the bent ray lands. Per-pixel, so this also
+    // takes the shoreline gradient off the vertex interpolation.
+    bedDepth = mix(sampleSeabed(bedP).x, depth, smoothstep(140.0, 520.0, viewDist));
+  }
+
   // ---- Depth colour (Beer–Lambert-ish, hand-graded for the tropics) --------
-  vec3 body = mix(uShallowColor, uMidColor, smoothstep(0.0, 8.0, depth));
-  body = mix(body, uDeepColor, smoothstep(7.0, 65.0, depth));
+  vec3 body = mix(uShallowColor, uMidColor, smoothstep(0.0, 8.0, bedDepth));
+  body = mix(body, uDeepColor, smoothstep(7.0, 65.0, bedDepth));
 
   // Bleached sand transmitting through the shallows — the single strongest
   // "tropical island" cue in the whole frame, and the reason the shoreline
   // reads from the bus at 700 m.
-  float sandVis = exp(-depth * 0.36);
-  float caustic = texture2D(uRippleMap, vWorldPos.xz * 0.075 + uTime * vec2(0.015, 0.011)).a
-                * texture2D(uRippleMap, vWorldPos.xz * 0.049 - uTime * vec2(0.010, 0.017)).a;
-  vec3 sand = uSandColor * (0.85 + pow(sat(caustic * 2.3 - 0.5), 2.0) * 1.15);
-  body = mix(body, mix(sand, body, 0.30), sandVis * 0.88);
+  // 0.36/m loses the bottom by four metres. The whole argument of a turquoise
+  // shelf is that you can see through it, and the caustics have nothing to
+  // land on once the sand has gone.
+  float sandVis = exp(-bedDepth * 0.28);
+  if (sandVis > 0.004) {
+    vec3 sandCol = uSandColor;
+    #if CAUSTIC_QUALITY > 1
+    // Mottle the bottom. A seabed of one flat colour is what gives a shaded
+    // bottom away instantly: real shallows are bare sand, weed and rock in slow
+    // patches, with ripple bars combed across them.
+    // (Not named "patch": that is a reserved word in GLSL ES, and the compiler
+    // reports it as a syntax error two lines below where it is declared. A
+    // backtick in a comment in here is the same class of trap — this whole
+    // shader is a template literal, and one ends it.)
+    float mottle = texture2D(uFoamMap, bedP * 0.0055).b;
+    float bars = texture2D(uRippleMap, bedP * 0.085).a;
+    sandCol = mix(sandCol, uSeabedColor, smoothstep(0.50, 0.80, mottle) * 0.8);
+    sandCol *= 0.88 + 0.24 * bars;
+    #endif
+    vec3 caus = causticLight(bedP, bedDepth, rd);
+    vec3 lit = sandCol * (0.80 + caus * 0.9) + uSunColor * caus * 0.55 * sat(uDaylight) * sunUp;
+    body = mix(body, mix(lit, body, 0.30), sandVis * 0.88);
+  }
 
   // Fresh water is not turquoise. Tannin green, murkier, and it loses the sand
   // read much faster — that difference is what tells the player at a glance
@@ -994,10 +1216,31 @@ void main() {
   body *= ambient * diffuse;
 
   // ---- Sub-surface scatter through the crests ------------------------------
-  // Sun behind a wave lights the water up green-teal along the crest line.
-  float backlit = pow(sat(-dot(viewDir, uSunDir) * 0.5 + 0.5), 3.0);
-  body += uShallowColor * uSunColor * backlit * sat(crest) * 0.5 * sat(uDaylight)
-        * (1.0 - smoothstep(350.0, 1800.0, viewDist));
+  // Light that enters the back of a wave scatters forward and leaves the face
+  // green-teal. It is the cue that gives a swell scale — a wave with no glow
+  // through it is a moving surface, a wave with one is a body of water — so it
+  // is worth a real lobe rather than a rim term.
+  //
+  // The exit direction is the sun bent through the crest, so the term peaks
+  // when the sun is behind the swell and the eye is looking into it.
+  vec3 sssDir = normalize(-uSunDir + N * 0.6);
+  float sss = pow(sat(dot(viewDir, sssDir)), 4.0);
+  // Only water actually piled up has anything to glow through, and a steep face
+  // has more of it in the way than a flat one.
+  float thick = sat(crest * 0.8 + fold * 1.7);
+  // A low sun rakes the long way through a crest; a noon sun goes down through
+  // the top of it and lights nothing on the way to the eye.
+  float rake = 1.0 - sat(uSunDir.y * 1.3);
+  body += uSssColor * uSunColor * sss * thick * (0.30 + 0.95 * rake) * sat(uDaylight)
+        * smoothstep(0.4, 4.0, depth) * (1.0 - fresh * 0.6)
+        * (1.0 - smoothstep(700.0, 3000.0, viewDist));
+
+  // ---- The wash over the sand ---------------------------------------------
+  // Landward of the waterline the surface is a film a centimetre thick. There
+  // is no water column to colour, so what shows through is wet sand: darker and
+  // far glossier than the dry beach beside it, which is why every photograph of
+  // a shoreline has a dark band running along it.
+  body = mix(body, uWetSandColor * ambient * (0.5 + 0.5 * diffuse), film * 0.9);
 
   // ---- Fresnel reflection --------------------------------------------------
   float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
@@ -1005,7 +1248,17 @@ void main() {
   vec3 R = normalize(reflect(-viewDir, N));
   R.y = abs(R.y) * 0.86 + 0.02;              // never sample the underside
   R = normalize(R);
-  vec3 reflection = cloudyReflection(vWorldPos, R, skyRadiance(R));
+  // Clouds are a kilometre up, so the reflected ray travels kilometres before
+  // it reaches them and any roughness on the surface blurs them out. Sampling
+  // that plane along the DETAIL normal walks the cloud UV hundreds of metres
+  // between neighbouring pixels, and it comes back as a field of white
+  // speckle over the whole sea that reads as chop — it was the single most
+  // artificial thing in an open-water frame, and it was not foam at all.
+  // Macro normal for the clouds; the detail keeps the sky gradient and the
+  // specular, which is where it belongs.
+  vec3 Rc = normalize(reflect(-viewDir, normalize(vWaveNormal)));
+  Rc.y = abs(Rc.y) * 0.86 + 0.02;
+  vec3 reflection = cloudyReflection(vWorldPos, normalize(Rc), skyRadiance(R));
 
   #ifdef LAND_REFLECTION
   // March the reflected ray through the baked land-height field. Where the
@@ -1037,9 +1290,13 @@ void main() {
   col += uSunColor * (tight * 3.6 + broad * 0.3) * sat(uDaylight) * sunUp;
 
   // ---- Sparkle: micro-facets that only exist up close ----------------------
+  // Rarer and brighter than it was. A glitter path is a scatter of individual
+  // points that each blow past the bloom threshold, not a dusting over every
+  // wave: pow(spec, 26) put one on a third of the sea whenever the sun was
+  // anywhere ahead, which is the other half of why the water looked noisy.
   float sparkNoise = texture2D(uRippleMap, vWorldPos.xz * 0.62 + uTime * vec2(0.09, -0.07)).a;
-  float spark = pow(sat(sparkNoise * 1.7 - 0.72), 3.0) * pow(spec, 26.0);
-  col += uSunColor * spark * 5.0 * fadeFine * sat(uDaylight);
+  float spark = pow(sat(sparkNoise * 1.9 - 0.86), 3.0) * pow(spec, 52.0);
+  col += uSunColor * spark * 9.0 * fadeFine * sat(uDaylight);
 
   // ==========================================================================
   // Foam
@@ -1054,21 +1311,27 @@ void main() {
   // whole warps take the cheap path out over open water.
   float surf = 0.0;
   if (shoreDist < 140.0 && depth < 13.0) {
-    // Gentle beaches spread the surf wide; steep rock keeps it tight.
-    float width = uFoamWidth * mix(2.2, 0.5, seabedSlope) * mix(1.0, 0.35, fresh);
+    // Gentle beaches spread the surf wide; steep rock keeps it tight. The band
+    // also grows and shrinks with the sheet the vertex stage lifted, so the
+    // foam travels with the water instead of breathing on the spot.
+    // 2.2 on a flat beach was a fifty-metre band of white, which is a storm.
+    float width = uFoamWidth * mix(1.45, 0.45, seabedSlope) * mix(1.0, 0.35, fresh)
+                * mix(0.55, 1.35, wash);
     float shoreT = 1.0 - smoothstep(0.0, width, max(shoreDist, 0.0));
     // Gate on depth too, so surf can never appear over open water if the bake
     // and the terrain ever disagree.
     shoreT *= 1.0 - smoothstep(1.0, 10.0, depth);
 
-    // Breaker sets marching in, each steepening as it lands. Two periods that
-    // do not divide into each other, so the sets never visibly repeat.
-    float march = shoreDist * 0.09 - uTime * 0.62;
+    // Breaker sets marching IN. Phase = wt + kx puts the crest at a shore
+    // distance that falls as time runs; reverse the sign and the sets walk out
+    // to sea, which is what this did and what nobody had looked closely enough
+    // to notice.
+    float march = shoreDist * 0.09 + uTime * 0.62;
     float pulse = pow(sin(march) * 0.5 + 0.5, 2.2);
     float pulse2 = pow(sin(march * 0.47 + 1.7) * 0.5 + 0.5, 3.0);
-    // The swell crest itself drives the wash up and down the sand, so the foam
-    // line advances and retreats with the water instead of pumping on its own.
-    float tide = 0.62 + 0.38 * (crest * 0.5 + 0.5);
+    // The lift drives the wash now, so the foam brightens as the sheet arrives
+    // and fades as it drains, in step with the geometry rather than beside it.
+    float tide = 0.55 + 0.45 * wash;
 
     // The foam sheet drifts shoreward rather than sitting pinned to the world.
     vec4 drift = texture2D(uFoamMap, vWorldPos.xz * 0.030 - vShoreDir * (uTime * 0.020));
@@ -1078,13 +1341,27 @@ void main() {
     surf *= mix(0.45, 1.25, drift.r) * mix(0.7, 1.3, drift.b);
     // The last metres of wash are almost solid white whatever the sets do.
     surf = max(surf, shoreT * shoreT * shoreT * 1.15 * mix(0.6, 1.0, driftFine.g));
+    // Over the sand: a bright lip at the leading edge and streaks trailing
+    // behind it, NOT a blanket. Painting the whole wet band white is what
+    // turned a flat beach into a snowfield, and it also hid the wet sand,
+    // which is the half of this that reads as water having just been there.
+    float lip = smoothstep(0.0, 0.30, film) * (1.0 - smoothstep(0.30, 0.90, film));
+    float streak = film * smoothstep(0.42, 0.86, drift.r) * 0.5;
+    surf = max(surf, (lip * (0.45 + 0.55 * wash) + streak) * mix(0.6, 1.1, driftFine.g));
     surf = sat(surf);
   }
 
   // ---- Whitecaps on open-water crests --------------------------------------
-  float capDrive = sat(crest * 0.72 + fold * 0.9 - 0.30);
-  float caps = smoothstep(0.20, 0.60, capDrive) * smoothstep(2.5, 16.0, depth);
-  caps *= mix(0.25, 1.0, foamTex.r) * mix(0.4, 1.0, foamFine.g);
+  // Whitecaps break on the steepest few per cent of the crests, not on all of
+  // them. This opened wide enough to lay a film of white over most of the sea,
+  // and an even scatter of speckle everywhere is what a gale looks like from a
+  // ferry — a two-metre swell in sunshine is blue with a little white on it,
+  // and that difference is most of why the old frame read as choppy grey.
+  float capDrive = sat(crest * 0.62 + fold * 1.3 - 0.52);
+  float caps = smoothstep(0.14, 0.68, capDrive) * smoothstep(2.5, 16.0, depth);
+  // Clumped hard rather than modulated: foam is patchy along a breaking crest
+  // and absent between the patches, never an even film across the whole face.
+  caps *= smoothstep(0.30, 0.80, foamTex.r) * mix(0.15, 1.0, foamFine.g);
   caps *= (1.0 - smoothstep(1400.0, 4600.0, viewDist)) * (1.0 - fresh);
 
   float foam = sat(max(max(surf, caps * 0.85), rippleFoam * mix(0.35, 1.0, foamFine.g)));
@@ -1093,10 +1370,25 @@ void main() {
   // top of a mirror. Cheap, and it is the detail that sells wet white water.
   col -= uSunColor * tight * 2.4 * foam * sat(uDaylight);
 
+  // ---- Spray where the swell meets rock ------------------------------------
+  // No particles: a steep shore, an arriving set, and a value pushed past the
+  // bloom threshold so the pyramid smears it into a haze standing above the
+  // rocks. One multiply-add, and it is the only thing in the frame that says
+  // the water is hitting something hard rather than running out on sand.
+  float rocky = smoothstep(0.42, 0.88, seabedSlope) * (1.0 - fresh);
+  float burst = rocky * sat(wash * 1.3 - 0.35) * (1.0 - smoothstep(0.0, 14.0, max(shoreDist, 0.0)));
+  col += uFoamColor * burst * 0.9 * sat(uDaylight) * (1.0 - smoothstep(220.0, 900.0, viewDist));
+
   // ---- Horizon resolve -----------------------------------------------------
   // Past the fog the disc edge must not read as a rim. Fold the last few
   // kilometres into the haze by hand, in case the sky ever runs without fog.
-  col = mix(col, uHazeColor, smoothstep(4200.0, 7100.0, viewDist) * 0.95);
+  float hz = smoothstep(4200.0, 7100.0, viewDist);
+  col = mix(col, uHazeColor, hz * 0.92);
+  // Then put the glitter road back into the haze. The far field is still
+  // water, and at eight kilometres the only thing that says so is that the sun
+  // is still on it; fold that away with everything else and the last two
+  // kilometres read as a painted band.
+  col += uSunColor * broad * 0.4 * hz * sat(uDaylight) * sunUp;
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -1128,6 +1420,10 @@ const createWater: SystemFactory = (ctx) => {
 
   const rippleMap = makeRippleNormalTexture(tier.detail, seed);
   const foamMap = makeFoamTexture(tier.detail, seed + 977);
+  // Capped at 256 whatever the tier: the Worley pass is O(n²·9) at boot and a
+  // caustic net is all low-frequency structure — 512² buys nothing but a
+  // slower load, which on the ultra tier was a fifth of a second of it.
+  const causticMap = makeCausticTexture(Math.min(256, tier.detail), seed + 4241);
 
   const maxAniso = (() => {
     try {
@@ -1138,6 +1434,7 @@ const createWater: SystemFactory = (ctx) => {
   })();
   rippleMap.anisotropy = Math.min(8, maxAniso);
   foamMap.anisotropy = Math.min(8, maxAniso);
+  causticMap.anisotropy = Math.min(8, maxAniso);
 
   // Boot order puts terrain ahead of us, but "ahead of us" is a guarantee
   // about ordering, not about success. If terrain is missing we bake a
@@ -1177,6 +1474,7 @@ const createWater: SystemFactory = (ctx) => {
 
     uRippleMap: { value: rippleMap },
     uFoamMap: { value: foamMap },
+    uCausticMap: { value: causticMap },
 
     uSunDir: { value: sunDir },
     uSunColor: { value: sunColor },
@@ -1196,9 +1494,19 @@ const createWater: SystemFactory = (ctx) => {
     uSandColor: { value: new THREE.Color(0xe7d8b2) },
     uFoamColor: { value: new THREE.Color(0xf2fbff) },
     uFreshColor: { value: new THREE.Color(0x2f7d5c) },
+    // What comes back OUT of a lit wave, which is not what the water looks
+    // like from above: scattering strips the blue on the way through and the
+    // crest glows green.
+    uSssColor: { value: new THREE.Color(0x4ce8b4) },
+    // Wet sand, not sand. Roughly half the reflectance of the dry beach — the
+    // water in the pores kills the diffuse and the band goes dark.
+    uWetSandColor: { value: new THREE.Color(0x7d6c4f) },
+    // Weed and rock on the bottom, in patches, under the sand tint.
+    uSeabedColor: { value: new THREE.Color(0x2e5140) },
 
     uDetailStrength: { value: ctx.quality === "low" ? 0.55 : 0.9 },
     uFoamWidth: { value: 22 },
+    uSwash: { value: SWASH_HEIGHT },
     uFlowBias: { value: new THREE.Vector2(0.86, 0.51) },
 
     uRipples: { value: ripples },
@@ -1210,7 +1518,10 @@ const createWater: SystemFactory = (ctx) => {
     fogDensity: { value: 0.00025 },
   };
 
-  const defines: Record<string, string | number> = { WAVE_COUNT: tier.waves };
+  const defines: Record<string, string | number> = {
+    WAVE_COUNT: tier.waves,
+    CAUSTIC_QUALITY: tier.caustics,
+  };
   if (rippleSlots > 0) defines.RIPPLE_COUNT = rippleSlots;
   if (tier.landReflection) defines.LAND_REFLECTION = "";
 
@@ -1415,6 +1726,7 @@ const createWater: SystemFactory = (ctx) => {
       material.dispose();
       rippleMap.dispose();
       foamMap.dispose();
+      causticMap.dispose();
       bake.depth.dispose();
       bake.shore.dispose();
       emitterCooldown.clear();

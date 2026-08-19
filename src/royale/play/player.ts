@@ -361,6 +361,85 @@ const HIP_Y = 1.02;
 
 const TAU = Math.PI * 2;
 
+// ---- the body has mass ---------------------------------------------------
+//
+// Everything below exists to answer one complaint: the figure read as a
+// puppet being slid across the terrain rather than a person walking on it.
+// Three things fix that, in descending order of how loud they are.
+
+/** Thigh bone length — must match `REST[J_SHIN].y`. */
+const LEG_UPPER = 0.46;
+/** Shin bone length — must match `REST[J_FOOT].y`. */
+const LEG_LOWER = 0.42;
+/**
+ * Distance from the ankle joint down to the bottom of the boot sole.
+ *
+ * Measured off the authored boot, not guessed: the sole slab sits at y −0.139
+ * with a half-height of 0.018, and the heel block hangs to −0.168. Standing on
+ * that number is why the feet stop sinking — the rest pose put the sole 4 cm
+ * *under* the ground and nothing ever noticed, because nothing was measuring.
+ */
+const ANKLE_HEIGHT = 0.158;
+/** Longest a leg can get. Kept just short of straight so the IK never locks. */
+const LEG_REACH = (LEG_UPPER + LEG_LOWER) * 0.995;
+
+/**
+ * Fraction of the stride each foot spends on the ground.
+ *
+ * A walk is a double-support gait (duty > 0.5, both feet down at once); a
+ * sprint is a run (duty well under 0.5, with a flight phase). Interpolating it
+ * is what lets one pose function cover both without the feet having to travel
+ * further per stance than a leg can reach.
+ */
+const DUTY_WALK = 0.62;
+const DUTY_SPRINT = 0.36;
+
+/** How far the planted foot may be dragged before we give up and re-plant. */
+const PLANT_BREAK = 0.9;
+/** Idle re-plant threshold: shuffle the feet once they are this far off-centre. */
+const PLANT_IDLE_SLACK = 0.3;
+/** Half the stance width — how far each foot sits off the centreline. */
+const STANCE_HALF_WIDTH = 0.135;
+/** Ceiling on how far the pelvis drops to reach a low step. */
+const PELVIS_DROP_MAX = 0.34;
+/** Ceiling on the ankle's slope tilt, so a cliff edge does not snap the foot. */
+const FOOT_TILT_MAX = 0.5;
+
+/** Peak knee flexion of a landing, radians, at `LAND_FULL` impact speed. */
+const LAND_KNEE = 0.95;
+/** Downward speed that produces a full-depth landing crouch. */
+const LAND_FULL = 22;
+/** Absorb this fast, recover this slow. A symmetric landing has no weight. */
+const LAND_ABSORB_RATE = 26;
+const LAND_RECOVER_RATE = 4.6;
+
+/** Acceleration that produces a full-strength body lean, m/s². */
+const LEAN_REF = 34;
+/** Radians of torso lean at `LEAN_REF`. */
+const LEAN_MAX = 0.26;
+
+/**
+ * Gait phase at mid-stance for the LEFT foot.
+ *
+ * Not a taste value — read straight off `poseLocomotion`, whose stance term is
+ * `max(0, −sin(ph − 0.4))` and therefore peaks at `ph = 0.4 − π/2`. The
+ * planner and the pose have to agree about which foot is down, or the solver
+ * pins a foot the animation is busy swinging and the leg turns inside out.
+ */
+const STANCE_CENTER = 0.4 + Math.PI * 1.5;
+/** Radians of ramp at each end of the stance window, so contact is not a cut. */
+const STANCE_RAMP = 0.6;
+/**
+ * Cap on how far ahead of the hips a plant may be placed.
+ *
+ * The proportions here are stylised — the hip sits at 1.00 m and the leg is
+ * 0.88 m — so the sole can only be a quarter of a metre from directly under
+ * the hip and still touch the floor. Planting at the full geometric step
+ * length would put every heel strike outside the leg's reach, and the solver
+ * would spend the whole stance at full extension, which reads as stilts.
+ */
+const PLANT_LEAD_MAX = 0.26;
+
 // ---------------------------------------------------------------- helpers
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
@@ -1048,8 +1127,18 @@ interface CharacterRig {
   glider: THREE.Object3D;
   /** Canopy cells, animated individually for the billow. */
   cells: THREE.Object3D[];
+  /** The cloth cap. Flattens onto the skull as it soaks — see `updateWetLook`. */
+  cap: THREE.Mesh | null;
+  /** Jacket and trouser shells. Cling in as the water pulls them against you. */
+  cling: THREE.Mesh[];
   geometries: THREE.BufferGeometry[];
   materials: THREE.Material[];
+  /** Which surface family each entry of `materials` came from, same order.
+   *  Wetness is not one number: a soaked shirt goes dark and matte-turned-
+   *  glossy, wet skin barely darkens at all, and wet metal only gets shinier.
+   *  Without this the whole figure dimmed by one flat factor and read as a
+   *  lighting bug rather than as a person who had been hit with a hose. */
+  surfaces: SurfaceId[];
   textures: THREE.Texture[];
 }
 
@@ -1275,11 +1364,25 @@ function buildCharacter(ctx: WorldCtx): CharacterRig {
   // ---- build the object graph ------------------------------------------
   const textures: THREE.Texture[] = [];
   const materials: THREE.Material[] = [];
+  const matSurface: SurfaceId[] = [];
   const geometries: THREE.BufferGeometry[] = [];
-  const matById = new Map<SurfaceId, THREE.MeshStandardMaterial>();
+  const matById = new Map<SurfaceId, THREE.MeshPhysicalMaterial>();
   const env = ctx.services.materials?.env ?? null;
 
-  const surfaceMaterial = (id: SurfaceId): THREE.MeshStandardMaterial => {
+  /**
+   * `MeshPhysicalMaterial`, not `MeshStandardMaterial`, for exactly one
+   * property: `clearcoat`. A film of water on a jacket is a second, smoother
+   * specular layer sitting on top of the cloth's own — which is what clearcoat
+   * *is*. Faking it by dropping the base roughness turns the whole garment to
+   * latex; a clearcoat leaves the cloth reading as cloth underneath the shine,
+   * and that is the difference between "wet" and "plastic" at 30 m.
+   *
+   * `clearcoat` is seeded at a hair above zero rather than at zero, because
+   * three compiles a different shader the first time it goes positive — and
+   * doing that on the frame somebody first gets hit is a hitch at the worst
+   * possible moment. On `low` it stays at zero and never compiles the layer.
+   */
+  const surfaceMaterial = (id: SurfaceId): THREE.MeshPhysicalMaterial => {
     let m = matById.get(id);
     if (m) return m;
     const maps = bakeSurface(id, texSize);
@@ -1288,7 +1391,9 @@ function buildCharacter(ctx: WorldCtx): CharacterRig {
     // UV set, so say channel 0 out loud or every AO sample reads garbage.
     maps.ormMap.channel = 0;
     const spec = SURFACES[id];
-    m = new THREE.MeshStandardMaterial({
+    m = new THREE.MeshPhysicalMaterial({
+      clearcoat: lowDetail ? 0 : 0.002,
+      clearcoatRoughness: 0.08,
       map: maps.map,
       normalMap: maps.normalMap,
       normalScale: new THREE.Vector2(1, 1),
@@ -1307,6 +1412,7 @@ function buildCharacter(ctx: WorldCtx): CharacterRig {
     });
     matById.set(id, m);
     materials.push(m);
+    matSurface.push(id);
     return m;
   };
 
@@ -1320,6 +1426,11 @@ function buildCharacter(ctx: WorldCtx): CharacterRig {
     const o = new THREE.Object3D();
     o.position.set(REST[i][0], REST[i][1], REST[i][2]);
     o.rotation.order = "YXZ";
+    // Named so a probe can find one joint in the scene graph without counting
+    // children — the foot solver is verified by measuring where the boots
+    // actually end up, and that measurement should not depend on the order
+    // meshes happen to have been added in.
+    o.name = `dz-j${i}`;
     joints.push(o);
   }
   for (let i = 0; i < JOINT_COUNT; i++) {
@@ -1327,10 +1438,22 @@ function buildCharacter(ctx: WorldCtx): CharacterRig {
     (p < 0 ? body : joints[p]).add(joints[i]);
   }
 
+  /** The soft kit that a soaking visibly changes shape. See `CharacterRig.cap`. */
+  let cap: THREE.Mesh | null = null;
+  const cling: THREE.Mesh[] = [];
+
   for (const part of b.entries()) {
     const g = part.geo.toGeometry();
     geometries.push(g);
     const mesh = new THREE.Mesh(g, surfaceMaterial(part.surface));
+    // The bins are keyed by (joint, surface), which means the cloth bin on the
+    // head is the cap and its brim and nothing else, and the cloth bin on the
+    // chest is the jacket shell and nothing else. That is the only reason
+    // these can be squashed independently without a second scene graph.
+    if (part.surface === "cloth") {
+      if (part.joint === J_HEAD) cap = mesh;
+      else if (part.joint === J_CHEST || part.joint === J_SPINE || part.joint === J_PELVIS) cling.push(mesh);
+    }
     mesh.castShadow = true;
     // Self-receive: without it the underside of the jacket and the inside of
     // the legs stay lit from below and the whole figure floats.
@@ -1358,8 +1481,11 @@ function buildCharacter(ctx: WorldCtx): CharacterRig {
     headGroup: joints[J_HEAD],
     glider,
     cells,
+    cap,
+    cling,
     geometries,
     materials,
+    surfaces: matSurface,
     textures,
   };
 }
@@ -2245,6 +2371,79 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   let leanRoll = 0;
   let lastYaw = 0;
 
+  // ---- weight ------------------------------------------------------------
+  //
+  // Everything in this block is integrated in `fixed(dt)` and only *read* by
+  // `updateAnimation`. That split is not a style rule here: the simulation
+  // runs a few hundred times slower than wall clock under the capture
+  // harness, so a spring wound off frame time would settle in one frame there
+  // and over a second on a real machine, and the two would disagree about
+  // what the body was doing at the moment the shutter opened.
+
+  /**
+   * One foot's contact with the world.
+   *
+   * `p` is where the *sole* is pinned, in world space, for as long as the foot
+   * is down — not an offset from the pelvis, which is the version that slides.
+   * `n` is the surface it is pinned to, so the ankle can roll onto a slope.
+   */
+  interface FootPlant {
+    p: THREE.Vector3;
+    n: THREE.Vector3;
+    /** True between heel strike and toe-off. */
+    on: boolean;
+    /** Smoothed 0..1 authority the plant has over the animated ankle. */
+    w: number;
+  }
+  const feet: FootPlant[] = [
+    { p: new THREE.Vector3(), n: new THREE.Vector3(0, 1, 0), on: false, w: 0 },
+    { p: new THREE.Vector3(), n: new THREE.Vector3(0, 1, 0), on: false, w: 0 },
+  ];
+  /** Global gate on the foot solver — off in the air, the dive, the water. */
+  let ikBlend = 0;
+  /** How far the hips have dropped to let a leg reach a low step, metres. */
+  let pelvisDrop = 0;
+
+  /**
+   * The landing spring, in units where 1 is a full-depth absorb.
+   *
+   * Deliberately under-damped: `LAND_D` is below the critical `2·sqrt(LAND_K)`
+   * so the knees pass through zero on the way back and the body rises onto its
+   * toes for a beat before settling. A critically damped landing is correct
+   * physics and reads as a lift being lowered.
+   */
+  let landAbsorb = 0;
+  let landVel = 0;
+  const LAND_K = 62;
+  const LAND_D = 11.5;
+
+  /** Smoothed body-local acceleration, −1..1, forward and rightward. */
+  let accelFwd = 0;
+  let accelRight = 0;
+  let lastVelX = 0;
+  let lastVelZ = 0;
+
+  /**
+   * The soak-out slump.
+   *
+   * Six damped springs on the torso and arms plus one falling hip, seeded with
+   * an impulse when you go out and left to settle. Not a ragdoll — a ragdoll
+   * would need collision on every limb and would find a way to end up inside a
+   * wall — but it is integrated rather than keyframed, so the body arrives on
+   * the ground at a speed that depends on how it got there and no two
+   * soak-outs look the same.
+   */
+  const SLUMP_K = [30, 24, 21, 44, 26, 26];
+  const SLUMP_D = [6.4, 5.2, 4.6, 7.5, 5.0, 5.0];
+  const slumpAng = new Float32Array(6);
+  const slumpVel = new Float32Array(6);
+  /** Height of the hips above their final resting place, metres. */
+  let slumpHip = 0;
+  let slumpHipVel = 0;
+  let slumping = false;
+  /** Set once the backside has hit the floor, so the splash fires exactly once. */
+  let slumpLanded = false;
+
   // ---- health ------------------------------------------------------------
   let downTimer = 0;
   const DOWN_TIME = 45;
@@ -2482,6 +2681,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // still on the ground, instead of cutting to black mid-firefight.
     service.state = "down";
     downTimer = DOWN_TIME;
+    beginSlump();
     velocity.set(0, velocity.y, 0);
     if (water) enterSoaked(source);
     else {
@@ -2672,6 +2872,226 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
   }
 
+  /**
+   * Metres of travel per step. One definition, read by the gait phase, the
+   * footstep trigger and the foot planner — they disagreed about it once and
+   * the result was audio that clapped on the wrong frame of the stride.
+   */
+  const strideLength = (): number => (crouching ? 1.25 : lerp(1.55, 2.4, runBlend));
+
+  // ---- the ground under each foot ----------------------------------------
+
+  const _probeN = new THREE.Vector3(0, 1, 0);
+  const _probeP = new THREE.Vector3();
+  let _probeY = 0;
+
+  /**
+   * Where the floor is at an arbitrary XZ near the player, and which way it
+   * faces. Built structures first — you can stand on a ramp you made — and the
+   * heightfield underneath when there is nothing built there.
+   */
+  function groundProbe(x: number, z: number): void {
+    const collision = ctx.services.collision;
+    if (collision) {
+      _probeP.set(x, position.y + 1.05, z);
+      const hit = collision.raycast(_probeP, probeDir, 2.4);
+      // Only a surface you could stand on. A ray that clips the *side* of a
+      // built wall would otherwise plant the foot halfway up it.
+      if (hit && hit.normal.y > 0.4) {
+        _probeY = hit.point.y;
+        _probeN.copy(hit.normal).normalize();
+        // …but prefer the heightfield's normal when the thing we hit *is* the
+        // ground. Colliders are boxes, so a hillside registers as a stack of
+        // flat lids and the ankle rolls onto a level surface that is not
+        // there. Measured on a 29° slope: one boot took the box lid and
+        // stayed level while the other took the terrain and rolled 22° onto
+        // it, in the same frame, which is exactly how that presents.
+        if (ctx.services.terrain && Math.abs(_probeY - terrainY(x, z)) < 0.06) {
+          ctx.services.terrain.normalAt(x, z, _probeN).normalize();
+        }
+        return;
+      }
+    }
+    _probeY = terrainY(x, z);
+    if (ctx.services.terrain) ctx.services.terrain.normalAt(x, z, _probeN).normalize();
+    else _probeN.set(0, 1, 0);
+  }
+
+  /**
+   * Decide where each foot is standing.
+   *
+   * The planner, not the solver: it picks a world point at heel strike and
+   * holds it until toe-off, and `applyFootIk` is left with the easy job of
+   * bending a leg to reach a point somebody already chose. Doing it the other
+   * way round — solving against whatever the ground happens to be under the
+   * animated foot each frame — is what produces a foot that shivers along a
+   * slope, because the animated foot is moving and the ground is not.
+   *
+   * Being honest about the proportions: the hip sits at 1.00 m and the leg is
+   * 0.88 m, so the sole cannot get more than about a quarter of a metre from
+   * directly beneath the hip and still touch the floor. The plant therefore
+   * holds through the middle of each stance and lets go at the ends, which
+   * removes most of the slide rather than all of it. Claiming otherwise would
+   * mean either legs this character does not have or a cadence of ten steps a
+   * second.
+   */
+  function footPlanFixed(dt: number): void {
+    const sp = Math.hypot(velocity.x, velocity.z);
+
+    // The gait phase lives here rather than in updateAnimation because it is
+    // distance travelled and it decides which foot is down — two physical
+    // facts. On a clock that runs at whatever rate the GPU felt like, the
+    // planter and the pose would disagree about the answer.
+    if (service.state === "swim") gaitPhase += dt * 3.4;
+    else if (grounded && dropStage === "landed") {
+      gaitPhase += ((sp * dt) / Math.max(strideLength(), 0.4)) * Math.PI;
+    }
+    if (gaitPhase > TAU * 1024) gaitPhase -= TAU * 1024;
+
+    const want =
+      grounded && !sliding && !inWater && dropStage === "landed" &&
+      service.state !== "swim" && service.state !== "dead" && service.state !== "down" &&
+      stumbleTimer <= 0;
+    ikBlend = approach(ikBlend, want ? 1 : 0, want ? 10 : 18, dt);
+    if (!want) {
+      for (const f of feet) {
+        f.on = false;
+        f.w = approach(f.w, 0, 18, dt);
+      }
+      pelvisDrop = approach(pelvisDrop, 0, 10, dt);
+      return;
+    }
+
+    // Walking is a double-support gait and running is not; interpolating the
+    // duty cycle is what lets one pose cover both without asking either foot
+    // to cover more ground per stance than a leg can reach.
+    const duty = crouching ? 0.7 : lerp(DUTY_WALK, DUTY_SPRINT, runBlend);
+    const moving = sp > 0.8;
+    const lead = moving ? Math.min(strideLength() * duty * 0.5, PLANT_LEAD_MAX) : 0;
+    const cs = Math.cos(bodyYaw);
+    const sn = Math.sin(bodyYaw);
+    const inv = sp > 1e-3 ? lead / sp : 0;
+    const half = Math.PI * duty;
+
+    for (let i = 0; i < 2; i++) {
+      const f = feet[i];
+      const lx = (i === 0 ? -1 : 1) * STANCE_HALF_WIDTH;
+      // This foot's share of the body, on the ground, right now.
+      const hx = position.x + lx * cs;
+      const hz = position.z - lx * sn;
+      const ph = gaitPhase + (i === 0 ? 0 : Math.PI);
+      const rel = angleDelta(STANCE_CENTER, ph);
+      // Standing still there is no window: both feet are down and stay down
+      // until the body walks out from over them.
+      const w = moving ? clamp01((half - Math.abs(rel)) / STANCE_RAMP) : 1;
+
+      if (f.on) {
+        const drag = Math.hypot(f.p.x - hx, f.p.z - hz);
+        if (drag > PLANT_BREAK || (!moving && drag > PLANT_IDLE_SLACK)) {
+          // Dragged past what a leg can do. Drop the plant's authority to zero
+          // as well as releasing it, so the re-plant next step is a small
+          // visible shuffle of the feet rather than a teleport.
+          f.on = false;
+          f.w = 0;
+        } else if (w <= 0.02) {
+          f.on = false;
+        }
+      }
+      if (!f.on && w > 0.02) {
+        const px = hx + velocity.x * inv;
+        const pz = hz + velocity.z * inv;
+        groundProbe(px, pz);
+        f.p.set(px, _probeY, pz);
+        f.n.copy(_probeN);
+        f.on = true;
+      }
+      f.w = approach(f.w, f.on ? w : 0, f.on ? 22 : 16, dt);
+    }
+  }
+
+  /**
+   * The parts of the body that are springs rather than poses: how hard it is
+   * accelerating, how far the knees have folded under a landing, and — once
+   * you are out — how the slump is settling.
+   */
+  function bodyFixed(dt: number): void {
+    const inv = 1 / Math.max(dt, 1e-4);
+    const ax = (velocity.x - lastVelX) * inv;
+    const az = (velocity.z - lastVelZ) * inv;
+    lastVelX = velocity.x;
+    lastVelZ = velocity.z;
+    const cs = Math.cos(bodyYaw);
+    const sn = Math.sin(bodyYaw);
+    // Forward is (−sin, −cos) and right is (cos, −sin) — the same basis the
+    // yaw root uses, so "lean forward" leans the mesh the way it is going.
+    const af = -ax * sn - az * cs;
+    const ar = ax * cs - az * sn;
+    accelFwd = approach(accelFwd, clamp(af / LEAN_REF, -1, 1), 9, dt);
+    accelRight = approach(accelRight, clamp(ar / LEAN_REF, -1, 1), 9, dt);
+
+    landVel += (-landAbsorb * LAND_K - landVel * LAND_D) * dt;
+    landAbsorb += landVel * dt;
+    if (Math.abs(landAbsorb) < 1e-4 && Math.abs(landVel) < 1e-4) {
+      landAbsorb = 0;
+      landVel = 0;
+    }
+
+    if (!slumping) return;
+    slumpHipVel += -19 * dt;
+    slumpHip += slumpHipVel * dt;
+    if (slumpHip <= 0) {
+      slumpHip = 0;
+      if (slumpHipVel < -1.1) {
+        // One bounce, heavily damped. You sat down hard in a puddle; you did
+        // not bounce like a ball, and the second, smaller contact is the beat
+        // that sells the mass.
+        const impact = -slumpHipVel;
+        slumpHipVel = impact * 0.2;
+        for (let i = 0; i < 6; i++) slumpVel[i] += (i % 2 ? -1 : 1) * impact * 0.55;
+        if (!slumpLanded) {
+          slumpLanded = true;
+          ctx.services.wetness?.splash(position, 1.2, 0.55);
+          ctx.services.audio?.play("splash", { volume: 0.55, position });
+        }
+      } else {
+        slumpHipVel = 0;
+      }
+    }
+    for (let i = 0; i < 6; i++) {
+      slumpVel[i] += (-slumpAng[i] * SLUMP_K[i] - slumpVel[i] * SLUMP_D[i]) * dt;
+      slumpAng[i] += slumpVel[i] * dt;
+    }
+  }
+
+  /** Seed the slump. Called the instant you go out, from wherever you were. */
+  function beginSlump(): void {
+    slumping = true;
+    slumpLanded = false;
+    // Hips start where a standing pelvis is relative to the down pose and fall
+    // from there, so the drop is a fall rather than a cross-fade.
+    slumpHip = 0.48;
+    slumpHipVel = 0.4 + Math.random() * 0.5;
+    // Carrying speed into the slump is most of why no two look alike: getting
+    // hosed at a sprint folds you much harder than getting hosed standing up.
+    const shove = clamp(Math.hypot(velocity.x, velocity.z) * 0.22, 0.4, 2.4);
+    const spin = (Math.random() - 0.5) * 2;
+    slumpVel[0] = shove * (0.8 + Math.random() * 0.5);
+    slumpVel[1] = shove * (0.6 + Math.random() * 0.6);
+    slumpVel[2] = shove * (0.4 + Math.random() * 0.5);
+    slumpVel[3] = -shove * (0.9 + Math.random() * 0.7);
+    slumpVel[4] = spin * shove * 1.3;
+    slumpVel[5] = -spin * shove * 1.1;
+    slumpAng.fill(0);
+  }
+
+  function endSlump(): void {
+    slumping = false;
+    slumpAng.fill(0);
+    slumpVel.fill(0);
+    slumpHip = 0;
+    slumpHipVel = 0;
+  }
+
   function footstep(scale: number): void {
     // A soaked player prints a trail. This runs before the audio bail-out on
     // purpose: the trail is gameplay — bots hunt on it — and losing it because
@@ -2745,6 +3165,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (stumbleTimer > 0) {
       stumbleTimer = Math.max(0, stumbleTimer - dt);
       if (stumbleTimer === 0) {
+        endSlump();
         ctx.emit("dz:stumble-up", null);
         ctx.services.audio?.play("land", { volume: 0.4, position });
       }
@@ -3023,6 +3444,8 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     stumbleTimer = GLUE.fallTime;
     stumbleCooldown = GLUE.fallTime + GLUE.fallCooldown;
     stumbleRoll = 0;
+    // A stumble is the same fall as a soak-out, just one you get up from.
+    beginSlump();
 
     // Keep the momentum that put you here, add a small pop, and let the tumble
     // carry you a metre or two — stopping dead reads as a hitch, not a fall.
@@ -3274,6 +3697,28 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
   }
 
+  /**
+   * Where water actually leaves a body: the low points of the silhouette.
+   *
+   * Spraying droplets out of a cylinder around the player — which is what this
+   * used to do — puts them in mid-air beside the character and reads as
+   * weather rather than as run-off. Hung off the real joints they fall from
+   * the elbows, the cuffs, the jacket hem and the brim of the cap, and they
+   * move with the limb, so a swinging arm flicks water.
+   */
+  const DRIP_FROM: Array<{ j: number; y: number; w: number }> = [
+    { j: J_PELVIS, y: -0.15, w: 3 }, // jacket hem, the biggest shedder
+    { j: J_FORE_L, y: -0.26, w: 2 }, // elbow down to the cuff
+    { j: J_FORE_R, y: -0.26, w: 2 },
+    { j: J_HAND_L, y: -0.09, w: 1 },
+    { j: J_HAND_R, y: -0.09, w: 1 },
+    { j: J_HEAD, y: 0.02, w: 2 }, // brim of the cap
+    { j: J_FOOT_L, y: -0.11, w: 1 },
+    { j: J_FOOT_R, y: -0.11, w: 1 },
+  ];
+  const DRIP_WEIGHT = DRIP_FROM.reduce((a, e) => a + e.w, 0);
+  const _dripFrom = new THREE.Vector3();
+
   function spawnDrip(): void {
     if (!dripMesh) return;
     const d = drips[dripCursor];
@@ -3281,12 +3726,33 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // `Math.random`, not `ctx.rng`: the shared stream is the one worldgen and
     // the stumble roll draw from, and burning fifteen draws a second on
     // cosmetics would make every gameplay roll downstream of how wet you look.
-    const a = Math.random() * TAU;
-    const r = 0.16 + Math.random() * 0.24;
-    // Shed from anywhere on the silhouette: hem, cuffs, the brim of the head.
-    d.x = position.x + Math.cos(a) * r;
-    d.z = position.z + Math.sin(a) * r;
-    d.y = position.y + 0.35 + Math.random() * 1.35;
+    let pick = Math.random() * DRIP_WEIGHT;
+    let src = DRIP_FROM[0];
+    for (const e of DRIP_FROM) {
+      pick -= e.w;
+      if (pick <= 0) {
+        src = e;
+        break;
+      }
+    }
+    if (rig) {
+      // One frame stale — `updateWetLook` runs before `updateAnimation` — and
+      // at 0.02 m of limb travel per frame that is not a distance anybody can
+      // see on a droplet the size of a pea.
+      rig.joints[src.j].getWorldPosition(_dripFrom);
+      _dripFrom.y += src.y;
+    } else {
+      const a = Math.random() * TAU;
+      const r = 0.16 + Math.random() * 0.24;
+      _dripFrom.set(
+        position.x + Math.cos(a) * r,
+        position.y + 0.35 + Math.random() * 1.35,
+        position.z + Math.sin(a) * r,
+      );
+    }
+    d.x = _dripFrom.x + (Math.random() - 0.5) * 0.08;
+    d.y = _dripFrom.y;
+    d.z = _dripFrom.z + (Math.random() - 0.5) * 0.08;
     d.vx = velocity.x * 0.25 + (Math.random() - 0.5) * 0.4;
     d.vz = velocity.z * 0.25 + (Math.random() - 0.5) * 0.4;
     d.vy = -0.3 - Math.random() * 0.6;
@@ -3448,6 +3914,12 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // about. Costs one branch in classic.
     if (water) waterStepBegin(dt);
 
+    // The springs and the foot planner run in every state, including the ones
+    // that return early below — a landing spring that stops integrating while
+    // you are downed comes back holding whatever it held when you went down.
+    bodyFixed(dt);
+    footPlanFixed(dt);
+
     // --- dead: the body stays put and the camera keeps running -------------
     if (service.state === "dead") {
       velocity.multiplyScalar(Math.exp(-4 * dt));
@@ -3471,6 +3943,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
         // soaked and the strands can attach again.
         service.state = "ground";
         soakedOut = false;
+        endSlump();
       } else if (downTimer <= 0) {
         enterDead();
       }
@@ -3644,6 +4117,10 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (grounded && !wasGrounded) {
       const impact = -fallSpeed;
       landingDip = clamp(impact * 0.016, 0, 0.42);
+      // The camera dip above is a separate, faster thing. This is the body:
+      // an impulse into an under-damped spring, so the knees fold over about
+      // a tenth of a second, hold, and give the recovery beat back.
+      landVel += clamp01(impact / LAND_FULL) * 6.2;
       if (impact > 3) {
         ctx.services.audio?.play("land", {
           volume: clamp(0.2 + impact * 0.016, 0.2, 0.75),
@@ -3664,8 +4141,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     if (grounded && !sliding) {
       const sp = Math.hypot(velocity.x, velocity.z);
       stepDistance += sp * dt;
-      const stride = crouching ? 1.25 : lerp(1.55, 2.4, runBlend);
-      if (sp > 0.7 && stepDistance >= stride) {
+      if (sp > 0.7 && stepDistance >= strideLength()) {
         stepDistance = 0;
         footstep(crouching ? 0.45 : lerp(0.8, 1.15, runBlend));
       }
@@ -4140,6 +4616,215 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
 
   // ---- animation ----------------------------------------------------------
 
+  // ---- foot IK ------------------------------------------------------------
+  //
+  // Two-bone analytic IK, solved in *rig space* — the frame the yaw root sits
+  // in, so world and rig differ by one yaw and one translation and neither
+  // needs a matrix. Solving through three.js world matrices would mean pushing
+  // the whole graph twice a frame for a chain whose shape we already know.
+  //
+  // The solve deliberately does not choose a knee plane. It re-bends the knee
+  // to whatever length the target needs and then swings the entire leg rigidly
+  // onto the target, which means the animated knee direction survives exactly.
+  // Generic IK picks its own pole vector, and the first time a pose puts the
+  // weight on one leg the knee snaps sideways through the other one.
+
+  const LEG_J: Array<[number, number, number]> = [
+    [J_THIGH_L, J_SHIN_L, J_FOOT_L],
+    [J_THIGH_R, J_SHIN_R, J_FOOT_R],
+  ];
+
+  /** Body-node roll for this frame, shared by the solver and the mesh. */
+  let bodyRoll = 0;
+
+  const _ikE = new THREE.Euler(0, 0, 0, "YXZ");
+  const _ikEBody = new THREE.Euler(0, 0, 0, "XYZ");
+  const _ikQBody = new THREE.Quaternion();
+  const _ikPBody = new THREE.Vector3();
+  const _ikQPelvis = new THREE.Quaternion();
+  const _ikPPelvis = new THREE.Vector3();
+  const _ikQa = new THREE.Quaternion();
+  const _ikQb = new THREE.Quaternion();
+  const _ikQc = new THREE.Quaternion();
+  const _ikQd = new THREE.Quaternion();
+  const _ikIdent = new THREE.Quaternion();
+  const _ikVa = new THREE.Vector3();
+  const _ikVb = new THREE.Vector3();
+  const _ikTarget = new THREE.Vector3();
+  const _ikN = new THREE.Vector3();
+  const _ikUpper = new THREE.Vector3(0, -LEG_UPPER, 0);
+  const _ikLower = new THREE.Vector3(0, -LEG_LOWER, 0);
+  const _ikUp = new THREE.Vector3(0, 1, 0);
+  const legHip = [new THREE.Vector3(), new THREE.Vector3()];
+  const legAnkle = [new THREE.Vector3(), new THREE.Vector3()];
+  const legQThigh = [new THREE.Quaternion(), new THREE.Quaternion()];
+  const legQPelvis = [new THREE.Quaternion(), new THREE.Quaternion()];
+
+  /**
+   * Forward-kinematic the pelvis and both legs, in rig space, for a candidate
+   * pelvis drop. Run twice a frame: once at zero to ask how far the hips have
+   * to come down, and once at the answer.
+   */
+  function legFk(drop: number): void {
+    _ikEBody.set(poseOut.root[3], poseOut.root[4], bodyRoll);
+    _ikQBody.setFromEuler(_ikEBody);
+    _ikPBody.set(poseOut.root[0], poseOut.root[1] - landingDip * 0.5 + drop, poseOut.root[2]);
+    _ikPPelvis.set(0, HIP_Y, 0).applyQuaternion(_ikQBody).add(_ikPBody);
+    _ikE.set(poseOut.rot[J_PELVIS * 3], poseOut.rot[J_PELVIS * 3 + 1], poseOut.rot[J_PELVIS * 3 + 2]);
+    _ikQPelvis.copy(_ikQBody).multiply(_ikQa.setFromEuler(_ikE));
+
+    for (let i = 0; i < 2; i++) {
+      const jt = LEG_J[i][0];
+      const js = LEG_J[i][1];
+      legQPelvis[i].copy(_ikQPelvis);
+      legHip[i]
+        .set(REST[jt][0], REST[jt][1], REST[jt][2])
+        .applyQuaternion(_ikQPelvis)
+        .add(_ikPPelvis);
+      _ikE.set(poseOut.rot[jt * 3], poseOut.rot[jt * 3 + 1], poseOut.rot[jt * 3 + 2]);
+      legQThigh[i].copy(_ikQPelvis).multiply(_ikQa.setFromEuler(_ikE));
+      _ikE.set(poseOut.rot[js * 3], poseOut.rot[js * 3 + 1], poseOut.rot[js * 3 + 2]);
+      _ikQb.copy(legQThigh[i]).multiply(_ikQa.setFromEuler(_ikE));
+      legAnkle[i]
+        .copy(_ikUpper)
+        .applyQuaternion(legQThigh[i])
+        .add(_ikVa.copy(_ikLower).applyQuaternion(_ikQb))
+        .add(legHip[i]);
+    }
+  }
+
+  /**
+   * Put each foot on the floor it is actually standing on.
+   *
+   * Three things, in the order they have to happen:
+   *
+   *  1. Measure. FK the legs as animated and ask each planted foot how far
+   *     short its leg falls of the ground it was promised.
+   *  2. Drop the hips by the worst of those, capped. This is the half people
+   *     forget: a character on a downhill step with no pelvis drop just
+   *     stretches one leg to a stilt and keeps its head at the same height.
+   *  3. Solve. Re-bend each knee to the length the target needs, swing the leg
+   *     onto it, then roll the ankle onto the surface normal.
+   *
+   * Everything it reads was integrated in `fixed(dt)`; nothing here decides
+   * anything physical, so it is safe on a frame clock that runs at whatever
+   * rate the machine manages.
+   */
+  function applyFootIk(dt: number): void {
+    if (!rig) return;
+    const gate = ikBlend;
+    if (gate < 0.01 && Math.abs(pelvisDrop) < 1e-4 && feet[0].w < 0.01 && feet[1].w < 0.01) return;
+
+    const cs = Math.cos(bodyYaw);
+    const sn = Math.sin(bodyYaw);
+
+    // --- 1. measure --------------------------------------------------------
+    legFk(0);
+    let deficit = 0;
+    for (let i = 0; i < 2; i++) {
+      const f = feet[i];
+      const k = f.w * gate;
+      if (k < 0.02) continue;
+      worldToRig(
+        f.p.x + f.n.x * ANKLE_HEIGHT,
+        f.p.y + f.n.y * ANKLE_HEIGHT,
+        f.p.z + f.n.z * ANKLE_HEIGHT,
+        cs, sn, _ikTarget,
+      );
+      _ikTarget.lerpVectors(legAnkle[i], _ikTarget, k);
+      const need = legHip[i].distanceTo(_ikTarget) - LEG_REACH;
+      if (need > deficit) deficit = need;
+    }
+    pelvisDrop = approach(pelvisDrop, -Math.min(deficit, PELVIS_DROP_MAX), 12, dt);
+
+    // --- 2 & 3. solve against the dropped hips -----------------------------
+    legFk(pelvisDrop);
+    for (let i = 0; i < 2; i++) {
+      const f = feet[i];
+      const k = f.w * gate;
+      if (k < 0.02) continue;
+      const jt = LEG_J[i][0];
+      const js = LEG_J[i][1];
+      const jf = LEG_J[i][2];
+      // A knee that has been bent the wrong way by some pose we have not
+      // thought of would make the length solve pick the mirror-image bend, so
+      // leave those legs entirely alone rather than turning one inside out.
+      if (poseOut.rot[js * 3] > 0.01) continue;
+
+      worldToRig(
+        f.p.x + f.n.x * ANKLE_HEIGHT,
+        f.p.y + f.n.y * ANKLE_HEIGHT,
+        f.p.z + f.n.z * ANKLE_HEIGHT,
+        cs, sn, _ikTarget,
+      );
+      _ikTarget.lerpVectors(legAnkle[i], _ikTarget, k);
+
+      _ikVa.copy(_ikTarget).sub(legHip[i]);
+      const reach = _ikVa.length();
+      if (reach < 1e-4) continue;
+      const d = clamp(reach, 0.2, LEG_REACH);
+
+      // Law of cosines at the knee. `d = LEG_UPPER + LEG_LOWER` gives a
+      // straight leg and a zero bend, which is exactly what the rest pose
+      // means, so this reproduces the animation when the target is where the
+      // animation already put it.
+      const cosK = clamp(
+        (LEG_UPPER * LEG_UPPER + LEG_LOWER * LEG_LOWER - d * d) / (2 * LEG_UPPER * LEG_LOWER),
+        -1, 1,
+      );
+      const shinX = -(Math.PI - Math.acos(cosK));
+      // Only the bend angle is ours; the animated knee's off-axis lean stays.
+      _ikE.set(shinX, poseOut.rot[js * 3 + 1], poseOut.rot[js * 3 + 2]);
+      _ikQa.setFromEuler(_ikE); // shin, local
+
+      // Where that knee puts the ankle if the thigh does not move…
+      _ikQb.copy(legQThigh[i]).multiply(_ikQa); // shin, rig space
+      _ikVb
+        .copy(_ikUpper)
+        .applyQuaternion(legQThigh[i])
+        .add(_ikN.copy(_ikLower).applyQuaternion(_ikQb));
+      const cur = _ikVb.length();
+      if (cur < 1e-4) continue;
+      // …and the single rotation that swings it onto the target.
+      _ikQc.setFromUnitVectors(_ikVb.divideScalar(cur), _ikVa.divideScalar(reach));
+      legQThigh[i].premultiply(_ikQc);
+
+      _ikQb.copy(legQThigh[i]).multiply(_ikQa); // shin, rig space, after the swing
+      _ikQd.copy(legQPelvis[i]).invert().multiply(legQThigh[i]);
+      rig.joints[jt].quaternion.copy(_ikQd);
+      rig.joints[js].quaternion.copy(_ikQa);
+
+      // --- the ankle rolls onto the slope ---------------------------------
+      // Without this the boot stays level and one corner of the sole hangs in
+      // the air on every hill, which is a tell you cannot un-see.
+      _ikE.set(poseOut.rot[jf * 3], poseOut.rot[jf * 3 + 1], poseOut.rot[jf * 3 + 2]);
+      _ikQd.setFromEuler(_ikE); // foot, local
+      _ikQc.copy(_ikQb).multiply(_ikQd); // foot, rig space
+      worldDirToRig(f.n.x, f.n.y, f.n.z, cs, sn, _ikN);
+      _ikVb.copy(_ikUp).applyQuaternion(_ikQc);
+      _ikQa.setFromUnitVectors(_ikVb, _ikN.normalize());
+      const ang = 2 * Math.acos(clamp(Math.abs(_ikQa.w), -1, 1));
+      const tilt = k * (ang > 1e-4 ? Math.min(1, FOOT_TILT_MAX / ang) : 1);
+      _ikQb.copy(_ikIdent).slerp(_ikQa, tilt);
+      _ikQc.premultiply(_ikQb);
+      // Back down into the shin's frame.
+      _ikQd.copy(legQThigh[i]).multiply(rig.joints[js].quaternion).invert().multiply(_ikQc);
+      rig.joints[jf].quaternion.copy(_ikQd);
+    }
+  }
+
+  /** World point → rig space. The two frames differ by a yaw and the origin. */
+  function worldToRig(x: number, y: number, z: number, cs: number, sn: number, out: THREE.Vector3): void {
+    const dx = x - position.x;
+    const dz = z - position.z;
+    out.set(dx * cs - dz * sn, y - position.y, dx * sn + dz * cs);
+  }
+
+  /** World direction → rig space. Same yaw, no translation. */
+  function worldDirToRig(x: number, y: number, z: number, cs: number, sn: number, out: THREE.Vector3): void {
+    out.set(x * cs - z * sn, y, x * sn + z * cs);
+  }
+
   function updateAnimation(dt: number): void {
     if (!rig) return;
     const speed = Math.hypot(velocity.x, velocity.z);
@@ -4190,13 +4875,8 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     leanRoll = approach(leanRoll, clamp(yawRate * 0.06, -0.5, 0.5) * clamp01(speed / SPRINT_SPEED), 7, dt);
 
     // --- gait phase --------------------------------------------------------
-    const stride = crouching ? 1.25 : lerp(1.55, 2.4, runBlend);
-    if (grounded && dropStage === "landed" && service.state !== "swim") {
-      gaitPhase += (speed * dt) / Math.max(stride * 2, 0.4) * TAU;
-    } else if (service.state === "swim") {
-      gaitPhase += dt * 3.4;
-    }
-    if (gaitPhase > TAU * 1024) gaitPhase -= TAU * 1024;
+    // Advanced in `footPlanFixed`, not here: it is distance travelled, and the
+    // foot planner has to agree with the pose about which foot is down.
 
     airBlend = approach(airBlend, grounded || dropStage !== "landed" ? 0 : 1, 12, dt);
     crouchBlend = approach(crouchBlend, crouching ? 1 : 0, 12, dt);
@@ -4263,6 +4943,92 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // A hit or a shot shoves the upper body, not just the camera.
     poseOut.rot[J_CHEST * 3] -= fireKick * 1.2;
 
+    // --- weight shift ------------------------------------------------------
+    //
+    // A body with mass does not change direction for free. `accelFwd` and
+    // `accelRight` are the acceleration it is actually under, integrated in
+    // fixed(), so this leans into a launch and *against* a stop — the second
+    // half being the one that is always missing, and the one that reads as
+    // weight rather than as eagerness.
+    const grounding = (1 - airBlend) * (dropStage === "landed" ? 1 : 0) *
+      (service.state === "swim" ? 0 : 1);
+    if (grounding > 0.01) {
+      const lf = accelFwd * LEAN_MAX * grounding;
+      const lr = accelRight * LEAN_MAX * grounding;
+      poseOut.rot[J_PELVIS * 3] += lf * 0.22;
+      poseOut.rot[J_SPINE * 3] += lf * 0.5;
+      poseOut.rot[J_CHEST * 3] += lf * 0.34;
+      // Roll away from a sideways shove: the mass keeps going, the feet do not.
+      poseOut.rot[J_PELVIS * 3 + 2] -= lr * 0.3;
+      poseOut.rot[J_SPINE * 3 + 2] -= lr * 0.42;
+      // Hips lead a turn and the shoulders lag it, which is the whole reason
+      // a real runner's torso looks wound up rather than rigid.
+      const turn = clamp(yawRate * 0.045, -0.3, 0.3) * grounding;
+      poseOut.rot[J_PELVIS * 3 + 1] += turn * 0.5;
+      poseOut.rot[J_CHEST * 3 + 1] -= turn * 0.75;
+      // The head stays level and looks where the turn is going. Undoing the
+      // torso's pitch at the neck is what stops a leaning character reading as
+      // a plank rotating about its ankles.
+      const carried =
+        poseOut.rot[J_PELVIS * 3] + poseOut.rot[J_SPINE * 3] + poseOut.rot[J_CHEST * 3] +
+        poseOut.root[3];
+      poseOut.rot[J_NECK * 3] -= carried * 0.5 * grounding;
+      poseOut.rot[J_HEAD * 3 + 1] += turn * 1.4;
+    }
+
+    // --- landing -----------------------------------------------------------
+    // Absorbed through the joints rather than by dropping the root: the feet
+    // are pinned by the solver below, so folding the knees is the only thing
+    // that can move the hips, which is also how it works in a body.
+    const la = landAbsorb * (1 - airBlend * 0.7);
+    if (Math.abs(la) > 1e-3) {
+      for (let k = 0; k < 2; k++) {
+        // A hair of asymmetry so a landing is a landing and not a squat.
+        const bias = k === 0 ? 1 : 0.86;
+        const [jt, js, jf] = LEG_J[k];
+        poseOut.rot[jt * 3] += la * LAND_KNEE * 0.6 * bias;
+        poseOut.rot[js * 3] -= la * LAND_KNEE * bias;
+        poseOut.rot[jf * 3] += la * LAND_KNEE * 0.42 * bias;
+      }
+      poseOut.rot[J_SPINE * 3] += la * 0.3;
+      poseOut.rot[J_CHEST * 3] += la * 0.14;
+      poseOut.rot[J_NECK * 3] -= la * 0.3;
+      // Arms out to catch the balance.
+      poseOut.rot[J_ARM_L * 3] -= la * 0.5;
+      poseOut.rot[J_ARM_R * 3] -= la * 0.5;
+      poseOut.rot[J_ARM_L * 3 + 2] -= la * 0.34;
+      poseOut.rot[J_ARM_R * 3 + 2] += la * 0.34;
+      poseOut.rot[J_FORE_L * 3] += la * 0.4;
+      poseOut.rot[J_FORE_R * 3] += la * 0.4;
+      // …and the hips come down, which is the part that actually produces the
+      // absorb once the solver has hold of the feet. The joint terms above are
+      // overwritten on the legs whenever a foot is planted; what the solver
+      // cannot overrule is where the pelvis is, so a landing has to be
+      // expressed as the pelvis falling and the knees folding to keep the
+      // boots where they are — which is also how it works in a leg.
+      // 0.13 m at full impact needs about 80° at the knee to swallow it.
+      poseOut.root[1] -= la * 0.13;
+    }
+
+    // --- the slump ---------------------------------------------------------
+    // Six springs settling and one hip falling. Additive on top of `poseDown`,
+    // so the pose is still the authored silhouette and the physics is only
+    // deciding how the body got into it.
+    if (slumping) {
+      poseOut.rot[J_PELVIS * 3] += slumpAng[0];
+      poseOut.rot[J_SPINE * 3] += slumpAng[1];
+      poseOut.rot[J_CHEST * 3] += slumpAng[2];
+      poseOut.rot[J_NECK * 3] += slumpAng[3];
+      poseOut.rot[J_PELVIS * 3 + 2] += slumpAng[4] * 0.25;
+      poseOut.rot[J_ARM_L * 3 + 2] += slumpAng[4];
+      poseOut.rot[J_ARM_R * 3 + 2] += slumpAng[5];
+      poseOut.rot[J_THIGH_L * 3] -= slumpHip * 0.5;
+      poseOut.rot[J_THIGH_R * 3] -= slumpHip * 0.35;
+      poseOut.root[1] += slumpHip;
+      // Still folding forward on the way down — the shoulders arrive last.
+      poseOut.root[3] -= slumpHip * 0.45;
+    }
+
     // --- SPLASH ROYALE: the shiver --------------------------------------------------
     // A drenched player standing still has the shakes. Fast, tiny, and it fades
     // out as soon as they are moving, because a shiver on a sprinting character
@@ -4280,22 +5046,32 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
 
     // --- apply -------------------------------------------------------------
-    for (let j = 0; j < JOINT_COUNT; j++) {
-      rig.joints[j].rotation.set(poseOut.rot[j * 3], poseOut.rot[j * 3 + 1], poseOut.rot[j * 3 + 2]);
-    }
     // The tumble: the body keeps rolling for the first half of the fall, then
     // holds while you scramble up. Decayed rather than cut so the recovery is
-    // a movement and not a snap back to upright.
+    // a movement and not a snap back to upright. Advanced *before* the solver,
+    // because the solver reconstructs this same body transform to work out
+    // where the hips are, and reading a different roll than the one the mesh
+    // ends up with would put the feet a few centimetres off.
     if (water) {
       if (stumbleTimer > 0) stumbleRoll += dt * STUMBLE_SPIN * clamp01(stumbleTimer / GLUE.fallTime);
       else stumbleRoll = approach(stumbleRoll, 0, 6, dt);
     }
-    rig.body.position.set(poseOut.root[0], poseOut.root[1] - landingDip * 0.5, poseOut.root[2]);
-    rig.body.rotation.set(
-      poseOut.root[3],
-      poseOut.root[4],
-      poseOut.root[5] + leanRoll * 0.5 + Math.sin(stumbleRoll) * 0.55,
+    bodyRoll = poseOut.root[5] + leanRoll * 0.5 + Math.sin(stumbleRoll) * 0.55;
+
+    for (let j = 0; j < JOINT_COUNT; j++) {
+      rig.joints[j].rotation.set(poseOut.rot[j * 3], poseOut.rot[j * 3 + 1], poseOut.rot[j * 3 + 2]);
+    }
+    // …and then the legs are overwritten with whatever it takes to stand on
+    // the actual floor. This has to come after the euler write: it reads the
+    // animated pose as its starting point and hands back quaternions.
+    applyFootIk(dt);
+
+    rig.body.position.set(
+      poseOut.root[0],
+      poseOut.root[1] - landingDip * 0.5 + pelvisDrop,
+      poseOut.root[2],
     );
+    rig.body.rotation.set(poseOut.root[3], poseOut.root[4], bodyRoll);
 
     rig.root.position.set(0, 0, 0);
     rigRoot.position.copy(position);
@@ -4335,6 +5111,22 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   let wetLookApplied = -1;
 
   /**
+   * How each surface family answers water. One flat factor across the whole
+   * figure was the thing that made a soaking read as a lighting bug: a wet
+   * shirt goes very dark and quite glossy, wet skin barely darkens at all and
+   * goes shiny, wet leather goes almost black, and wet metal only gains a
+   * highlight. `coat` is the clearcoat — the actual film of water sitting on
+   * top — and it is the term that survives distance, because a specular lobe
+   * is still a specular lobe at 40 m when an albedo shift has averaged away.
+   */
+  const WET_LOOK: Record<SurfaceId, { dark: number; rough: number; env: number; coat: number }> = {
+    cloth: { dark: 0.5, rough: 0.66, env: 1.5, coat: 0.85 },
+    leather: { dark: 0.42, rough: 0.78, env: 2.0, coat: 0.95 },
+    skin: { dark: 0.16, rough: 0.6, env: 1.8, coat: 0.7 },
+    metal: { dark: 0.08, rough: 0.5, env: 1.1, coat: 0.6 },
+  };
+
+  /**
    * Make being wet visible on your own body.
    *
    * Water reads through gloss and refraction, never through blue paint — so
@@ -4362,17 +5154,32 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       if (Math.abs(wetLook - wetLookApplied) > 0.01) {
         wetLookApplied = wetLook;
         for (let i = 0; i < rig.materials.length; i++) {
-          const std = rig.materials[i] as THREE.MeshStandardMaterial;
+          const std = rig.materials[i] as THREE.MeshPhysicalMaterial;
           if (!std.color) continue;
-          // 0.55 at fully soaked: dark enough to read across a street, light
-          // enough that the vertex-colour wear detail survives it.
-          const k = 1 - wetLook * 0.45;
-          std.color.copy(dryTint[i]).multiplyScalar(k);
+          const spec = WET_LOOK[rig.surfaces[i]] ?? WET_LOOK.cloth;
+          std.color.copy(dryTint[i]).multiplyScalar(1 - wetLook * spec.dark);
           // `roughness` multiplies the baked roughness map, so this is a
           // proportional polish of whatever the surface already was.
-          std.roughness = 1 - wetLook * 0.62;
-          std.envMapIntensity = dryEnv[i] * (1 + wetLook * 1.4);
+          std.roughness = 1 - wetLook * spec.rough;
+          std.envMapIntensity = dryEnv[i] * (1 + wetLook * spec.env);
+          // The film itself. Seeded above zero at build time so the shader
+          // variant is already compiled and this is a uniform write, not a
+          // recompile on the frame somebody first takes a hit.
+          if (std.clearcoat > 0) {
+            std.clearcoat = 0.002 + wetLook * spec.coat;
+            std.clearcoatRoughness = lerp(0.3, 0.06, wetLook);
+          }
         }
+
+        // Soft kit changes *shape* when it is soaked, and shape is what reads
+        // at gameplay distance when colour has stopped carrying. The cap
+        // flattens onto the skull and the jacket and trousers cling in.
+        // 0.16 and no more: the cap spans y 0.23–0.35 in the head's frame and
+        // the skull tops out at 0.295, so a flatten much past this stops
+        // reading as a cap pulled down over the ears and starts reading as a
+        // cap that has fallen inside the head.
+        if (rig.cap) rig.cap.scale.set(1.02, 1 - wetLook * 0.16, 1.02);
+        for (const m of rig.cling) m.scale.set(1 - wetLook * 0.035, 1, 1 - wetLook * 0.055);
       }
     }
 

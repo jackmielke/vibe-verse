@@ -33,6 +33,17 @@
  *                      emote chat ping
  * Positions are metres, +X east / +Z south / +Y up, matching royale/types.ts.
  *
+ * THE BRAIN. `replyTo()` and its two halves are the only place the teammate's
+ * words come from. The situated half answers out of the match — the district
+ * it is standing in, the bearing and distance to you, its own dryness, what
+ * soaked it thirty seconds ago, the bus route it watched people jump off —
+ * and needs nothing but this process. With ANTHROPIC_API_KEY set, the same
+ * snapshot and the last few turns of chat go to claude-opus-5 over plain
+ * fetch and it speaks that line instead: rate-limited, budgeted, capped at
+ * one line, and wrapped so a missing key, a refusal, a timeout or no network
+ * at all falls back to the situated answer. The bot is never mute and never
+ * blocks its own movement loop on a socket.
+ *
  * CLOCKS. Everything the brain times runs off `sim` — a seconds counter this
  * process advances itself — never `Date.now()` deltas sprinkled through the
  * logic. By default one simulated second is one wall second. It exists as a
@@ -85,6 +96,8 @@
  *   --follow-dist M  how far behind a teammate to hold   [learned, 6 to start]
  *   --zone x,z,r     safe-zone hint, if you know it (see "The downpour")
  *   --timescale N    simulated seconds per wall second   [1]
+ *   --model ID       model for the talking half          [claude-opus-5]
+ *   --api-key KEY    Anthropic key   [$ANTHROPIC_API_KEY; absent = canned]
  *   --quiet          drop the movement/status chatter, keep chat + events
  *   --skill FILE     training record            [<repo>/.dz/skill.json]
  *   --no-learn       play, but neither read nor write the training record
@@ -298,8 +311,13 @@ const CHAT_COOLDOWN = 7;
 const CHAT_COOLDOWN_DIRECT = 2.5;
 /** Chat lines kept for the reply seam's context. */
 const CHAT_MEMORY = 10;
-/** Don't call out the same thing twice inside this window. */
+/** Don't call out the same thing twice inside this window. Every unprompted
+ *  line — fire, a rival in view, our own dryness — shares this one budget. */
 const CALLOUT_COOLDOWN = 12;
+/** Dryness at which we say something about it, once, unprompted. */
+const LOW_DRY = 35;
+/** How close a rival has to be before it is worth mentioning. */
+const SPOT_RANGE = 55;
 
 /** Status line cadence in the terminal. */
 const STATUS_INTERVAL = 6;
@@ -349,6 +367,8 @@ if (args.help || args.h) {
       "    --follow-dist M  how far behind a teammate to hold   [learned]",
       "    --zone x,z,r     safe-zone hint, if you know it",
       "    --timescale N    simulated seconds per wall second   [1]",
+    "    --model ID       model for the talking half          [claude-opus-5]",
+    "    --api-key KEY    Anthropic key  [ANTHROPIC_API_KEY; absent = canned]",
       "    --quiet          drop movement chatter, keep chat + events",
       "    --skill FILE     training record          [<repo>/.dz/skill.json]",
       "    --no-learn       play without reading or writing the record",
@@ -581,6 +601,38 @@ if (typeof args.zone === "string") {
   else bail(`--zone wants "x,z,radius", got "${args.zone}".`);
 }
 
+// ---------------------------------------------------------------- the model
+//
+// The brain has two halves and always ships both. The situated half (below,
+// `situatedReply`) answers from the match itself and needs nothing but this
+// process. The model half asks claude-opus-5 for the line instead, and is a
+// pure upgrade: every call falls back to the situated answer on a missing
+// key, a refusal, a timeout, or no network at all. The container this was
+// written in cannot reach api.anthropic.com, which is exactly why the
+// fallback is the load-bearing path and not a courtesy.
+
+const MODEL = String(args.model || "claude-opus-5");
+const API_KEY = String(args["api-key"] || pick("ANTHROPIC_API_KEY"));
+/** One line on voice comms. 100 tokens is roughly three sentences; the cap is
+ *  a guard against a monologue, not a target. */
+const MODEL_MAX_TOKENS = 100;
+/** Wall-clock, because it is a network call — the same exception CONNECT_TIMEOUT_MS
+ *  gets. A squadmate who is still thinking after this has missed the moment. */
+const MODEL_TIMEOUT_MS = 6000;
+/** Simulated seconds between model calls. Below this we answer from the
+ *  situated half, which costs nothing and is instant. */
+const MODEL_MIN_GAP = 5;
+/** Hard ceiling on calls per run, so a chatty lobby cannot run up a bill. */
+const MODEL_BUDGET = 200;
+
+/** Swapped by --selftest so the model path can be exercised with no network. */
+let httpFetch = (url, init) => globalThis.fetch(url, init);
+let modelCalls = 0;
+let lastModelAt = -Infinity;
+let modelInFlight = false;
+/** Set false the first time the API refuses us, so we stop asking. */
+let modelUsable = !!API_KEY;
+
 // ---------------------------------------------------------------- maths
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -616,6 +668,70 @@ function bearing(ax, az, bx, bz) {
   return COMPASS[((idx % 8) + 8) % 8];
 }
 
+// ---------------------------------------------------------------- the map
+//
+// The ten named districts of the island, copied from the DISTRICTS table in
+// `src/royale/world/pois.ts` — same names, same fallback centres, same tier
+// and harvest. Kept as a copy for the same reason normalizeRoomCode is: this
+// is a .mjs script and that is a TypeScript module inside the Vite build. If
+// a district moves or is renamed there, move it here too.
+//
+// This is what turns "drop wherever" into "Salt Harbor, 300 m southwest of
+// you, wood everywhere". A teammate who cannot name a place on the map is
+// not really in the match with you.
+
+const POIS = [
+  { name: "Neon Heights", x: 560, z: -600, r: 170, tier: "landmark", harvest: "stone" },
+  { name: "Foundry Flats", x: 330, z: 420, r: 110, tier: "major", harvest: "metal" },
+  { name: "Salt Harbor", x: 120, z: 800, r: 120, tier: "major", harvest: "wood" },
+  { name: "Mill Hollow", x: -260, z: -520, r: 95, tier: "major", harvest: "wood" },
+  { name: "Vista Villa", x: 790, z: 300, r: 100, tier: "major", harvest: "stone" },
+  { name: "Broken Basilica", x: -560, z: -330, r: 115, tier: "major", harvest: "stone" },
+  { name: "Signal Summit", x: -250, z: 60, r: 72, tier: "major", harvest: "metal" },
+  { name: "Timber Tents", x: -720, z: 470, r: 60, tier: "minor", harvest: "wood" },
+  { name: "Stonewall Stand", x: -960, z: -600, r: 58, tier: "minor", harvest: "stone" },
+  { name: "Lonely Lookout", x: 930, z: -120, r: 52, tier: "minor", harvest: "stone" },
+];
+
+/** The build material each harvest kind actually reads as on the HUD —
+ *  `WATER_MATERIALS` in `src/royale/mode/water.ts`. Say "pool noodles", not
+ *  "wood"; this is a block party. */
+const MATERIALS = { wood: "pool noodles", stone: "deck planks", metal: "corrugated tarp" };
+
+/** Nearest district to a point, and how far off it we are. */
+function nearestPoi(x, z) {
+  let best = null;
+  let bestD = Infinity;
+  for (const p of POIS) {
+    const d = dist2(x, z, p.x, p.z);
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return { poi: best, dist: bestD, inside: bestD <= best.r };
+}
+
+/**
+ * Where a point is, in words a human can act on.
+ *
+ * Inside a district it is the district. Outside it is a bearing and a
+ * distance *from* the nearest one, because "somewhere north" is useless and
+ * "180 m north of Mill Hollow" is a place you can walk to.
+ */
+function placeOf(x, z) {
+  const { poi, dist, inside } = nearestPoi(x, z);
+  if (inside) return poi.name;
+  return `${Math.round(dist)} m ${bearing(poi.x, poi.z, x, z)} of ${poi.name}`;
+}
+
+/** The same place with its preposition attached, for mid-sentence use: "I'm
+ *  at Salt Harbor" and "I'm 180 m north of Mill Hollow" both read, and
+ *  neither reads with the other's grammar. */
+function placePhrase(x, z) {
+  return (nearestPoi(x, z).inside ? "at " : "") + placeOf(x, z);
+}
+
 // ---------------------------------------------------------------- state
 
 /** Our own pose. Starts at the origin and snaps to the squad on first sight. */
@@ -646,6 +762,7 @@ let lastChatAt = -Infinity;
 let lastCalloutAt = -Infinity;
 let lastStatusAt = 0;
 let announcedOut = false;
+let warnedLowDry = false;
 
 /** Crude pathing state — see STUCK_WINDOW. */
 let anchor = { x: 0, z: 0, t: 0 };
@@ -697,6 +814,69 @@ const strafePhase = Math.random() * Math.PI * 2;
 
 /** Rolling chat backlog handed to the reply seam. */
 const chatMemory = [];
+
+/**
+ * What just happened to us, oldest first.
+ *
+ * "How are you doing" is a question about the last thirty seconds, not about
+ * a health bar, so the brain needs a memory of events and not just a state
+ * vector. Short, because it is serialised into the model prompt.
+ */
+const recent = [];
+const RECENT_MEMORY = 6;
+function remember(text) {
+  recent.push({ t: sim, text });
+  if (recent.length > RECENT_MEMORY) recent.shift();
+}
+/** English for how long ago something was, at this scale. */
+function ago(t) {
+  const d = Math.max(0, sim - t);
+  if (d < 8) return "just now";
+  if (d < 45) return `${Math.round(d)}s ago`;
+  return "a while back";
+}
+
+/**
+ * The bus route, learned rather than told.
+ *
+ * The engine picks a fresh chord across the island every match
+ * (`routeAngle` in play/match.ts) and never broadcasts it — there is no such
+ * NetEventKind. But everyone on the bus is a peer at 620 m, and a peer at
+ * 620 m is a point on the route. Two of those far enough apart give us the
+ * heading, and the heading is what "where should we drop" is actually
+ * asking about. Until we have them, we say we don't know, because inventing
+ * a route is worse than admitting to one you cannot see.
+ */
+const AIRBORNE_Y = 120;
+const busSamples = [];
+function noteAirborne(p) {
+  if (p.y < AIRBORNE_Y) return;
+  const last = busSamples[busSamples.length - 1];
+  if (last && dist2(last.x, last.z, p.x, p.z) < 60) return;
+  busSamples.push({ x: p.x, z: p.z });
+  if (busSamples.length > 12) busSamples.shift();
+}
+/** The route as {from, to, along}, or null while we have not seen enough. */
+function busRoute() {
+  if (busSamples.length < 2) return null;
+  const a = busSamples[0];
+  const b = busSamples[busSamples.length - 1];
+  if (dist2(a.x, a.z, b.x, b.z) < 200) return null;
+  return { from: bearing(b.x, b.z, a.x, a.z), to: bearing(a.x, a.z, b.x, b.z), a, b };
+}
+/** Districts sitting under the observed route, nearest to the line first. */
+function poisUnderRoute(route) {
+  const dx = route.b.x - route.a.x;
+  const dz = route.b.z - route.a.z;
+  const len = Math.hypot(dx, dz) || 1;
+  const scored = POIS.map((p) => {
+    const t = clamp(((p.x - route.a.x) * dx + (p.z - route.a.z) * dz) / (len * len), 0, 1);
+    const off = dist2(p.x, p.z, route.a.x + dx * t, route.a.z + dz * t);
+    return { poi: p, off };
+  });
+  scored.sort((m, n) => m.off - n.off);
+  return scored;
+}
 
 /** Who we are following, so we only narrate changes. */
 let leaderId = null;
@@ -931,70 +1111,320 @@ function say(text, force = false) {
   sendEvent("chat", { text: body, name: NAME });
 }
 
-// ---------------------------------------------------------------- the reply seam
+// ---------------------------------------------------------------- the brain
 //
 // ┌──────────────────────────────────────────────────────────────────────┐
 // │  THE SEAM. This is the only place the teammate's *words* come from.  │
 // │  Everything above and below is transport and legs.                   │
 // │                                                                      │
-// │  It is a stub: canned lines chosen by keyword, so the bot ships and  │
-// │  plays today with no API key, no network round trip and no latency   │
-// │  inside a 20 Hz loop. Upgrading it to a real model call is a change  │
-// │  to this one function and nothing else — it is already `async`, it   │
-// │  already receives the conversation and a snapshot of the match, and  │
-// │  every caller already awaits it and tolerates `null` ("say nothing").│
+// │  It has two halves and it ships with both:                           │
 // │                                                                      │
-// │  To make it real:                                                    │
+// │   situatedReply()  answers out of the match itself — the district it │
+// │                    is standing in, the bearing and distance to you,  │
+// │                    its own dryness, what happened to it thirty       │
+// │                    seconds ago. No key, no socket, no latency inside │
+// │                    a 20 Hz loop. This is the floor, and the floor is │
+// │                    where the bot lives whenever the API is out of    │
+// │                    reach — which, in the container this was written  │
+// │                    in, it always is.                                 │
 // │                                                                      │
-// │    npm i @anthropic-ai/sdk        // not yet a dependency of this repo
+// │   askModel()       hands that same snapshot and the last few turns   │
+// │                    of chat to claude-opus-5 over plain fetch and     │
+// │                    speaks its line instead. Rate-limited, budgeted,  │
+// │                    length-capped, and wrapped so that every failure  │
+// │                    path — no key, refusal, timeout, no DNS — returns │
+// │                    null and lets the situated answer through.        │
 // │                                                                      │
-// │    import Anthropic from "@anthropic-ai/sdk";                        │
-// │    const anthropic = new Anthropic();  // reads ANTHROPIC_API_KEY     │
-// │                                                                      │
-// │    const res = await anthropic.messages.create({                     │
-// │      model: "claude-opus-5",                                         │
-// │      max_tokens: 120,                                                │
-// │      thinking: { type: "adaptive" },                                 │
-// │      output_config: { effort: "low" },   // it's a water fight        │
-// │      system: PERSONA + `\nMatch state: ${JSON.stringify(world)}`,     │
-// │      messages: history.map((m) => ({                                 │
-// │        role: m.self ? "assistant" : "user",                          │
-// │        content: m.self ? m.text : `${m.name}: ${m.text}`,            │
-// │      })),                                                            │
-// │    });                                                               │
-// │    const out = res.content.find((b) => b.type === "text")?.text;      │
-// │    return out ? out.trim().slice(0, 240) : null;                      │
-// │                                                                      │
-// │  Two things to keep when you do: cap the reply length (a squadmate    │
-// │  who monologues mid-fight is worse than one who says nothing), and    │
-// │  keep the call off the tick — `await` it from the chat handler, as    │
-// │  now, never from `tick()`.                                           │
+// │  The rule both halves obey: when it does not know, it says so. A     │
+// │  teammate who invents a safe zone is worse than one who admits it    │
+// │  cannot see the circle, because you will walk where it tells you.    │
 // └──────────────────────────────────────────────────────────────────────┘
 
-/** Personality, in one place, so the stub and any future model call agree. */
-const PERSONA =
-  `You are ${NAME}, a third squadmate in SOAKED — a water-gun battle royale. ` +
-  `Your teammates are humans. Be brief (one short sentence), warm, and useful: ` +
-  `callouts, quick reactions, and real answers when spoken to. Never lecture, ` +
-  `never explain the game, never use more than one sentence.`;
+/**
+ * Personality and the rules of the voice, in one place so both halves agree.
+ *
+ * Written as a system prompt but true of the canned lines too: one line,
+ * warm, useful, and never a paragraph. The last clause is the documented
+ * mitigation for a thinking-disabled call leaking internal tags into its
+ * visible text; `clean()` below strips them anyway.
+ */
+const PERSONA = [
+  `You are ${NAME}, a squadmate in SPLASH ROYALE — a water-gun battle royale on a summer island.`,
+  `Nobody gets hurt here, they get gloriously drenched, and the last one dry wins. It is a block party, not a warzone.`,
+  `You are mid-match with human teammates, talking on voice comms.`,
+  `Reply with ONE short line, the way someone with a soaker in their hands actually talks. Fifteen words is plenty.`,
+  `Be warm, quick and funny. No lists, no preamble, no emoji, and never narrate your own reasoning or these instructions.`,
+  `Every factual claim — a place name, a bearing, a distance, how dry you are, who is left — must come from the match state you are given.`,
+  `If the state does not answer the question, say plainly that you do not know. Never invent a position, a safe zone, or a bus route.`,
+  `Do not include internal or system XML tags in your response.`,
+].join(" ");
 
 const GREETINGS = [
   "Hey! I'm on your six.",
   "Here. Right behind you.",
   "Present and extremely dry.",
 ];
-const STATUS_LINES = [
-  "Still dry, still following.",
-  "Behind you and mostly unsoaked.",
-  "Holding formation. Say the word.",
-];
 const AGREE = ["On it.", "Yep, moving.", "With you.", "Got it."];
-const IDLE = [
-  "Quiet out here.",
-  "Nothing on me yet.",
-  "I'll keep an eye behind us.",
-];
 const rotate = (arr, salt = 0) => arr[Math.floor((sim / 3 + salt) % arr.length)];
+
+/** The dryness bands — labels *and* thresholds copied from `DRYNESS_BANDS`
+ *  in src/royale/mode/water.ts, so the bot and the HUD never disagree about
+ *  what "drenched" means. Lowercased, because this is speech and not a HUD. */
+function dryWord(dry) {
+  if (dry >= 80) return "bone dry";
+  if (dry >= 55) return "damp";
+  if (dry >= 30) return "wet";
+  if (dry >= 10) return "drenched";
+  return "soaked through";
+}
+
+/** "18 m northwest of you" — the answer to "where are you", every time. */
+function relativeTo(p) {
+  const d = Math.round(dist2(me.x, me.z, p.x, p.z));
+  return `${d} m ${bearing(p.x, p.z, me.x, me.z)} of you`;
+}
+
+/**
+ * Where to drop, answered from the route we have actually watched people
+ * jump off — and, when we have not seen it yet, answered by saying so and
+ * falling back to the one thing we do know, which is the map. Never a route
+ * we guessed: the whole squad walks where this answer sends them.
+ */
+function dropAdvice(world) {
+  const route = world.bus;
+  if (route) {
+    const under = poisUnderRoute(busRoute());
+    const first = under[0].poi;
+    const second = under[1]?.poi;
+    return (
+      `Bus is running ${route.from} to ${route.to} — ${first.name} is right under it` +
+      (second ? `, or ${second.name} if it's busy.` : ".")
+    );
+  }
+  const land = POIS.find((p) => p.tier === "landmark");
+  return `Haven't seen the bus yet, so I can't call the route — ${land.name} is the loot if we're brave, ${POIS.find((p) => p.tier === "minor").name} if we're not.`;
+}
+
+/** How the downpour looks from here, or an honest shrug. */
+function zoneAdvice(world) {
+  if (!world.zone) return "No circle on my end — call it and I'll move.";
+  const d = Math.round(world.zone.dist);
+  if (world.zone.inside) return `We're inside it — ${d} m from the edge, we're fine for now.`;
+  return `Dry ground is ${d} m ${world.zone.dir} — I'm already moving.`;
+}
+
+/**
+ * The answer from the match itself.
+ *
+ * @returns {string|null} the line, or null for "nothing worth saying".
+ */
+function situatedReply(msg, world) {
+  const t = (msg.text || "").toLowerCase();
+
+  if (/\b(hi|hey|hello|yo|sup|hiya)\b/.test(t)) {
+    return world.leader
+      ? `Hey — I'm ${relativeTo(peers.get(leaderId) ?? me)}, ${placePhrase(me.x, me.z)}.`
+      : rotate(GREETINGS);
+  }
+
+  // Where are you. A bearing and a distance, plus the district, because
+  // "behind you" stops being true the moment either of us moves.
+  if (/\b(where are you|where r u|where u at|where you at|wheres claude|where's claude|where u|position|sitrep)\b/.test(t)) {
+    const lead = peers.get(leaderId);
+    if (lead) return `${world.at} — ${relativeTo(lead)}.`;
+    return `I'm ${placePhrase(me.x, me.z)}. Can't see anyone yet, so come to me or call a spot.`;
+  }
+
+  // How are you doing. Dryness *and* the last thing that happened to us.
+  if (/\b(how are you|how're you|hows it going|how's it going|you ok|you okay|you good|status|how you doing|how are u)\b/.test(t)) {
+    const last = world.recent[world.recent.length - 1];
+    const head = `${Math.round(world.dry)}% dry, ${dryWord(world.dry)}`;
+    return last ? `${head} — ${last.text} ${last.ago}.` : `${head}, and nothing has touched me yet.`;
+  }
+
+  if (/\b(how dry|how wet|hp|health|dry\?|dryness)\b/.test(t)) {
+    return `${Math.round(world.dry)}% — ${dryWord(world.dry)}.`;
+  }
+
+  if (/\b(drop|land|dive|jump|bus)\b/.test(t)) return dropAdvice(world);
+
+  if (/\b(zone|storm|rain|downpour|circle|safe)\b/.test(t)) return zoneAdvice(world);
+
+  if (/\b(where am i|what.s here|whats here|what is this place|where are we)\b/.test(t)) {
+    const lead = peers.get(leaderId);
+    return lead
+      ? `You're ${placePhrase(lead.x, lead.z)}. I'm ${placePhrase(me.x, me.z)}.`
+      : `I'm ${placePhrase(me.x, me.z)}.`;
+  }
+
+  if (/\b(loot|guns?|weapons?|chest|find)\b/.test(t)) {
+    const near = nearestPoi(me.x, me.z);
+    return `${near.poi.name} is the closest thing worth opening — ${near.poi.tier} tier, ${MATERIALS[near.poi.harvest]} to build with.`;
+  }
+
+  if (/\b(wood|stone|metal|build|mats|materials|harvest)\b/.test(t)) {
+    const near = nearestPoi(me.x, me.z);
+    return `${MATERIALS[near.poi.harvest]} all over ${near.poi.name} — I'll swing at things while we walk.`;
+  }
+
+  if (/\b(follow|come|with me|on me|stack|regroup|push)\b/.test(t)) return rotate(AGREE, 1);
+  if (/\b(wait|hold|stop|stay)\b/.test(t)) return "Holding right here.";
+  if (/\b(glue|glue gun)\b/.test(t)) return "Glue gun sticks you to them and you both stumble. Deeply unfair. Use it.";
+  if (/\b(balloon|balloons)\b/.test(t)) return "Balloons arc — lead them a little and aim at their feet.";
+
+  if (/\b(how many|who.?s left|whos left|anyone left|still alive|alive)\b/.test(t)) {
+    return `${world.rivals} still dry that I can see, ${world.teammates} of ours up.`;
+  }
+
+  if (/\b(gg|good game|nice|well played|wp|lets go|let.s go)\b/.test(t)) return "gg — that was a good soak.";
+  if (/\b(sorry|my bad|oops)\b/.test(t)) return "All good, it's water.";
+  if (/\b(thanks|thank you|ty|cheers)\b/.test(t)) return "Anytime.";
+  if (/\b(help|save me|revive|towel|down|need you)\b/.test(t)) {
+    return `Coming — ${Math.round(world.leader?.dist ?? 0)} m out.`;
+  }
+
+  // Addressed to us with no answer in the state. Say that, and say something
+  // true instead: silence from a named teammate reads as broken.
+  if (msg.direct) {
+    if (t.includes("?")) {
+      return `No idea, honestly. I'm ${placePhrase(me.x, me.z)}, ${Math.round(world.dry)}% dry if that helps.`;
+    }
+    return rotate(AGREE, 2);
+  }
+
+  // Not addressed to us: stay out of the way.
+  return null;
+}
+
+/** Lines for the things that happen to us, rather than things said to us. */
+function eventReply(msg, world) {
+  switch (msg.kind) {
+    case "teammate-soaked":
+      return `${msg.who} is out — I'll cover the angle.`;
+    case "self-soaked":
+      return `That's me, soaked through ${placePhrase(me.x, me.z)}. Go win it.`;
+    case "glued":
+      return msg.who === NAME
+        ? "I'm glued to something, give me a second."
+        : `${msg.who} is glued — go peel them off.`;
+    case "victory":
+      return "That's the match. Not a drop on us. Good squad.";
+    case "callout":
+      return `Water coming in from the ${msg.dir}${msg.far ? ", a way out" : ", close"}.`;
+    case "spotted":
+      return `Someone ${msg.place} — ${msg.dist} m ${msg.dir} of me.`;
+    case "zone":
+      return `Downpour's closing — ${zoneAdvice(world).toLowerCase()}`;
+    case "low":
+      return `I'm ${Math.round(world.dry)}% and ${dryWord(world.dry)} — backing off to dry out.`;
+    case "joined":
+      return rotate(GREETINGS);
+    default:
+      return null;
+  }
+}
+
+/** Trim a model reply down to something a person would actually say. */
+function clean(text) {
+  const first = String(text ?? "")
+    .replace(/<[^>]*>/g, " ") // belt and braces against a leaked internal tag
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)[0];
+  if (!first) return null;
+  return first.replace(/^["'`]|["'`]$/g, "").slice(0, 180);
+}
+
+/** True when a line is worth spending a model call on. */
+function wantsModel(msg, grounded) {
+  if (!modelUsable || modelInFlight) return false;
+  if (modelCalls >= MODEL_BUDGET) return false;
+  if (sim - lastModelAt < MODEL_MIN_GAP) return false;
+  if (msg.kind) return false; // callouts are ours: they have to land instantly
+  // Spoken to by name, always. A question thrown at the squad, only when we
+  // had something to say anyway — two humans talking to each other is not an
+  // invitation, and it is not worth a round trip.
+  return msg.direct || (!!grounded && (msg.text || "").includes("?"));
+}
+
+/**
+ * Ask claude-opus-5 for the line.
+ *
+ * Plain fetch rather than the SDK: this repo does not depend on
+ * @anthropic-ai/sdk, and `--selftest` has to run with nothing installed.
+ *
+ * Thinking is off and effort is low deliberately. A squadmate who pauses to
+ * reason is worse than one who says something generic, and with a 100-token
+ * ceiling any thinking would eat the answer. (Disabling thinking is only
+ * legal at effort `high` or below, which is why the two go together.)
+ *
+ * @returns {Promise<string|null>} the line, or null to use the situated one.
+ */
+async function askModel(msg, history, world) {
+  const turns = history
+    .slice(-6)
+    .map((m) => ({
+      role: m.self ? "assistant" : "user",
+      content: m.self ? m.text : `${m.name}: ${m.text}`,
+    }));
+  while (turns.length && turns[0].role === "assistant") turns.shift();
+  if (!turns.length) turns.push({ role: "user", content: `${msg.name ?? "teammate"}: ${msg.text}` });
+
+  modelInFlight = true;
+  lastModelAt = sim;
+  modelCalls++;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), MODEL_TIMEOUT_MS);
+  try {
+    const res = await httpFetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: ctl.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: MODEL_MAX_TOKENS,
+        thinking: { type: "disabled" },
+        output_config: { effort: "low" },
+        // Stable persona first, volatile world second: that ordering is what
+        // lets the persona prefix cache instead of being re-read every line.
+        system: [
+          { type: "text", text: PERSONA },
+          { type: "text", text: `Match state, as JSON: ${JSON.stringify(world)}` },
+        ],
+        messages: turns,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // 401/403 will not fix themselves; stop asking rather than burning a
+      // round trip on every line for the rest of the match.
+      if (res.status === 401 || res.status === 403) {
+        modelUsable = false;
+        log.warn(`model auth rejected (${res.status}) — canned lines from here on`);
+      } else {
+        log.warn(`model ${res.status}: ${body.slice(0, 120)}`);
+      }
+      return null;
+    }
+    const data = await res.json();
+    if (data?.stop_reason === "refusal") {
+      log.warn("model declined that one — using the canned line");
+      return null;
+    }
+    const text = (data?.content ?? []).find((b) => b?.type === "text")?.text;
+    return clean(text);
+  } catch (err) {
+    log.warn(`model unreachable (${err?.name === "AbortError" ? "timed out" : err?.message ?? err}) — canned line`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+    modelInFlight = false;
+  }
+}
 
 /**
  * Decide what — if anything — to say.
@@ -1002,92 +1432,81 @@ const rotate = (arr, salt = 0) => arr[Math.floor((sim / 3 + salt) % arr.length)]
  * @param {object} msg     { name, text, from, direct }  the line we're answering,
  *                         or a synthetic { kind } line for a game event.
  * @param {object[]} history  recent chat, oldest first, `self` marks our own.
- * @param {object} world   { dry, leader, teammates, rivals, zone, soaked }
+ * @param {object} world   the snapshot from worldSnapshot().
  * @returns {Promise<string|null>}  the reply, or null to stay quiet.
  */
 async function replyTo(msg, history, world) {
-  // ---- game-event reactions -------------------------------------------
-  if (msg.kind) {
-    switch (msg.kind) {
-      case "teammate-soaked":
-        return `${msg.who} is out — I'll cover the angle.`;
-      case "self-soaked":
-        return "That's me, I'm soaked. Go get 'em.";
-      case "glued":
-        return msg.who === NAME
-          ? "I'm glued, give me a second."
-          : `${msg.who} just got glued — go help.`;
-      case "victory":
-        return "That's the match. We stayed dry. Good squad.";
-      case "callout":
-        return `Someone's soaking us from the ${msg.dir}${msg.far ? ", a way out" : ""}.`;
-      case "zone":
-        return "Downpour's closing — moving to the dry side.";
-      case "joined":
-        return rotate(GREETINGS);
-      default:
-        return null;
-    }
-  }
+  if (msg.kind) return eventReply(msg, world);
 
-  // ---- answering a human ----------------------------------------------
-  const t = (msg.text || "").toLowerCase();
-
-  if (/\b(hi|hey|hello|yo|sup)\b/.test(t)) return rotate(GREETINGS);
-  if (/\b(where are you|where r u|where u at|status|you ok|you good)\b/.test(t)) {
-    if (world.leader) {
-      return `Right behind ${world.leader.name}, ${Math.round(world.leader.dist)} m back.`;
-    }
-    return "Can't see anyone yet — tell me where to go.";
-  }
-  if (/\b(how dry|how wet|hp|health|dry\?)\b/.test(t)) {
-    return `${Math.round(world.dry)}% dry.`;
-  }
-  if (/\b(follow|come|with me|on me|stack|regroup)\b/.test(t)) return rotate(AGREE, 1);
-  if (/\b(wait|hold|stop|stay)\b/.test(t)) return "Holding.";
-  if (/\b(glue|glue gun)\b/.test(t)) return "Glue 'em and they stumble. Very rude. Do it.";
-  if (/\b(balloon|balloons)\b/.test(t)) return "Balloons arc — lead them a little.";
-  if (/\b(zone|storm|rain|downpour|circle)\b/.test(t)) {
-    return world.zone ? "Zone's that way, I'm heading in." : "I don't have the zone — call it and I'll move.";
-  }
-  if (/\b(how many|who's left|whos left|alive)\b/.test(t)) {
-    return `${world.rivals} others still dry that I can see.`;
-  }
-  if (/\b(gg|good game|nice|well played|wp)\b/.test(t)) return "gg — that was fun.";
-  if (/\b(sorry|my bad|oops)\b/.test(t)) return "All good.";
-  if (/\b(thanks|thank you|ty)\b/.test(t)) return "Anytime.";
-  if (/\b(help|save me|revive|down)\b/.test(t)) return "Coming to you.";
-
-  // A direct question we have no canned answer for still deserves *something*
-  // — silence from a named teammate reads as broken, not as thoughtful.
-  if (msg.direct) {
-    if (t.includes("?")) return "Not sure — but I'm right here if you need cover.";
-    return rotate(AGREE, 2);
-  }
-
-  // Not addressed to us: mostly stay out of the way.
-  if (t.includes("?") && Math.random() < 0.35) return rotate(STATUS_LINES);
-  return null;
+  const grounded = situatedReply(msg, world);
+  if (!wantsModel(msg, grounded)) return grounded;
+  const out = await askModel(msg, history, world);
+  return out ?? grounded;
 }
 
 // ---------------------------------------------------------------- world snapshot
 
-/** The small view of the match the reply seam gets. Deliberately tiny — it is
- *  what a model would be handed, and it should stay cheap to serialise. */
+/**
+ * The view of the match both halves of the brain get, and the exact object
+ * the model is handed. Small on purpose — it is serialised into a prompt on
+ * every call — and phrased in the units a person speaks in: metres, compass
+ * words, place names. Raw coordinates would only invite the model to do
+ * trigonometry, badly.
+ */
 function worldSnapshot() {
   const leader = peers.get(leaderId);
+  const route = busRoute();
+  const zoneD = zone ? dist2(me.x, me.z, zone.x, zone.z) : 0;
   return {
-    dry: me.dry,
+    me: NAME,
+    at: placeOf(me.x, me.z),
+    dry: Math.round(me.dry),
+    dryness: dryWord(me.dry),
+    state: me.state,
+    soaked: me.dry <= 0,
     leader: leader
-      ? { name: leader.name, dist: dist2(me.x, me.z, leader.x, leader.z), dry: leader.dry }
+      ? {
+          name: leader.name,
+          dist: Math.round(dist2(me.x, me.z, leader.x, leader.z)),
+          dir: bearing(me.x, me.z, leader.x, leader.z),
+          at: placeOf(leader.x, leader.z),
+          dry: Math.round(leader.dry),
+        }
       : null,
     teammates: livingPeers(true).length,
     rivals: livingPeers(false).length,
-    zone: zone ? { x: zone.x, z: zone.z, r: zone.r } : null,
-    soaked: me.dry <= 0,
+    zone: zone
+      ? {
+          dist: Math.round(Math.abs(zoneD - zone.r)),
+          dir: bearing(me.x, me.z, zone.x, zone.z),
+          inside: zoneD <= zone.r,
+        }
+      : null,
+    bus: route ? { from: route.from, to: route.to } : null,
+    recent: recent.map((r) => ({ text: r.text, ago: ago(r.t) })),
     /** Soak we have landed this session — the bot's own match, in one number. */
     dealt: Math.round(soakedByUs),
+    elapsed: Math.round(sim),
   };
+}
+
+/** Say, out loud and at boot, which half of the brain is driving. Operators
+ *  need to know whether a flat line is the bot being terse or the key being
+ *  missing, and the answer must be in the log either way. */
+function brainBanner() {
+  if (API_KEY) {
+    log.info(
+      `brain: ${c("1", MODEL)} via ANTHROPIC_API_KEY, ` +
+        `${MODEL_MAX_TOKENS} tokens max, one call per ${MODEL_MIN_GAP}s — ` +
+        `falling back to situated lines on any failure`,
+    );
+  } else {
+    log.info(
+      "brain: no ANTHROPIC_API_KEY, so no model call — answering from the " +
+        "match itself (map, bearings, dryness). Everything still works; the " +
+        "lines are just mine rather than opus-5's.",
+    );
+  }
 }
 
 /** Route a message through the seam and speak the result, if any. */
@@ -1141,6 +1560,7 @@ function onPose(w) {
   if (Number.isFinite(w.d)) p.dry = clamp(w.d, 0, 100);
   p.posed = true;
   p.lastSeen = sim;
+  noteAirborne(p); // a peer at 620 m is a point on the bus route
 
   if (firstPose) {
     log.net(`${c("1", p.name)} is on the field (${p.team ?? "no team"})`);
@@ -1261,6 +1681,7 @@ function onEvent(w) {
         lastSoakedAt = sim;
         noteTaken(soak, w.i, who);
         log.event(`splashed by ${who} — ${Math.round(me.dry)}% dry`);
+        remember(`${who} soaked me down to ${Math.round(me.dry)}%`);
         if (me.dry <= 0) goDown(w.i);
         return;
       }
@@ -1310,6 +1731,7 @@ function onEvent(w) {
       if (target === SELF_ID) {
         stumbleUntil = sim + GLUE_STUMBLE;
         log.event(`glued by ${who} — stumbling`);
+        remember(`${who} glued me`);
         void consider({ kind: "glued", who: NAME }, true);
       } else {
         const victim = peers.get(target);
@@ -1329,6 +1751,7 @@ function onEvent(w) {
       const name = p?.name ?? payload.name ?? who;
       log.event(`${name} is soaked`);
       const mate = !!TEAM && foldTeam(p?.team) === TEAM;
+      remember(`${name} got soaked out`);
       if (mate) void consider({ kind: "teammate-soaked", who: name }, true);
       // Nobody publishes a "victory" event, so infer it: our squad is still
       // dry and there is nobody left who isn't on it.
@@ -1373,6 +1796,7 @@ function onEvent(w) {
       if (z0 && [z0.x, z0.z, z0.r].every(Number.isFinite)) {
         zone = { x: z0.x, z: z0.z, r: z0.r };
         log.event(`zone from ${who}: ${q(zone.x)}, ${q(zone.z)} r${q(zone.r)}`);
+        remember("the downpour started closing");
         void consider({ kind: "zone" });
         return;
       }
@@ -1427,7 +1851,39 @@ function maybeCallout(x, z, from) {
   lastCalloutAt = sim;
   const d = dist2(me.x, me.z, x, z);
   log.event(`callout: fire from ${bearing(me.x, me.z, x, z)} (${Math.round(d)} m)`);
+  remember(`someone opened up on us from the ${bearing(me.x, me.z, x, z)}`);
   void consider({ kind: "callout", dir: bearing(me.x, me.z, x, z), far: d > 25 }, true);
+}
+
+/**
+ * The two callouts nobody asks for: a rival wandering into view, and our own
+ * dryness falling off a cliff. Both share CALLOUT_COOLDOWN with the fire
+ * callout above, on purpose — the budget is "a teammate", not "a chatbot",
+ * and three separate rate limits would add up to one very chatty bot.
+ */
+function unpromptedCallouts() {
+  if (me.dry <= 0 || sim - lastCalloutAt < CALLOUT_COOLDOWN) return;
+
+  if (me.dry < LOW_DRY && !warnedLowDry) {
+    warnedLowDry = true;
+    lastCalloutAt = sim;
+    remember(`I dropped to ${Math.round(me.dry)}%`);
+    void consider({ kind: "low" }, true);
+    return;
+  }
+  if (me.dry > LOW_DRY + 20) warnedLowDry = false; // re-arm once we've towelled off
+
+  for (const p of livingPeers(false)) {
+    const d = dist2(me.x, me.z, p.x, p.z);
+    if (d > SPOT_RANGE) continue;
+    lastCalloutAt = sim;
+    remember(`spotted someone near ${placeOf(p.x, p.z)}`);
+    void consider(
+      { kind: "spotted", place: placePhrase(p.x, p.z), dist: Math.round(d), dir: bearing(me.x, me.z, p.x, p.z) },
+      true,
+    );
+    return;
+  }
 }
 
 function onPresenceSync() {
@@ -1934,6 +2390,11 @@ function tick(dt) {
     me.dry = clamp(me.dry + DRY_REGEN * (sprinting ? DRY_WIND_BONUS : 1) * dt, 0, 100);
   }
 
+  // The unprompted half of the personality. Cheap, rate-limited, and off the
+  // network: `consider` is fired with `void`, so nothing here can stall the
+  // movement loop even when the model call behind it takes a second.
+  unpromptedCallouts();
+
   // Towelling off a squadmate: stand over them, hold still for REVIVE_TIME.
   tickRevive(goal);
 }
@@ -2171,6 +2632,16 @@ function status() {
 // game. `node scripts/dz-teammate.mjs --selftest`.
 
 if (SELFTEST) {
+  // --selftest never touches the network, whatever the operator has exported:
+  // an ANTHROPIC_API_KEY in the environment must not change what these checks
+  // measure. The model half is exercised further down against an explicit
+  // stub, which is the only fetch this file ever performs under --selftest.
+  const realFetch = httpFetch;
+  httpFetch = async () => {
+    throw new Error("selftest must not reach the network");
+  };
+  modelUsable = false;
+
   const checks = [];
   const check = (name, ok, detail) => {
     checks.push({ name, ok, detail });
@@ -2655,6 +3126,211 @@ if (SELFTEST) {
     check("writes a report a human can read", /career:/.test(s.report()), s.report().split("\n")[0]);
   }
 
+  // ------------------------------------------------------------------
+  // The brain. Everything above proves the legs work; the rest of this
+  // proves there is someone home. These call the seam with exactly the
+  // arguments `consider()` would — no socket, no key, no network — so the
+  // situated half is exercised on the same path it runs on in a real match,
+  // and the model half is exercised against a stubbed `httpFetch`.
+  // ------------------------------------------------------------------
+
+  brainBanner();
+  log.say = (m) => said.push(m);
+
+  // Back on our feet, standing inside a district we can name, with Jack a
+  // few metres away so bearings have something to be relative to.
+  me.dry = 88;
+  me.state = "ground";
+  announcedOut = false;
+  me.x = 300;
+  me.z = 420; // inside Foundry Flats (330, 420, r110)
+  peers.delete(RIVAL);
+  onPose({ i: JACK, x: 340, y: 0, z: 430, a: 0, p: 0, s: "ground", d: 100, t: TEAM, n: "Jack" });
+  leaderId = JACK;
+
+  /** Ask it something, the way the chat handler does, and get the line. */
+  const ask = async (text, extra = {}) =>
+    (await replyTo({ name: "Jack", text, direct: true, ...extra }, chatMemory.slice(), worldSnapshot())) ?? "";
+
+  const BEARING = /\d+\s*m\s+(north|south|east|west|northeast|northwest|southeast|southwest)/i;
+  const namesAPoi = (s) => POIS.some((p) => s.includes(p.name));
+
+  const whereAreYou = await ask("claude where are you?");
+  check(
+    "answers 'where are you' with a place, a bearing and a distance",
+    namesAPoi(whereAreYou) && BEARING.test(whereAreYou),
+    whereAreYou,
+  );
+  check("knows which district it is standing in", whereAreYou.includes("Foundry Flats"), whereAreYou);
+
+  // The bus route is never broadcast, so before we have seen anyone in the
+  // air the honest answer is "I don't know" — plus the map, which we do.
+  //
+  // The earlier checks flew Jack past at 617 m to prove the follower leaves
+  // the island for the drop, and `noteBus` cannot tell a staged fly-past from
+  // a real one — so it has already learned a route by the time we get here.
+  // Wind the sightings back to nothing: this check is about what the bot says
+  // when it has seen no bus at all, and that is a state it really does start
+  // every match in.
+  busSamples.length = 0;
+
+  const dropCold = await ask("where should we drop?");
+  check(
+    "admits it has not seen the bus, and still names real POIs",
+    /haven'?t seen the bus/i.test(dropCold) && namesAPoi(dropCold),
+    dropCold,
+  );
+
+  // Two peers at bus altitude are two points on the route. Now it knows.
+  onPose({ i: "s-bus-a", x: -800, y: 620, z: -800, a: 0, p: 0, s: "bus", d: 100, t: TEAM, n: "Atlas" });
+  onPose({ i: "s-bus-b", x: 800, y: 620, z: 800, a: 0, p: 0, s: "bus", d: 100, t: TEAM, n: "Atlas" });
+  peers.delete("s-bus-a");
+  peers.delete("s-bus-b");
+  const dropWarm = await ask("where should we drop?");
+  check(
+    "reads the drop off the route it actually watched",
+    /bus is running/i.test(dropWarm) && /southeast|northwest/.test(dropWarm) && namesAPoi(dropWarm),
+    dropWarm,
+  );
+
+  // "How are you doing" is a question about the last thirty seconds.
+  onPose({ i: RIVAL, x: me.x + 1, y: 0, z: me.z + 1, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Atlas" });
+  onEvent({ i: RIVAL, k: "splash", p: { x: me.x, y: me.y, z: me.z } });
+  const howAreYou = await ask("claude how are you doing?");
+  check(
+    "answers 'how are you' with its dryness and what just happened",
+    /%/.test(howAreYou) && /soaked me/i.test(howAreYou),
+    howAreYou,
+  );
+
+  // The rule the whole thing rests on: it does not make things up.
+  const dunno = await ask("claude what's the capital of France?");
+  check("says it doesn't know rather than inventing", /no idea|don'?t know/i.test(dunno), dunno);
+
+  zone = null;
+  const zoneCold = await ask("where's the zone?");
+  check("admits it cannot see the downpour", /no circle|call it/i.test(zoneCold), zoneCold);
+  zone = { x: me.x - 400, z: me.z, r: 120 };
+  const zoneWarm = await ask("where's the zone?");
+  check("gives the downpour a bearing once it has one", BEARING.test(zoneWarm), zoneWarm);
+  zone = null;
+
+  // The snapshot is what a model gets handed on every call, so it has to
+  // stay small and stay in human units — no raw coordinates to do bad
+  // trigonometry on.
+  const snap = JSON.stringify(worldSnapshot());
+  check("hands the model a compact, human-unit world", snap.length < 900 && !/"x":/.test(snap), `${snap.length} bytes`);
+
+  // ---- unprompted callouts, sparingly ---------------------------------
+  said.length = 0;
+  lastCalloutAt = -Infinity;
+  lastChatAt = -Infinity;
+  warnedLowDry = false;
+  me.dry = 22;
+  drive(0.2);
+  await flush();
+  check("calls out its own dryness, unprompted", said.length === 1 && /%/.test(said[0]), said[0] ?? "(silence)");
+
+  // ...and does not keep saying it. One budget for every unprompted line.
+  drive(1);
+  await flush();
+  check("does not repeat an unprompted callout", said.length === 1, `${said.length} line(s)`);
+
+  said.length = 0;
+  lastCalloutAt = -Infinity;
+  lastChatAt = -Infinity;
+  me.dry = 90;
+  warnedLowDry = true;
+  onPose({ i: RIVAL, x: me.x + 25, y: 0, z: me.z, a: 0, p: 0, s: "ground", d: 100, t: "red", n: "Atlas" });
+  drive(0.2);
+  await flush();
+  check(
+    "calls out a rival it can see, with a place and a range",
+    said.length === 1 && BEARING.test(said[0]),
+    said[0] ?? "(silence)",
+  );
+  peers.delete(RIVAL);
+
+  // ---- the model half, against a stub ---------------------------------
+  const calls = [];
+  modelUsable = true;
+  lastModelAt = -Infinity;
+  httpFetch = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: '"Right behind you — bone dry."\nand a second line nobody asked for' }],
+      }),
+    };
+  };
+
+  const spoken = await ask("claude, you still with me?");
+  const body = calls[0]?.body ?? {};
+  check("calls the model when spoken to", calls.length === 1 && String(calls[0].url).includes("api.anthropic.com"));
+  check(
+    "asks claude-opus-5 for one short line",
+    body.model === MODEL && body.max_tokens <= 100 && body.thinking?.type === "disabled",
+    `${body.model} / ${body.max_tokens} tokens`,
+  );
+  check(
+    "sends the persona and the world state as system context",
+    /SPLASH ROYALE/.test(body.system?.[0]?.text ?? "") && /"at":/.test(body.system?.[1]?.text ?? ""),
+  );
+  check(
+    "sends the conversation, starting on a human turn",
+    Array.isArray(body.messages) && body.messages.length > 0 && body.messages[0].role === "user",
+    `${body.messages?.length ?? 0} turn(s)`,
+  );
+  check("speaks the model's line, trimmed to one line", spoken === "Right behind you — bone dry.", spoken);
+
+  // Rate limit: a second question inside the gap is answered from the match
+  // rather than from the wire. A teammate that phones home per sentence is
+  // both expensive and slow.
+  const cheap = await ask("and now?");
+  check("rate-limits the model", calls.length === 1 && cheap.length > 0, `${calls.length} call(s): "${cheap}"`);
+
+  // Every failure is survivable, and every failure lands on the same floor.
+  lastModelAt = -Infinity;
+  httpFetch = async () => {
+    throw new Error("getaddrinfo ENOTFOUND api.anthropic.com");
+  };
+  const offline = await ask("claude where are you?");
+  check("falls back to the situated line with no network", BEARING.test(offline), offline);
+
+  lastModelAt = -Infinity;
+  httpFetch = async () => ({ ok: false, status: 401, text: async () => "invalid x-api-key" });
+  const refused = await ask("claude where are you?");
+  check(
+    "stops asking after the API rejects the key, and keeps talking",
+    modelUsable === false && refused.length > 0,
+    refused,
+  );
+
+  // The one that matters most in a fight: thinking must never stop the legs.
+  modelUsable = true;
+  lastModelAt = -Infinity;
+  let release = null;
+  httpFetch = () =>
+    new Promise((r) => {
+      release = () =>
+        r({ ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "took my time" }] }) });
+    });
+  const pending = ask("claude you there?");
+  await flush();
+  const heldX = me.x;
+  const heldZ = me.z;
+  drive(1.5);
+  const drift = dist2(me.x, me.z, heldX, heldZ);
+  check("keeps walking while the model is thinking", drift > 0.5, `${drift.toFixed(1)} m moved mid-call`);
+  release();
+  check("still delivers the line when the model finally answers", (await pending) === "took my time");
+
+  httpFetch = realFetch;
+  log.say = realLog;
+
   const failed = checks.filter((k) => !k.ok);
   console.log("");
   log.info(`${checks.length - failed.length}/${checks.length} checks passed`);
@@ -2667,6 +3343,7 @@ if (SELFTEST) {
 log.info(`${c("1", NAME)} joining ${c("1", ROOM)} on team ${c("1", TEAM)}`);
 log.info(`peer id ${SELF_ID}  ${SUPABASE_URL.replace(/^https?:\/\//, "")}`);
 if (TIMESCALE !== 1) log.info(`timescale ${TIMESCALE} (simulated seconds per wall second)`);
+brainBanner();
 
 let loop = null;
 

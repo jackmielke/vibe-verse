@@ -42,6 +42,8 @@ import createNetSystem from "./net/net";
 import createWetness from "./play/wetness";
 import createGhostsSystem from "./net/ghosts";
 import createCommentarySystem from "./audio/commentary";
+import createLido from "./world/lido";
+import createAmbience from "./world/ambience";
 
 export interface BootResult {
   engine: Engine;
@@ -59,6 +61,7 @@ const STAGES = [
   { label: "Sculpting the island", factory: createTerrain },
   { label: "Flooding the coast", factory: createWater },
   { label: "Building the districts", factory: createPois },
+  { label: "Opening the lido", factory: createLido },
   { label: "Scattering the props", factory: createProps },
   { label: "Planting the treeline", factory: createVegetation },
   { label: "Filling the puddles", factory: createWetness },
@@ -75,6 +78,7 @@ const STAGES = [
   { label: "Counting the drop", factory: createMatch },
   { label: "Deploying rivals", factory: createBots },
   { label: "Warming up the booth", factory: createCommentarySystem },
+  { label: "Waking the island", factory: createAmbience },
   { label: "Grading the image", factory: createPostFx },
 ] as const;
 

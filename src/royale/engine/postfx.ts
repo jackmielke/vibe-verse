@@ -134,6 +134,16 @@ interface FxTier {
   /** Contrast-adaptive sharpen. Cheap, but four extra taps is four too many
    *  on a machine that is already missing frame time. */
   sharpen: boolean;
+  /**
+   * Screen-space contact-shadow march steps, in the same half-res pass the AO
+   * runs in. 0 disables. This is the single biggest "lit" → "real" step in the
+   * chain and it costs one extra depth fetch per step per half-res pixel.
+   */
+  contactSteps: number;
+  /** Wet-surface sun glint, computed off the same reconstructed normal. */
+  glint: boolean;
+  /** Height-graded aerial haze, strongest low and over the water. */
+  haze: boolean;
 }
 
 /**
@@ -147,18 +157,22 @@ const TIERS: Record<QualityTier, FxTier> = {
   low: {
     depth: false, softDepth: false, bloomMips: 0, aoTaps: 0,
     dof: false, mbTaps: 0, raySamples: 0, chromatic: false, sharpen: false,
+    contactSteps: 0, glint: false, haze: false,
   },
   medium: {
     depth: true, softDepth: true, bloomMips: 4, aoTaps: 6,
     dof: false, mbTaps: 0, raySamples: 12, chromatic: true, sharpen: false,
+    contactSteps: 6, glint: true, haze: true,
   },
   high: {
     depth: true, softDepth: true, bloomMips: 5, aoTaps: 10,
     dof: true, mbTaps: 5, raySamples: 18, chromatic: true, sharpen: true,
+    contactSteps: 10, glint: true, haze: true,
   },
   ultra: {
     depth: true, softDepth: true, bloomMips: 6, aoTaps: 16,
     dof: true, mbTaps: 9, raySamples: 26, chromatic: true, sharpen: true,
+    contactSteps: 14, glint: true, haze: true,
   },
 };
 
@@ -250,6 +264,81 @@ const GRADE_DAY: Grade = {
   vignette: 0.3,
   grain: 0.018,
 };
+
+/**
+ * High noon, and the answer to a real hole in this module: **the grade only
+ * ever knew about one hour.**
+ *
+ * `daylight` saturates at 1 the moment the sun clears about 11 degrees, so
+ * every time of day from golden hour to noon got GRADE_DAY *exactly*, and the
+ * only axis the grade could see was the one that runs into dusk. That is the
+ * wrong axis for the interesting half of the day: the difference between a
+ * 16-degree sun and a 66-degree sun is not brightness, it is
+ *
+ *  - **hue opposition.** A low sun is 2500 K and its shadows are filled by a
+ *    deep blue sky, so the frame is warm-against-cool and the split-tone can
+ *    lean hard on it. At noon the key is nearly 6000 K and near-neutral, so a
+ *    warm shoulder that flattered golden hour just reads as a colour cast.
+ *  - **contrast.** Short shadows and a near-vertical key mean far less of the
+ *    frame is in shade, so the image needs more slope, not less, to keep
+ *    shape in it.
+ *  - **the top end.** Midday sun on a pale roof genuinely blows out. `bleach`
+ *    goes up and does that honestly, instead of the highlight clipping in its
+ *    own hue.
+ *  - **the corners.** A vignette is a lens artefact and it belongs on a long
+ *    warm lens at golden hour far more than on a flat overhead noon.
+ *
+ * Blended on sun *elevation*, not on daylight, so it is orthogonal to the dusk
+ * blend below and the two never fight.
+ *
+ * Put through the same acceptance test GRADE_DAY carries — the four reference
+ * albedos, run exposure → filter → ACES → grade() on paper — every one of them
+ * keeps its dominant channel and every one comes out *more* saturated than it
+ * went in, which is the bar:
+ *
+ *     mid-green  (0.25, 0.45, 0.18) → #85c25f  G  chroma 0.600 → 0.788
+ *     foliage    (0.10, 0.22, 0.07) → #007e00  G  chroma 0.682 → 1.000
+ *     sky blue   (0.22, 0.42, 0.85) → #81baec  B  chroma 0.741 → 0.739
+ *     terracotta (0.42, 0.13, 0.07) → #be4200  R  chroma 0.833 → 1.000
+ *
+ * They are all a step deeper than golden hour's (#95c86a, #1b8d00, #90c2eb,
+ * #cc561b) and that is the intent, not a regression: the *scene* is far
+ * brighter at noon — the key light's own intensity runs 2.9 + 2.1·sin(elev),
+ * so 4.8 overhead against 3.5 at golden hour — and pulling grade exposure back
+ * to 0.97 is what stops that arriving as a clipped white roofline.
+ */
+const GRADE_NOON: Grade = {
+  exposure: 0.97,
+  // Very slightly cool. Midday sunlight really is bluer, and the whole point
+  // of the split below is that it has nothing warm left to fight.
+  filter: [0.986, 0.999, 1.02],
+  contrast: 1.17,
+  scurve: 0.35,
+  offset: -0.011,
+  // Less lift: with the sun overhead there is more skylight in every shadow
+  // already, so the matte has less work to do before it starts reading as haze.
+  lift: [0.008, 0.012, 0.021],
+  // Shadows go *bluer* than golden hour — at noon a shadow is lit by nothing
+  // but a deep blue zenith — and the highlights come back to almost neutral.
+  shadowTint: [0.895, 0.994, 1.105],
+  midTint: [1.0, 1.005, 0.994],
+  highTint: [1.022, 1.008, 0.982],
+  saturation: 1.2,
+  vibrance: 0.3,
+  bleach: 0.14,
+  vignette: 0.22,
+  grain: 0.014,
+};
+
+/**
+ * Sun elevation, as `sunDirection.y`, over which GRADE_DAY crossfades to
+ * GRADE_NOON. The floor sits just above what t = 0.30 produces (0.282) so the
+ * house look at golden hour is bit-for-bit what it always was, and the ceiling
+ * is a little under the tilt-capped maximum (0.914) so noon reaches the noon
+ * grade rather than asymptotically approaching it.
+ */
+const NOON_FROM = 0.34;
+const NOON_TO = 0.8;
 
 /**
  * Golden hour rolling into dusk. Cooler, flatter, grainier, and the vignette
@@ -483,6 +572,118 @@ const AO_STRENGTH: Record<QualityTier, number> = {
 };
 
 /**
+ * Screen-space contact shadows: the half-metre of darkness where a thing meets
+ * the ground that a 2048-texel cascade covering 270 m physically cannot draw.
+ *
+ * A shadow map's texel is the smallest shadow it can resolve. On `high` the
+ * near cascade is 135 m of half-extent across 2048 texels, so one texel is
+ * 13 cm at the very best framing the game ever uses, and normalBias pushes the
+ * comparison a further 1.7 texels off the surface to kill acne. The
+ * arithmetic says: nothing thinner than about a fifth of a metre casts
+ * anything, and everything that does casts it starting a fifth of a metre
+ * away. That is the gap. It is why a crate reads as *near* the floor and a
+ * loot beam's stand reads as hovering, and no amount of AO fixes it, because
+ * AO is an ambient term and this is the sun.
+ *
+ * So we march the depth buffer toward the sun instead, over `CONTACT_RANGE`
+ * metres, which is exactly the range the cascade is blind in.
+ *
+ * ## Softness with distance
+ *
+ * The hit's *step index* is the whole trick. A ray that hits on its first step
+ * found an occluder centimetres away — an umbra, and it returns nearly full
+ * shadow. A ray that hits on its last found one a metre and a half away, which
+ * in real sunlight (a 0.53-degree disc) would already be a visibly soft edge,
+ * and it returns much less. On top of that the ray is *fanned*: each step is
+ * offset perpendicular to the sun by an amount proportional to how far it has
+ * travelled, with a per-pixel random sign, so far occluders scatter their hits
+ * over a wide area and the bilateral blur turns that into a real penumbra.
+ * Near ones do not scatter at all and stay razor sharp.
+ *
+ * That is a screen-space PCSS, and it is why this reads as sunlight rather
+ * than as a stencil: sunlight's shadows are sharp where they start.
+ */
+const CONTACT_RANGE = 1.55;
+/** How wide the fan opens at full range, in metres. ~0.5 deg of penumbra. */
+const CONTACT_SPREAD = 0.09;
+/**
+ * View-space thickness window a hit must fall inside, metres. Below the floor
+ * it is the surface shadowing itself; above the ceiling the ray has walked out
+ * past the occluder's back and is looking at unrelated background, and
+ * counting that is what produces the long dark smears a naive march makes.
+ */
+const CONTACT_THICK_MIN = 0.02;
+const CONTACT_THICK_MAX = 1.1;
+const CONTACT_STRENGTH: Record<QualityTier, number> = {
+  low: 0, medium: 0.5, high: 0.62, ultra: 0.68,
+};
+
+/**
+ * Wet-surface sun glint.
+ *
+ * This game's entire premise is covering the world in water, and water's one
+ * unmistakable optical signature is a **hard, small, view-dependent
+ * highlight** — the thing that makes a road after rain look like a road after
+ * rain and not like a darker road. A rough surface scatters the sun over a
+ * whole hemisphere and you see a sheen; a wet one has a millimetre of
+ * near-flat liquid on top with an index of refraction of 1.33, so it returns
+ * the sun as an almost-mirror.
+ *
+ * Two terms, both off the depth-reconstructed normal the AO pass already has:
+ *
+ *  - a **GGX specular lobe** at the sun, tight enough to read as a glint
+ *    rather than a bloom, which moves with the camera because a specular
+ *    highlight is the one shading term that does; and
+ *  - a **Fresnel** ramp, which is what makes the glint explode at grazing
+ *    angles — the reason a wet street ahead of you is a sheet of light and the
+ *    wet street under your feet is merely dark.
+ *
+ * Masked to upward-facing surfaces, because that is where water sits.
+ */
+const GLINT_ROUGHNESS = 0.085;
+/** Water's normal-incidence reflectance. Not a tuning knob; it is 0.02. */
+const GLINT_F0 = 0.02;
+const GLINT_STRENGTH: Record<QualityTier, number> = {
+  low: 0, medium: 0.4, high: 0.55, ultra: 0.65,
+};
+/**
+ * How wet the world is when nothing has told us otherwise. SPLASH ROYALE is a
+ * water fight and the ground is never entirely dry; classic gets a whisper of
+ * sea spray and morning damp and no more.
+ */
+const WET_FLOOR_WATER = 0.3;
+const WET_FLOOR_CLASSIC = 0.07;
+
+/**
+ * Height-graded aerial haze.
+ *
+ * `FogExp2` in the sky system has exactly one density for the whole world, so
+ * the air 200 m up a build tower is as thick as the air on the beach. Real air
+ * is not: it is an exponential column, and essentially all of the aerosol that
+ * matters over an island lives in the first fifty metres — over the sea most
+ * of all, because that is where the water is evaporating.
+ *
+ * This is the second term, and it only ever *adds* low down. It is small on
+ * purpose: the sky's fog is still doing the distance work, and doubling a veil
+ * is how a landscape turns to milk. What this buys is the gradient — a
+ * shoreline that sits in a band of thicker air than the ridge behind it, which
+ * is most of what makes a coast photograph as a coast.
+ */
+const HAZE_HEIGHT = 46;
+/**
+ * Optical depth per metre of view ray at sea level, and it is deliberately
+ * small: the sky's exp2 fog is still the primary distance cue and this only
+ * has to bend it downward. At eye height on the beach it adds ~6% at 500 m and
+ * ~11% at 1 km on top of the sky's own ~4%; from the bus at 300 m the column
+ * integral below collapses it to about a seventh of that, which is why a
+ * skydive does not fall through a wall of milk.
+ */
+const HAZE_DENSITY = 0.00018;
+const HAZE_STRENGTH: Record<QualityTier, number> = {
+  low: 0, medium: 0.5, high: 0.68, ultra: 0.72,
+};
+
+/**
  * Depth of field is ADS-only and deliberately shallow. A permanently soft
  * battle royale is unplayable — you cannot spot a player at 150 m through a
  * bokeh buffer — so there is no always-on far field here at all. Distance
@@ -647,6 +848,14 @@ const RUNNEL_TIME = 2.6;
 const FX_EFFECTS = [
   "bloom",
   "ao",
+  // Light realism, all three off the one half-res surface pass.
+  "contact",
+  "glint",
+  "haze",
+  // Not ours — the dust field is drawn in the scene by `engine/sky.ts`, which
+  // listens for this same event. Listed here so `all` reaches it and so the
+  // full set of things a capture can switch lives in one array.
+  "motes",
   "dof",
   "motion",
   "rays",
@@ -760,10 +969,17 @@ float hash13(vec3 p3) {
  * hard dark line where a crate meets the ground, *and* the soft gloom under an
  * awning.
  *
- * Output: R = occlusion, G = linear depth (carried so the blur can be bilateral
- * without paying for a second depth fetch).
+ * The pass also carries the two other things that want a per-pixel normal and
+ * a depth march, because reconstructing either a second time would cost more
+ * than everything they do put together: the screen-space **contact shadow**
+ * (see CONTACT_RANGE) and the wet-surface **glint** (see GLINT_ROUGHNESS).
+ *
+ * Output: R = occlusion, G = linear depth (carried so the blur can be
+ * bilateral without paying for a second depth fetch), B = sun visibility,
+ * A = specular glint.
  */
-function buildAoFragment(taps: number): string {
+function buildAoFragment(taps: number, contactSteps: number, glint: boolean): string {
+  const def = (name: string, on: boolean) => (on ? `#define ${name}` : `// no ${name}`);
   return /* glsl */ `
 precision highp float;
 varying vec2 vUv;
@@ -774,6 +990,16 @@ uniform vec2 uRadius;      // contact, ambient — metres
 uniform float uProjScale;
 uniform float uAspect;
 uniform float uIntensity;
+uniform vec3 uSunView;     // unit, view space, pointing AT the sun
+uniform vec3 uUpView;      // world +Y in view space
+uniform float uJitter;
+uniform float uWet;        // 0..1 how much standing water is about
+
+${def("USE_CONTACT", contactSteps > 0)}
+${def("USE_GLINT", glint)}
+#ifdef USE_CONTACT
+#define CONTACT_STEPS ${Math.max(2, Math.round(contactSteps))}
+#endif
 
 #define TAPS ${Math.max(2, Math.round(taps))}
 /**
@@ -790,6 +1016,18 @@ uniform float uIntensity;
 #define UBIAS 0.16
 const float GOLDEN = 2.39996323;
 
+/**
+ * The exact inverse of viewPosition() above: a view-space point back to the uv
+ * it was drawn at. Written out rather than multiplying by the projection
+ * matrix, because it is the same two numbers the reconstruction already has
+ * and a mismatched pair here would put the contact march half a pixel off its
+ * own surface, which reads as acne nothing can bias away.
+ */
+vec2 projectUv(vec3 q) {
+  float vz = max(-q.z, 1e-4);
+  return (q.xy / (uUvToView * vz)) * 0.5 + 0.5;
+}
+
 void main() {
   // This pass runs at half resolution against a full-resolution depth buffer,
   // and a half-res pixel centre lands *exactly on a full-res texel boundary*.
@@ -804,7 +1042,9 @@ void main() {
   float d = texture2D(tDepth, uv).x;
   // The sky writes no depth. Occluding it would ring every roofline in the
   // frame with a dark halo, which is the tell of a badly clamped AO pass.
-  if (d >= 0.99999) { gl_FragColor = vec4(1.0, 1e4, 0.0, 1.0); return; }
+  // B = 1 (fully sunlit) and A = 0 (no glint) are the identity for the two
+  // terms the composite multiplies and adds respectively.
+  if (d >= 0.99999) { gl_FragColor = vec4(1.0, 1e4, 1.0, 0.0); return; }
 
   float vz = linearDepth(d);
   vec3 p = viewPosition(uv, vz);
@@ -863,12 +1103,105 @@ void main() {
   // Contact darkening is a *contact* effect. Past a couple of blocks it is
   // sub-pixel and only contributes noise, so retire it into the aerial haze.
   ao = mix(ao, 1.0, smoothstep(90.0, 240.0, vz));
-  gl_FragColor = vec4(ao, vz, 0.0, 1.0);
+
+  // ---- sun visibility, and the penumbra that widens with distance ---------
+  float ndl = dot(n, uSunView);
+  // Anything already facing away from the sun is in its own shadow; marching
+  // from it can only produce acne, and weighting by the terminator here is
+  // what gives the term a soft edge for free.
+  float facing = smoothstep(0.02, 0.30, ndl);
+  float sun = 1.0;
+#ifdef USE_CONTACT
+  if (facing > 0.0) {
+    float rnd = hash12(gl_FragCoord.xy + uJitter);
+    // Any vector perpendicular to the sun will do to fan the ray along; the
+    // fallback covers a sun looking straight down the view axis, where the
+    // first cross product degenerates.
+    vec3 fan = cross(uSunView, vec3(0.0, 0.0, 1.0));
+    if (dot(fan, fan) < 1e-5) fan = cross(uSunView, vec3(0.0, 1.0, 0.0));
+    fan = normalize(fan);
+    // Start off the surface along its own normal, scaled with distance so the
+    // offset is a constant number of depth-buffer LSBs rather than a constant
+    // number of metres.
+    vec3 origin = p + n * (0.012 + vz * 0.0016);
+
+    float occ = 0.0;
+    for (int i = 0; i < CONTACT_STEPS; i++) {
+      // Quadratic march: dense in the first few centimetres where the cascade
+      // is blind and the shadow is sharp, sparse out at the soft end where a
+      // missed sample is invisible anyway.
+      float t = (float(i) + rnd) / float(CONTACT_STEPS);
+      float travel = ${CONTACT_RANGE.toFixed(3)} * t * t;
+      vec3 q = origin
+             + uSunView * travel
+             + fan * (rnd - 0.5) * ${CONTACT_SPREAD.toFixed(3)} * t;
+
+      vec2 suv = projectUv(q);
+      if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) break;
+      float sdRaw = texture2D(tDepth, suv).x;
+      if (sdRaw >= 0.99999) continue;
+
+      // How far in front of the ray the scene surface sits, in metres.
+      float ahead = -q.z - linearDepth(sdRaw);
+      if (ahead > ${CONTACT_THICK_MIN.toFixed(3)} && ahead < ${CONTACT_THICK_MAX.toFixed(3)}) {
+        // The whole softness model, in one expression. t is how far the ray
+        // had travelled when it found the occluder: near hits are umbra and
+        // return ~1, far hits are penumbra and return much less.
+        occ = max(occ, 1.0 - t * t);
+      }
+    }
+    sun = 1.0 - occ * facing;
+  }
+#endif
+
+  // ---- wet specular -------------------------------------------------------
+  float glint = 0.0;
+#ifdef USE_GLINT
+  if (uWet > 0.001 && ndl > 0.0) {
+    vec3 V = normalize(-p);
+    vec3 H = normalize(V + uSunView);
+    float ndh = max(dot(n, H), 0.0);
+    float ndv = max(dot(n, V), 1e-3);
+    // Trowbridge-Reitz. One lobe, no denominator games — we are adding light,
+    // not solving a BRDF, and the visibility term it is missing is a constant
+    // at this roughness.
+    float a2 = ${(GLINT_ROUGHNESS * GLINT_ROUGHNESS).toFixed(6)};
+    float den = ndh * ndh * (a2 - 1.0) + 1.0;
+    float D = a2 / (3.14159265 * den * den);
+    // Schlick. This is the term that makes a wet surface a sheet of light when
+    // you look along it and merely dark when you look down at it.
+    float F = ${GLINT_F0.toFixed(3)} + (1.0 - ${GLINT_F0.toFixed(3)}) * pow(1.0 - ndv, 5.0);
+    // Water sits on horizontal surfaces. A vertical wall is wet too, but it is
+    // wet with a film, not a pool, and giving it the same mirror is the fastest
+    // way to make a town look like it is made of glass.
+    float pooled = smoothstep(0.30, 0.78, dot(n, uUpView));
+    // A glint in shadow is a bug, so the march above gates it.
+    // Capped. A GGX lobe at this roughness peaks near 1/(pi*a^2) ~ 44, and a
+    // flat sheet of water — which is exactly what the sea and a fresh puddle
+    // are to a depth-reconstructed normal — would hand that straight to the
+    // tone curve as an acre of paper white. 8 is a highlight; 44 is a bug.
+    glint = min(D * F * ndl * pooled * uWet * sun, 8.0);
+    // Retire it with distance for the same reason the AO retires: past a
+    // hundred metres one pixel spans several metres of surface and the lobe
+    // becomes aliasing rather than light.
+    glint *= 1.0 - smoothstep(70.0, 190.0, vz);
+  }
+#endif
+
+  gl_FragColor = vec4(ao, vz, sun, glint);
 }
 `;
 }
 
-/** 3x3 cross-bilateral blur that respects the linear depth carried in G. */
+/**
+ * 3x3 cross-bilateral blur that respects the linear depth carried in G.
+ *
+ * It now carries B (sun visibility) and A (glint) through the same weights,
+ * and that is not merely convenient: **the blur is where the contact shadow's
+ * penumbra actually happens.** The march scatters its far hits across a fan;
+ * this is what turns that scatter into a soft edge, while the near hits — which
+ * every ray in a neighbourhood agrees on — come through untouched and sharp.
+ */
 const AO_BLUR_FRAG = /* glsl */ `
 precision highp float;
 varying vec2 vUv;
@@ -876,20 +1209,21 @@ uniform sampler2D tAO;
 uniform vec2 uTexel;
 
 void main() {
-  vec2 c = texture2D(tAO, vUv).rg;
-  float sum = 0.0;
+  vec4 c = texture2D(tAO, vUv);
+  vec3 sum = vec3(0.0);
   float wsum = 0.0;
   for (int y = -1; y <= 1; y++) {
     for (int x = -1; x <= 1; x++) {
-      vec2 s = texture2D(tAO, vUv + vec2(float(x), float(y)) * uTexel * 1.5).rg;
+      vec4 s = texture2D(tAO, vUv + vec2(float(x), float(y)) * uTexel * 1.5);
       // Depth similarity, relative to the centre distance — a 20 cm gap matters
       // at arm's length and is meaningless across the bay.
       float w = exp(-abs(s.y - c.y) / max(0.06 * c.y, 0.05));
-      sum += s.x * w;
+      sum += vec3(s.x, s.z, s.w) * w;
       wsum += w;
     }
   }
-  gl_FragColor = vec4(sum / max(wsum, 1e-4), c.y, 0.0, 1.0);
+  sum /= max(wsum, 1e-4);
+  gl_FragColor = vec4(sum.x, c.y, sum.y, sum.z);
 }
 `;
 
@@ -1077,6 +1411,12 @@ interface CompositeFlags {
   rays: boolean;
   chromatic: boolean;
   sharpen: boolean;
+  /** Screen-space contact shadows, read out of the surface pass's B channel. */
+  contact: boolean;
+  /** Wet-surface sun glint, read out of its A channel. */
+  glint: boolean;
+  /** Height-graded aerial haze. Needs depth; free otherwise. */
+  haze: boolean;
   /** SPLASH ROYALE: compile the wet-lens branches in at all. */
   wet: boolean;
   /** …and the per-rivulet refraction, which is the part `low` does without. */
@@ -1101,6 +1441,13 @@ uniform float uTime;
 
 uniform float uBloom;
 uniform float uAO;
+uniform float uContact;
+uniform float uGlint;
+uniform vec3  uGlintTint;   // the sun's own colour, so a glint is never white
+uniform float uHaze;
+uniform vec3  uHazeColor;   // horizon radiance, straight off the sky system
+uniform vec4  uCamRowY;     // world-Y row of the camera matrix + its translation
+uniform float uSeaLevel;
 uniform float uRays;
 uniform vec3  uRayTint;
 uniform vec2  uDof;        // focus distance, focus range (metres)
@@ -1149,6 +1496,9 @@ ${def("USE_DOF", f.dof)}
 ${def("USE_RAYS", f.rays)}
 ${def("USE_CA", f.chromatic)}
 ${def("USE_SHARPEN", f.sharpen)}
+${def("USE_CONTACT", f.contact)}
+${def("USE_GLINT", f.glint)}
+${def("USE_HAZE", f.haze)}
 ${def("USE_WET", f.wet)}
 ${def("USE_WET_RICH", f.wetRich)}
 ${f.mbTaps > 0 ? `#define USE_MB\n#define MB_TAPS ${Math.round(f.mbTaps)}` : "// no USE_MB"}
@@ -1421,15 +1771,39 @@ void main() {
 #endif
   color += sharpenDelta * (1.0 - clamp(coc * 1.6, 0.0, 1.0));
 
-  // ---- ambient occlusion --------------------------------------------------
+  // ---- ambient occlusion, contact shadow, wet glint -----------------------
+  // All three ride one fetch of the surface pass: R = occlusion, G = depth,
+  // B = sun visibility, A = specular.
 #ifdef USE_AO
   {
-    float ao = texture2D(tAO, uv).r;
+    vec4 surf = texture2D(tAO, uv);
+    float bright = clamp(luma(color) * 0.72, 0.0, 0.82);
+
     // Occlusion belongs to the *ambient* term only. Letting it multiply the
     // directly sunlit range as well is exactly what makes over-cooked AO read
     // as dirt smeared into every corner.
-    ao = mix(ao, 1.0, clamp(luma(color) * 0.72, 0.0, 0.82));
+    float ao = mix(surf.r, 1.0, bright);
     color *= mix(1.0, ao, uAO);
+
+#ifdef USE_CONTACT
+    // …and the contact shadow is the exact opposite: it occludes the *sun*, so
+    // it belongs to the bright half of the frame and must leave already-shaded
+    // pixels alone or the two terms compound into a hole. 'bright' therefore
+    // gates this one the right way up.
+    //
+    // It darkens toward the ambient level, never toward black — losing the key
+    // does not mean losing the sky, and a contact shadow that goes to zero is
+    // the pasted-on look this pass exists to fix, upside down.
+    float sunVis = mix(1.0, surf.b, uContact * (0.28 + 0.72 * bright));
+    color *= mix(0.34, 1.0, sunVis);
+#endif
+
+#ifdef USE_GLINT
+    // Added, not multiplied: a specular highlight is light the surface is
+    // *returning*, and it lands here in scene-referred linear so ACES rolls it
+    // off into a hard white core the way a real overexposed highlight does.
+    color += surf.a * uGlint * uGlintTint;
+#endif
   }
 #endif
 
@@ -1439,6 +1813,35 @@ void main() {
 #endif
 #ifdef USE_RAYS
   color += texture2D(tRays, uv).rgb * uRayTint * uRays;
+#endif
+
+  // ---- height-graded aerial haze ------------------------------------------
+  // The sky's exp2 fog is height-blind by construction. This is the column
+  // term it cannot express: thick at sea level, gone by the time you are on a
+  // roof, and integrated along the view ray rather than applied as a flat
+  // veil, so a shot down a beach picks up far more of it than the same
+  // distance looked at from above.
+#ifdef USE_HAZE
+  if (uHaze > 0.0 && rawZ < 0.99999) {
+    vec3 vpos = viewPosition(uv, vz);
+    // World Y of this pixel and of the eye, from one row of the camera matrix.
+    // Cheaper and better conditioned than a full inverse-view-projection, and
+    // the only component the haze has ever cared about.
+    float pixelY = dot(uCamRowY.xyz, vpos) + uCamRowY.w;
+    float eyeY = uCamRowY.w;
+    float hp = exp(-max(pixelY - uSeaLevel, 0.0) / ${HAZE_HEIGHT.toFixed(1)});
+    float he = exp(-max(eyeY - uSeaLevel, 0.0) / ${HAZE_HEIGHT.toFixed(1)});
+    // Mean density along the ray, analytically: the integral of exp(-y/H)
+    // between the two endpoints over the height they span. Averaging the two
+    // endpoints instead — which is the obvious thing to write — over-counts a
+    // steep ray by more than 3x, and a steep ray is every frame of the drop.
+    float dy = pixelY - eyeY;
+    float column = abs(dy) < 0.5
+      ? hp
+      : clamp(${HAZE_HEIGHT.toFixed(1)} * (he - hp) / dy, 0.0, 1.0);
+    float t = 1.0 - exp(-min(vz, 3000.0) * ${HAZE_DENSITY.toFixed(6)} * column);
+    color = mix(color, uHazeColor, clamp(t * uHaze, 0.0, 0.55));
+  }
 #endif
 
   // ---- underwater absorption ----------------------------------------------
@@ -1663,8 +2066,14 @@ function buildPostFx(ctx: WorldCtx): System {
   const uvToView = new THREE.Vector2(1, 1);
   const sunUv = new THREE.Vector2(0.5, 0.5);
 
+  /** Sun and world-up in view space, refreshed once a frame for the surface pass. */
+  const sunView = new THREE.Vector3(0, 1, 0);
+  const upView = new THREE.Vector3(0, 1, 0);
+  /** World-Y row of the camera matrix, for the haze's column integral. */
+  const camRowY = new THREE.Vector4(0, 1, 0, 0);
+
   const aoMat = tier.aoTaps
-    ? mat(buildAoFragment(tier.aoTaps), {
+    ? mat(buildAoFragment(tier.aoTaps, tier.contactSteps, tier.glint), {
         tDepth: { value: null },
         uPlanes: { value: planes },
         uUvToView: { value: uvToView },
@@ -1673,6 +2082,10 @@ function buildPostFx(ctx: WorldCtx): System {
         uProjScale: { value: 1 },
         uAspect: { value: 1 },
         uIntensity: { value: 1.1 },
+        uSunView: { value: sunView },
+        uUpView: { value: upView },
+        uJitter: { value: 0 },
+        uWet: { value: 0 },
       })
     : null;
 
@@ -1744,6 +2157,13 @@ function buildPostFx(ctx: WorldCtx): System {
       rays: tier.raySamples > 0,
       chromatic: tier.chromatic,
       sharpen: tier.sharpen,
+      // Every one of these lives or dies with the surface pass and the depth
+      // buffer that feeds it, so the gate is the tier AND its prerequisite —
+      // a `#define` whose inputs do not exist is a compile error, not a
+      // missing effect, and a compile error here costs the whole grade.
+      contact: tier.aoTaps > 0 && tier.contactSteps > 0,
+      glint: tier.aoTaps > 0 && tier.glint,
+      haze: tier.depth && tier.haze,
       wet: waterMode,
       wetRich,
     }),
@@ -1761,6 +2181,13 @@ function buildPostFx(ctx: WorldCtx): System {
       uTime: { value: 0 },
       uBloom: { value: BLOOM_STRENGTH[ctx.quality] ?? 0 },
       uAO: { value: AO_STRENGTH[ctx.quality] ?? 0 },
+      uContact: { value: CONTACT_STRENGTH[ctx.quality] ?? 0 },
+      uGlint: { value: 0 },
+      uGlintTint: { value: new THREE.Color(1, 0.94, 0.84) },
+      uHaze: { value: 0 },
+      uHazeColor: { value: new THREE.Color(0.55, 0.68, 0.82) },
+      uCamRowY: { value: camRowY },
+      uSeaLevel: { value: 0 },
       uRays: { value: 0 },
       uRayTint: { value: new THREE.Color(1, 0.87, 0.68) },
       uDof: { value: new THREE.Vector2(60, 20) },
@@ -1836,6 +2263,7 @@ function buildPostFx(ctx: WorldCtx): System {
   const grade = cloneGrade(GRADE_DAY);
   const gradeA = cloneGrade(GRADE_DAY);
   const gradeB = cloneGrade(GRADE_DAY);
+  const gradeC = cloneGrade(GRADE_DAY);
 
   /** Each of these is a target the render loop eases toward. A hard cut on any
    *  of the grade blends reads as a bug, and crossing the storm boundary or a
@@ -1858,6 +2286,19 @@ function buildPostFx(ctx: WorldCtx): System {
   let lowHealth = 0;
   /** 1 → 0 over RUNNEL_TIME after your own soaking. Water mode only. */
   let runnel = 0;
+  /**
+   * How wet the world under the camera is, 0..1, eased.
+   *
+   * Screen space cannot know the wetness of an individual pixel — that lives
+   * in a per-puddle field the wetness system owns and nothing here can reach
+   * per-fragment. What it *can* know is whether there is standing water where
+   * the player is, which is the honest scalar: walk into a soaked plaza and the
+   * whole plaza catches the sun, walk out and it stops. Below that sits a floor
+   * (see WET_FLOOR_*), because a coastal island is never bone dry and a water
+   * fight least of all.
+   */
+  let wet = waterMode ? WET_FLOOR_WATER : WET_FLOOR_CLASSIC;
+  let wetTarget = wet;
   let focus = 60;
   let focusTimer = 0;
   let broken = false;
@@ -2104,6 +2545,23 @@ function buildPostFx(ctx: WorldCtx): System {
       // its fetches lands in the full-res depth buffer.
       (aoMat.uniforms.uDepthTexel.value as THREE.Vector2).set(1 / width, 1 / height);
     }
+
+    // ---- the sun, in the space the surface pass works in --------------------
+    // The contact march and the glint both live in view space, so the sun has
+    // to arrive there too. `transformDirection` applies the rotation only and
+    // renormalises, which is exactly what a direction wants and what a
+    // `applyMatrix4` on a Vector3 would get wrong by the camera's translation.
+    const sky = ctx.services.sky;
+    if (sky?.sunDirection) {
+      sunView.copy(sky.sunDirection).transformDirection(camera.matrixWorldInverse);
+    }
+    upView.set(0, 1, 0).transformDirection(camera.matrixWorldInverse);
+
+    // Third row of the camera's world matrix (column-major storage), plus its
+    // Y translation. `dot(row, viewPos) + ty` is the world Y of any view-space
+    // point — the whole of what the haze needs from the transform.
+    const e = camera.matrixWorld.elements;
+    camRowY.set(e[1], e[5], e[9], e[13]);
     compositeMat.uniforms.uAspect.value = aspect;
     setTexel(compositeMat, width, height);
 
@@ -2138,7 +2596,15 @@ function buildPostFx(ctx: WorldCtx): System {
     const waterFx = fx.water ? water : 0;
 
     const daylight = THREE.MathUtils.clamp(ctx.services.sky?.daylight ?? sun.daylight, 0, 1);
-    mixGrade(GRADE_DAY, GRADE_DUSK, 1 - daylight, gradeA);
+    // Two independent axes, and they have to be independent or the day is one
+    // hour long. ELEVATION runs golden hour → noon; DAYLIGHT runs day → dusk.
+    // Elevation first, because dusk is a modifier on whatever the sun was
+    // doing on its way down and not the other way round.
+    const sunY = ctx.services.sky?.sunDirection?.y ?? 0.3;
+    const elevation = THREE.MathUtils.clamp(
+      THREE.MathUtils.smoothstep(sunY, NOON_FROM, NOON_TO), 0, 1);
+    mixGrade(GRADE_DAY, GRADE_NOON, elevation, gradeC);
+    mixGrade(gradeC, GRADE_DUSK, 1 - daylight, gradeA);
     // Capped, not raw: past STORM_GRADE_MAX the storm stops eating hue and
     // lets the warp, the grain and the vignette carry the message instead.
     mixGrade(gradeA, GRADE_STORM, stormFx * STORM_GRADE_MAX, gradeB);
@@ -2188,6 +2654,25 @@ function buildPostFx(ctx: WorldCtx): System {
     // A switch can only take away what the tier already granted; it can never
     // light up a pass whose buffers were never allocated.
     u.uAO.value = fx.ao && tier.aoTaps > 0 ? (AO_STRENGTH[ctx.quality] ?? 0) : 0;
+    u.uContact.value =
+      fx.contact && tier.aoTaps > 0 && tier.contactSteps > 0
+        ? (CONTACT_STRENGTH[ctx.quality] ?? 0)
+        : 0;
+    u.uGlint.value =
+      fx.glint && tier.aoTaps > 0 && tier.glint ? (GLINT_STRENGTH[ctx.quality] ?? 0) * wet : 0;
+    // Underwater there is no air column to haze and the absorption term below
+    // already owns the frame; inside the wall the storm's veil does.
+    u.uHaze.value =
+      fx.haze && tier.depth && tier.haze
+        ? (HAZE_STRENGTH[ctx.quality] ?? 0) * (1 - waterFx) * (1 - stormFx * 0.7)
+        : 0;
+    if (aoMat) {
+      aoMat.uniforms.uWet.value = fx.glint && tier.glint ? wet : 0;
+      // Re-rolled every frame so the march's fan dithers temporally as well as
+      // spatially. Under a static capture this changes nothing; in motion it
+      // is the difference between a penumbra and a fixed noise pattern.
+      aoMat.uniforms.uJitter.value = elapsed * 60;
+    }
     u.uBloom.value = fx.bloom && tier.bloomMips > 0 ? (BLOOM_STRENGTH[ctx.quality] ?? 0) : 0;
     u.uChromatic.value = fx.chromatic && tier.chromatic ? CHROMATIC : 0;
     u.uSharpen.value = fx.sharpen && tier.sharpen ? SHARPEN : 0;
@@ -2204,6 +2689,49 @@ function buildPostFx(ctx: WorldCtx): System {
     u.uMotion.value = usable
       ? strength * Math.min(2.5, MOTION_SHUTTER / Math.max(dt, 1e-4))
       : 0;
+  }
+
+  /**
+   * How much standing water is around the camera, and the horizon colour the
+   * haze tints toward. Both are polled rather than pushed: the sky recomputes
+   * its horizon radiance every frame anyway, and the wetness field changes
+   * continuously as puddles spread and dry.
+   */
+  const hazeColor = new THREE.Color();
+  function updateAtmosphere(): void {
+    const base = waterMode ? WET_FLOOR_WATER : WET_FLOOR_CLASSIC;
+    let w = base;
+    try {
+      const wetness = ctx.services.wetness;
+      if (wetness) {
+        // Sampled at the camera rather than the player: in third person the
+        // camera is four metres back, and it is the ground *in frame* that has
+        // to glint, not the ground under the feet of someone off the bottom
+        // of it.
+        w = Math.max(w, THREE.MathUtils.clamp(
+          wetness.wetnessAt(camera.position.x, camera.position.z), 0, 1));
+      }
+    } catch {
+      /* the wetness system is optional and inert in classic. */
+    }
+    // Rain on the lens means rain on the world.
+    w = Math.max(w, runnel * 0.55);
+    wetTarget = THREE.MathUtils.clamp(w, 0, 1);
+
+    const sky = ctx.services.sky as { horizonColor?: THREE.Color; sunColor?: THREE.Color } | undefined;
+    if (sky?.horizonColor) {
+      // Whatever the sky says the horizon is, is what distance looks like.
+      // Deriving it here instead of picking a colour is what keeps the haze
+      // honest at every hour: at noon it is pale blue, at dusk it is orange,
+      // and neither is a number anybody had to type.
+      hazeColor.copy(sky.horizonColor);
+      (compositeMat.uniforms.uHazeColor.value as THREE.Color).copy(hazeColor);
+    }
+    if (sky?.sunColor) {
+      (compositeMat.uniforms.uGlintTint.value as THREE.Color).copy(sky.sunColor);
+    }
+    const terrain = ctx.services.terrain;
+    if (terrain) compositeMat.uniforms.uSeaLevel.value = terrain.seaLevel;
   }
 
   /**
@@ -2347,11 +2875,15 @@ function buildPostFx(ctx: WorldCtx): System {
     try {
       // ---- per-frame state --------------------------------------------------
       updateStormIntensity();
+      updateAtmosphere();
       const ease = (v: number, target: number, rate: number) =>
         v + (target - v) * Math.min(1, clampedDt * rate);
       water = ease(water, waterTarget, 6);
       storm = ease(storm, stormTarget, 3.2);
       down = ease(down, downTarget, 4.5);
+      // Slow: ground does not go from dry to soaked in a frame, and a glint
+      // that snaps on as you cross a puddle boundary reads as a shader bug.
+      wet = ease(wet, wetTarget, 1.6);
       hurt = Math.max(0, hurt - clampedDt * 1.4);
       shake = Math.max(0, shake - clampedDt * 1.9);
       // Simulated seconds, off the same clamped dt everything else here uses.
