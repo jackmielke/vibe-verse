@@ -65,6 +65,22 @@ each with a roof-colour identity and a loot tier. Roads connect them. The
 terrain is authored so POI floors land on multiples of `GRID` (4 m), because
 players build off them.
 
+## The lido
+
+`world/lido.ts` is a water park on the east coast — slide tower, wave pool, a
+163 m lazy river, splash pads, a diving stack. It is the one POI that is a
+*place* rather than a street, and it is where the water game's own vocabulary
+is at home: `lido.flowAt()` returns the lazy river's current, so anything that
+floats gets carried, and the deck is topped up wet round-robin because puddles
+evaporate and a park that is bone dry ninety seconds in is not a lido.
+
+**It must boot before `props` and `vegetation`.** Both plant into open ground,
+and neither knows the park is coming — run it after them and there are trees in
+the wave pool. That ordering is the reason it sits where it does in `boot.ts`
+and it is not a detail you can reshuffle.
+
+`npm run dz:shot -- lido lidodeck` are the two vantages that show it.
+
 ## The build loop
 
 This is the thing that makes it Fortnite and not a shooter. It has to feel
@@ -107,6 +123,24 @@ socket, no lobby, no Supabase config. Run it before you touch the script.
 Two instances on different squads will fight each other, which is both the
 easiest way to test a change end to end and how the bot trains when nobody is
 online.
+
+## When a frame looks wrong
+
+`scripts/dz-ground.mjs` raycasts a grid over the frame and reports, per cell,
+the object the ray hits, its material, and the luminance actually rendered
+there — plus its own screenshot from the same instant.
+
+```bash
+DZ_PORT=5195 node scripts/dz-ground.mjs lidodeck
+```
+
+Reach for it before changing a shader. Four separate theories about one dark
+patch of ground — dark ground cover, a canopy underside, a shadow-map artifact
+and a metalness bug — all predicted the same photograph, and two of them were
+confidently wrong. In particular: **every material in this world reads
+`metalness: 1`**, because the library binds one ORM texture and lets its blue
+channel modulate. The scalar on its own says the island is made of polished
+metal. It is not a bug and it has nearly been "fixed" once.
 
 ## Conventions
 

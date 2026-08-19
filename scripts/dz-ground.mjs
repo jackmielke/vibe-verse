@@ -340,7 +340,10 @@ try {
    * not. One run, one frame, one table.
    */
   await mkdir(OUT, { recursive: true });
-  await page.screenshot({ path: `${OUT}/${SHOT}.png` });
+  // 600 s, matching dz-shot. Under SwiftSHADER a frame is ~50 ms and
+  // Playwright waits for a stable one; the 30 s default expires first and
+  // takes the whole probe down with it after the numbers are already in hand.
+  await page.screenshot({ path: `${OUT}/${SHOT}.png`, timeout: 600000, animations: "disabled" });
   console.log(`frame: ${OUT}/${SHOT}.png`);
 } catch (err) {
   console.error("probe threw:", err.message);

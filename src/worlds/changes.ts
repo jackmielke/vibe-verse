@@ -107,12 +107,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
   "drop-zero": [
+    { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
     { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
     { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
     { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
-    { sha: "e0e8052", iso: "2026-08-09T20:07:35-07:00", subject: "Escape gives the mouse back instead of throwing you out" },
   ],
   "dunes": [
     { sha: "271da81", iso: "2026-08-16T20:40:40+00:00", subject: "The Dune Sea was drawing the sky where the ground should be" },
@@ -318,12 +318,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "45648c1", iso: "2026-05-14T04:33:38+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
     { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
     { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
     { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
-    { sha: "e0e8052", iso: "2026-08-09T20:07:35-07:00", subject: "Escape gives the mouse back instead of throwing you out" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
