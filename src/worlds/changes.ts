@@ -123,6 +123,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2e62671", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
     { sha: "c02b5ca", iso: "2026-06-17T20:19:43+00:00", subject: "Changes" },
   ],
+  "empyrean": [
+    { sha: "1297ab3", iso: "2026-08-19T08:14:18+00:00", subject: "THE EMPYREAN: a glass city on a rock that never landed" },
+  ],
   "evolve": [
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
     { sha: "aa74eae", iso: "2026-06-12T00:17:23+00:00", subject: "Evolve world (genesis-bloom-evolve) + voice conversations with Vibey" },
@@ -139,12 +142,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "07bca5b", iso: "2026-08-19T05:26:25+00:00", subject: "Towers meet the ground now, and the card art stopped being a rooftop" },
     { sha: "57ae7cc", iso: "2026-08-19T05:18:21+00:00", subject: "Streets that are lit at night, and headlights on the traffic" },
     { sha: "939bb6f", iso: "2026-08-18T22:49:12+00:00", subject: "Sixteen hundred people who turn corners instead of vanishing" },
     { sha: "a12f0c3", iso: "2026-08-18T22:34:28+00:00", subject: "Twenty-five foot lots, garage doors, and the long way out of a terrace" },
     { sha: "bdf0cd6", iso: "2026-08-18T22:18:06+00:00", subject: "Chunk the city so it can be frustum-culled" },
     { sha: "4ab570f", iso: "2026-08-18T22:07:20+00:00", subject: "Fire escapes, lane markings, and two districts you can start in" },
-    { sha: "74ca69d", iso: "2026-08-18T21:47:54+00:00", subject: "Traffic that stops at the lights, and fifteen hundred cars at the kerb" },
   ],
   "garden": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },

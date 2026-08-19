@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-08-19T05:24:27.800Z",
+  "generated_at": "2026-08-19T09:22:18.122Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "1297ab30",
+      "date": "2026-08-19",
+      "subject": "THE EMPYREAN: a glass city on a rock that never landed",
+      "lede": "A new world at /empyrean, built from a reference painting: a cluster of iridescent towers on a floating island four hundred metres over a frozen lake, in a sunset that runs navy-and-stars at the zenith through jade and gold to rose on the horizon. You fly it with Vibe City's jetpack, as whichever character you already picked anywhere else in the vibeverse.",
+      "places": [],
+      "files": 15
+    },
+    {
+      "sha": "07bca5b8",
+      "date": "2026-08-19",
+      "subject": "Towers meet the ground now, and the card art stopped being a rooftop",
+      "lede": "Every generated tower ran as one banded box from the pavement to the parapet, which is a shape no tower has and the one part of it you stand next to. Walk down Market — where the world opens — and both sides were forty storeys of identical window courses meeting the ground with nothing at all: no lobby, no entrance, no way in, no change of material. It reads as scenery from six feet away, on the most-looked-at facade",
+      "places": [],
+      "files": 4
+    },
     {
       "sha": "6db5ac35",
       "date": "2026-08-19",
@@ -1007,22 +1023,6 @@
       "lede": "Pointing the GIF recorder at a list of worlds is only safe if it can tell when it has filmed nothing. \"A world that waits at a title screen records a title screen\" was a line in a comment, which is the kind of warning nobody remembers to act on at the moment it matters.",
       "places": [],
       "files": 3
-    },
-    {
-      "sha": "db038600",
-      "date": "2026-08-14",
-      "subject": "Seafair and Vibe Star get the card art they were missing",
-      "lede": "Seafair is a flagship in the README and was showing the drawn fallback panel, which is the one card on the grid where that reads as an oversight rather than a choice. Both captures are real frames from the running worlds.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "b83aef31",
-      "date": "2026-08-14",
-      "subject": "Six ways the front door could look, and a page to pick one",
-      "lede": "The headline has been mint green since the first commit — which is the accent the play *currency* uses everywhere else, so the loudest type on the site was quietly saying \"coins\" rather than \"vibeverse\". Jack asked for white, and for options rather than one guess.",
-      "places": [],
-      "files": 6
     }
   ]
 }
