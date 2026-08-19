@@ -33,6 +33,15 @@
  *   PERF_WAIT=20000 node scripts/route-perf.mjs  # longer settle per route
  *   PERF_DPR=2 node scripts/route-perf.mjs       # emulate a retina display
  *   PERF_JSON=perf.json node scripts/route-perf.mjs
+ *   PERF_ENTER=Arrive node scripts/route-perf.mjs /empyrean   # click past a menu
+ *
+ * `PERF_ENTER` is for a world that gates its first frame behind a named
+ * button. Without it the click at the middle of the viewport misses, the world
+ * never boots, and the row comes back **60.1 fps, 0 draws, 0 triangles** — a
+ * perfect score for a title card. Zero draws with a live WebGL context is
+ * called out as `menu?` for that reason: a world that drew nothing did not
+ * pass, whatever its frame rate says. A world with no context at all is a
+ * different thing — Seafair and 2048 are drawn in the DOM — and is left alone.
  *
  * `PERF_DPR=2` is the interesting one: it is the single biggest cost multiplier
  * in the repo and the reason a Retina MacBook struggles where an external
@@ -48,6 +57,7 @@ const WAIT = Number(process.env.PERF_WAIT ?? 9000);
 const SAMPLE = Number(process.env.PERF_SAMPLE ?? 6000);
 const DPR = Number(process.env.PERF_DPR ?? 1);
 const JSON_OUT = process.env.PERF_JSON ?? "";
+const ENTER = process.env.PERF_ENTER ?? "";
 
 /** Routes worth profiling: the worlds, read out of the registry. */
 function registryRoutes() {
@@ -202,7 +212,23 @@ for (const route of routes) {
   try {
     const t0 = Date.now();
     await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.mouse.click(640, 400).catch(() => {});
+    if (ENTER) {
+      /* Named, and retried: under SwiftShader the button can be on screen
+         before its handler is attached, and one click that lands on nothing
+         is indistinguishable from a world that boots slowly. */
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const hit = await page
+          .getByText(ENTER, { exact: false })
+          .first()
+          .click({ timeout: 15000 })
+          .then(() => true)
+          .catch(() => false);
+        if (hit) break;
+        await page.waitForTimeout(2000);
+      }
+    } else {
+      await page.mouse.click(640, 400).catch(() => {});
+    }
     await page.waitForTimeout(WAIT);
     row.bootMs = Date.now() - t0;
 
@@ -247,12 +273,16 @@ for (const route of routes) {
   row.errors = [...new Set(errors)].slice(0, 3);
   rows.push(row);
 
+  /* A live GL context that drew nothing is a world that never started —
+     almost always a menu nobody clicked past. It is not a fast world. */
+  row.menu = row.ok && row.contexts > 0 && row.draws === 0;
   console.log(
-    `${row.ok ? "ok  " : "FAIL"} ${route.padEnd(20)} ` +
+    `${row.menu ? "menu" : row.ok ? "ok  " : "FAIL"} ${route.padEnd(20)} ` +
       `${String(row.fps).padStart(6)}fps  p95 ${String(row.p95).padStart(6)}ms  ` +
       `${String(row.draws).padStart(5)} draws  ${String(row.tris).padStart(9)} tris  ` +
       `${String(row.programs).padStart(4)} prog  ${String(row.texMB).padStart(7)}MB tex  ` +
-      `${String(row.contexts).padStart(2)} ctx  ${String(row.heapMB).padStart(6)}MB heap`,
+      `${String(row.contexts).padStart(2)} ctx  ${String(row.heapMB).padStart(6)}MB heap` +
+      (row.menu ? "   <- drew nothing; try PERF_ENTER=<button text>" : ""),
   );
   await ctx.close();
 }

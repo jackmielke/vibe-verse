@@ -150,6 +150,31 @@ Kept because each one cost a rebuild and would cost another.
   left in local space, a built lot that is hollow. It found the ring tram
   updating its state perfectly and never once moving its geometry.
 
+## What it costs
+
+Measured with `PERF_ENTER=Arrive node scripts/route-perf.mjs /empyrean`, on
+the same container and in the same session as the two worlds it is worth
+comparing against. Draws, triangles, programs and texture memory are exact —
+they are counts of what the page asked the driver to do. The frame rates are
+SwiftShader's and are a **ranking only**, never a prediction.
+
+| route | draws | triangles | programs | textures | fps (relative) |
+| --- | --- | --- | --- | --- | --- |
+| `/empyrean` | 178 | 2.76 M | 59 | 23 MB | 0.9 |
+| `/city` | 473 | 3.28 M | 36 | 16 MB | 0.5 |
+| `/sf` | 251 | 1.91 M | 27 | 9 MB | 0.6 |
+
+Fewer draw calls than either, and faster than both on the rasteriser that
+ranks them. Vibe City ships and is playable, so this is inside the envelope
+this repo already holds. The low tier builds about 1.1 M triangles against
+the high tier's 2.6 M, which is what `empyreanBudget.test.ts` pins.
+
+**`route-perf` had to be taught to click.** It clicks the middle of the
+viewport once, which misses this world's Arrive button, so the first
+measurement came back *60.1 fps, 0 draws, 0 triangles* — a perfect score for
+a title card, printed as `ok`. `PERF_ENTER` names the button, and a live GL
+context that drew nothing now prints as `menu?` rather than as a fast world.
+
 ## Verifying
 
 `npm run typecheck` (never bare `tsc --noEmit` — see the root `CLAUDE.md`),
