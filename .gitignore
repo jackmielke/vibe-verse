@@ -68,3 +68,7 @@ __zz_compile.mjs
 
 # Agent scratch.
 .tmp-console.mjs
+
+# Scratch harnesses agents leave behind. Never committed.
+.tmp-*
+__zz_*
