@@ -108,6 +108,7 @@ const BlobWorld = lazy(() => import("./pages/Blob.tsx"));
 const Coil = lazy(() => import("./pages/Coil.tsx"));
 const Twenty48 = lazy(() => import("./pages/Twenty48.tsx"));
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
+const Empyrean = lazy(() => import("./pages/Empyrean.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -491,6 +492,12 @@ const App = () => (
               match, the shrimp boat, and then across America. */}
           {["/run", "/gump", "/forrest"].map((path) => (
             <Route key={path} path={path} element={<RunVibeyRun />} />
+          ))}
+          {/* THE EMPYREAN — a city of glass on a rock that never landed, four
+              hundred metres over a frozen lake that reflects the whole of it.
+              Vibe City's jetpack, Vibe Island's cast, and a sunset. */}
+          {["/empyrean", "/floating-city", "/skycity"].map((path) => (
+            <Route key={path} path={path} element={<Empyrean />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

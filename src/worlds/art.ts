@@ -61,9 +61,11 @@ import trekArt from "@/assets/worlds/final-frontier.jpg";
 import seafairArt from "@/assets/worlds/seafair.jpg";
 import newsroomArt from "@/assets/worlds/newsroom.jpg";
 import vibestarArt from "@/assets/worlds/vibestar.jpg";
+import empyreanArt from "@/assets/worlds/empyrean.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
+  empyrean: empyreanArt,
   arcade: arcadeArt,
   orbit: orbitArt,
   shop: shopArt,

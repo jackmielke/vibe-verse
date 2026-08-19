@@ -40,7 +40,8 @@ const ORDER: string[] = [
   "blob",                // …and the one you can explain in four words
   "blob-battle",         // …and the guest game that plays the same way
   "coil",                // …and its twin, where being big is the problem
-  "deep",                // the new one: eight kilometres straight down, in the dark
+  "empyrean",            // the new one: a glass city on a rock, and a jetpack
+  "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
   "shop",                // …which is what you spend it in
@@ -465,6 +466,23 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#8fe4ff",
     featured: true,
     source: "src/longsilence",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "empyrean",
+    route: "/empyrean",
+    aliases: ["/floating-city", "/skycity"],
+    name: "The Empyrean",
+    emoji: "🪐",
+    kind: "world",
+    blurb:
+      "A city of glass on a rock that never landed, four hundred metres over a frozen lake that shows you all of it upside down. Vibe City's jetpack and Vibe Island's cast, in a sunset that goes navy at the top and rose at the bottom.",
+    status: "Playable — desktop and phone, nothing to survive",
+    accent: "#ff9a5a",
+    featured: true,
+    source: "src/empyrean",
     nav: true,
     passport: true,
     chromeless: true,
