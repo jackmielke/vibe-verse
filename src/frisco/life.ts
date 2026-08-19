@@ -31,7 +31,7 @@
 import * as THREE from "three";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { Batch, rgb, shade } from "./batch";
-import { toon } from "./look";
+import { nightAmount, toon } from "./look";
 import { BOUNDS, isOpen, isRoad, isSidewalk, isWater, roadAt, shoreSDF, stopLineAhead, walkHeight } from "./map";
 import type { SignalHead } from "./street";
 
@@ -174,6 +174,29 @@ function carGeometry(): THREE.BufferGeometry {
   }
   const geo = b.finish();
   if (!geo) throw new Error("car geometry is empty");
+  return geo;
+}
+
+/**
+ * The lights on a car, as one small mesh that rides the same matrix.
+ *
+ * Two white in front, two red behind, drawn with an unshaded material so they
+ * are as bright at midnight as at noon — a toon-shaded lamp goes dark on the
+ * side away from the sun, which is precisely backwards for something that is
+ * emitting. It shares the cars' transforms exactly, so it costs one more draw
+ * call and no extra bookkeeping; it is simply switched off when the sun is up,
+ * because headlights in daylight read as a fault rather than as detail.
+ */
+function carLightGeometry(): THREE.BufferGeometry {
+  const b = new Batch();
+  const head = rgb(0xfff3d0);
+  const tail = rgb(0xff5a46);
+  for (const sx of [-1, 1]) {
+    b.box(sx * 0.7, 0.5, -2.3, 0.22, 0.2, 0.08, head);
+    b.box(sx * 0.7, 0.56, 2.24, 0.24, 0.16, 0.08, tail);
+  }
+  const geo = b.finish();
+  if (!geo) throw new Error("car light geometry is empty");
   return geo;
 }
 
@@ -321,6 +344,9 @@ export class CityLife {
   private boats: Boat[] = [];
   private walkers: Walker[] = [];
   private carMesh: THREE.InstancedMesh;
+  private lightMesh: THREE.InstancedMesh;
+  private lightGeo: THREE.BufferGeometry;
+  private lightMat: THREE.Material;
   private boatMesh: THREE.InstancedMesh;
   private walkerMesh: THREE.InstancedMesh;
   private carGeo: THREE.BufferGeometry;
@@ -360,6 +386,14 @@ export class CityLife {
     this.carMesh.frustumCulled = false;
     this.carMesh.castShadow = true;
     this.group.add(this.carMesh);
+
+    this.lightGeo = carLightGeometry();
+    this.lightMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.lightMesh = new THREE.InstancedMesh(this.lightGeo, this.lightMat, CAR_COUNT);
+    this.lightMesh.name = "frisco-car-lights";
+    this.lightMesh.frustumCulled = false;
+    this.lightMesh.visible = false;
+    this.group.add(this.lightMesh);
 
     this.boatGeo = boatGeometry();
     this.boatMesh = new THREE.InstancedMesh(
@@ -421,6 +455,9 @@ export class CityLife {
       if (i >= carCut) {
         this.m.compose(this.v.set(0, -500, 0), this.q.identity(), this.zero);
         this.carMesh.setMatrixAt(i, this.m);
+        // Its lights go with it. Scaling the car to nothing and leaving the
+        // headlights where they were is two floating dots in the road.
+        this.lightMesh.setMatrixAt(i, this.m);
         continue;
       }
       const c = this.cars[i];
@@ -469,8 +506,14 @@ export class CityLife {
       this.q.setFromEuler(this.e);
       this.m.compose(this.v, this.q, this.one);
       this.carMesh.setMatrixAt(i, this.m);
+      this.lightMesh.setMatrixAt(i, this.m);
     }
     this.carMesh.instanceMatrix.needsUpdate = true;
+    this.lightMesh.instanceMatrix.needsUpdate = true;
+    /* Lights on when the sun is down. `nightAmount` is the same 0-to-1 the
+       window glow rides, so headlights come on across dusk with everything
+       else rather than snapping at some threshold of their own. */
+    this.lightMesh.visible = nightAmount() > 0.3;
 
     for (let i = 0; i < this.boats.length; i++) {
       const b = this.boats[i];
@@ -796,6 +839,9 @@ export class CityLife {
     this.boatGeo.dispose();
     this.walkerGeo.dispose();
     this.carMesh.dispose();
+    this.lightGeo.dispose();
+    this.lightMat.dispose();
+    this.lightMesh.dispose();
     this.boatMesh.dispose();
     this.walkerMesh.dispose();
   }

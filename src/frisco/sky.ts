@@ -167,10 +167,15 @@ export const TIMES: TimeOfDay[] = [
     hemiIntensity: 0.85, night: 0.72, backdrop: 0x6a5a80,
   },
   {
+    /* The ground half of the hemisphere is warm, not blue, and brighter than
+       the sky preset would suggest. A city at night is lit from below by its
+       own sodium and its own headlights — a physically tidy night sky over
+       physically tidy dark asphalt gives you black canyons with a few bright
+       dots floating in them, which is what a power cut looks like. */
     key: "night", label: "Night",
     sun: [-0.4, 0.5, -0.5], sunColor: 0x9fb4e0, sunIntensity: 0.42,
-    skyLow: 0x2a3556, skyHigh: 0x0d1430, hemiSky: 0x38456e, hemiGround: 0x232a3c,
-    hemiIntensity: 0.5, night: 1, backdrop: 0x121a33,
+    skyLow: 0x2a3556, skyHigh: 0x0d1430, hemiSky: 0x38456e, hemiGround: 0x3a342c,
+    hemiIntensity: 0.74, night: 1, backdrop: 0x121a33,
   },
 ];
 

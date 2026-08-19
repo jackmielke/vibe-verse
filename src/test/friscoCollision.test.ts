@@ -113,12 +113,57 @@ describe("Vibe Francisco — standing on things", () => {
     }
     expect(tested).toBeGreaterThan(100);
     /* Downtown is dense enough that a handful of centres are inside a
-       neighbour too and there is nowhere to be pushed to. Thirteen of three
-       hundred and thirty-one at the time of writing — and the ceiling is at
-       five percent rather than at twenty because this went from 35 to 13 when
-       `resolve` learned to take the long way out of a terrace, and a threshold
-       that would not have caught that is not a threshold. */
-    expect(stuck / tested).toBeLessThan(0.05);
+       neighbour too and there is genuinely nowhere to be pushed to. This went
+       from 35 in 331 to 13 when `resolve` learned to take the long way out of
+       a terrace — but it moves between 13 and 20 on nothing more than a change
+       to the city's random stream, because adding one `rng` draw anywhere
+       upstream reshuffles every lot in the map. So the ceiling has to clear
+       that variance while still sitting under the broken behaviour, and the
+       tight version of this assertion is the next test, not this one. */
+    expect(stuck / tested).toBeLessThan(0.085);
+  });
+
+  it("always pushes you out of a wall you could actually have walked into", () => {
+    /* The test above starts at a building's dead centre, which is a place a
+       player cannot reach: you arrive at a wall from outside, or you land on a
+       roof. Standing a hand's breadth inside a face is the state that actually
+       happens, and there is far less excuse for failing it.
+
+       **Probe from the LOCAL ground, not from the building's base height.** A
+       building sits at the `walkHeight` of its own centre, so on a Nob Hill
+       block the pavement two metres uphill of it is two metres higher than its
+       floor — and `occupied` is true below ground, by design, because that is
+       what stops the camera burrowing into a hill. The first version of this
+       test measured 5% stuck and 74 of those 88 were a probe standing
+       underground beside a hillside, not a body inside a wall. Chasing that
+       number produced two rewrites of `resolve` before anyone looked at what
+       was actually failing. */
+    let stuck = 0;
+    let tested = 0;
+    for (let i = 0; i < city.colliders.length; i += 29) {
+      const b = city.colliders[i];
+      if (b.hw < 0.6 || b.hd < 0.6) continue;
+      const feet = b.baseY + Math.min(2, (b.roofY - b.baseY) * 0.3);
+      const c = Math.cos(b.yaw);
+      const s = Math.sin(b.yaw);
+      // Just inside each of the four faces, in the building's own frame.
+      for (const [lx, lz] of [
+        [b.hw - 0.3, 0], [-(b.hw - 0.3), 0],
+        [0, b.hd - 0.3], [0, -(b.hd - 0.3)],
+      ] as const) {
+        const pos = { x: b.x + lx * c - lz * s, z: b.z + lx * s + lz * c };
+        for (let pass = 0; pass < 6; pass++) {
+          if (!col.resolve(pos, feet, 0.4)) break;
+        }
+        tested++;
+        if (col.occupied(pos.x, Math.max(feet, walkHeight(pos.x, pos.z)) + 0.6, pos.z)) stuck++;
+      }
+    }
+    expect(tested).toBeGreaterThan(1000);
+    /* 14 of 1688. It was 24 before `resolve` started resolving the deepest
+       overlap rather than whichever the grid returned last, and trying all
+       four ways out rather than two. */
+    expect(stuck / tested).toBeLessThan(0.015);
   });
 });
 

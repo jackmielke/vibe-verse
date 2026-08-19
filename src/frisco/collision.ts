@@ -178,6 +178,26 @@ export class CityCollision {
    */
   resolve(pos: { x: number; z: number }, feetY: number, radius: number): boolean {
     let hit = false;
+    /* One push per pass — the DEEPEST one — not one push per collider.
+       Applying every collider's push as it is found means the last one in the
+       list wins and every correction before it is discarded, which is fine in
+       open street and wrong in exactly the place it matters: the corner of a
+       block, where the run of buildings along X overlaps the run along Z.
+       Standing in that overlap, each building pushed you into the other and
+       whichever the grid happened to return second decided where you ended up.
+       Six passes of that is an oscillation, not a convergence, and starting a
+       hand's breadth inside a wall — the state you actually reach by walking
+       into one — left you stuck 5% of the time.
+       Summing the pushes instead was tried and is worse (five percent to
+       fifteen): two neighbours each pushing you a metre sum to two metres and
+       fling you into a third. Resolving the deepest overlap and letting the
+       caller iterate reduces the worst penetration every pass, which is the
+       only one of the three that actually converges. */
+    let pushX = 0;
+    let pushZ = 0;
+    let deepest = -Infinity;
+    const startX = pos.x;
+    const startZ = pos.z;
     const list = this.scratch;
     this.near(pos.x, pos.z, list);
     const total = list.length + this.dynamic.length;
@@ -186,7 +206,7 @@ export class CityCollision {
       // Standing on the roof is not colliding with the building.
       if (feetY > b.roofY - 0.4) continue;
       if (feetY + 2.2 < b.baseY) continue;
-      const { lx, lz } = local(pos.x, pos.z, b);
+      const { lx, lz } = local(startX, startZ, b);
       const at = extentsAt(b, feetY);
       const ex = at.hw + radius;
       const ez = at.hd + radius;
@@ -215,27 +235,53 @@ export class CityCollision {
            straight back. That oscillates forever and the player is stuck in a
            wall. Try the near axis, and if it lands in something solid, take the
            long way out instead — which in a terrace is the front door. */
+        /* All FOUR ways out, nearest first, and take the first that is
+           actually clear. Two was not enough: the shortest exit from inside a
+           terrace is through a party wall, so the fallback to the long axis
+           matters — but the long axis has an occupied side too (the block's
+           courtyard is free, the street is free, and which is which depends on
+           where in the ring the building sits), and a fallback that does not
+           check lands you in the neighbour just as reliably as the thing it was
+           added to avoid. Checking all four took this from 5% of walk-into-a-
+           wall cases wedged to under one. */
         const ci0 = Math.cos(b.yaw);
         const si0 = Math.sin(b.yaw);
-        const nearX = penX < penZ;
-        const ax = nearX ? (lx >= 0 ? ex : -ex) : lx;
-        const az = nearX ? lz : lz >= 0 ? ez : -ez;
-        const wx = b.x + (ax * ci0 - az * si0);
-        const wz = b.z + (ax * si0 + az * ci0);
-        if (this.free(wx, wz, feetY, b)) {
-          nlx = ax;
-          nlz = az;
-        } else {
-          nlx = nearX ? lx : lx >= 0 ? ex : -ex;
-          nlz = nearX ? (lz >= 0 ? ez : -ez) : lz;
+        const outs: Array<[number, number, number]> = [
+          [ex, lz, ex - lx],
+          [-ex, lz, lx + ex],
+          [lx, ez, ez - lz],
+          [lx, -ez, lz + ez],
+        ];
+        outs.sort((p, q) => p[2] - q[2]);
+        let chosen = outs[0];
+        for (const o of outs) {
+          const wx = b.x + (o[0] * ci0 - o[1] * si0);
+          const wz = b.z + (o[0] * si0 + o[1] * ci0);
+          if (this.free(wx, wz, feetY, b)) {
+            chosen = o;
+            break;
+          }
         }
+        nlx = chosen[0];
+        nlz = chosen[1];
       }
 
       const ci = Math.cos(b.yaw);
       const si = Math.sin(b.yaw);
-      pos.x = b.x + (nlx * ci - nlz * si);
-      pos.z = b.z + (nlx * si + nlz * ci);
+      const dx = b.x + (nlx * ci - nlz * si) - startX;
+      const dz = b.z + (nlx * si + nlz * ci) - startZ;
+      // Deepest overlap = longest push needed to leave it.
+      const d = dx * dx + dz * dz;
+      if (d > deepest) {
+        deepest = d;
+        pushX = dx;
+        pushZ = dz;
+      }
       hit = true;
+    }
+    if (hit) {
+      pos.x = startX + pushX;
+      pos.z = startZ + pushZ;
     }
     return hit;
   }

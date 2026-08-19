@@ -787,6 +787,7 @@ function shopFront(
   yaw: number,
   awning: [number, number, number],
   rng: Rng,
+  lanterns = false,
 ): void {
   const cs = Math.cos(yaw);
   const sn = Math.sin(yaw);
@@ -799,9 +800,14 @@ function shopFront(
   const glass = rgb(0x2f3a44);
   const w = faceHalf * 0.82;
 
-  // The glazing, set a hair proud of the wall so it never z-fights it.
+  /* The glazing, set a hair proud of the wall so it never z-fights it — and
+     lit, most of the time. A street of dark shopfronts under lit windows four
+     storeys up is the wrong way round: the flats go dark before the shops do,
+     and it is the shopfronts that make a pavement feel occupied after sunset.
+     One in five is shut. */
+  const lit = rng.chance(0.8) ? 0.55 + rng.next() * 0.3 : 0;
   b.box(x + ox * (depth + 0.04), base + 0.35, z + oz * (depth + 0.04),
-    0.06, 2.9, w, glass, 1, facing);
+    0.06, 2.9, w, glass, 1, facing, lit);
   /* The awning: a slab out over the pavement. Capped at three metres of half
      width rather than running the whole frontage — a forty-metre block got a
      forty-metre awning, and on a Chinatown hill, where the building behind you
@@ -816,6 +822,22 @@ function shopFront(
   if (rng.chance(0.62)) {
     b.box(x + ox * (depth + 0.1), ay + 0.34, z + oz * (depth + 0.1),
       0.1, 0.62, Math.min(w * 0.7, 3.4), shade(awning, 0.82), 1, facing);
+  }
+  /* Paper lanterns, hung under the awning, in Chinatown only. Two boxes and a
+     thread each, and glowing — so by day they are a pair of red dots and after
+     dark they are what the street is lit by, which is the correct order of
+     importance for the one detail that says Grant Avenue rather than "a street
+     with shops on it". */
+  if (lanterns) {
+    const red = rgb(0xd8362e);
+    const gold = rgb(0xe8b44a);
+    for (const e of [-1, 1] as const) {
+      const off = Math.min(aw * 0.72, 2.2) * e;
+      const lx = x + ox * (depth + 0.62) - oz * off;
+      const lz = z + oz * (depth + 0.62) + ox * off;
+      b.box(lx, ay - 0.16, lz, 0.05, 0.16, 0.05, gold, 1, facing);
+      b.box(lx, ay - 0.72, lz, 0.24, 0.56, 0.24, red, 0.75, facing, 0.9);
+    }
   }
 }
 
@@ -1181,7 +1203,11 @@ function fillBlock(
       const frontHalf = side.along === "x" ? hwB : hdB;
       if (h > 7 && frontHalf > 6.5 && rng.chance(0.78)) {
         const awn = rgb(WALLS[district.palette[rng.int(0, district.palette.length - 1)]]);
-        shopFront(buildings, p.x, base, p.z, hwB, hdB, outLocalFront, yaw, shade(awn, 0.85), rng);
+        shopFront(
+          buildings, p.x, base, p.z, hwB, hdB, outLocalFront, yaw,
+          shade(awn, 0.85), rng,
+          district.key === "chinatown" && rng.chance(0.7),
+        );
       } else if (residential && rng.chance(0.66)) {
         /* A garage, not a shop. A twenty-five-foot row house has a car under it
            and a stair up beside it — that is the whole ground floor, and it is

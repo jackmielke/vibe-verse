@@ -118,6 +118,16 @@ of a city. `frisco-shot.mjs` now reads the player back after posing and says so
 if it did not move. Anywhere else `dt` multiplies a rate, ask what it does at
 zero.
 
+**Anything additive is added in linear space and read in sRGB.** The night glow
+is `gl_FragColor.rgb += vGlow * uNight * uLamp`, and the frame is encoded to
+sRGB after. A straight ramp from full at the middle of a lamp's pool of light to
+nothing at its rim therefore arrives as a flat plateau with a hard edge — 0.42
+becomes 0.68 and a third of it becomes 0.42, which the eye reads as very nearly
+the same brightness right up to the boundary. Any falloff written here has to be
+convex to survive the conversion. Also worth knowing: three passes of tuning it
+by eye said "nothing changed" and the pixel values said the rim had gone from 89
+to 34 against an unlit road of 17. Read the pixels.
+
 **`isRoad` is true across every plaza.** The grid is a pure function and does
 not know Union Square is there; the open space is simply drawn on top of it. So
 anything placed on "the road" — parked cars, lane dashes, crossings, traffic —

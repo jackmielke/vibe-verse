@@ -191,6 +191,11 @@ export class Batch {
    * An axis-aligned box, optionally tapered toward the top, with each face a
    * different shade of the same colour.
    *
+   * `glow` rides on every face: additive, scaled by the time of day, so a lit
+   * shop window or a paper lantern is dark at noon and is the only thing you
+   * can see of it at midnight. It costs nothing when it is zero, which it is
+   * for every wall in the city.
+   *
    * The shading is by hand rather than by light, and that is a toy-city trick
    * worth knowing: baking a little face-direction contrast into the vertex
    * colour means a building still reads as a solid object when it is in shadow,
@@ -204,6 +209,7 @@ export class Batch {
     c: [number, number, number],
     taper = 1,
     yaw = 0,
+    glow = 0,
   ): void {
     const y1 = y0 + h;
     const tw = hw * taper;
@@ -221,11 +227,11 @@ export class Batch {
     // North, east, south, west, top. No bottom — nothing in this city is
     // ever seen from below, and a million unseen triangles is a million
     // triangles.
-    this.quad(b1, b0, t0, t1, shade(c, 0.86));
-    this.quad(b2, b1, t1, t2, shade(c, 1.0));
-    this.quad(b3, b2, t2, t3, shade(c, 0.92));
-    this.quad(b0, b3, t3, t0, shade(c, 0.78));
-    this.quad(t0, t3, t2, t1, shade(c, 1.08), [0, 1, 0]);
+    this.quad(b1, b0, t0, t1, shade(c, 0.86), undefined, glow);
+    this.quad(b2, b1, t1, t2, shade(c, 1.0), undefined, glow);
+    this.quad(b3, b2, t2, t3, shade(c, 0.92), undefined, glow);
+    this.quad(b0, b3, t3, t0, shade(c, 0.78), undefined, glow);
+    this.quad(t0, t3, t2, t1, shade(c, 1.08), [0, 1, 0], glow);
   }
 
   /**

@@ -83,6 +83,62 @@ function lamp(b: Batch, x: number, z: number, toRoad: Vec2): void {
   // lamp is drawn as one quad face-up plus the box, and the quad carries it.
   b.box(x + toRoad.x * 2.1, y + 6.75, z + toRoad.z * 2.1, 0.5, 0.2, 0.28, glassy, 1, yaw);
   lampGlow(b, x + toRoad.x * 2.1, y + 6.64, z + toRoad.z * 2.1, yaw);
+  lampPool(b, x + toRoad.x * 2.6, z + toRoad.z * 2.6);
+}
+
+/**
+ * The pool of light a lamp throws on the ground.
+ *
+ * The single biggest thing missing from this city at night, and it was missing
+ * because the lamps were built before there was a night to look at. Nine
+ * thousand lit window courses turn the skyline into San Francisco from the
+ * air; from the pavement the roads stayed a black void with a few bright dots
+ * floating over them, which is what a street looks like in a power cut.
+ *
+ * A fan rather than a quad, with the glow highest in the middle and 0 at the
+ * rim, so it falls off instead of ending in a rectangle. Thirty-six triangles. The
+ * base colour is the asphalt it lies on and the glow is additive and scaled by
+ * the time of day, so by daylight it is not there at all.
+ */
+function lampPool(b: Batch, x: number, z: number): void {
+  const warm = rgb(0x2b2a28);
+  /* Two rings, not one, and the reason is gamma. The glow is added in LINEAR
+     space and the frame is converted to sRGB on the way out, so a straight
+     ramp from full at the middle to nothing at the rim comes out as a flat
+     plateau with a hard edge — 0.42 becomes 0.68 and a third of it becomes
+     0.42, which the eye reads as very nearly the same brightness right up to
+     the boundary. A middle ring at half the radius carrying a third of the
+     value bends the ramp into something convex, which is what a falloff has to
+     be to survive the conversion.
+
+     The value itself went 1.0 → 0.72 → 0.42 across three looks. A ten-metre
+     pool of light at your feet is the right SIZE for a street lamp — real ones
+     throw about that — and at anything above about a half it stops reading as
+     a lamp and starts reading as a stage spotlight lying on the road. The
+     brightness was the problem the whole time; the radius was a red herring. */
+  const R = 5;
+  const SEG = 12;
+  const rings: Array<{ r: number; glow: number }> = [
+    { r: R * 0.46, glow: 0.14 },
+    { r: R, glow: 0 },
+  ];
+  const centre = b.vertex(x, walkHeight(x, z) + 0.11, z, 0, 1, 0, warm, 0.42);
+  const built = rings.map((ring) => {
+    const ids: number[] = [];
+    for (let i = 0; i <= SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      const px = x + Math.cos(a) * ring.r;
+      const pz = z + Math.sin(a) * ring.r;
+      ids.push(b.vertex(px, walkHeight(px, pz) + 0.11, pz, 0, 1, 0, warm, ring.glow));
+    }
+    return ids;
+  });
+  // Anticlockwise in XZ faces down; take it the other way so it faces up.
+  for (let i = 0; i < SEG; i++) b.tri(centre, built[0][i + 1], built[0][i]);
+  for (let i = 0; i < SEG; i++) {
+    b.tri(built[0][i], built[1][i + 1], built[1][i]);
+    b.tri(built[0][i], built[0][i + 1], built[1][i + 1]);
+  }
 }
 
 /** The lit underside of a lamp head — one quad, glowing. */
