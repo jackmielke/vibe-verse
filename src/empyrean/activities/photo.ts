@@ -176,7 +176,7 @@ export function readAlbum(): Album {
  * ---------------------------------------------------------------------- */
 
 export interface PhotoHooks {
-  toast(text: string, tone?: "info" | "good" | "warn"): void;
+  toast(text: string, tone?: "info" | "good" | "warn", ttl?: number): void;
   pay(coins: number): void;
   ended(): void;
   chime(freq: number, dur?: number, gain?: number): void;
@@ -205,7 +205,6 @@ export function buildPhotoHunt(hooks: PhotoHooks): PhotoRunner {
   const frame: PhotoFrame = buildPhotoFrame();
   group.add(pillar.object, frame.object);
 
-  const lines: string[] = ["", "", ""];
   const at = new THREE.Vector3();
   const look = new THREE.Vector3();
   const want = new THREE.Vector3();
@@ -339,19 +338,34 @@ export function buildPhotoHunt(hooks: PhotoHooks): PhotoRunner {
 
     view() {
       if (!active) return null;
-      if (!target) return null;
-      lines[0] = target.hint;
-      lines[1] =
-        dist > target.near
-          ? `${formatDist(dist)} away`
-          : aimed >= Math.cos(target.arc * DEG)
-            ? "Hold it…"
-            : "You are on the spot — now find the angle";
-      lines[2] = `${SHOTS.length - remaining()} of ${SHOTS.length} in the album`;
+      const done = SHOTS.length - remaining();
+      if (!target) {
+        /* The first frame after starting, and the frame after a capture: the
+         * hunt is live but has not chosen its next subject yet. Returning null
+         * here would blink the whole panel out of the HUD and back in. */
+        return {
+          title: "Photo hunt",
+          lines: [
+            "Looking for the nearest viewpoint…",
+            "",
+            `${done} of ${SHOTS.length} in the album`,
+          ],
+          progress: done / SHOTS.length,
+        };
+      }
       return {
         title: `Photo hunt · ${target.title}`,
-        lines,
-        progress: clamp((SHOTS.length - remaining()) / SHOTS.length, 0, 1),
+        // Fresh, not rewritten in place — see the note in `races.ts`.
+        lines: [
+          target.hint,
+          dist > target.near
+            ? `${formatDist(dist)} away`
+            : aimed >= Math.cos(target.arc * DEG)
+              ? "Hold it…"
+              : "You are on the spot — now find the angle",
+          `${done} of ${SHOTS.length} in the album`,
+        ],
+        progress: clamp(done / SHOTS.length, 0, 1),
       };
     },
 

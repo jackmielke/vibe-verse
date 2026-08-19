@@ -104,6 +104,8 @@ export interface InteriorInfo {
   /** Interior half-extents in the room's own frame: hx across, hz front-to-back. */
   hx: number;
   hz: number;
+  /** True for a room whose plan is a circle of radius `hx`, not a rectangle. */
+  round?: boolean;
   /** Ceiling, or the crown of the vault. */
   height: number;
   /** Clear width of the opening, metres. */
@@ -1012,8 +1014,14 @@ function buildMarketHall(b: Rb): void {
     const a = (i / 12) * TAU;
     b.box(0.09, 0.22, 0.06, Math.sin(a) * 0.92, 9.6 + Math.cos(a) * 0.92, -hz + 0.48, { col: P.iron });
   }
-  b.box(0.07, 0.8, 0.06, 0.16, 9.98, -hz + 0.5, { col: P.iron }, 0.5);
-  b.box(0.07, 1.05, 0.06, -0.28, 9.4, -hz + 0.5, { col: P.iron }, -1.1);
+  for (const [len, ang] of [[0.8, 0.5] as const, [1.05, -1.1] as const]) {
+    // About Z, not Y: a hand turned about the vertical vanishes into the face.
+    const g = new THREE.BoxGeometry(0.07, len, 0.06);
+    g.translate(0, len / 2, 0);
+    g.rotateZ(ang);
+    g.translate(0, 9.6, -hz + 0.5);
+    b.add(g, { col: P.iron });
+  }
 
   /* ---- front: the portal ---- */
   wallWithOpening(b, {
@@ -1232,7 +1240,7 @@ function buildStall(b: Rb, x: number, z: number, idx: number): void {
  * 2. The café
  * ---------------------------------------------------------------------- */
 
-const CAFE = { hx: 4.2, hz: 5.2, ceil: 3.5, openW: 3.6, openH: 2.6 };
+const CAFE = { hx: 4.8, hz: 5.2, ceil: 3.5, openW: 4.2, openH: 2.7 };
 
 function buildCafe(b: Rb): void {
   const { hx, hz, ceil, openW, openH } = CAFE;
@@ -1260,7 +1268,7 @@ function buildCafe(b: Rb): void {
   wallZ(b, -hx, -hz, hz, 0.3, ceil, wallSkin);
   wallZ(b, hx, -hz, hz, 0.3, ceil, wallSkin);
 
-  /* ---- the shopfront: a door and a big window onto the street ---- */
+  /* ---- the shopfront: a door in the middle, glass either side ---- */
   wallWithOpening(b, {
     z: hz,
     x0: -hx,
@@ -1269,31 +1277,41 @@ function buildCafe(b: Rb): void {
     top: ceil,
     openW,
     openH,
-    openX: 1.0,
     skin: wallSkin,
   });
-  // The window fills the rest of the frontage: sill, glass, transom.
-  const winX0 = -hx + 0.35;
-  const winX1 = 1.0 - openW / 2 - 0.25;
-  const winW = winX1 - winX0;
-  b.box(winW, 0.9, 0.34, (winX0 + winX1) / 2, 0.45, hz, { col: 0x4a3730 });
-  b.blocker((winX0 + winX1) / 2, hz, winW / 2, 0.2, 0, ceil);
-  b.box(winW, 1.5, 0.08, (winX0 + winX1) / 2, 1.7, hz, {
-    col: P.glassCool,
-    col2: P.glassWarm,
-    mix: (x) => THREE.MathUtils.clamp((x - winX0) / winW, 0, 1),
-    emit: 0.3,
-    sky: 0.35,
-  });
-  for (let i = 1; i < 3; i++) {
-    b.box(0.09, 1.6, 0.14, winX0 + (winW * i) / 3, 1.7, hz, { col: 0x4a3730 });
-  }
-  b.box(winW + 0.3, 0.16, 0.4, (winX0 + winX1) / 2, 2.55, hz, { col: 0x4a3730 });
-  // Lettering on the glass, as three warm bars. Legible as "there is a word here".
-  for (let i = 0; i < 3; i++) {
-    const g = new THREE.PlaneGeometry(winW * 0.19, 0.12);
-    g.translate(winX0 + winW * (0.22 + i * 0.24), 2.15, hz - 0.06);
-    b.lit(g, { col: 0xffd9a0, power: 1.1 });
+  /* Both windows, and the door dead centre between them.
+   *
+   * Off-centre reads better in a drawing and is wrong here: the door is the
+   * only part of this room a body can pass through, and putting it anywhere
+   * but on the axis you walk in along means the first thing the room does is
+   * catch your shoulder on a jamb. */
+  for (const side of [-1, 1]) {
+    const winX0 = side < 0 ? -hx + 0.35 : openW / 2 + 0.25;
+    const winX1 = side < 0 ? -openW / 2 - 0.25 : hx - 0.35;
+    const winW = winX1 - winX0;
+    const winC = (winX0 + winX1) / 2;
+    b.box(winW, 0.9, 0.34, winC, 0.45, hz, { col: 0x4a3730 });
+    b.blocker(winC, hz, winW / 2, 0.2, 0, ceil);
+    b.box(winW, 1.5, 0.08, winC, 1.7, hz, {
+      col: P.glassCool,
+      col2: P.glassWarm,
+      mix: (x) => THREE.MathUtils.clamp((x - winX0) / winW, 0, 1),
+      emit: 0.3,
+      sky: 0.35,
+    });
+    for (let i = 1; i < 3; i++) {
+      b.box(0.09, 1.6, 0.14, winX0 + (winW * i) / 3, 1.7, hz, { col: 0x4a3730 });
+    }
+    b.box(winW + 0.3, 0.16, 0.4, winC, 2.55, hz, { col: 0x4a3730 });
+    if (side < 0) {
+      // Lettering on the glass: three warm bars, which at this distance is
+      // exactly as legible as a name would be, and needs no font.
+      for (let i = 0; i < 3; i++) {
+        const g = new THREE.PlaneGeometry(winW * 0.19, 0.12);
+        g.translate(winX0 + winW * (0.22 + i * 0.24), 2.15, hz - 0.06);
+        b.lit(g, { col: 0xffd9a0, power: 1.1 });
+      }
+    }
   }
 
   /* ---- the counter, along the left wall ---- */
@@ -1340,7 +1358,7 @@ function buildCafe(b: Rb): void {
   const tables: Array<[number, number]> = [
     [2.2, -3.2],
     [2.2, 0.2],
-    [-0.6, 2.9],
+    [-2.4, 3.1],
     [2.5, 3.1],
   ];
   tables.forEach(([tx, tz], i) => {
@@ -1370,13 +1388,13 @@ function buildCafe(b: Rb): void {
     b.lamp(lx, ceil - 1.32, lz, P.bulb, 1.5, 7.5, lz > 0 ? 3 : 2.2);
   }
   // A plant in the window, because somebody lives here.
-  b.box(0.34, 0.3, 0.34, -3.2, 0.15 + 0.9, hz - 0.55, { col: 0x9a5b45 });
+  b.box(0.34, 0.3, 0.34, 3.4, 0.15 + 0.9, hz - 0.55, { col: 0x9a5b45 });
   for (let i = 0; i < 7; i++) {
     const a = (i / 7) * TAU;
     const g = new THREE.BoxGeometry(0.07, 0.5, 0.16);
     g.rotateZ(Math.cos(a) * 0.5);
     g.rotateX(Math.sin(a) * 0.5);
-    g.translate(-3.2 + Math.cos(a) * 0.1, 1.5, hz - 0.55 + Math.sin(a) * 0.1);
+    g.translate(3.4 + Math.cos(a) * 0.1, 1.5, hz - 0.55 + Math.sin(a) * 0.1);
     b.add(g, { col: P.green, col2: 0x3d6b34, mix: () => (i % 2) * 0.6 });
   }
 
@@ -1392,7 +1410,7 @@ function buildCafe(b: Rb): void {
   });
   b.hit({
     id: "cafe-window",
-    x: (winX0 + winX1) / 2,
+    x: -3.3,
     y: 1.3,
     z: hz - 0.9,
     radius: 2.2,
@@ -1408,7 +1426,7 @@ function buildCafe(b: Rb): void {
  * 3. The Observatory
  * ---------------------------------------------------------------------- */
 
-const OBS = { r: 13.5, wall: 6.4, crown: 15.9, openW: 4.5, openH: 3.6, mezz: 4.2 };
+const OBS = { r: 13.5, wall: 6.4, crown: 15.9, openW: 5.4, openH: 3.8, mezz: 4.2 };
 
 function buildObservatory(b: Rb, slotAz: number): void {
   const { r, wall, crown, openW, openH, mezz } = OBS;
@@ -1461,28 +1479,22 @@ function buildObservatory(b: Rb, slotAz: number): void {
     }
     pushRingPanel(b, a0, a1, r, y0, y1, 0.45, slot);
     if (slot) pushRingSill(b, a0, a1, r, y0);
-    if (!slot) {
-      b.blocker(
-        (Math.cos(a0) + Math.cos(a1)) * 0.5 * (r + 0.2),
-        (Math.sin(a0) + Math.sin(a1)) * 0.5 * (r + 0.2),
-        Math.abs(Math.cos(am)) * 0.3 + Math.abs(Math.sin(am)) * 1.4,
-        Math.abs(Math.sin(am)) * 0.3 + Math.abs(Math.cos(am)) * 1.4,
-        0,
-        wall,
-      );
-    } else {
-      b.blocker(
-        Math.cos(am) * (r + 0.2), Math.sin(am) * (r + 0.2),
-        Math.abs(Math.cos(am)) * 0.3 + Math.abs(Math.sin(am)) * 1.4,
-        Math.abs(Math.sin(am)) * 0.3 + Math.abs(Math.cos(am)) * 1.4,
-        0, 1.2,
-      );
-    }
+    // The panel as it really is — a chord, thick radially, turned to face the
+    // middle — and the world AABB comes out of the same code every other
+    // blocker in this file goes through.
+    const chord = r * Math.sin((a1 - a0) / 2) + 0.1;
+    b.blocker(
+      Math.cos(am) * (r + 0.22), Math.sin(am) * (r + 0.22),
+      chord, 0.32, 0, slot ? 1.2 : wall, Math.PI / 2 - am,
+    );
   }
   // Door jambs and a lintel beam, so the opening reads as built rather than missing.
   for (const s of [-1, 1]) {
     const a = Math.PI / 2 + s * openHalf;
-    b.box(0.5, wall, 0.9, Math.cos(a) * (r - 0.1), wall / 2, Math.sin(a) * (r - 0.1), { col: P.pier }, -a);
+    const jx = Math.cos(a) * (r - 0.1);
+    const jz = Math.sin(a) * (r - 0.1);
+    b.box(0.5, wall, 0.9, jx, wall / 2, jz, { col: P.pier }, Math.PI / 2 - a);
+    b.blocker(jx, jz, 0.25, 0.45, 0, wall, Math.PI / 2 - a);
   }
 
   /* ---- the dome ---- */
@@ -1816,8 +1828,10 @@ function buildStation(b: Rb): void {
   }
 
   /* ---- the canopy ---- */
-  for (let i = -3; i <= 3; i++) {
-    const x = (i * (hx - 1)) / 3;
+  /* Six columns, at half-steps: no column on the centre line, because the
+     centre line is the ramp and the way in. */
+  for (let i = -2.5; i <= 2.5; i++) {
+    const x = (i * (hx - 1)) / 2.7;
     b.box(0.34, canopy - deckY, 0.34, x, deckY + (canopy - deckY) / 2, -hz + 1.6, { col: P.iron });
     b.blocker(x, -hz + 1.6, 0.2, 0.2, deckY, canopy);
     b.box(0.34, canopy - deckY, 0.34, x, deckY + (canopy - deckY) / 2, hz - 2.2, { col: P.iron });
@@ -1840,8 +1854,8 @@ function buildStation(b: Rb): void {
   soffit.rotateX(Math.PI / 2);
   soffit.translate(0, canopy - 0.16, -0.1);
   b.lit(soffit, { col: 0xffbe86, power: 0.55, flick: 0.15 });
-  for (let i = -3; i <= 3; i++) {
-    const x = (i * (hx - 1)) / 3;
+  for (let i = -2.5; i <= 2.5; i++) {
+    const x = (i * (hx - 1)) / 2.7;
     b.box(0.14, 0.14, hz * 2 - 2.2, x, canopy - 0.08, -0.1, { col: P.ironLight });
   }
 
@@ -1978,7 +1992,7 @@ function tagBoard(g: THREE.BufferGeometry, seg: number, digit: number, col: numb
  * 5. The Lantern Gallery
  * ---------------------------------------------------------------------- */
 
-const GALLERY = { hx: 5.4, hz: 6.6, ceil: 4.4, openW: 3.6, openH: 2.8 };
+const GALLERY = { hx: 5.4, hz: 6.6, ceil: 4.4, openW: 4.2, openH: 2.9 };
 
 function buildGallery(b: Rb): void {
   const { hx, hz, ceil, openW, openH } = GALLERY;
@@ -2038,9 +2052,13 @@ function buildGallery(b: Rb): void {
     b.lamp(px + Math.sin(ry) * 0.9, 3.0, pz + Math.cos(ry) * 0.9, 0xffd0a0, 0.55, 5.5, i === 5 ? 1.4 : 0.5);
   });
 
-  // A bench in the middle, and a rope on two posts because it is that kind of room.
-  b.inst("bench", benchGeo, trs(0, 0, 0.6, Math.PI / 2));
-  b.blocker(0, 0.6, 0.35, 0.95, 0, 0.75);
+  /* A bench, set back off the way in.
+   *
+   * The obvious place for it is the middle of the room and the middle of the
+   * room is the line you walk along, so the first thing the gallery would do
+   * is trip you. It faces the big picture instead. */
+  b.inst("bench", benchGeo, trs(0, 0, -2.4, Math.PI));
+  b.blocker(0, -2.4, 0.95, 0.35, 0, 0.75);
   for (const px of [-2.2, 2.2]) {
     b.box(0.1, 0.9, 0.1, px, 0.45, -hz + 1.4, { col: P.brass });
   }
@@ -2090,6 +2108,7 @@ interface Placement {
   hz: number;
   height: number;
   openW: number;
+  round?: boolean;
   landmark?: string;
   lot?: string;
   build: (b: Rb) => void;
@@ -2176,6 +2195,7 @@ function placements(): Placement[] {
       hz: OBS.r,
       height: OBS.crown,
       openW: OBS.openW,
+      round: true,
       landmark: obs.id,
       build: (b) => buildObservatory(b, slotAz),
     },
@@ -2224,6 +2244,7 @@ export function interiorPlan(): InteriorInfo[] {
     yaw: p.yaw,
     hx: p.hx,
     hz: p.hz,
+    round: p.round,
     height: p.height,
     openWidth: p.openW,
     doorstep: {
@@ -2469,7 +2490,11 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
       // Inverse of `toWorld`: the rotation is orthonormal, so it is a transpose.
       const lx = dx * s - dz * c;
       const lz = dx * c + dz * s;
-      if (Math.abs(lx) > r.info.hx || Math.abs(lz) > r.info.hz) continue;
+      if (r.info.round) {
+        if (lx * lx + lz * lz > r.info.hx * r.info.hx) continue;
+      } else if (Math.abs(lx) > r.info.hx || Math.abs(lz) > r.info.hz) {
+        continue;
+      }
       const ly = y - r.info.y;
       if (ly < -1.5 || ly > r.info.height + 1.5) continue;
       return r.info.id;

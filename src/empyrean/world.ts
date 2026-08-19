@@ -62,7 +62,8 @@ import { buildCrowd } from "./crowd";
 import { buildTraffic } from "./traffic";
 import { buildInteriors } from "./interiors";
 import { buildActivities } from "./activities";
-import { buildLighting } from "./lighting";
+import { buildWeather, type Condition } from "./weather";
+import { buildLighting, setShadowFlags } from "./lighting";
 import { buildPostFx } from "./postfx";
 import { buildAudio, type AudioHandle } from "./audio";
 import { buildPlume } from "./plume";
@@ -163,6 +164,13 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   // the only thing in this world that tone maps, and it does it exactly once.
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.setClearColor(0x150c22, 1);
+  /* Count the whole frame, not the last pass of it.
+   *
+   * `renderer.info.render` resets on every `render()` call, and the post chain
+   * ends with a single full-screen quad — so anything reading the counters
+   * afterwards is told the world costs one draw call and no triangles, which
+   * is a very reassuring number and completely false. */
+  renderer.info.autoReset = false;
   renderer.shadowMap.enabled = !low;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
@@ -215,6 +223,21 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const crowd = add(buildCrowd(build));
   const traffic = add(buildTraffic(build));
   const activities = add(buildActivities(build));
+  const weather = add(buildWeather(build));
+  // A world that opens in whatever weather the clock happened to land on is a
+  // world whose card art is a different picture every time it is captured.
+  if (shotMode) weather.force("high-cloud");
+
+  /* Who casts.
+   *
+   * Marked before the mirror is cloned, so the clone inherits the flags and
+   * can then have them stripped — the mirror is scaled -1 on Y, its winding is
+   * reversed, and a shadow cast by an upside-down island lands in the sky.
+   * Nothing cast at all until this was added, which is the sort of thing that
+   * looks like "the lighting is a bit flat" rather than like a bug. */
+  setShadowFlags(reflected, true);
+  setShadowFlags(detail, true);
+  setShadowFlags(terrain.group, true);
 
   /* The reflection: a real clone of the silhouette, mirrored through the
    * water plane. Shares every geometry and material, so it costs draws and
@@ -223,6 +246,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   terrain.mirror.add(mirrorClone);
   const snow = terrain.group.getObjectByName("empyrean-snow") as THREE.Mesh | null;
   if (snow) terrain.mirror.add(snow.clone());
+  setShadowFlags(terrain.mirror, false);
 
   /* ---- collision ------------------------------------------------------- */
   const blockers: Blocker[] = [
@@ -232,6 +256,9 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   ];
   const decks: Deck[] = [...buildings.decks, ...interiors.decks];
   const collision = buildCollision(blockers, decks);
+
+  // Interiors raise toasts of their own — a departure board, a guest book.
+  interiors.onToast = (text, tone) => pushToast(text, tone ?? "info");
 
   /* ---- the body -------------------------------------------------------- */
   const BODY_H = 1.8;
@@ -255,7 +282,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     height: BODY_H,
     fitBy: "height",
     center: true,
-    castShadow: !low,
+    castShadow: true,
     walkSpeed: RUN_SPEED * 0.5,
   })
     .then((r) => {
@@ -273,11 +300,28 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const flyer: FlyerState = makeFlyer(SPAWN);
   const rigCam = new CameraRig(SPAWN.yaw);
 
+  /* ---- notifications ---- */
+  const toasts: Toast[] = [];
+  let toastId = 1;
+  const pushToast = (text: string, tone: Toast["tone"] = "info") => {
+    toasts.push({ id: toastId++, text, ttl: 4, tone });
+    while (toasts.length > 4) toasts.shift();
+  };
+
   /* ---- input ----------------------------------------------------------- */
   const keys = new Set<string>();
   const stick: EmpyreanStick = { x: 0, y: 0, jet: false, boost: false };
   let wantInteract = false;
   let prevJet = false;
+  /**
+   * Debug only: hold the body exactly where it was put.
+   *
+   * Without it there is no way to photograph the world from the air. `warp`
+   * sets a position and gravity spends the next six seconds undoing it, so
+   * every "three hundred metres up" viewpoint in the capture harness was
+   * actually a picture of the pavement the player landed on.
+   */
+  let frozen = false;
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.repeat) {
@@ -387,22 +431,18 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   let disposed = false;
   let hudTimer = 0;
   let mapTimer = 0;
-  const toasts: Toast[] = [];
-  let toastId = 1;
   let nearest: Interactable | null = null;
   const marks: MapMark[] = [];
   const packPos = new THREE.Vector3();
 
-  const pushToast = (text: string, tone: Toast["tone"] = "info") => {
-    toasts.push({ id: toastId++, text, ttl: 4, tone });
-    while (toasts.length > 4) toasts.shift();
-  };
+
 
   const tick = () => {
     if (disposed) return;
     raf = requestAnimationFrame(tick);
     const dt = Math.min(clock.getDelta(), 0.05);
     const time = clock.elapsedTime;
+    renderer.info.reset();
 
     /* ---- clock ---- */
     ctx.time = time;
@@ -413,10 +453,15 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     sunDirFor(ctx.dayPhase, ctx.sunDir);
     sky.setDayPhase(ctx.dayPhase);
     lighting.setDayPhase(ctx.dayPhase);
-    fog.color.copy(pal.fog);
-    // Thicker at night: it is the only thing that keeps the far ranges from
-    // becoming a black band under a bright sky.
-    fog.density = THREE.MathUtils.lerp(0.00016, 0.00009, pal.daylight);
+    /* Fog and grade both come from the lighting rig rather than from the sky
+     * palette directly. Two daylights exist and confusing them is a trap the
+     * rig's own docs flag: `pal.daylight` is 0.32 at sunset, which is right
+     * for deciding when a lamp comes on and ruinous as an exposure control.
+     * `gradeDaylight` is the one the image wants. */
+    fog.color.copy(lighting.look.fogColor);
+    postfx.setSunDirection(lighting.sunDir);
+    postfx.setDaylight(lighting.look.gradeDaylight);
+    postfx.setExposure(lighting.exposure);
 
     if (shotMode) {
       /* The card composition, exactly: island centred and a little above the
@@ -445,7 +490,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       if (jet && !prevJet && flyer.grounded) jump(flyer);
       prevJet = jet;
 
-      stepFlyer(
+      if (frozen) {
+        flyer.velocity.set(0, 0, 0);
+        flyer.grounded = false;
+        flyer.burn = 0;
+      } else stepFlyer(
         flyer,
         {
           forward: f,
@@ -463,8 +512,10 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
         dt,
       );
 
-      if (flyer.landed > 6) audio?.event("land", Math.min(1, flyer.landed / 30));
-      if (flyer.stepped > 0.05) audio?.event("ui", 0.2);
+      // Landing only. Footsteps, scuffs and the jet's ignition and tail are
+      // all detected inside the audio module from the player's own motion, so
+      // firing a step event here would double every footfall.
+      if (flyer.landed > 6) audio?.event("land", Math.min(1, flyer.landed / 22));
 
       body.position.copy(flyer.position);
       body.rotation.set(0, flyer.yaw, 0);
@@ -485,6 +536,12 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     terrain.update(time, camera);
     lighting.shadowsFor(camera, flyer.position);
     for (let i = 0; i < systems.length; i++) systems[i].update?.(ctx);
+
+    /* Fog density is set after the systems, not before, because the weather's
+     * contribution depends on where the camera is *this* frame — mist fills
+     * the lake basin and has to be gone by the time you climb back onto the
+     * deck, or flying down into it also fogs the Bazaar. */
+    fog.density = lighting.look.fogDensity + weather.fogBoost;
 
     // The pack sits between the shoulder blades, in body space.
     packPos.set(0, 1.1, -0.24).applyEuler(body.rotation).add(body.position);
@@ -577,18 +634,41 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const debug = {
     character: () => charId,
     warp: (x: number, y: number, z: number) => {
+      activities.abort();
       flyer.position.set(x, y, z);
       flyer.velocity.set(0, 0, 0);
       rigCam.reset(flyer.yaw);
+    },
+    freeze: (on: boolean) => {
+      frozen = on;
     },
     look: (yaw: number, pitch: number) => {
       rigCam.yaw = yaw;
       rigCam.pitch = pitch;
     },
-    zoom: (d: number) => rigCam.zoom(d),
+    dist: (d: number) => {
+      rigCam.dist = d;
+      rigCam.mode = d <= 2.3 ? "first" : "third";
+    },
     day: (p: number) => {
       ctx.dayPhase = p;
     },
+    weather: (c: Condition | null) => weather.force(c),
+    /**
+     * Toggle one system's group, by name.
+     *
+     * The fastest way to find out which of a dozen overlapping systems is the
+     * one covering the screen. Bisecting by commenting out `add()` calls means
+     * a rebuild and a reload per guess; this is one line in a harness.
+     */
+    hide: (name: string, on = false) => {
+      for (const s of systems) if (s.name === name) s.group.visible = on;
+      if (name === "sky") sky.mesh.visible = on;
+      if (name === "terrain") terrain.group.visible = on;
+      if (name === "body") body.visible = on;
+    },
+    names: () => systems.map((s) => s.name),
+    room: () => interiors.inside(flyer.position.x, flyer.position.y, flyer.position.z),
     counts: () => ({
       systems: systems.length,
       ...collision.counts,

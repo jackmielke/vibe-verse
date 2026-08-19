@@ -172,12 +172,24 @@ export function tierMultiplier(drops: number): number {
   return 1 + 0.15 * Math.max(0, drops - 2);
 }
 
+/**
+ * The seed a given run gets.
+ *
+ * Exported because it is the only way anything outside this module can know
+ * which doors a run chose — `src/test/empyreanActivities.test.ts` rebuilds the
+ * chain with it and flies the run. Widening the runner's API instead would
+ * have put a test-only accessor in front of every caller.
+ */
+export function chainSeed(dispatch: string, runIndex: number): string {
+  return `empyrean-courier-${dispatch}-${runIndex}`;
+}
+
 /* -------------------------------------------------------------------------
  * The runner
  * ---------------------------------------------------------------------- */
 
 export interface CourierHooks {
-  toast(text: string, tone?: "info" | "good" | "warn"): void;
+  toast(text: string, tone?: "info" | "good" | "warn", ttl?: number): void;
   pay(coins: number): void;
   ended(): void;
   chime(freq: number, dur?: number, gain?: number): void;
@@ -228,7 +240,6 @@ export function buildCourier(hooks: CourierHooks): CourierRunner {
 
   group.add(pillar.object, mark, disc, parcel);
 
-  const lines: string[] = ["", "", ""];
   let chain: Stop[] = [];
   let at = 0;
   let carrying = false;
@@ -244,6 +255,7 @@ export function buildCourier(hooks: CourierHooks): CourierRunner {
   let now = 0;
   let wasGrounded = true;
   let prevVy = 0;
+  let toTarget = 0;
 
   function aim(): void {
     if (at >= chain.length) return;
@@ -269,7 +281,7 @@ export function buildCourier(hooks: CourierHooks): CourierRunner {
 
     start(dispatch, time) {
       drops = clamp(2 + sessionRuns, 2, 5);
-      chain = buildChain(`empyrean-courier-${dispatch.name}-${record.runs + sessionRuns}`, drops, dispatch);
+      chain = buildChain(chainSeed(dispatch.name, record.runs + sessionRuns), drops, dispatch);
       if (chain.length < 2) return false;
       at = 0;
       carrying = false;
@@ -345,6 +357,7 @@ export function buildCourier(hooks: CourierHooks): CourierRunner {
       const dx = p.x - target.x;
       const dz = p.z - target.z;
       const flat = Math.hypot(dx, dz);
+      toTarget = flat;
       const near = flat < REACH && Math.abs(p.y - ISLAND_Y) < REACH_Y;
       if (!near) return;
 
@@ -396,15 +409,17 @@ export function buildCourier(hooks: CourierHooks): CourierRunner {
       if (!active) return null;
       const target = chain[at];
       if (!target) return null;
-      lines[0] = carrying ? `Deliver to ${target.label}` : `Collect at ${target.label}`;
       const left = target.allowance - (now - legStart);
-      lines[1] = `${formatDist(target.dist || 0)} leg · ${
-        left > 0 ? `${formatTime(left)} for full rate` : "over — still paying"
-      }`;
-      lines[2] = `${Math.max(0, at - 1)} of ${drops} delivered · ${earnedThisRun} ✦ so far`;
       return {
         title: carrying ? `Carrying ${good}` : "Courier run",
-        lines,
+        // Fresh, not rewritten in place — see the note in `races.ts`.
+        lines: [
+          carrying ? `Deliver to ${target.label}` : `Collect at ${target.label}`,
+          `${formatDist(toTarget)} to go · ${
+            left > 0 ? `${formatTime(left)} for full rate` : "over — still paying"
+          }`,
+          `${Math.max(0, at - 1)} of ${drops} delivered · ${earnedThisRun} ✦ so far`,
+        ],
         progress: clamp((at - 1) / drops, 0, 1),
       };
     },

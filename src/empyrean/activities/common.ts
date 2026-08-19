@@ -26,7 +26,7 @@
 import * as THREE from "three";
 import type { Toast } from "../types";
 import { DECKS, ISLAND_Y, KEEL_DEPTH, PLATEAU_R } from "../config";
-import { cityPlan, LANDMARKS, type Lot, type Vec2 } from "../cityplan";
+import { cityPlan, surfaceAt, LANDMARKS, type Lot, type Vec2 } from "../cityplan";
 
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
@@ -106,16 +106,20 @@ export class Toaster {
     this.queue.push({ id: this.nextId++, text, ttl, tone });
   }
 
+  /**
+   * Hand the queue over and start a new one.
+   *
+   * A *fresh* array every time, including when it is empty. Returning one
+   * shared empty array would be cheaper and is a trap: the engine owns what it
+   * is given and counts TTLs down in it, so a shared array would come back on
+   * the next drain with the last frame's toasts still in it.
+   */
   drain(): Toast[] {
-    if (!this.queue.length) return EMPTY_TOASTS;
     const out = this.queue;
     this.queue = [];
     return out;
   }
 }
-
-/** Returned when there is nothing to drain, so the common case allocates nothing. */
-const EMPTY_TOASTS: Toast[] = [];
 
 /* -------------------------------------------------------------------------
  * Where the buildings are
@@ -182,26 +186,36 @@ export function buildingBlocked(x: number, z: number, y: number, margin = 0): bo
 /**
  * The landmarks, as cylinders.
  *
- * `Landmark.clear` is a footprint radius and the plan does not carry heights,
- * so the heights are here, generous, and only ever used to keep a ring or a
- * find *out* of one. The Beacon is the one that matters: five hundred metres
- * of lit glass on the axis, which is exactly where a lazy course would put its
- * finish line.
+ * `Landmark.clear` is the footprint the *plan* keeps clear so nothing else is
+ * built there, and it is bigger than the thing itself — the Launch Terrace
+ * holds 28 m of painted apron around a 5 m control tower. Using it as an
+ * obstacle would forbid a race from starting over its own start line.
+ *
+ * So this is the structure rather than its clearance: measured off the
+ * landmark builders and rounded generously outward. It exists to keep a gate,
+ * a viewpoint or a collectible out of a building, and for nothing else.
  */
-const LANDMARK_H: Record<string, number> = {
-  beacon: 560,
-  observatory: 44,
-  "market-hall": 34,
-  launch: 10,
-  tram: 14,
-  fountain: 12,
+const LANDMARK_BODY: Record<string, { r: number; h: number }> = {
+  // 24 m of basalt base, a shaft tapering to a mast, a light at 500 m.
+  beacon: { r: 26, h: 505 },
+  // A 16.5 m podium under a dome, and the telescope through the top of it.
+  observatory: { r: 19, h: 38 },
+  // 58 by 30 of iron and glass, so 33 m from the middle at the corners.
+  "market-hall": { r: 33, h: 16 },
+  // The control tower on the terrace. The apron around it is walkable, and a
+  // race that could not start over its own start line would be a poor joke.
+  launch: { r: 7, h: 15 },
+  // A platform and a canopy.
+  tram: { r: 14, h: 9 },
+  // A basin and a spout.
+  fountain: { r: 10, h: 6 },
 };
 
 export function landmarkBlocked(x: number, z: number, y: number, margin = 0): boolean {
   for (const l of LANDMARKS) {
-    const h = LANDMARK_H[l.kind] ?? 20;
-    if (y < l.y - margin || y > l.y + h + margin) continue;
-    if (Math.hypot(x - l.x, z - l.z) < l.clear + margin) return true;
+    const body = LANDMARK_BODY[l.kind] ?? { r: l.clear, h: 20 };
+    if (y < l.y - margin || y > l.y + body.h + margin) continue;
+    if (Math.hypot(x - l.x, z - l.z) < body.r + margin) return true;
   }
   return false;
 }
@@ -270,8 +284,19 @@ export const KEEL_FRINGE_OUTER = SPIKE_R1 + SPIKE_FAT + 4;
 export function keelBlocked(x: number, z: number, y: number): boolean {
   if (y > ISLAND_Y + 2) return false;
   const r = Math.hypot(x, z);
-  // The decks themselves, and the fascias holding them up.
-  if (y > KEEL_TOP) return r <= DECKS[DECKS.length - 1].outer + 3;
+  /* The decks, and the terrace fascias holding them up.
+   *
+   * Solid *below* the surface you stand on and open above it — which is the
+   * whole difference between "standing on the second promenade" and "inside
+   * the second promenade", and the reason this asks `surfaceAt` rather than
+   * treating everything inside r = 400 as rock. The gaps between the rings are
+   * the faces of the steps, and those are solid all the way up to the deck. */
+  if (y > KEEL_TOP) {
+    if (r > DECKS[DECKS.length - 1].outer + 3) return false;
+    const s = surfaceAt(x, z);
+    const top = s.kind === "void" ? ISLAND_Y : s.y;
+    return y < top - 0.6;
+  }
   if (y < 8) return false;
   if (y >= KEEL_TIP && r <= keelRockRadius(y)) return true;
   // The one enormous spike down the axis: 40 m of radius, y 30 to 360.

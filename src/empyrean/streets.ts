@@ -999,7 +999,24 @@ function shaderDefines(): string {
 `;
 }
 
+/**
+ * The one place this file is not self-contained: three's shadow chunks.
+ *
+ * A raw `ShaderMaterial` computes its own light and therefore receives no
+ * shadows at all, and the ground is the single worst surface in the world to
+ * have that be true of — `lighting.ts` exists to put "the shadow of a bench, a
+ * lamp post, a parapet, a market stall" somewhere, and *here* is where they
+ * land. So the standard chunks are grafted on and the direct sun term is
+ * multiplied by `getShadowMask()`, which is exactly what a `MeshStandardMaterial`
+ * does. The cost is `lights: true` and the `UniformsLib.lights` merge below;
+ * without both of those the program links and every shadow uniform is garbage.
+ *
+ * Everything else — ambient, the specular streak, all of the albedo — stays
+ * hand-written, because none of it is anything three's lighting model does.
+ */
 const VERT = /* glsl */ `
+#include <common>
+#include <shadowmap_pars_vertex>
 attribute float aKind;
 attribute float aH;
 varying vec3 vWPos;
@@ -1009,15 +1026,30 @@ varying float vH;
 void main() {
   vKind = aKind;
   vH = aH;
-  vNrm = normalize(mat3(modelMatrix) * normal);
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWPos = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
+  #include <beginnormal_vertex>
+  #include <defaultnormal_vertex>
+  #include <begin_vertex>
+  #include <project_vertex>
+  #include <worldpos_vertex>
+  #include <shadowmap_vertex>
+  vec4 wpos = modelMatrix * vec4(transformed, 1.0);
+  vWPos = wpos.xyz;
+  vNrm = normalize(mat3(modelMatrix) * objectNormal);
 }
 `;
 
 const FRAG = /* glsl */ `
 precision highp float;
+
+#include <common>
+#include <packing>
+// Declared by lights_pars_begin for three's own materials, and uploaded per
+// object by the renderer whether or not the program has it. Including that
+// whole chunk to get one bool would drag in every light struct in the engine;
+// getShadowMask reads this and nothing else from it.
+uniform bool receiveShadow;
+#include <shadowmap_pars_fragment>
+#include <shadowmask_pars_fragment>
 
 uniform vec3 uSun;
 uniform vec3 uCam;
@@ -1182,10 +1214,18 @@ vec3 roadShade(float r, float a, float px, float detail, out float gloss, out ve
   }
   float ac = abs(crs);
 
-  // Surface. Warm dark aggregate, not the blue-black of a gritty city.
+  /* Surface. A pale warm composite, not tarmac.
+   *
+   * Real asphalt is about 7% reflectance and the first pass used it, which is
+   * correct and wrong: under a five-degree sun and a sky that is doing most of
+   * the lighting, every street in the city came out near black and the place
+   * read as a wet European city at 2 a.m. This is a city of glass on a rock
+   * that never landed and the argument it is making is an optimistic one, so
+   * the carriageway is a light stone composite at about 20% and the picture
+   * changes completely. */
   float grit = fbm(vWPos.xz * 5.5) * 0.5 + fbm(vWPos.xz * 22.0) * 0.5;
-  vec3 col = mix(vec3(0.062, 0.058, 0.062), vec3(0.090, 0.082, 0.078), grit * detail);
-  col *= 1.0 + (fbm(vWPos.xz * 0.35) - 0.5) * 0.35;
+  vec3 col = mix(vec3(0.175, 0.168, 0.172), vec3(0.228, 0.212, 0.196), grit * detail);
+  col *= 1.0 + (fbm(vWPos.xz * 0.35) - 0.5) * 0.22;
 
   // Wheel tracks: polished where the traffic runs, coarser between them.
   float lane = hlf * 0.5;
@@ -1201,8 +1241,8 @@ vec3 roadShade(float r, float a, float px, float detail, out float gloss, out ve
   float gullyRun = step(fract(along / 24.0), 0.045);
   float gully = gullyRun * step(hlf - 0.66, ac) * step(ac, hlf - 0.14);
   float slots = step(0.5, fract((ac - hlf) / 0.09));
-  col = mix(col, vec3(0.030, 0.030, 0.034) * (0.6 + slots * 0.9), gully * detail);
-  gloss = mix(gloss, 0.05, gully);
+  col = mix(col, vec3(0.055, 0.052, 0.056) * (0.6 + slots * 0.9), gully * detail);
+  gloss = mix(gloss, 0.05, gully * detail);
 
   /* ---- paint ---- */
   float white = 0.0;
@@ -1224,8 +1264,8 @@ vec3 roadShade(float r, float a, float px, float detail, out float gloss, out ve
     col = mix(col, vec3(0.30, 0.29, 0.30), bed * 0.85);
     float sleeper = step(0.55, fract(along / 0.72)) * bed;
     col *= 1.0 - sleeper * 0.16 * detail;
-    float rail = band(ac, 0.7175, 0.036, aa);
-    col = mix(col, vec3(0.44, 0.42, 0.40), rail);
+    float rail = band(ac, 0.7175, 0.040, aa);
+    col = mix(col, vec3(0.58, 0.56, 0.52), rail);
     gloss = mix(gloss, 0.92, rail);
     white += band(ac, 1.62, 0.055, aa) * (1.0 - junction);
   }
@@ -1248,21 +1288,8 @@ vec3 roadShade(float r, float a, float px, float detail, out float gloss, out ve
     } else {
       dJ = abs(gRingCross) - gRingHalf;
     }
-    float bar = step(fract((dJ - CROSS_IN) / 1.05), 0.52);
+    float bar = step(fract((dJ - CROSS_IN) / 1.15), 0.60);
     white = max(white, bar * step(ac, hlf - 0.30));
-  }
-
-  /* ---- the Launch Terrace ----
-   * Painted circles, and the start of every race. Drawn over whatever is
-   * under it, because that is how a pad is painted. */
-  float dl = length(vWPos.xz - vec2(LAUNCH_X, LAUNCH_Z));
-  if (dl < 20.0) {
-    amber = max(amber, band(dl, 16.0, 0.28, aa));
-    amber = max(amber, band(dl, 11.0, 0.55, aa));
-    white = max(white, band(dl, 6.4, 0.20, aa));
-    white = max(white, smoothstep(2.6, 2.2, dl));
-    float spoke = abs(angSigned(a, TAU / 8.0, 0.0)) * dl;
-    amber = max(amber, band(spoke, 0.0, 0.30, aa) * smoothstep(16.6, 16.2, dl) * step(11.6, dl));
   }
 
   white = clamp(white, 0.0, 1.0) * (0.55 + 0.45 * detail);
@@ -1287,9 +1314,17 @@ vec3 stoneShade(float r, float a, float px, float detail, int k, out float gloss
 
   if (k == K_PROM) { base = vec3(0.44, 0.43, 0.46); course = 1.80; slab = 1.50; jw = 0.020; wear = 0.10; }
   if (k == K_LOT) {
-    // The dead ground between a kerb and a shopfront, and the gardens.
-    if (r >= D2 && r < D3) base = vec3(0.20, 0.30, 0.16);
-    else base = mix(base, vec3(0.38, 0.36, 0.33), 0.55);
+    /* The two or three metres of dead ground between a kerb and a shopfront,
+       and, in the Terraces, the gardens the district is named for. Not all of
+       it: a band where every single lot is lawn reads from the air as a green
+       ring somebody painted on, so the planting is broken up by the same noise
+       that varies everything else. */
+    if (r >= D2 && r < D3) {
+      float green = smoothstep(0.42, 0.62, fbm(vWPos.xz * 0.035));
+      base = mix(mix(base, vec3(0.40, 0.38, 0.34), 0.5), vec3(0.20, 0.27, 0.16), green);
+    } else {
+      base = mix(base, vec3(0.40, 0.38, 0.35), 0.55);
+    }
     course *= 1.6; slab *= 1.6; wear = min(wear + 0.2, 1.0);
   }
 
@@ -1310,10 +1345,12 @@ vec3 stoneShade(float r, float a, float px, float detail, int k, out float gloss
     float dk = distToKerb(r);
     float edge = smoothstep(0.62, 0.10, dk) * step(0.0, dk);
     col = mix(col, vec3(0.40, 0.40, 0.42) * (0.9 + sid * 0.2), edge * 0.8);
-    // Tactile paving where a crossing meets the pavement.
-    float pad = crossingMask(r) * step(dk, 1.3) * step(0.0, dk);
+    // Tactile paving where a crossing meets the pavement. Faded out with the
+    // rest of the high-frequency half — a buff blister pattern at four hundred
+    // metres is one pixel of noise flickering at every junction in the city.
+    float pad = crossingMask(r) * step(dk, 1.25) * step(0.0, dk) * detail;
     float blister = step(0.55, fract(r / 0.28)) * step(0.55, fract(a * r / 0.28));
-    col = mix(col, vec3(0.62, 0.44, 0.20) * (0.75 + blister * 0.45), pad * 0.85);
+    col = mix(col, vec3(0.56, 0.44, 0.26) * (0.80 + blister * 0.35), pad * 0.75);
   }
 
   if (k == K_PLAZA) {
@@ -1325,10 +1362,10 @@ vec3 stoneShade(float r, float a, float px, float detail, int k, out float gloss
 
     // The Halo: a ring of warm light set into the stone. It is the thing the
     // district is named for and it is what you are standing in.
-    float ring = smoothstep(0.42, 0.16, abs(r - 40.0));
+    float ring = smoothstep(0.52, 0.20, abs(r - 40.0));
     vec3 warm = uAccent[0];
     col = mix(col, warm * 0.7, ring * 0.8);
-    emis += warm * ring * (0.35 + uDusk * 1.9);
+    emis += warm * ring * (0.22 + uDusk * 1.15);
 
     // A compass rose under the Beacon, sixteen points, with the middle lit.
     if (r < 24.0) {
@@ -1337,7 +1374,7 @@ vec3 stoneShade(float r, float a, float px, float detail, int k, out float gloss
       col = mix(col, vec3(0.60, 0.56, 0.50), rose * 0.8);
       float core = smoothstep(2.3, 1.9, r);
       col = mix(col, warm * 0.8, core);
-      emis += warm * core * (0.5 + uDusk * 2.6);
+      emis += warm * core * (0.35 + uDusk * 1.6);
       // The three courses of the dais, picked out at their edges.
       col *= 1.0 - smoothstep(0.30, 0.02, abs(r - 8.0)) * 0.18;
       col *= 1.0 - smoothstep(0.30, 0.02, abs(r - 14.0)) * 0.18;
@@ -1352,12 +1389,44 @@ vec3 stoneShade(float r, float a, float px, float detail, int k, out float gloss
     m = min(m, abs(r - ${f4(DECKS[1].outer - DECKS[1].width / 2)}));
     m = min(m, abs(r - ${f4(DECKS[2].outer - DECKS[2].width / 2)}));
     m = min(m, abs(r - ${f4(DECKS[3].outer - DECKS[3].width / 2)}));
-    float line = smoothstep(0.22, 0.06, m);
+    float line = smoothstep(0.24, 0.07, m);
     col = mix(col, uAccent[4] * 0.7, line * 0.7);
-    emis += uAccent[4] * line * (0.20 + uDusk * 1.3);
+    emis += uAccent[4] * line * (0.14 + uDusk * 0.85);
   }
 
   return col;
+}
+
+/* ---- the Launch Terrace ----------------------------------------------
+ *
+ * Painted circles, a wind sock, and the start of every race — and paint does
+ * not stop at a kerb. This runs over whatever is underneath it, road and
+ * pavement alike, which is the only way a pad that straddles the end of an
+ * avenue reads as one pad rather than as three unrelated arcs.
+ */
+void launchPaint(float aa, float detail, inout vec3 col, inout vec3 emis, inout float gloss) {
+  vec2 d2 = vWPos.xz - vec2(LAUNCH_X, LAUNCH_Z);
+  float dl = length(d2);
+  if (dl > 19.0) return;
+  // Everything here is measured about the pad, not about the city. Reaching
+  // for the city's own angle put a wedge of paint straight through it,
+  // because the pad stands on an avenue and the avenue is where that angle
+  // reads zero.
+  float al = atan(d2.y, d2.x);
+  float amber = 0.0;
+  float white = 0.0;
+  amber = max(amber, band(dl, 16.0, 0.22, aa));
+  amber = max(amber, band(dl, 11.0, 0.30, aa));
+  white = max(white, band(dl, 6.4, 0.18, aa));
+  white = max(white, smoothstep(2.5, 2.1, dl));
+  float spoke = abs(angSigned(al, TAU / 8.0, 0.0)) * dl;
+  amber = max(amber, band(spoke, 0.0, 0.26, aa) * smoothstep(16.4, 16.0, dl) * step(11.4, dl));
+  amber *= 0.5 + 0.5 * detail;
+  white *= 0.5 + 0.5 * detail;
+  col = mix(col, vec3(0.86, 0.52, 0.20), amber);
+  col = mix(col, vec3(0.80, 0.77, 0.70), white);
+  gloss = mix(gloss, 0.16, max(amber, white));
+  emis += vec3(1.0, 0.60, 0.26) * amber * uDusk * 0.20;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1426,6 +1495,8 @@ void main() {
     albedo = stoneShade(r, a, px, detail, k, gloss, emis);
   }
 
+  if (k <= K_LOT || k == K_PROM) launchPaint(px * 1.2 + 0.012, detail, albedo, emis, gloss);
+
   /* ---- light ----
    * Two sources and neither is a lamp: a sun five degrees off the horizon,
    * which means a vertical face is lit an order of magnitude harder than the
@@ -1437,17 +1508,34 @@ void main() {
 
   vec3 sunCol = vec3(1.55, 0.86, 0.44);
   vec3 skyUp = vec3(0.30, 0.34, 0.52);
-  vec3 skyDn = vec3(0.26, 0.18, 0.20);
+  /* Downward faces — soffits, the underside of a stair, a fascia — are lit by
+     fifteen hundred metres of frozen lake six hundred metres below, which is
+     the brightest thing in the picture after the sun. Treating them as
+     unlit-and-black is technically defensible and turns every flight of stairs
+     on the rim into a silhouette. */
+  vec3 skyDn = vec3(0.31, 0.25, 0.27);
   vec3 amb = mix(skyDn, skyUp, N.y * 0.5 + 0.5);
 
-  vec3 col = albedo * (sunCol * ndl * 1.5 + amb * 0.9);
+  /* The sun's weight is set against the citadel's stone, not chosen: a
+     horizontal face here has to land where the plaza next to it lands or the
+     streets read as a different material family from the deck they are cut
+     into. That fixes the multiplier, and the low sun does the rest — a
+     vertical face sees ten times the direct light a horizontal one does, so
+     every kerb, riser and parapet in the city draws itself in warm light
+     against ground that is lit almost entirely by the sky. */
+  /* The one thing the ground borrows from three: whether the sun reaches it.
+     A shadow that lands on a bench and stops at the pavement is worse than no
+     shadow at all. Only the direct term is masked — the sky is not occluded by
+     a market stall. */
+  float sunMask = getShadowMask();
+  vec3 col = albedo * (sunCol * ndl * 1.18 * sunMask + amb * 1.0);
 
   // The long specular streak a low sun lays down a wet road. This is the one
   // effect that makes tarmac look like tarmac, and it only exists because the
   // sun is where it is.
   vec3 H = normalize(L + V);
   float sh = mix(24.0, 260.0, gloss);
-  float spec = pow(max(dot(N, H), 0.0), sh) * gloss;
+  float spec = pow(max(dot(N, H), 0.0), sh) * gloss * sunMask;
   float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 4.0);
   col += sunCol * spec * (0.8 + fres * 2.4);
 
@@ -1487,16 +1575,21 @@ export function buildStreets(ctx: BuildContext): StreetsHandle {
   const geo = m.geometry();
   const triangles = m.triangles;
 
+  // `lights: true` is only half of what a shadow-receiving ShaderMaterial
+  // needs: the light uniforms have to be present in `material.uniforms` too,
+  // or the program links against nothing and every shadow lookup reads noise.
+  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights]);
+  uniforms.uSun = { value: SUN_DIR.clone() };
+  uniforms.uCam = { value: new THREE.Vector3() };
+  uniforms.uDusk = { value: 0.35 };
+  uniforms.uAccent = { value: DISTRICTS.map((d) => new THREE.Color(d.accent)) };
+
   const material = new THREE.ShaderMaterial({
     name: "EmpyreanStreets",
     vertexShader: VERT,
     fragmentShader: shaderDefines() + FRAG,
-    uniforms: {
-      uSun: { value: SUN_DIR.clone() },
-      uCam: { value: new THREE.Vector3() },
-      uDusk: { value: 0.35 },
-      uAccent: { value: DISTRICTS.map((d) => new THREE.Color(d.accent)) },
-    },
+    uniforms,
+    lights: true,
     side: THREE.DoubleSide,
     fog: false,
     // `fwidth` is core in the GLSL ES 3.00 this compiles to on WebGL2; the
@@ -1511,8 +1604,10 @@ export function buildStreets(ctx: BuildContext): StreetsHandle {
 
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = "empyrean-streets";
-  mesh.receiveShadow = false;
-  mesh.castShadow = false;
+  // The ground is what the city's shadows are for. It casts too — the parapet
+  // and the stairs are in this mesh and both throw a shape worth having.
+  mesh.receiveShadow = true;
+  mesh.castShadow = true;
 
   const group = new THREE.Group();
   group.name = "empyrean-streets";

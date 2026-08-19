@@ -363,6 +363,7 @@ uniform float uExposure;
 uniform float uContrast;
 uniform float uSaturation;
 uniform float uVignette;
+uniform float uLift;
 uniform float uDither;
 uniform float uCA;
 uniform float uNight;
@@ -424,8 +425,19 @@ void main() {
   vec3 shadowTint = mix(vec3(0.94, 0.93, 1.10), vec3(0.84, 0.89, 1.18), uNight);
   vec3 highTint = mix(vec3(1.05, 1.00, 0.94), vec3(1.00, 0.99, 1.05), uNight);
   col = mix(col * shadowTint, col * highTint, smoothstep(0.15, 0.85, luma));
-  col += mix(vec3(0.030, 0.012, 0.045), vec3(0.010, 0.009, 0.036), uNight)
-       * (1.0 - smoothstep(0.0, 0.35, luma));
+
+  /* And then lift the black itself off the floor, toward indigo. This is what
+   * makes the zenith read as deep navy rather than as nothing: an ACES curve
+   * with any contrast behind it puts the sky's own 0.026 of blue at four
+   * thousandths, which is black in anybody's eyes.
+   *
+   * It is a small number that does a lot of work, because the sRGB encode
+   * below is very steep down here — 0.0125 comes out at 28/255, and 0.045,
+   * which is what this was before the encode existed to undo it, comes out at
+   * 59 and turns the whole dark half of the frame milky. setShadowLift() is
+   * the knob, if the navy wants to be deeper or the night wants more air. */
+  vec3 liftTint = mix(vec3(0.64, 0.24, 1.0), vec3(0.36, 0.36, 1.0), uNight);
+  col += liftTint * uLift * (1.0 - smoothstep(0.0, 0.35, luma));
 
   // Saturation lift; the ACES curve costs some on the way through, and the
   // night wants more of it back than the day does.
@@ -486,6 +498,8 @@ export interface PostFx {
   setGodRays(v: number): void;
   /** Multiplier on the bloom. */
   setBloom(v: number): void;
+  /** Multiplier on the violet lift under the blacks. 0 for a true black. */
+  setShadowLift(v: number): void;
   dispose(): void;
 }
 
@@ -510,7 +524,11 @@ export function buildPostFx(
   const quadScene = new THREE.Scene();
   const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const quadGeo = new THREE.PlaneGeometry(2, 2);
-  const quad = new THREE.Mesh(quadGeo);
+  // The mesh is handed a material per blit; constructing it without one makes
+  // three invent a `MeshBasicMaterial` that nothing in the world would ever
+  // dispose.
+  const placeholder = new THREE.MeshBasicMaterial();
+  const quad: THREE.Mesh<THREE.PlaneGeometry, THREE.Material> = new THREE.Mesh(quadGeo, placeholder);
   quad.frustumCulled = false;
   quadScene.add(quad);
 
@@ -669,6 +687,7 @@ export function buildPostFx(
     uContrast: { value: 1.45 },
     uSaturation: { value: 1.24 },
     uVignette: { value: 0.42 },
+    uLift: { value: 0.0125 },
     uDither: { value: 1 / 255 },
     uCA: { value: 0.010 },
     uNight: { value: 0 },
@@ -683,6 +702,7 @@ export function buildPostFx(
   let aoGain = 1;
   let rayGain = 1;
   let bloomGain = 1;
+  let liftGain = 1;
   const baseGlow = high ? 0.34 : 0.28;
 
   const draw = (mat: THREE.Material, target: THREE.WebGLRenderTarget | null) => {
@@ -698,6 +718,7 @@ export function buildPostFx(
     gradeMat.uniforms.uSaturation.value = 1.24 + night * 0.1;
     gradeMat.uniforms.uVignette.value = 0.42 + night * 0.08;
     gradeMat.uniforms.uDither.value = (1 + night * 0.7) / 255;
+    gradeMat.uniforms.uLift.value = (0.0125 - night * 0.0025) * liftGain;
     gradeMat.uniforms.uAOStrength.value = wantAO ? (0.85 - night * 0.2) * aoGain : 0;
   };
   applyDaylight();
@@ -859,6 +880,11 @@ export function buildPostFx(
       applyDaylight();
     },
 
+    setShadowLift(v) {
+      liftGain = THREE.MathUtils.clamp(v, 0, 4);
+      applyDaylight();
+    },
+
     dispose() {
       sceneRT.depthTexture?.dispose();
       sceneRT.dispose();
@@ -878,6 +904,7 @@ export function buildPostFx(
       shaftSrcMat.dispose();
       shaftBlurMat.dispose();
       gradeMat.dispose();
+      placeholder.dispose();
       quadGeo.dispose();
     },
   };

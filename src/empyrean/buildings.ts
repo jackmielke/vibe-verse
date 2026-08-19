@@ -50,6 +50,12 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { ISLAND_Y } from "./config";
 import { cityPlan, type Landmark, type Lot, type LotUse, type Vec2 } from "./cityplan";
+/* The one cross-system import in this file, and it is a constant rather than
+   a system: `sky.ts` owns where the sun is, and the glass has to reflect the
+   same sky the dome paints or the towers are made of a different evening.
+   The live value arrives in `FrameContext.sunDir`; this is only the value the
+   uniforms are born with, so a first frame drawn before `update` is still
+   lit. */
 import { SUN_DIR } from "./sky";
 import type { BuildContext, FrameContext, QualityTier, System } from "./types";
 
@@ -202,19 +208,42 @@ function offsetPoly(poly: P2[], off: number | number[]): P2[] | null {
       out.push({ x: poly[i].x - n1.x * amount(i), z: poly[i].z - n1.z * amount(i) });
       continue;
     }
-    out.push({
-      x: (c0 * n1.z - c1 * n0.z) / det,
-      z: (n0.x * c1 - n1.x * c0) / det,
-    });
+    const mx = (c0 * n1.z - c1 * n0.z) / det;
+    const mz = (n0.x * c1 - n1.x * c0) / det;
+    /* Miter limit.
+     *
+     * Two nearly-collinear edges meeting at a shallow corner throw their
+     * offset intersection out to `off / sin(half-angle)`, and the plan's arcs
+     * are chorded every seven degrees — so a 0.55 m cornice grew a ten-metre
+     * spike into the middle of the road on lots whose front is an arc. Past
+     * the limit the corner is cut instead, which at seven degrees nobody can
+     * see and which keeps the projection honest. */
+    const cap = 1.8 * Math.max(Math.abs(amount(prev)), Math.abs(amount(i))) + 0.02;
+    if (Math.hypot(mx - poly[i].x, mz - poly[i].z) > cap) {
+      let ax = n0.x + n1.x;
+      let az = n0.z + n1.z;
+      const al = Math.hypot(ax, az) || 1;
+      ax /= al;
+      az /= al;
+      const mean = (amount(prev) + amount(i)) / 2;
+      out.push({ x: poly[i].x - ax * mean, z: poly[i].z - az * mean });
+      continue;
+    }
+    out.push({ x: mx, z: mz });
   }
   const area = shoelace(out);
   if (!Number.isFinite(area) || Math.sign(area) !== sign || Math.abs(area) < 6) return null;
-  // Every new vertex must be inside the original, or the "inset" bulged.
-  for (const p of out) if (!insidePoly(poly, p.x, p.z, 0.02)) return null;
+  /* Every new vertex must be inside the original — but only when this really
+   * was an inset. Negative offsets are how a cornice, a base course and a
+   * deep eave are made, and checking those for containment quietly turns
+   * every projection in the city into a flush band. */
+  let inset = Infinity;
+  for (let i = 0; i < n; i++) inset = Math.min(inset, amount(i));
+  if (inset >= 0) for (const p of out) if (!insidePoly(poly, p.x, p.z, 0.02)) return null;
   return out;
 }
 
-/** Even-odd test with a tolerance band, in metres, outward. */
+/** Inside, with a tolerance band in metres. */
 function insidePoly(poly: P2[], x: number, z: number, slack = 0): boolean {
   return outsideBy(poly, x, z) <= slack;
 }
@@ -222,18 +251,29 @@ function insidePoly(poly: P2[], x: number, z: number, slack = 0): boolean {
 /**
  * How far outside the polygon a point is, in metres. Zero when inside.
  *
- * Used by the containment test, which is the only thing standing between a
- * cornice and the middle of the road.
+ * A crossing test and a distance to the nearest segment, rather than the max
+ * of the edge half-planes — which is faster, obvious, and **wrong here**. The
+ * plan's lots are not convex: their inner arc is approximated by chords that
+ * bulge toward the origin, so every lot in the core has two or three reflex
+ * vertices. Against the half-plane version an inset corner near one of those
+ * reads as "outside", `offsetPoly` refuses, and sixteen of the twenty-three
+ * spires in The Spires quietly fail to exist.
  */
 function outsideBy(poly: P2[], x: number, z: number): number {
-  const sign = Math.sign(shoelace(poly)) || 1;
-  let worst = -Infinity;
-  for (let i = 0; i < poly.length; i++) {
-    const nrm = edgeNormal(poly, i, sign);
-    const d = nrm.x * (x - poly[i].x) + nrm.z * (z - poly[i].z);
-    if (d > worst) worst = d;
+  let inside = false;
+  let best = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+    const ex = b.x - a.x;
+    const ez = b.z - a.z;
+    const l2 = ex * ex + ez * ez;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / l2)) : 0;
+    const d = Math.hypot(x - (a.x + ex * t), z - (a.z + ez * t));
+    if (d < best) best = d;
   }
-  return Math.max(0, worst);
+  return inside ? 0 : best;
 }
 
 function bboxOf(poly: P2[]): { cx: number; cz: number; hx: number; hz: number } {
@@ -367,35 +407,48 @@ function frontFace(shell: Shell, frontEdge: number): number[] {
  * ---------------------------------------------------------------------- */
 
 interface Bucket {
-  pos: number[];
-  nrm: number[];
-  uv: number[];
-  h: number[];
-  base: number[];
-  seed: number[];
-  tone: number[];
-  edge: number[];
-  idx: number[];
+  pos: Float32Array;
+  nrm: Float32Array;
+  uv: Float32Array;
+  h: Float32Array;
+  base: Float32Array;
+  seed: Float32Array;
+  tone: Float32Array;
+  edge: Float32Array;
+  idx: Uint32Array;
+  /** Vertices written into the current chunk. */
   verts: number;
+  /** Indices written into the current chunk. */
+  icount: number;
   chunks: THREE.BufferGeometry[];
   triangles: number;
   vertices: number;
 }
 
+/**
+ * Vertices per chunk, and typed arrays rather than `number[]`.
+ *
+ * The city is two thirds of a million vertices at the high tier. Growing eight
+ * JavaScript arrays to that size and then converting each of them costs two
+ * and a half seconds of boot on a machine that renders the result at sixty
+ * frames; writing into a fixed typed buffer and slicing it costs a fifth of
+ * that, and the fixed buffer is why the chunking exists at all.
+ */
 const CHUNK_VERTS = 48000;
 
 function newBucket(): Bucket {
   return {
-    pos: [],
-    nrm: [],
-    uv: [],
-    h: [],
-    base: [],
-    seed: [],
-    tone: [],
-    edge: [],
-    idx: [],
+    pos: new Float32Array(CHUNK_VERTS * 3),
+    nrm: new Float32Array(CHUNK_VERTS * 3),
+    uv: new Float32Array(CHUNK_VERTS * 2),
+    h: new Float32Array(CHUNK_VERTS),
+    base: new Float32Array(CHUNK_VERTS),
+    seed: new Float32Array(CHUNK_VERTS),
+    tone: new Float32Array(CHUNK_VERTS),
+    edge: new Float32Array(CHUNK_VERTS),
+    idx: new Uint32Array(CHUNK_VERTS * 2),
     verts: 0,
+    icount: 0,
     chunks: [],
     triangles: 0,
     vertices: 0,
@@ -404,27 +457,20 @@ function newBucket(): Bucket {
 
 function flushBucket(b: Bucket): void {
   if (b.verts === 0) return;
+  const n = b.verts;
   const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(b.pos, 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute(b.nrm, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(b.uv, 2));
-  g.setAttribute("aH", new THREE.Float32BufferAttribute(b.h, 1));
-  g.setAttribute("aBase", new THREE.Float32BufferAttribute(b.base, 1));
-  g.setAttribute("aSeed", new THREE.Float32BufferAttribute(b.seed, 1));
-  g.setAttribute("aTone", new THREE.Float32BufferAttribute(b.tone, 1));
-  g.setAttribute("aEdge", new THREE.Float32BufferAttribute(b.edge, 1));
-  g.setIndex(b.idx);
+  g.setAttribute("position", new THREE.BufferAttribute(b.pos.slice(0, n * 3), 3));
+  g.setAttribute("normal", new THREE.BufferAttribute(b.nrm.slice(0, n * 3), 3));
+  g.setAttribute("uv", new THREE.BufferAttribute(b.uv.slice(0, n * 2), 2));
+  g.setAttribute("aH", new THREE.BufferAttribute(b.h.slice(0, n), 1));
+  g.setAttribute("aBase", new THREE.BufferAttribute(b.base.slice(0, n), 1));
+  g.setAttribute("aSeed", new THREE.BufferAttribute(b.seed.slice(0, n), 1));
+  g.setAttribute("aTone", new THREE.BufferAttribute(b.tone.slice(0, n), 1));
+  g.setAttribute("aEdge", new THREE.BufferAttribute(b.edge.slice(0, n), 1));
+  g.setIndex(new THREE.BufferAttribute(b.idx.slice(0, b.icount), 1));
   b.chunks.push(g);
-  b.pos.length = 0;
-  b.nrm.length = 0;
-  b.uv.length = 0;
-  b.h.length = 0;
-  b.base.length = 0;
-  b.seed.length = 0;
-  b.tone.length = 0;
-  b.edge.length = 0;
-  b.idx.length = 0;
   b.verts = 0;
+  b.icount = 0;
 }
 
 function finishBucket(b: Bucket): THREE.BufferGeometry | null {
@@ -498,15 +544,21 @@ function vertex(
   tone: number,
   edge: number,
 ): number {
-  b.pos.push(x, y, z);
-  b.nrm.push(nx, ny, nz);
-  b.uv.push(u, v);
+  const i = b.verts;
+  b.pos[i * 3] = x;
+  b.pos[i * 3 + 1] = y;
+  b.pos[i * 3 + 2] = z;
+  b.nrm[i * 3] = nx;
+  b.nrm[i * 3 + 1] = ny;
+  b.nrm[i * 3 + 2] = nz;
+  b.uv[i * 2] = u;
+  b.uv[i * 2 + 1] = v;
   const rise = y - pen.baseY;
-  b.h.push(rise <= 0 ? 0 : rise >= pen.span ? 1 : rise / pen.span);
-  b.base.push(rise);
-  b.seed.push(pen.seed);
-  b.tone.push(tone);
-  b.edge.push(edge);
+  b.h[i] = rise <= 0 ? 0 : rise >= pen.span ? 1 : rise / pen.span;
+  b.base[i] = rise;
+  b.seed[i] = pen.seed;
+  b.tone[i] = tone;
+  b.edge[i] = edge;
   if (y > pen.top) pen.top = y;
   if (x < pen.min.x) pen.min.x = x;
   if (y < pen.min.y) pen.min.y = y;
@@ -538,7 +590,12 @@ function quad(
   const i1 = vertex(pen, b, bx, by, bz, nx, ny, nz, ub, vb, tone, eb);
   const i2 = vertex(pen, b, cx, cy, cz, nx, ny, nz, uc, vc, tone, ec);
   const i3 = vertex(pen, b, dx, dy, dz, nx, ny, nz, ud, vd, tone, ed);
-  b.idx.push(i0, i1, i2, i0, i2, i3);
+  b.idx[b.icount++] = i0;
+  b.idx[b.icount++] = i1;
+  b.idx[b.icount++] = i2;
+  b.idx[b.icount++] = i0;
+  b.idx[b.icount++] = i2;
+  b.idx[b.icount++] = i3;
   b.triangles += 2;
   b.vertices += 4;
 }
@@ -616,7 +673,9 @@ function capPoly(pen: Pen, b: Bucket, poly: P2[], y: number, up: number, tone: n
       const p = poly[k];
       ids.push(vertex(pen, b, p.x, y, p.z, 0, up, 0, p.x, p.z, tone, 6));
     }
-    b.idx.push(ids[0], ids[1], ids[2]);
+    b.idx[b.icount++] = ids[0];
+    b.idx[b.icount++] = ids[1];
+    b.idx[b.icount++] = ids[2];
     b.triangles += 1;
     b.vertices += 3;
   }
@@ -1284,32 +1343,60 @@ function shopfront(
   const RISER = 0.62;
   const HEAD = Math.min(height - 0.95, 3.55);
   const FASCIA = height - 0.85;
+  const SILL = yLo + RISER;
   const bays = Math.max(1, Math.round(f.len / 3.9));
   const bw = f.len / bays;
   const PIER = Math.min(0.55, bw * 0.18);
 
-  /* Stall riser, in dark stone, standing a little proud. */
-  wallSpan(pen, b, f, 0, f.len, yLo, yLo + RISER, T_BASALT);
-  quad(
-    pen, b,
-    fx(f, 0, 0.1), yLo, fz(f, 0, 0.1), fx(f, f.len, 0.1), yLo, fz(f, f.len, 0.1),
-    fx(f, f.len, 0.1), yLo + RISER, fz(f, f.len, 0.1), fx(f, 0, 0.1), yLo + RISER, fz(f, 0, 0.1),
-    f.nx, 0, f.nz, f.u0, 0, f.u0 + f.len, 0, f.u0 + f.len, RISER, f.u0, RISER,
-    T_BASALT, f.eA, f.eB, f.eB, f.eA,
-  );
-
+  /* Where the door goes, worked out first: the stall riser has to stop for
+     it, and everything else has to start above it. Two pieces of geometry in
+     the same plane is a z-fight you only ever see from the pavement, and the
+     pavement is the camera this whole function exists for. */
   let doorBay = -1;
-  if (doorAt !== null) doorBay = Math.min(bays - 1, Math.max(0, Math.floor(doorAt / bw)));
+  let d0 = 0;
+  let d1 = 0;
+  if (doorAt !== null && bays > 0) {
+    doorBay = Math.min(bays - 1, Math.max(0, Math.floor(doorAt / bw)));
+    const g0 = doorBay * bw + PIER / 2 + 0.08;
+    const g1 = (doorBay + 1) * bw - PIER / 2 - 0.08;
+    if (g1 - g0 < 0.9) {
+      doorBay = -1;
+    } else {
+      const dw = Math.min(2.2, g1 - g0);
+      const dc = (g0 + g1) / 2;
+      d0 = dc - dw / 2;
+      d1 = dc + dw / 2;
+    }
+  }
+
+  /* Stall riser, in dark stone, standing a little proud — broken at the door. */
+  const riser = (a: number, c: number) => {
+    if (c - a < 0.02) return;
+    wallSpan(pen, b, f, a, c, yLo, SILL, T_BASALT);
+    quad(
+      pen, b,
+      fx(f, a, 0.1), yLo, fz(f, a, 0.1), fx(f, c, 0.1), yLo, fz(f, c, 0.1),
+      fx(f, c, 0.1), SILL, fz(f, c, 0.1), fx(f, a, 0.1), SILL, fz(f, a, 0.1),
+      f.nx, 0, f.nz, f.u0 + a, 0, f.u0 + c, 0, f.u0 + c, RISER, f.u0 + a, RISER,
+      T_BASALT, 0, 0, 0, 0,
+    );
+  };
+  if (doorBay >= 0) {
+    riser(0, d0);
+    riser(d1, f.len);
+  } else {
+    riser(0, f.len);
+  }
 
   for (let i = 0; i < bays; i++) {
     const s0 = i * bw;
     const s1 = s0 + bw;
     /* Pilaster at each bay edge, 0.22 m proud — an awning still clears it. */
     for (const s of [s0, s1]) {
-      if (s > 0 && s < f.len - 0.01 && s !== s0) continue;
+      if (s !== s0 && s < f.len - 0.01) continue;
       const a = Math.max(0, s - PIER / 2);
       const c = Math.min(f.len, s + PIER / 2);
-      wallSpan(pen, b, f, a, c, yLo, FASCIA, frameTone);
+      wallSpan(pen, b, f, a, c, SILL, FASCIA, frameTone);
       quad(
         pen, b,
         fx(f, a, 0.22), yLo, fz(f, a, 0.22), fx(f, c, 0.22), yLo, fz(f, c, 0.22),
@@ -1318,50 +1405,43 @@ function shopfront(
         frameTone, 0, 0, 0, 0,
       );
     }
-    if (i === bays - 1) {
-      const a = Math.max(0, f.len - PIER);
-      wallSpan(pen, b, f, a, f.len, yLo, FASCIA, frameTone);
-    }
-
     const g0 = s0 + PIER / 2 + 0.08;
     const g1 = s1 - PIER / 2 - 0.08;
     if (g1 - g0 < 0.7) {
-      wallSpan(pen, b, f, g0, g1, yLo, FASCIA, frameTone);
+      wallSpan(pen, b, f, g0, g1, SILL, FASCIA, frameTone);
       continue;
     }
 
     if (i === doorBay) {
-      /* The doorway: deeper, taller, floor to head, with a transom over it. */
-      const dw = Math.min(2.2, g1 - g0);
-      const dc = (g0 + g1) / 2;
-      const d0 = dc - dw / 2;
-      const d1 = dc + dw / 2;
-      wallSpan(pen, b, f, g0, d0, yLo, FASCIA, frameTone);
-      wallSpan(pen, b, f, d1, g1, yLo, FASCIA, frameTone);
-      opening(pen, f, d0, d1, yLo, FASCIA, d0, d1, yLo + 0.03, yLo + 2.45, 0.85, frameTone, P_DARK, 2);
-      opening(pen, f, d0, d1, yLo + 2.45, FASCIA, d0 + 0.12, d1 - 0.12, yLo + 2.62, Math.min(HEAD, FASCIA - 0.25), 0.35, frameTone, P_SHOP, 2);
+      /* Floor to head, deeply recessed, with a transom over it. */
+      wallSpan(pen, b, f, g0, d0, SILL, FASCIA, frameTone);
+      wallSpan(pen, b, f, d1, g1, SILL, FASCIA, frameTone);
+      opening(pen, f, d0, d1, yLo, yLo + 2.45, d0, d1, yLo + 0.03, yLo + 2.45, 0.85, frameTone, P_DARK, 2);
+      opening(
+        pen, f, d0, d1, yLo + 2.45, FASCIA, d0 + 0.12, d1 - 0.12,
+        yLo + 2.62, Math.max(yLo + 2.9, Math.min(HEAD, FASCIA - 0.25)), 0.35, frameTone, P_SHOP, 2,
+      );
       /* Threshold, so the door meets the pavement rather than hovering. */
-      boxAt(pen, b, fx(f, dc, 0.28), yLo + 0.05, fz(f, dc, 0.28), dw / 2 + 0.15, 0.05, 0.32,
-        Math.atan2(f.tz, f.tx), T_BASALT);
+      boxAt(pen, b, fx(f, (d0 + d1) / 2, 0.28), yLo + 0.05, fz(f, (d0 + d1) / 2, 0.28),
+        (d1 - d0) / 2 + 0.15, 0.05, 0.32, Math.atan2(f.tz, f.tx), T_BASALT);
       continue;
     }
 
-    /* Glazing: sill at the riser, head under the fascia. */
-    wallSpan(pen, b, f, g0, g1, yLo, yLo + RISER, frameTone);
+    /* Glazing: sill on the riser, head under the fascia. */
     wallSpan(pen, b, f, g0, g1, HEAD, FASCIA, frameTone);
+    const divs = Math.max(2, Math.round((g1 - g0) / 1.3));
     quad(
       pen, pen.pane,
-      fx(f, g0, -0.28), yLo + RISER, fz(f, g0, -0.28), fx(f, g1, -0.28), yLo + RISER, fz(f, g1, -0.28),
+      fx(f, g0, -0.28), SILL, fz(f, g0, -0.28), fx(f, g1, -0.28), SILL, fz(f, g1, -0.28),
       fx(f, g1, -0.28), HEAD, fz(f, g1, -0.28), fx(f, g0, -0.28), HEAD, fz(f, g0, -0.28),
       f.nx, 0, f.nz, 0, 0, 1, 0, 1, 1, 0, 1,
-      P_SHOP, Math.max(2, Math.round((g1 - g0) / 1.3)), Math.max(2, Math.round((g1 - g0) / 1.3)),
-      Math.max(2, Math.round((g1 - g0) / 1.3)), Math.max(2, Math.round((g1 - g0) / 1.3)),
+      P_SHOP, divs, divs, divs, divs,
     );
     /* Reveals around the glazing, and a sill that sheds water outward. */
     const rev = (s: number, dir: number) => {
       quad(
         pen, b,
-        fx(f, s), yLo + RISER, fz(f, s), fx(f, s, -0.28), yLo + RISER, fz(f, s, -0.28),
+        fx(f, s), SILL, fz(f, s), fx(f, s, -0.28), SILL, fz(f, s, -0.28),
         fx(f, s, -0.28), HEAD, fz(f, s, -0.28), fx(f, s), HEAD, fz(f, s),
         f.tx * dir, 0, f.tz * dir, 0, 0, 0.28, 0, 0.28, HEAD - yLo, 0, HEAD - yLo,
         frameTone, 0, 0, 0, 0,
@@ -1371,8 +1451,8 @@ function shopfront(
     rev(g1, -1);
     quad(
       pen, b,
-      fx(f, g0, -0.28), yLo + RISER, fz(f, g0, -0.28), fx(f, g1, -0.28), yLo + RISER, fz(f, g1, -0.28),
-      fx(f, g1, 0.16), yLo + RISER - 0.05, fz(f, g1, 0.16), fx(f, g0, 0.16), yLo + RISER - 0.05, fz(f, g0, 0.16),
+      fx(f, g0, -0.28), SILL, fz(f, g0, -0.28), fx(f, g1, -0.28), SILL, fz(f, g1, -0.28),
+      fx(f, g1, 0.16), SILL - 0.05, fz(f, g1, 0.16), fx(f, g0, 0.16), SILL - 0.05, fz(f, g0, 0.16),
       0, 1, 0, 0, 0, g1 - g0, 0, g1 - g0, 0.44, 0, 0.44, frameTone, 0, 0, 0, 0,
     );
     quad(
@@ -1482,14 +1562,110 @@ function loft(pen: Pen, b: Bucket, a: P2[], yA: number, c: P2[], yC: number, ton
   }
 }
 
-function addBox(pen: Pen, poly: P2[], top: number, bottom: number): void {
+/**
+ * A polygon as a handful of axis-aligned boxes that fit *inside* it.
+ *
+ * `world.ts` collides and stands against axis-aligned boxes, and the lots are
+ * trapezoids at every angle on the compass — so one bounding box around a lot
+ * sticks nearly three metres past its own walls, which on a five-metre
+ * pavement is an invisible wall in the street and a roof you can stand on
+ * over thin air. Three strips, each clipped to the polygon's own extent
+ * across the strip, are inside the lot everywhere and within half a metre of
+ * its edge. Rectangular buildings collapse back to a single box for free.
+ */
+function stripBoxes(poly: P2[]): Array<{ cx: number; cz: number; hx: number; hz: number }> {
   const bb = bboxOf(poly);
-  pen.blockers.push({ x: bb.cx, z: bb.cz, hx: bb.hx, hz: bb.hz, top, bottom });
+  if (bb.hx < 0.2 || bb.hz < 0.2) return [];
+  // Cut across the long axis so each strip is as square as it can be.
+  const alongX = bb.hx >= bb.hz;
+  const lo = alongX ? bb.cx - bb.hx : bb.cz - bb.hz;
+  const span = (alongX ? bb.hx : bb.hz) * 2;
+  const strips = Math.max(2, Math.min(10, Math.round(span / 3.2)));
+
+  /** Where the polygon starts and stops along the other axis, at `t`. */
+  const cross = (t: number): [number, number] | null => {
+    let mn = Infinity;
+    let mx = -Infinity;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const p = poly[i];
+      const q = poly[j];
+      const p0 = alongX ? p.x : p.z;
+      const q0 = alongX ? q.x : q.z;
+      if (p0 > t === q0 > t) continue;
+      const p1 = alongX ? p.z : p.x;
+      const q1 = alongX ? q.z : q.x;
+      const v = p1 + ((t - p0) / (q0 - p0)) * (q1 - p1);
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    return mx > mn ? [mn, mx] : null;
+  };
+
+  /**
+   * Two intervals per strip and a bounded compromise between them.
+   *
+   * The intersection — what the whole strip has in common — fits strictly
+   * inside the polygon and, on a trapezoid standing at forty-five degrees to
+   * the axes, covers less than half of it: you could walk into the corner of
+   * every building in the city. The union covers all of it and sticks out
+   * into the street. So the box takes the intersection and is allowed to grow
+   * `SLOP` metres toward the union, never past it — and `SLOP` is smaller than
+   * the metre and a bit every building is already inset inside its lot, so the
+   * overshoot lands in the dead ground behind the kerb and never on it.
+   */
+  const SLOP = 1.0;
+  const bands: Array<{ s0: number; s1: number; mn: number; mx: number }> = [];
+  for (let k = 0; k < strips; k++) {
+    const s0 = lo + (span * k) / strips;
+    const s1 = lo + (span * (k + 1)) / strips;
+    let imn = -Infinity;
+    let imx = Infinity;
+    let umn = Infinity;
+    let umx = -Infinity;
+    let ok = false;
+    for (let q = 0; q <= 4; q++) {
+      const t = s0 + ((s1 - s0) * q) / 4 + (q === 0 ? 1e-3 : q === 4 ? -1e-3 : 0);
+      const c = cross(t);
+      if (!c) continue;
+      ok = true;
+      imn = Math.max(imn, c[0]);
+      imx = Math.min(imx, c[1]);
+      umn = Math.min(umn, c[0]);
+      umx = Math.max(umx, c[1]);
+    }
+    if (!ok) continue;
+    const mn = Math.max(umn, imn - SLOP);
+    const mx = Math.min(umx, imx + SLOP);
+    if (mx - mn < 0.4) continue;
+    const last = bands[bands.length - 1];
+    // A rectangular building collapses back to one box, for free.
+    if (last && last.s1 === s0 && Math.abs(last.mn - mn) < 0.05 && Math.abs(last.mx - mx) < 0.05) {
+      last.s1 = s1;
+      continue;
+    }
+    bands.push({ s0, s1, mn, mx });
+  }
+  if (!bands.length) return [{ cx: bb.cx, cz: bb.cz, hx: bb.hx * 0.55, hz: bb.hz * 0.55 }];
+
+  return bands.map((d) => {
+    const cA = (d.s0 + d.s1) / 2;
+    const hA = (d.s1 - d.s0) / 2;
+    const cB = (d.mn + d.mx) / 2;
+    const hB = (d.mx - d.mn) / 2;
+    return alongX ? { cx: cA, cz: cB, hx: hA, hz: hB } : { cx: cB, cz: cA, hx: hB, hz: hA };
+  });
+}
+
+function addBox(pen: Pen, poly: P2[], top: number, bottom: number): void {
+  for (const b of stripBoxes(poly)) {
+    pen.blockers.push({ x: b.cx, z: b.cz, hx: b.hx, hz: b.hz, top, bottom });
+  }
 }
 
 function addDeck(pen: Pen, poly: P2[], y: number): void {
-  const bb = bboxOf(poly);
-  pen.decks.push({ y, x: bb.cx, z: bb.cz, hx: bb.hx, hz: bb.hz });
+  for (const b of stripBoxes(poly)) {
+    pen.decks.push({ y, x: b.cx, z: b.cz, hx: b.hx, hz: b.hz });
+  }
 }
 
 /** Arclength along an edge of the nearest point to a world position. */
@@ -1557,9 +1733,13 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
   const span = shaftTop - yA;
   for (let k = 0; k < segs && span > 6; k++) {
     if (k > 0) {
+      /* A setback that will not fit is skipped, never fatal. Bailing out of
+       * the loop leaves the shaft short of `shaftTop` and the tower lands
+       * forty metres below the height the plan gave it — which is invisible
+       * from the pavement and obvious in the skyline the plan was written to
+       * shape. */
       const next = offsetPoly(cur, setback);
-      if (!next) break;
-      cur = next;
+      if (next) cur = next;
     }
     const yB = k === segs - 1 ? shaftTop : yA + span * weights[k];
     const shell = shellOf(cur);
@@ -1582,10 +1762,11 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
     if (tip) {
       loft(pen, pen.glass, cur, roofY, tip, roofY + crownH, T_STONE);
       capPoly(pen, pen.stone, tip, roofY + crownH, 1, T_METAL);
-      if (detail) {
-        const c = centroidOf(tip);
-        tube(pen, pen.glow, c.x, c.z, 0.6, 0.2, roofY + crownH, roofY + crownH + 6, 5, G_WHITE);
-      }
+      /* Not gated on the tier: anything with height in it is silhouette, and
+       * the silhouette is what the lake shows. Only reveals, balconies and
+       * signage come off at the low tier. */
+      const c = centroidOf(tip);
+      tube(pen, pen.glow, c.x, c.z, 0.6, 0.2, roofY + crownH, roofY + crownH + 6, 5, G_WHITE);
     } else {
       cornice(pen, topShell, roofY, 1.2, 0.4, T_STONE, true);
     }
@@ -1601,10 +1782,8 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
     cornice(pen, topShell, roofY, 2.6, 0.9, T_STONE, true);
     cornice(pen, topShell, roofY + 2.6, 1.1, 0.35, T_ROOF, false);
     addDeck(pen, cur, roofY + 3.7);
-    if (detail) {
-      const c = centroidOf(cur);
-      boxAt(pen, pen.stone, c.x, roofY + 5.6, c.z, 3.2, 1.9, 2.6, lot.a, T_ROOF);
-    }
+    const c = centroidOf(cur);
+    boxAt(pen, pen.stone, c.x, roofY + 5.6, c.z, 3.2, 1.9, 2.6, lot.a, T_ROOF);
   } else {
     let step = cur;
     let sy = roofY;
@@ -1690,13 +1869,11 @@ function buildBlock(pen: Pen, lot: Lot, rng: Rng): void {
   const parapet = offsetPoly(base, 0.35);
   if (parapet) {
     ringWall(pen, base, 0.35, y0 + h, y0 + h + 1.0, T_STONE);
-    if (detail) {
-      const c = centroidOf(parapet);
-      boxAt(pen, pen.stone, c.x, y0 + h + 1.2, c.z, 1.8, 1.2, 1.4, lot.a, T_ROOF);
-      /* A planted roof, because this city is optimistic and half its
-         terraces are gardens. */
-      if (rng.chance(0.4)) capPoly(pen, pen.stone, parapet, y0 + h + 0.12, 1, T_LEAF);
-    }
+    const c = centroidOf(parapet);
+    boxAt(pen, pen.stone, c.x, y0 + h + 1.2, c.z, 1.8, 1.2, 1.4, lot.a, T_ROOF);
+    /* A planted roof, because this city is optimistic and half its terraces
+       are gardens. */
+    if (rng.chance(0.4)) capPoly(pen, pen.stone, parapet, y0 + h + 0.12, 1, T_LEAF);
   }
   addBox(pen, base, y0 + h, y0);
   addDeck(pen, base, y0 + h);
@@ -1740,7 +1917,7 @@ function buildShop(pen: Pen, lot: Lot, rng: Rng): void {
   cornice(pen, shell, eave, 0.7, 0.45, T_STONE, true);
   capPoly(pen, pen.stone, base, y0 + h, 1, T_ROOF);
   ringWall(pen, base, 0.3, y0 + h, y0 + h + 0.7, T_STONE);
-  if (detail && rng.chance(0.5)) {
+  if (rng.chance(0.5)) {
     const c = centroidOf(base);
     boxAt(pen, pen.stone, c.x, y0 + h + 0.8, c.z, 1.1, 0.8, 0.9, lot.a, T_METAL);
   }
@@ -1800,10 +1977,14 @@ function buildCivic(pen: Pen, lot: Lot, rng: Rng): void {
     const w = Math.min(f.len - 1.6, Math.max(6, f.len * 0.62));
     const s = projectOnFace(f, lot.frontMid);
     const rot = Math.atan2(f.tz, f.tx);
+    /* Outward from the wall and stacked, deepest tread at the bottom. Inward
+       would bury the whole flight inside a solid podium — which is what the
+       first pass did, and a civic building with no way in is a warehouse. */
     for (let k = 0; k < 3; k++) {
       const depth = (3 - k) * 0.34;
-      boxAt(pen, pen.stone, fx(f, s, -depth / 2), y0 + ((k + 1) * podiumH) / 3 / 2, fz(f, s, -depth / 2),
-        w / 2, ((k + 1) * podiumH) / 3 / 2, depth / 2, rot, T_STONE);
+      const rise = ((k + 1) * podiumH) / 3;
+      boxAt(pen, pen.stone, fx(f, s, depth / 2), y0 + rise / 2, fz(f, s, depth / 2),
+        w / 2, rise / 2, depth / 2, rot, T_STONE);
     }
   }
 
@@ -1839,6 +2020,8 @@ function buildCivic(pen: Pen, lot: Lot, rng: Rng): void {
     if (detail) {
       glowStrip(pen, fx(f, 1, -0.4), fz(f, 1, -0.4), fx(f, f.len - 1, -0.4), fz(f, f.len - 1, -0.4),
         colTop + 0.4, colTop + 0.7, f.nx, f.nz, G_WARM);
+    }
+    {
       /* Pediment: a shallow gable over the colonnade. */
       const rise = 2.3;
       quad(
@@ -1932,7 +2115,7 @@ function buildGarden(pen: Pen, lot: Lot, rng: Rng): void {
     capPoly(pen, pen.stone, soil, y0 + 0.22, 1, T_LEAF);
     /* A hedge inside the wall, broken where the gate is. */
     const hedge = offsetPoly(soil, 0.5);
-    if (hedge && pen.quality === "high") {
+    if (hedge) {
       const hShell = shellOf(hedge);
       for (let i = 0; i < hShell.n; i++) {
         if (gate.has(i)) continue;
@@ -2010,4 +2193,604 @@ function buildLot(pen: Pen, lot: Lot, salt: string): void {
       buildHangar(pen, lot, rng);
       break;
   }
+}
+
+/* -------------------------------------------------------------------------
+ * Landmarks
+ *
+ * Hand-built, every one, because that is the point of them: a procedural city
+ * can make a thousand plausible buildings and not one place you would agree
+ * to meet somebody. They go into the same four buckets as everything else, so
+ * six landmarks cost zero extra draw calls.
+ * ---------------------------------------------------------------------- */
+
+function ngon(cx: number, cz: number, r: number, sides: number, phase = 0): P2[] {
+  const out: P2[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = phase + (i / sides) * TAU;
+    out.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r });
+  }
+  return out;
+}
+
+/** A faceted tube between two arbitrary points. Ribs, telescopes, struts. */
+function strut(
+  pen: Pen,
+  b: Bucket,
+  x0: number, y0: number, z0: number,
+  x1: number, y1: number, z1: number,
+  r: number,
+  sides: number,
+  tone: number,
+): void {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dz = z1 - z0;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  const ax = dx / len;
+  const ay = dy / len;
+  const az = dz / len;
+  // Any vector not parallel to the axis gives a usable first basis vector.
+  let ux = -ay;
+  let uy = ax;
+  let uz = 0;
+  if (Math.hypot(ux, uy, uz) < 1e-4) {
+    ux = 1;
+    uy = 0;
+    uz = 0;
+  }
+  const ul = Math.hypot(ux, uy, uz);
+  ux /= ul;
+  uy /= ul;
+  uz /= ul;
+  const vx = ay * uz - az * uy;
+  const vy = az * ux - ax * uz;
+  const vz = ax * uy - ay * ux;
+  for (let i = 0; i < sides; i++) {
+    const a0 = (i / sides) * TAU;
+    const a1 = ((i + 1) / sides) * TAU;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const nx = (ux * (c0 + c1) + vx * (s0 + s1)) / 2;
+    const ny = (uy * (c0 + c1) + vy * (s0 + s1)) / 2;
+    const nz = (uz * (c0 + c1) + vz * (s0 + s1)) / 2;
+    const nl = Math.hypot(nx, ny, nz) || 1;
+    quad(
+      pen, b,
+      x0 + (ux * c0 + vx * s0) * r, y0 + (uy * c0 + vy * s0) * r, z0 + (uz * c0 + vz * s0) * r,
+      x0 + (ux * c1 + vx * s1) * r, y0 + (uy * c1 + vy * s1) * r, z0 + (uz * c1 + vz * s1) * r,
+      x1 + (ux * c1 + vx * s1) * r, y1 + (uy * c1 + vy * s1) * r, z1 + (uz * c1 + vz * s1) * r,
+      x1 + (ux * c0 + vx * s0) * r, y1 + (uy * c0 + vy * s0) * r, z1 + (uz * c0 + vz * s0) * r,
+      nx / nl, ny / nl, nz / nl,
+      a0 * r, 0, a1 * r, 0, a1 * r, len, a0 * r, len,
+      tone, 0.4, 0.4, 0.4, 0.4,
+    );
+  }
+}
+
+/**
+ * The Beacon. Five hundred metres, at the exact middle, and the navigational
+ * anchor of the whole map — from the ice it is the one thing you can see, and
+ * from anywhere on the deck it tells you which way the centre is.
+ *
+ * A stepped stone base, a tapering eight-sided glass shaft with collars, a
+ * public gallery at 420 m that you can land a jetpack on, a flared lantern
+ * and a mast.
+ */
+function buildBeacon(pen: Pen, lm: Landmark): void {
+  const y0 = lm.y;
+  const TOP = 500;
+  pen.baseY = y0;
+  pen.span = TOP;
+  pen.seed = 42;
+  const detail = pen.quality === "high";
+
+  /* Base. */
+  tube(pen, pen.stone, lm.x, lm.z, 24, 22.5, y0, y0 + 8, 8, T_BASALT, false);
+  tube(pen, pen.stone, lm.x, lm.z, 21, 20, y0 + 8, y0 + 14, 8, T_STONE, true, 0.2);
+  if (detail) {
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU + 0.4;
+      const p0 = { x: lm.x + Math.cos(a) * 21.5, z: lm.z + Math.sin(a) * 21.5 };
+      const a1 = a + TAU / 8;
+      const p1 = { x: lm.x + Math.cos(a1) * 21.5, z: lm.z + Math.sin(a1) * 21.5 };
+      const nrm = { x: Math.cos((a + a1) / 2), z: Math.sin((a + a1) / 2) };
+      glowStrip(pen, p0.x, p0.z, p1.x, p1.z, y0 + 12.6, y0 + 13.6, nrm.x, nrm.z, G_WARM);
+    }
+  }
+  addBox(pen, ngon(lm.x, lm.z, 24, 8), y0 + 14, y0);
+  addDeck(pen, ngon(lm.x, lm.z, 21, 8), y0 + 14);
+
+  /* Shaft: five tapering segments with a collar at every joint. */
+  const stations = [14, 96, 190, 280, 356, 418];
+  const radii = [15, 13.4, 11.2, 9.0, 7.0, 5.6];
+  for (let i = 0; i + 1 < stations.length; i++) {
+    tube(pen, pen.glass, lm.x, lm.z, radii[i], radii[i + 1], y0 + stations[i], y0 + stations[i + 1], 8, T_STONE, false);
+    tube(pen, pen.stone, lm.x, lm.z, radii[i + 1] + 0.7, radii[i + 1] + 0.7,
+      y0 + stations[i + 1] - 1.1, y0 + stations[i + 1] + 1.1, 8, T_METAL, false);
+  }
+  addBox(pen, ngon(lm.x, lm.z, 15, 8), y0 + 418, y0 + 14);
+
+  /* The gallery: a real place, with a floor and a rail. */
+  const gallery = ngon(lm.x, lm.z, 13, 16);
+  tube(pen, pen.stone, lm.x, lm.z, 13, 13, y0 + 418, y0 + 420, 16, T_STONE, false);
+  capPoly(pen, pen.stone, gallery, y0 + 420, 1, T_ROOF);
+  ringWall(pen, gallery, 0.4, y0 + 420, y0 + 421.2, T_METAL);
+  addDeck(pen, gallery, y0 + 420);
+  addBox(pen, ngon(lm.x, lm.z, 6.2, 8), y0 + 458, y0 + 420);
+  if (detail) {
+    const gs = shellOf(gallery);
+    for (let i = 0; i < gs.n; i++) {
+      const p = gallery[i];
+      const q = gallery[(i + 1) % gs.n];
+      glowStrip(pen, p.x, p.z, q.x, q.z, y0 + 418.4, y0 + 419.6, gs.nrm[i].x, gs.nrm[i].z, G_COOL);
+    }
+  }
+
+  /* Lantern and mast. */
+  tube(pen, pen.glass, lm.x, lm.z, 5.6, 9, y0 + 421, y0 + 440, 8, T_STONE, false);
+  tube(pen, pen.glass, lm.x, lm.z, 9, 3.6, y0 + 440, y0 + 458, 8, T_STONE, true);
+  tube(pen, pen.glow, lm.x, lm.z, 8.4, 8.4, y0 + 426, y0 + 438, 8, G_WARM, false);
+  tube(pen, pen.stone, lm.x, lm.z, 1.3, 0.4, y0 + 458, y0 + TOP - 6, 6, T_METAL, false);
+  tube(pen, pen.glow, lm.x, lm.z, 1.1, 0.2, y0 + TOP - 6, y0 + TOP, 5, G_WHITE, false);
+}
+
+/** A dome with a telescope in it, at the rim, pointed off the edge. */
+function buildObservatory(pen: Pen, lm: Landmark): void {
+  const y0 = lm.y;
+  pen.baseY = y0;
+  pen.span = 34;
+  pen.seed = 7;
+  const detail = pen.quality === "high";
+
+  const podium = ngon(lm.x, lm.z, 16.5, 16);
+  prismWalls(pen, pen.stone, shellOf(podium), y0, y0 + 1.1, T_BASALT);
+  capPoly(pen, pen.stone, podium, y0 + 1.1, 1, T_STONE);
+
+  const drum = ngon(lm.x, lm.z, 12.5, 16);
+  const dShell = shellOf(drum);
+  for (let i = 0; i < dShell.n; i++) {
+    const f = faceOf(dShell, i);
+    facade(pen, f, y0 + 1.1, y0 + 13, {
+      floorH: 11.9, bayW: f.len, winW: f.len * 0.5, winH: 5.4, sill: 2.6,
+      depth: 0.55, tone: T_STONE, paneKind: P_WINDOW, detail,
+    });
+  }
+  cornice(pen, dShell, y0 + 13, 1.1, 0.8, T_STONE, true);
+  capPoly(pen, pen.stone, drum, y0 + 14.1, 1, T_ROOF);
+
+  /* Dome, with the shutter open along the landmark's own facing. */
+  let a = lm.yaw % TAU;
+  if (a < 0) a += TAU;
+  const from = Math.max(0.001, a - 0.32);
+  const to = Math.min(TAU - 0.001, a + 0.32);
+  dome(pen, pen.stone, lm.x, y0 + 14.1, lm.z, 12.5, 7, 16, T_METAL, { from, to });
+
+  /* The telescope, aimed out through the shutter and off the edge. */
+  const tilt = 0.62;
+  const dx = Math.cos(a);
+  const dz = Math.sin(a);
+  const cx = lm.x - dx * 2.5;
+  const cz = lm.z - dz * 2.5;
+  const cy = y0 + 17.5;
+  strut(pen, pen.stone, cx, cy, cz,
+    cx + dx * Math.cos(tilt) * 15, cy + Math.sin(tilt) * 15, cz + dz * Math.cos(tilt) * 15,
+    1.5, 8, T_METAL);
+  boxAt(pen, pen.stone, cx - dz * 3.4, cy - 1.6, cz + dx * 3.4, 0.4, 2.6, 0.4, a, T_BASALT);
+  boxAt(pen, pen.stone, cx + dz * 3.4, cy - 1.6, cz - dx * 3.4, 0.4, 2.6, 0.4, a, T_BASALT);
+
+  /* A gallery around the drum, and the rail to lean on. */
+  const walk = ngon(lm.x, lm.z, 15.6, 16);
+  capPoly(pen, pen.stone, walk, y0 + 1.1, 1, T_ROOF);
+  ringWall(pen, walk, 0.35, y0 + 1.1, y0 + 2.2, T_METAL);
+  addBox(pen, drum, y0 + 14.1, y0);
+  addDeck(pen, podium, y0 + 1.1);
+  addDeck(pen, drum, y0 + 14.1);
+}
+
+/** Iron and glass over a big vaulted span. Loud, warm, and open late. */
+function buildMarketHall(pen: Pen, lm: Landmark): void {
+  const y0 = lm.y;
+  pen.baseY = y0;
+  pen.span = 24;
+  pen.seed = 19;
+  const detail = pen.quality === "high";
+
+  const L = 58;
+  const Wd = 30;
+  const WALL = 8.5;
+  const VAULT = 13;
+  const fxv = Math.cos(lm.yaw);
+  const fzv = Math.sin(lm.yaw);
+  const rxv = -Math.sin(lm.yaw);
+  const rzv = Math.cos(lm.yaw);
+  const at = (s: number, t: number) => ({ x: lm.x + fxv * s + rxv * t, z: lm.z + fzv * s + rzv * t });
+
+  const rect: P2[] = [at(-L / 2, -Wd / 2), at(L / 2, -Wd / 2), at(L / 2, Wd / 2), at(-L / 2, Wd / 2)];
+  const shell = shellOf(rect);
+  for (let i = 0; i < shell.n; i++) {
+    const f = faceOf(shell, i);
+    facade(pen, f, y0, y0 + WALL, {
+      floorH: WALL, bayW: 6.2, winW: 3.6, winH: 5.2, sill: 1.8,
+      depth: 0.6, tone: T_TERRA, paneKind: P_SHOP, detail,
+    });
+  }
+  cornice(pen, shell, y0 + WALL, 0.9, 0.7, T_STONE, true);
+
+  /* The vault: iron ribs every five metres with glazing spanning between. */
+  /* Constant at both tiers: the vault is the silhouette, and the
+     silhouette is what the lake shows. */
+  const RIBS = 13;
+  const ARC = 11;
+  const arcPt = (s: number, k: number) => {
+    const th = (k / ARC) * Math.PI;
+    return {
+      p: at(s, -Math.cos(th) * (Wd / 2)),
+      y: y0 + WALL + 0.9 + Math.sin(th) * VAULT,
+      nx: -Math.cos(th),
+      ny: Math.sin(th),
+    };
+  };
+  for (let i = 0; i < RIBS; i++) {
+    const s = -L / 2 + (L * i) / (RIBS - 1);
+    for (let k = 0; k < ARC; k++) {
+      const a0 = arcPt(s, k);
+      const a1 = arcPt(s, k + 1);
+      strut(pen, pen.stone, a0.p.x, a0.y, a0.p.z, a1.p.x, a1.y, a1.p.z, 0.24, 5, T_METAL);
+    }
+  }
+  for (let i = 0; i + 1 < RIBS; i++) {
+    const s0 = -L / 2 + (L * i) / (RIBS - 1);
+    const s1 = -L / 2 + (L * (i + 1)) / (RIBS - 1);
+    for (let k = 0; k < ARC; k++) {
+      const a0 = arcPt(s0, k);
+      const b0 = arcPt(s1, k);
+      const a1 = arcPt(s0, k + 1);
+      const b1 = arcPt(s1, k + 1);
+      const nx = ((a0.nx + a1.nx) / 2) * rxv;
+      const nz = ((a0.nx + a1.nx) / 2) * rzv;
+      const ny = (a0.ny + a1.ny) / 2;
+      quad(
+        pen, pen.pane,
+        a0.p.x, a0.y, a0.p.z, b0.p.x, b0.y, b0.p.z, b1.p.x, b1.y, b1.p.z, a1.p.x, a1.y, a1.p.z,
+        nx, ny, nz,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        P_SHOP, 3, 3, 3, 3,
+      );
+    }
+  }
+  /* Fan windows in the two gable ends. */
+  for (const end of [-1, 1]) {
+    const s = (end * L) / 2;
+    const apex = { p: at(s, 0), y: y0 + WALL + 0.9 };
+    for (let k = 0; k < ARC; k++) {
+      const a0 = arcPt(s, k);
+      const a1 = arcPt(s, k + 1);
+      quad(
+        pen, pen.pane,
+        a0.p.x, a0.y, a0.p.z, a1.p.x, a1.y, a1.p.z,
+        apex.p.x, apex.y + VAULT * 0.02, apex.p.z, apex.p.x, apex.y + VAULT * 0.02, apex.p.z,
+        fxv * end, 0, fzv * end, 0, 0, 1, 0, 1, 1, 1, 1,
+        P_SHOP, 2, 2, 2, 2,
+      );
+      if (detail) {
+        strut(pen, pen.stone, a0.p.x, a0.y, a0.p.z, apex.p.x, apex.y, apex.p.z, 0.16, 4, T_METAL);
+      }
+    }
+  }
+
+  addBox(pen, rect, y0 + WALL + 0.9, y0);
+  addDeck(pen, rect, y0 + WALL + 0.9);
+}
+
+/** A low control tower beside the pads. Painted circles are `streets.ts`. */
+function buildLaunch(pen: Pen, lm: Landmark): void {
+  const y0 = lm.y;
+  pen.baseY = y0;
+  pen.span = 26;
+  pen.seed = 63;
+  const detail = pen.quality === "high";
+
+  const shaft = ngon(lm.x, lm.z, 5.2, 8);
+  const sShell = shellOf(shaft);
+  for (let i = 0; i < sShell.n; i++) {
+    facade(pen, faceOf(sShell, i), y0, y0 + 13.5, {
+      floorH: 4.5, bayW: 4.2, winW: 1.5, winH: 1.8, sill: 1.2,
+      depth: 0.4, tone: T_STONE, paneKind: P_WINDOW, detail,
+    });
+  }
+  /* The control room leans out over the pads, the way they always do. */
+  tube(pen, pen.glass, lm.x, lm.z, 5.6, 7.6, y0 + 13.5, y0 + 18.4, 8, T_STONE, false);
+  const room = ngon(lm.x, lm.z, 7.6, 8);
+  capPoly(pen, pen.stone, room, y0 + 18.4, 1, T_ROOF);
+  cornice(pen, shellOf(room), y0 + 18.4, 0.6, 0.4, T_METAL, true);
+  tube(pen, pen.stone, lm.x, lm.z, 0.5, 0.2, y0 + 19, y0 + 25, 5, T_METAL, false);
+  tube(pen, pen.glow, lm.x, lm.z, 0.8, 0.25, y0 + 25, y0 + 27, 5, G_WARM, false);
+  addBox(pen, room, y0 + 19, y0);
+  addDeck(pen, room, y0 + 19);
+
+  /* An ancillary block, at the yaw side. */
+  const bx = lm.x + Math.cos(lm.yaw + Math.PI / 2) * 14;
+  const bz = lm.z + Math.sin(lm.yaw + Math.PI / 2) * 14;
+  const low: P2[] = [
+    { x: bx - 7, z: bz - 5 }, { x: bx + 7, z: bz - 5 },
+    { x: bx + 7, z: bz + 5 }, { x: bx - 7, z: bz + 5 },
+  ];
+  const lShell = shellOf(low);
+  for (let i = 0; i < lShell.n; i++) {
+    facade(pen, faceOf(lShell, i), y0, y0 + 4.6, {
+      floorH: 4.6, bayW: 4.0, winW: 1.8, winH: 2.0, sill: 1.4,
+      depth: 0.35, tone: T_TERRA, paneKind: P_WINDOW, detail,
+    });
+  }
+  cornice(pen, lShell, y0 + 4.6, 0.5, 0.45, T_STONE, true);
+  capPoly(pen, pen.stone, low, y0 + 5.1, 1, T_ROOF);
+  addBox(pen, low, y0 + 5.1, y0);
+  addDeck(pen, low, y0 + 5.1);
+}
+
+/** A platform and a canopy. The ring tram, every ninety seconds. */
+function buildTram(pen: Pen, lm: Landmark): void {
+  const y0 = lm.y;
+  pen.baseY = y0;
+  pen.span = 6;
+  pen.seed = 31;
+  const fxv = Math.cos(lm.yaw + Math.PI / 2);
+  const fzv = Math.sin(lm.yaw + Math.PI / 2);
+  const rxv = -fzv;
+  const rzv = fxv;
+  const at = (s: number, t: number) => ({ x: lm.x + fxv * s + rxv * t, z: lm.z + fzv * s + rzv * t });
+  const L = 24;
+  const Wd = 7.5;
+
+  const plat: P2[] = [at(-L / 2, -Wd / 2), at(L / 2, -Wd / 2), at(L / 2, Wd / 2), at(-L / 2, Wd / 2)];
+  prismWalls(pen, pen.stone, shellOf(plat), y0, y0 + 0.85, T_BASALT);
+  capPoly(pen, pen.stone, plat, y0 + 0.85, 1, T_STONE);
+  for (const end of [-1, 1]) {
+    for (let k = 0; k < 3; k++) {
+      const p = at((end * (L / 2 + 0.4 + k * 0.4)), 0);
+      boxAt(pen, pen.stone, p.x, y0 + ((3 - k) * 0.85) / 3 / 2, p.z, 0.42, ((3 - k) * 0.85) / 3 / 2, Wd / 2, lm.yaw, T_STONE);
+    }
+  }
+
+  const canopyY = y0 + 4.6;
+  for (const t of [-Wd / 2 + 1.1, Wd / 2 - 1.1]) {
+    for (let k = 0; k < 3; k++) {
+      const p = at(-L / 2 + 2.5 + ((L - 5) * k) / 2, t);
+      tube(pen, pen.stone, p.x, p.z, 0.24, 0.2, y0 + 0.85, canopyY, 6, T_METAL, false);
+    }
+  }
+  const canopy: P2[] = [at(-L / 2 - 1, -Wd / 2 - 1), at(L / 2 + 1, -Wd / 2 - 1), at(L / 2 + 1, Wd / 2 + 1), at(-L / 2 - 1, Wd / 2 + 1)];
+  prismWalls(pen, pen.stone, shellOf(canopy), canopyY, canopyY + 0.5, T_METAL);
+  capPoly(pen, pen.stone, canopy, canopyY + 0.5, 1, T_METAL);
+  capPoly(pen, pen.stone, canopy, canopyY, -1, T_TIMBER);
+  if (pen.quality === "high") {
+    const cs = shellOf(canopy);
+    for (let i = 0; i < cs.n; i++) {
+      const p = canopy[i];
+      const q = canopy[(i + 1) % cs.n];
+      glowStrip(pen, p.x, p.z, q.x, q.z, canopyY - 0.35, canopyY - 0.02, cs.nrm[i].x, cs.nrm[i].z, G_WARM);
+    }
+  }
+  addDeck(pen, plat, y0 + 0.85);
+  addDeck(pen, canopy, canopyY + 0.5);
+}
+
+/** The basin and the pedestal. The water is `props.ts`. */
+function buildFountain(pen: Pen, lm: Landmark): void {
+  const y0 = lm.y;
+  pen.baseY = y0;
+  pen.span = 6;
+  pen.seed = 88;
+
+  const rim = ngon(lm.x, lm.z, 8.4, 24);
+  ringWall(pen, rim, 0.7, y0, y0 + 0.85, T_STONE);
+  const inner = offsetPoly(rim, 0.7);
+  if (inner) capPoly(pen, pen.stone, inner, y0 + 0.18, 1, T_BASALT);
+  tube(pen, pen.stone, lm.x, lm.z, 2.6, 2.2, y0 + 0.18, y0 + 1.5, 12, T_STONE);
+  tube(pen, pen.stone, lm.x, lm.z, 1.5, 1.2, y0 + 1.5, y0 + 3.4, 12, T_STONE, false);
+  tube(pen, pen.stone, lm.x, lm.z, 2.4, 0.6, y0 + 3.4, y0 + 4.1, 12, T_METAL);
+  addDeck(pen, ngon(lm.x, lm.z, 2.6, 12), y0 + 1.5);
+}
+
+/** A pair of piers and a lintel. Nothing in the plan is a gate yet. */
+function buildGate(pen: Pen, lm: Landmark): void {
+  const y0 = lm.y;
+  pen.baseY = y0;
+  pen.span = 9;
+  pen.seed = 5;
+  const rx = -Math.sin(lm.yaw);
+  const rz = Math.cos(lm.yaw);
+  for (const s of [-4, 4]) {
+    tube(pen, pen.stone, lm.x + rx * s, lm.z + rz * s, 1.3, 1.0, y0, y0 + 7, 6, T_STONE);
+  }
+  boxAt(pen, pen.stone, lm.x, y0 + 7.7, lm.z, 5.4, 0.7, 1.2, lm.yaw, T_STONE);
+}
+
+function buildLandmark(pen: Pen, lm: Landmark): void {
+  switch (lm.kind) {
+    case "beacon":
+      buildBeacon(pen, lm);
+      break;
+    case "observatory":
+      buildObservatory(pen, lm);
+      break;
+    case "market-hall":
+      buildMarketHall(pen, lm);
+      break;
+    case "launch":
+      buildLaunch(pen, lm);
+      break;
+    case "tram":
+      buildTram(pen, lm);
+      break;
+    case "fountain":
+      buildFountain(pen, lm);
+      break;
+    case "gate":
+      buildGate(pen, lm);
+      break;
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * The system
+ * ---------------------------------------------------------------------- */
+
+function makeMaterial(name: string, frag: string, glow: boolean): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    name,
+    vertexShader: VERT,
+    fragmentShader: frag,
+    uniforms: {
+      uTime: { value: 0 },
+      uDaylight: { value: 1 },
+      uCam: { value: new THREE.Vector3() },
+      uSun: { value: SUN_DIR.clone() },
+    },
+    // Every material here is double-sided, and not out of laziness: the lake
+    // copy is this same geometry with scale.y = -1, which inverts winding.
+    side: THREE.DoubleSide,
+    fog: false,
+    transparent: glow,
+    depthWrite: !glow,
+    blending: glow ? THREE.AdditiveBlending : THREE.NormalBlending,
+  });
+}
+
+/**
+ * Everything on every lot, and the six landmarks.
+ *
+ * Reflected, so read the note at the top of the file before touching a
+ * gradient in here.
+ */
+export function buildBuildings(ctx: BuildContext): BuildingsHandle {
+  const plan = cityPlan();
+  const pen = newPen(ctx.quality);
+  const group = new THREE.Group();
+  group.name = "empyrean-buildings";
+
+  const lots: LotBuild[] = [];
+  for (const lot of plan.lots) {
+    const before =
+      pen.glass.triangles + pen.stone.triangles + pen.pane.triangles + pen.glow.triangles;
+    resetBounds(pen);
+    buildLot(pen, lot, ctx.seedSalt);
+    const after =
+      pen.glass.triangles + pen.stone.triangles + pen.pane.triangles + pen.glow.triangles;
+    const built = after > before;
+    lots.push({
+      id: lot.id,
+      use: lot.use,
+      built,
+      top: built ? pen.top : lot.y,
+      triangles: after - before,
+      min: built ? { ...pen.min } : { x: lot.centroid.x, y: lot.y, z: lot.centroid.z },
+      max: built ? { ...pen.max } : { x: lot.centroid.x, y: lot.y, z: lot.centroid.z },
+    });
+  }
+  for (const lm of plan.landmarks) buildLandmark(pen, lm);
+
+  const glassMat = makeMaterial("EmpyreanGlass", GLASS_FRAG, false);
+  const stoneMat = makeMaterial("EmpyreanMasonry", STONE_FRAG, false);
+  const paneMat = makeMaterial("EmpyreanGlazing", PANE_FRAG, false);
+  const glowMat = makeMaterial("EmpyreanSignage", GLOW_FRAG, true);
+
+  const geos: THREE.BufferGeometry[] = [];
+  const mats: THREE.ShaderMaterial[] = [glassMat, stoneMat, paneMat, glowMat];
+  let triangles = 0;
+  let vertices = 0;
+  const addMesh = (b: Bucket, m: THREE.ShaderMaterial, name: string, order: number) => {
+    const geo = finishBucket(b);
+    if (!geo) return;
+    triangles += b.triangles;
+    vertices += b.vertices;
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.name = name;
+    mesh.renderOrder = order;
+    mesh.frustumCulled = false;
+    group.add(mesh);
+    geos.push(geo);
+  };
+  addMesh(pen.stone, stoneMat, "empyrean-masonry", 0);
+  addMesh(pen.glass, glassMat, "empyrean-curtainwall", 0);
+  addMesh(pen.pane, paneMat, "empyrean-glazing", 0);
+  addMesh(pen.glow, glowMat, "empyrean-signage", 2);
+
+  return {
+    name: "buildings",
+    group,
+    reflected: true,
+    blockers: pen.blockers,
+    decks: pen.decks,
+    lots,
+    stats: { draws: geos.length, triangles, vertices },
+    update(frame: FrameContext) {
+      for (let i = 0; i < mats.length; i++) {
+        const u = mats[i].uniforms;
+        u.uTime.value = frame.time;
+        u.uDaylight.value = frame.daylight;
+        (u.uCam.value as THREE.Vector3).copy(frame.camera.position);
+        (u.uSun.value as THREE.Vector3).copy(frame.sunDir);
+      }
+    },
+    dispose() {
+      for (const g of geos) g.dispose();
+      for (const m of mats) m.dispose();
+      group.clear();
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------
+ * Seams for the tests
+ *
+ * Rebuilding one lot into a private pen is how "no building leaves its lot"
+ * becomes a property rather than a hope: the test gets every vertex the lot
+ * contributed and measures it against the polygon it was given.
+ * ---------------------------------------------------------------------- */
+
+function penPositions(pen: Pen): Float32Array {
+  const out: number[] = [];
+  for (const b of [pen.glass, pen.stone, pen.pane, pen.glow]) {
+    for (const g of b.chunks) {
+      const a = g.getAttribute("position");
+      for (let i = 0; i < a.count; i++) out.push(a.getX(i), a.getY(i), a.getZ(i));
+    }
+    for (let i = 0; i < b.verts * 3; i++) out.push(b.pos[i]);
+  }
+  return new Float32Array(out);
+}
+
+/** Every vertex one lot contributes, as flat xyz. */
+export function lotVertices(lot: Lot, quality: QualityTier, salt = ""): Float32Array {
+  const pen = newPen(quality);
+  buildLot(pen, lot, salt);
+  return penPositions(pen);
+}
+
+/** What one lot contributes to collision, on its own. */
+export function lotCollision(
+  lot: Lot,
+  quality: QualityTier,
+  salt = "",
+): { blockers: Blocker[]; decks: Deck[]; top: number } {
+  const pen = newPen(quality);
+  resetBounds(pen);
+  buildLot(pen, lot, salt);
+  return { blockers: pen.blockers, decks: pen.decks, top: pen.top };
+}
+
+/** Every vertex one landmark contributes, as flat xyz. */
+export function landmarkVertices(lm: Landmark, quality: QualityTier): Float32Array {
+  const pen = newPen(quality);
+  buildLandmark(pen, lm);
+  return penPositions(pen);
+}
+
+/** How far outside its own lot polygon a point is, in metres. Zero is good. */
+export function outsideLot(lot: Lot, x: number, z: number): number {
+  return outsideBy(lot.poly, x, z);
 }

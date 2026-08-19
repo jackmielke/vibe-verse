@@ -44,15 +44,26 @@ import * as THREE from "three";
 import { makeRng } from "@/shared/proc/rng";
 import { RING_R, RIM_R, KERB_H } from "./cityplan";
 import { ISLAND_Y, PLATEAU_R } from "./config";
+/* The one exception to "a system may not import another system": `SUN_DIR` is
+   a constant, not behaviour, and it is only the build-time default — every
+   frame overwrites it from `ctx.sunDir`, which is the live one. */
 import { SUN_DIR } from "./sky";
 import type { BuildContext, FrameContext, System } from "./types";
 
 export interface TramState {
+  /** Front car's position, on the road, in world space. */
   x: number;
   y: number;
   z: number;
+  /** Facing, radians, same convention as everything else: 0 is -Z. */
   yaw: number;
+  /** True while it is standing at a platform with its doors open. */
   stopped: boolean;
+  /**
+   * Human-readable, for a sign or a prompt: the stop it is standing at while
+   * `stopped`, and the one it is heading for while it is moving. Match it to
+   * `stops` by name order, or use `stops[].id` for anything programmatic.
+   */
   nextStop: string;
 }
 
@@ -73,10 +84,19 @@ const TRAM_STOPS: Array<{ id: string; name: string; a: number }> = [
   { id: "observatory", name: "The Observatory", a: -Math.PI / 2 },
 ];
 
-/** Tram kinematics. These four numbers are the ninety-second lap. */
+/**
+ * Tram kinematics. These four numbers *are* the ninety-second lap.
+ *
+ * The ring is 1370 m and the four stops cut it into 514, 342, 171 and 342 m.
+ * At 5 m/s² up to 30 m/s that is 69.7 s of running; four seven-second stands
+ * make it 97.7 on paper and 89 in practice, because braking on a discrete
+ * step and the snap onto the platform each shave a little off every segment.
+ * Change any of them and re-measure — the test asserts the lap, not the
+ * speed, which is the number anyone actually notices.
+ */
 const TRAM_VMAX = 30;
 const TRAM_ACCEL = 5;
-const TRAM_DWELL = 5;
+const TRAM_DWELL = 7;
 const TRAM_R = RING_R[1];
 
 /** How far in from the road centreline a platform sits. */
@@ -495,10 +515,15 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
   group.name = "empyrean-traffic";
 
   /* ---- lanes ----------------------------------------------------------- */
+  /* Altitudes are chosen against each other, not for the look of them: every
+     lane crosses several others in plan, so the only thing keeping two craft
+     out of the same cubic metre is ten metres of air. Ring lanes take 26, 40,
+     64 and 88; the cross-town loops take the gaps between them, and the four
+     loops never overlap each other in plan, so they can share. */
   const lanes: Lane[] = [
-    ringLane(RING_R[0], DECK + 34, 1, 30),
-    ringLane(RING_R[1], DECK + 58, -1, 34),
-    ringLane(RING_R[2], DECK + 82, 1, 36),
+    ringLane(RING_R[0], DECK + 40, 1, 30),
+    ringLane(RING_R[1], DECK + 64, -1, 34),
+    ringLane(RING_R[2], DECK + 88, 1, 36),
     ringLane(RIM_R + 22, DECK + 26, -1, 28),
   ];
   /* Four cross-town loops, each out over one avenue and back over the next.
@@ -509,7 +534,15 @@ export function buildTraffic(ctx: BuildContext): TrafficHandle {
   for (let i = 0; i < 4; i++) {
     const a0 = (i / 4) * TAU;
     lanes.push(
-      avenueLane(a0, a0 + Math.PI / 4, RING_R[0], RIM_R, DECK + 46 + i * 6, DECK + 68 + i * 6, 32),
+      avenueLane(
+        a0,
+        a0 + Math.PI / 4,
+        RING_R[0],
+        RIM_R,
+        DECK + 51 + (i % 2) * 3,
+        DECK + 75 + (i % 2) * 3,
+        32,
+      ),
     );
   }
 

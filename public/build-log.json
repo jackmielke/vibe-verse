@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-08-19T09:22:18.122Z",
+  "generated_at": "2026-08-19T20:43:20.914Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f5c5994d",
+      "date": "2026-08-19",
+      "subject": "WIP: the plan, and ten systems being built against it",
+      "lede": "Not on main, and not ready for it: this tree does not typecheck. `world.ts` imports systems that are still being written, and pushing it would take a live `main` down. It is here so the work is not sitting only in a container.",
+      "places": [],
+      "files": 40
+    },
+    {
+      "sha": "df3a2e07",
+      "date": "2026-08-19",
+      "subject": "npm run stamp, and a lockfile a fresh clone can actually install",
+      "lede": "Two things, and the second one is the one that matters.",
+      "places": [],
+      "files": 4
+    },
     {
       "sha": "1297ab30",
       "date": "2026-08-19",
@@ -1005,22 +1021,6 @@
       "date": "2026-08-14",
       "subject": "Chrome is the front door now, and five more to try",
       "lede": "`DEFAULT_LOOK` moves to chrome, so a first-time visitor with nothing saved gets the brushed-metal wordmark instead of the mint one. Checked with a clean profile rather than assumed: no localStorage, and the h1 comes up with a transparent fill and the gradient behind it.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "6984f45f",
-      "date": "2026-08-14",
-      "subject": "Seven cards play, and the list is a result rather than a choice",
-      "lede": "\"Every game, or the top ten?\" turned out to be the wrong question — most worlds physically cannot be recorded, so which cards move is discovered, not decided. Fourteen worlds have a `?shot` mode; seven of them move on their own.",
-      "places": [],
-      "files": 9
-    },
-    {
-      "sha": "c74d8b58",
-      "date": "2026-08-14",
-      "subject": "The recorder judges its own output",
-      "lede": "Pointing the GIF recorder at a list of worlds is only safe if it can tell when it has filmed nothing. \"A world that waits at a title screen records a title screen\" was a line in a comment, which is the kind of warning nobody remembers to act on at the moment it matters.",
       "places": [],
       "files": 3
     }

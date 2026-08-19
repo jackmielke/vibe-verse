@@ -92,7 +92,13 @@ export const COURSES: Course[] = [
     name: "The Avenue Sprint",
     blurb: "Down 45th, across the Halo, out the other side. Sixteen metres up, all of it.",
     startAt: { x: launch.x, y: ISLAND_Y + 1.2, z: launch.z },
-    radius: 10,
+    /* Eight metres, and that is the plan's decision rather than mine. Outside
+     * the first ring road the blocks are held clear of the *sector boundary*
+     * by a lane's width rather than an avenue's, so the real gap between the
+     * facades on 45th at r = 250 is 21 m, not 29. A ten-metre hoop out there
+     * has its rim inside a shopfront. Measured, not guessed — see the corridor
+     * check in `src/test/empyreanActivities.test.ts`. */
+    radius: 8,
     par: 32,
     base: 22,
     /* Straight down the avenue at 45°, which is the one the Launch Terrace
@@ -101,16 +107,22 @@ export const COURSES: Course[] = [
      * twenty-two metres over the roadway — above the lamps and the tram wires
      * and below the third floor of everything either side. */
     gates: [
-      g(45, 300, 638),
+      // High enough to clear the terrace's own control tower, which is fifteen
+      // metres of it and stands exactly where the start line wants to be.
+      g(45, 300, 650),
       g(45, 250, 636),
       g(45, 200, 636),
       g(45, 150, 636),
       g(45, 100, 638),
       g(20, 50, 642),
       g(-15, 50, 642),
-      g(-45, 100, 638),
-      g(-45, 160, 636),
-      g(-45, 230, 636),
+      // The mouth of the outbound avenue. Without it the line from the plaza
+      // to the first gate down 315th cuts the corner of the block at r = 68 —
+      // which is a tower, and was not visible in any screenshot.
+      g(-45, 72, 640),
+      g(-45, 120, 638),
+      g(-45, 180, 636),
+      g(-45, 240, 636),
       g(-45, 300, 638),
     ],
   },
@@ -155,21 +167,25 @@ export const COURSES: Course[] = [
      * avenue back out. The hop between petals is along the ring road itself,
      * which is the only tangential corridor in the core that is clear at every
      * height. Nothing here is more than forty metres over the pavement — it is
-     * the one course you fly *inside* the city rather than above it. */
+     * the one course you fly *inside* the city rather than above it.
+     *
+     * It runs anticlockwise from 180° for one reason: the Market Hall stands
+     * at 135° with a 34 m footprint centred on r = 168, so it overhangs the
+     * first ring road, and a gate at 135°/138 m is inside its glass. */
     gates: [
       g(180, 138, 646),
       g(180, 98, 646),
-      g(168, 58, 650),
-      g(147, 46, 652),
-      g(135, 98, 646),
-      g(135, 138, 648),
-      g(112, 140, 650),
-      g(90, 138, 648),
-      g(90, 98, 646),
-      g(78, 58, 650),
-      g(57, 46, 652),
-      g(45, 98, 646),
-      g(45, 138, 648),
+      g(192, 54, 650),
+      g(213, 46, 652),
+      g(225, 98, 646),
+      g(225, 138, 648),
+      g(248, 140, 650),
+      g(270, 138, 648),
+      g(270, 98, 646),
+      g(282, 54, 650),
+      g(303, 46, 652),
+      g(315, 98, 646),
+      g(315, 138, 648),
     ],
   },
   {
@@ -191,20 +207,30 @@ export const COURSES: Course[] = [
      * you fall past the fringe with the teeth beside you and the ice coming
      * up, and then climb the far side. */
     gates: [
-      g(270, 360, 630),
-      g(242, 460, 565),
-      g(214, 520, 500),
-      g(187, 460, 450),
-      g(159, 380, 440),
-      g(131, 372, 380),
-      g(104, 372, 300),
-      g(76, 374, 200),
-      g(49, 378, 110),
-      g(21, 386, 170),
-      g(-6, 392, 280),
-      g(-34, 400, 390),
-      g(-62, 430, 470),
-      g(-90, 470, 560),
+      // Twenty-eight metres over the Observatory's rail: a twelve-metre hoop
+      // any lower has its bottom inside the deck it is standing over.
+      g(270, 360, 648),
+      // Level, and outward first. Dropping straight off the rim would take
+      // the ideal line through the three terrace steps, which are solid.
+      g(248, 440, 628),
+      /* Wide. Where the rock meets the lowest terrace it is very nearly as
+       * broad as the deck — four hundred metres of it, and up to five hundred
+       * once the buttresses and the noise are counted — so the two gates in
+       * that band sit further out than anything else on the course. */
+      g(226, 545, 575),
+      g(204, 555, 500),
+      g(180, 490, 450),
+      g(156, 415, 440),
+      g(132, 395, 380),
+      g(108, 390, 300),
+      g(84, 390, 200),
+      g(60, 392, 110),
+      g(36, 398, 170),
+      g(12, 404, 280),
+      g(-12, 412, 390),
+      g(-36, 490, 470),
+      g(-60, 540, 545),
+      g(-84, 460, 620),
       g(-90, 345, 646),
     ],
   },
@@ -288,7 +314,7 @@ export function racePayout(course: Course, time: number, first: boolean, pb: boo
  * ---------------------------------------------------------------------- */
 
 export interface RaceHooks {
-  toast(text: string, tone?: "info" | "good" | "warn"): void;
+  toast(text: string, tone?: "info" | "good" | "warn", ttl?: number): void;
   pay(coins: number): void;
   /** Fired when the race ends for any reason, so the shell can clear itself. */
   ended(): void;
@@ -329,7 +355,6 @@ export function buildRaces(hooks: RaceHooks): RaceRunner {
   const toGate = new THREE.Vector3();
   const cross = new THREE.Vector3();
   const step = new THREE.Vector3();
-  const lines: string[] = ["", "", ""];
 
   let course: Course | null = null;
   let phase: Phase = "idle";
@@ -376,7 +401,14 @@ export function buildRaces(hooks: RaceHooks): RaceRunner {
       5,
     );
     hooks.chime(880, 0.5, 0.05);
-    book = { ...book, [course.id]: { best: pb ? elapsed : rec.best, splits: pb ? splits.slice() : rec.splits, runs: (rec?.runs ?? 0) + 1 } };
+    book = {
+      ...book,
+      [course.id]: {
+        best: pb ? elapsed : rec.best,
+        splits: pb ? splits.slice() : rec.splits,
+        runs: (rec?.runs ?? 0) + 1,
+      },
+    };
     writeStore(RACE_KEY, book);
     phase = "done";
     course = null;
@@ -455,6 +487,10 @@ export function buildRaces(hooks: RaceHooks): RaceRunner {
         }
         prevPos.copy(p);
         havePrev = true;
+        // The ghost line is drawn from wherever the player is, and during the
+        // countdown that is not yet anywhere: without this it hangs off the
+        // world origin for three seconds.
+        route.setHead(p.x, p.y, p.z);
         return;
       }
 
@@ -524,21 +560,33 @@ export function buildRaces(hooks: RaceHooks): RaceRunner {
       const rec = book[course.id];
       if (phase === "countdown") {
         const left = Math.max(0, COUNTDOWN - (now - startedAt));
-        lines[0] = left > 0.1 ? `Starting in ${left.toFixed(1)}` : "Go";
-        lines[1] = `${course.gates.length} gates · par ${formatTime(course.par)}`;
-        lines[2] = rec ? `Your best ${formatTime(rec.best)}` : "No time set";
-        return { title: course.name, lines, progress: 1 - left / COUNTDOWN };
+        return {
+          title: course.name,
+          lines: [
+            left > 0.1 ? `Starting in ${left.toFixed(1)}` : "Go",
+            `${course.gates.length} gates · par ${formatTime(course.par)}`,
+            rec ? `Your best ${formatTime(rec.best)}` : "No time set",
+          ],
+          progress: 1 - left / COUNTDOWN,
+        };
       }
-      lines[0] = formatTime(elapsed);
-      lines[1] = `Gate ${Math.min(index + 1, points.length)} of ${points.length}`;
       const ghost = rec?.splits?.[index];
-      lines[2] =
-        ghost !== undefined
-          ? `Ghost ${formatTime(ghost)} · ${elapsed <= ghost ? "ahead" : "behind"}`
-          : rec
-            ? `Your best ${formatTime(rec.best)}`
-            : `Par ${formatTime(course.par)}`;
-      return { title: course.name, lines, progress: index / points.length };
+      return {
+        title: course.name,
+        /* A new array every call. The HUD is React and holds what it is given;
+         * a rewritten-in-place array is the same array, so the panel would
+         * keep the first frame's numbers for ever. */
+        lines: [
+          formatTime(elapsed),
+          `Gate ${Math.min(index + 1, points.length)} of ${points.length}`,
+          ghost !== undefined
+            ? `Ghost ${formatTime(ghost)} · ${elapsed <= ghost ? "ahead" : "behind"}`
+            : rec
+              ? `Your best ${formatTime(rec.best)}`
+              : `Par ${formatTime(course.par)}`,
+        ],
+        progress: index / points.length,
+      };
     },
 
     dispose() {

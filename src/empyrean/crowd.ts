@@ -9,14 +9,19 @@
  *
  * ## Why the crowd is the performance story of this world
  *
- * Everything else here is drawn once and shaded; the crowd is six hundred
+ * Everything else here is drawn once and shaded; the crowd is eight hundred
  * things that all move, all animate, and all need deciding about. The rule
  * that keeps it affordable is that **the CPU moves people and the GPU poses
  * them**. Per frame, per person, the CPU writes a position, a facing, a walk
- * phase and three pose weights — seventeen floats. It never touches a limb.
+ * phase, three pose weights and the body's colours — twenty-two floats into
+ * a typed array that never moves. It never touches a limb.
  * The whole walk cycle, the sit, the lean on the rail and the head tilting up
  * at a jetpack are solved in the vertex shader from that phase and those
  * weights, so a hurrying courier and a man on a bench cost the same.
+ *
+ * It comes out at about half a millisecond of CPU for eight hundred bodies,
+ * of which roughly a third is the separation pass, and fifteen thousand
+ * triangles across the three tiers with the camera standing in the street.
  *
  * Three consequences worth knowing before changing anything here:
  *
@@ -57,6 +62,9 @@ import {
   type DistrictId,
 } from "./cityplan";
 import { ISLAND_Y, PLATEAU_R } from "./config";
+/* The one exception to "a system may not import another system": `SUN_DIR` is
+   a constant, not behaviour, and it is only the build-time default — every
+   frame overwrites it from `ctx.sunDir`, which is the live one. */
 import { SUN_DIR } from "./sky";
 import type { BuildContext, FrameContext, System } from "./types";
 
@@ -76,7 +84,7 @@ export interface CrowdHandle extends System {
  * ---------------------------------------------------------------------- */
 
 /** Population before daylight scaling. Low tier is the 60% cut. */
-const POP = { high: 620, low: 248 } as const;
+const POP = { high: 820, low: 330 } as const;
 
 /** LOD ring radii, metres. Past the last one a person is not drawn at all. */
 const LOD_NEAR = 45;
@@ -102,6 +110,8 @@ const ST_STAND = 1;
 const ST_SIT = 2;
 const ST_LEAN = 3;
 const ST_WAIT = 4;
+/** Stopped mid-walk to look at something. Keeps its path. */
+const ST_PAUSE = 5;
 
 /** What it is walking toward. Decides what it does when it gets there. */
 const D_DOOR = 0;
@@ -1097,12 +1107,18 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       const pull = DISTRICT_PULL[DISTRICT_IDS[graph.district[node]] ?? "core"];
       const kind = dests.kind[c];
       let score = (pull?.base ?? 1) + (pull?.dusk ?? 0) * (1 - daylight);
-      if (kind === D_RIM) score *= 0.55 + daylight * 0.9;
-      if (kind === D_SIT) score *= 0.7 + daylight * 0.6;
+      if (kind === D_RIM) score *= 2.1 * (0.5 + daylight * 0.9);
+      if (kind === D_SIT) score *= 1.5 * (0.6 + daylight * 0.7);
       if (kind === D_DOOR) score *= 1.25;
-      if (kind === D_TRAM) score *= 0.45;
+      if (kind === D_TRAM) score *= 0.7;
+      /* Sharply local, except for the two things people cross a city for.
+         A world where every errand is a mile is a world of commuters: almost
+         everybody is walking at any moment, nothing is standing still, and
+         the street reads as a conveyor. But nobody has ever gone to the
+         nearest view. */
+      const reach = kind === D_RIM || kind === D_LANDMARK ? 190 : 60;
       const d = Math.hypot(graph.x[node] - ax[i], graph.z[node] - az[i]);
-      score *= 1 / (1 + d / 130);
+      score *= 1 / (1 + d / reach);
       score *= 0.7 + rng.next() * 0.6;
       if (score > bestScore) {
         bestScore = score;
@@ -1176,34 +1192,34 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     switch (kind) {
       case D_RIM:
         aState[i] = ST_LEAN;
-        aTimer[i] = rng.range(18, 52);
+        aTimer[i] = rng.range(50, 150);
         break;
       case D_SIT:
         aState[i] = ST_SIT;
-        aTimer[i] = rng.range(24, 75);
+        aTimer[i] = rng.range(60, 190);
         break;
       case D_LANDMARK:
         aState[i] = ST_STAND;
-        aTimer[i] = rng.range(8, 22);
+        aTimer[i] = rng.range(20, 55);
         aLookT[i] = rng.range(1.5, 4);
         break;
       case D_TRAM:
         aState[i] = ST_STAND;
-        aTimer[i] = rng.range(12, 40);
+        aTimer[i] = rng.range(25, 70);
         break;
       case D_DOOR:
         aState[i] = ST_STAND;
-        aTimer[i] = rng.range(6, 17);
+        aTimer[i] = rng.range(14, 40);
         break;
       default:
         aState[i] = ST_STAND;
-        aTimer[i] = rng.range(5, 16);
+        aTimer[i] = rng.range(12, 34);
         break;
     }
     const mate = aPartner[i];
     // Whoever leads a pair holds the clock for both of them; the other one
     // waits until they are re-targeted, however long that is.
-    if (mate >= 0) aTimer[i] = mate < i ? 1e9 : rng.range(24, 62);
+    if (mate >= 0) aTimer[i] = mate < i ? 1e9 : rng.range(45, 120);
   };
 
   const runPath = (i: number) => {
@@ -1322,11 +1338,12 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     );
 
     /* ---- how many people are out ---------------------------------------- */
-    const qualityCut = ctx.quality === "low" ? 0.4 : 1;
-    const target = Math.min(
-      MAX,
-      Math.round(MAX * qualityCut * (0.74 + 0.26 * daylight)),
-    );
+    /* The tier cut is applied once. `MAX` is already the low-tier population
+       when the world was *built* low; this only bites when the frame context
+       drops to low afterwards. Multiplying both is how a phone ends up with
+       forty people on a whole island. */
+    const cap = ctx.quality === "low" ? Math.min(MAX, POP.low) : MAX;
+    const target = Math.round(cap * (0.74 + 0.26 * daylight));
 
     const cam = ctx.camera.position;
     const px = ctx.player.position;
@@ -1431,6 +1448,12 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
             }
           } else {
             enterSegment(i, path[base + pathIdx[i] - 1], path[base + pathIdx[i]]);
+            // Something in a window. Two seconds of somebody stopped on a
+            // pavement is worth more than two more people walking down it.
+            if (rng.chance(0.035)) {
+              aState[i] = ST_PAUSE;
+              aTimer[i] = rng.range(2.5, 8);
+            }
           }
         } else {
           const speed = aspeed[i];
@@ -1460,19 +1483,26 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         }
       } else {
         // Standing, sitting, leaning, or waiting for a path.
-        // Anchored to the spot they arrived on, which is a point `surfaceAt`
-        // has already agreed is pavement. Without the spring a knot of people
-        // outside a busy door shoves itself into a flowerbed over a minute.
-        const homeX = segTx[i] - ax[i];
-        const homeZ = segTz[i] - az[i];
-        ax[i] += (shoveX * 0.6 + homeX * 0.9) * dt;
-        az[i] += (shoveZ * 0.6 + homeZ * 0.9) * dt;
+        /* Anchored to the spot they arrived on, which is a point `surfaceAt`
+           has already agreed is pavement. Without the spring a knot of people
+           outside a busy door shoves itself into a flowerbed over a minute.
+           Somebody paused mid-walk has no such spot yet — they are between two
+           nodes — so they only get shoved. */
+        if (state === ST_PAUSE) {
+          ax[i] += shoveX * dt * 0.5;
+          az[i] += shoveZ * dt * 0.5;
+        } else {
+          const homeX = segTx[i] - ax[i];
+          const homeZ = segTz[i] - az[i];
+          ax[i] += (shoveX * 0.35 + homeX * 1.9) * dt;
+          az[i] += (shoveZ * 0.35 + homeZ * 1.9) * dt;
+        }
         agait[i] += (0 - agait[i]) * Math.min(1, dt * 5);
         avx[i] *= 1 - Math.min(1, dt * 6);
         avz[i] *= 1 - Math.min(1, dt * 6);
 
-        let fx = aFaceX[i];
-        let fz = aFaceZ[i];
+        let fx = state === ST_PAUSE ? segTx[i] - ax[i] : aFaceX[i];
+        let fz = state === ST_PAUSE ? segTz[i] - az[i] : aFaceZ[i];
         const mate = aPartner[i];
         if (mate >= 0 && aActive[mate] && aState[mate] !== ST_WALK) {
           const mx = ax[mate] - ax[i];
@@ -1495,7 +1525,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         }
 
         if (aTimer[i] <= 0) {
-          if (state === ST_WAIT) {
+          if (state === ST_PAUSE) {
+            aState[i] = ST_WALK; // carry on; the path was never dropped
+          } else if (state === ST_WAIT) {
             if (aDestNode[i] < 0) pickDestination(i);
             else requestPath(i);
             aTimer[i] = 1.5;
@@ -1569,7 +1601,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     nearest(x: number, z: number, maxDist: number) {
       let best = -1;
       let bestD = maxDist * maxDist;
-      const rings = Math.max(1, Math.ceil(maxDist / CELL));
+      // Clamped, because a caller asking for the nearest body within a
+      // kilometre would otherwise sweep a quarter of a million empty cells.
+      const rings = Math.max(1, Math.min(GRID_N, Math.ceil(maxDist / CELL)));
       const cx = Math.floor((x - GRID_ORIGIN) / CELL);
       const cz = Math.floor((z - GRID_ORIGIN) / CELL);
       for (let dz = -rings; dz <= rings; dz++) {

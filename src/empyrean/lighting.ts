@@ -526,6 +526,13 @@ export function buildLighting(ctx: BuildContext, renderer: THREE.WebGLRenderer):
     hemi.color.copy(look.skyColor);
     hemi.groundColor.copy(look.groundColor);
     hemi.intensity = look.hemiIntensity;
+    /* Point the key, whether or not it is casting. `shadowsFor` overrides
+     * both of these every frame when shadows are on — but with them off it is
+     * never called, and a sun frozen at the hour the world was built is a
+     * whole day cycle that lights nothing. */
+    sun.position.copy(look.keyDir).multiplyScalar(3000);
+    sun.target.position.set(0, 0, 0);
+    sun.target.updateMatrixWorld();
     rim.color.copy(look.rimColor);
     rim.intensity = look.rimIntensity;
     // Opposite the key in plan, lifted, and it never casts: it is a fill, and

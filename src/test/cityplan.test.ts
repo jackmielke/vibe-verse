@@ -135,9 +135,33 @@ describe("the nav graph", () => {
     expect(plan.nav.length).toBeGreaterThan(400);
   });
 
-  it("stands every node on something walkable", () => {
-    const bad = plan.nav.filter((n) => !walkableAt(n.x, n.z));
-    expect(bad.map((n) => `${n.x.toFixed(0)},${n.z.toFixed(0)}`).slice(0, 8)).toEqual([]);
+  /* "Walkable" is not enough here, and that gap hid a real bug.
+     `walkableAt` means "not the void and not the parapet", and the inside of
+     a building is neither — so 244 rim nodes sat in the lots and the test was
+     green. A pedestrian node has to be on a pavement, a plaza, a promenade or
+     (at a crossing) a road. */
+  const PEDESTRIAN = ["walk", "plaza", "promenade", "road"];
+
+  it("stands every node on ground a pedestrian can actually be on", () => {
+    const bad = plan.nav
+      .filter((n) => !PEDESTRIAN.includes(surfaceAt(n.x, n.z).kind))
+      .map((n) => `${n.x.toFixed(0)},${n.z.toFixed(0)} on ${surfaceAt(n.x, n.z).kind}`);
+    expect(bad.slice(0, 10), `${bad.length} nodes off the pavement`).toEqual([]);
+  });
+
+  it("never links two nodes through a building", () => {
+    const bad: string[] = [];
+    for (const n of plan.nav) {
+      for (const l of n.links) {
+        const m = plan.nav[l];
+        for (let t = 1; t <= 5; t++) {
+          const f = t / 6;
+          const k = surfaceAt(n.x + (m.x - n.x) * f, n.z + (m.z - n.z) * f).kind;
+          if (k === "lot" || k === "void") bad.push(`${n.id}->${l} crosses ${k}`);
+        }
+      }
+    }
+    expect(bad.slice(0, 10), `${bad.length} edges cut through geometry`).toEqual([]);
   });
 
   it("is one connected piece — an island in the graph is a crowd that never arrives", () => {

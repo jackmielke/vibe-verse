@@ -295,6 +295,25 @@ interface Shared {
   uWind: { value: number };
 }
 
+/**
+ * The fog uniforms a hand-written `ShaderMaterial` has to declare for itself.
+ *
+ * `WebGLRenderer` calls `refreshFogUniforms(material.uniforms, fog)` for every
+ * material with `fog: true` whenever the scene has fog — and it reads
+ * `uniforms.fogColor.value` without checking that it exists. The world's scene
+ * *does* have fog, so a ShaderMaterial that says `fog: true` and then omits
+ * these throws on the first frame it is drawn in. The values are overwritten
+ * from the scene every frame; only their presence matters.
+ */
+function fogUniforms(): Record<string, { value: unknown }> {
+  return {
+    fogColor: { value: new THREE.Color(0xffffff) },
+    fogDensity: { value: 0.00025 },
+    fogNear: { value: 1 },
+    fogFar: { value: 2000 },
+  };
+}
+
 const VERT_HEAD = /* glsl */ `
   attribute float aEmis;
   attribute float aWind;
@@ -350,7 +369,11 @@ function propMaterial(name: string, shared: Shared): THREE.MeshStandardMaterial 
     vertexColors: true,
     roughness: 0.82,
     metalness: 0.06,
-    emissive: new THREE.Color(0xffffff),
+    /* Black on purpose. `totalEmissiveRadiance` is *initialised* to this
+       uniform in `meshphysical_frag`, and the injection below adds to it — so
+       a white `emissive` here is not "emissive available if wanted", it is
+       every bollard in the city glowing white at noon. */
+    emissive: new THREE.Color(0x000000),
     emissiveIntensity: 1,
   });
   mat.onBeforeCompile = (shader) => {
@@ -387,7 +410,7 @@ function poolMaterial(shared: Shared): THREE.ShaderMaterial {
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     fog: true,
-    uniforms: { uNight: shared.uNight },
+    uniforms: { ...fogUniforms(), uNight: shared.uNight },
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
       varying vec2 vUv;
@@ -485,6 +508,7 @@ function waterMaterial(shared: Shared): THREE.ShaderMaterial {
     side: THREE.DoubleSide,
     fog: true,
     uniforms: {
+      ...fogUniforms(),
       uTime: shared.uTime,
       uSun: { value: SUN_DIR.clone() },
       uNight: shared.uNight,
@@ -756,7 +780,7 @@ const TUNING: Record<"low" | "high", Tune> = {
     crate: 1,
     gardenTreeArea: 105,
     roofChance: 0.8,
-    railStep: 6,
+    railStep: 9,
     canopySeg: 6,
     stringLights: true,
     climbers: true,
@@ -1766,11 +1790,11 @@ function bollard(x: number, y: number, z: number, rng: Rng): Geo {
 function bench(x: number, y: number, z: number, yaw: number, rng: Rng): Geo {
   const woodCol = C.wood.clone().lerp(C.woodPale, rng.next());
   const parts: Geo[] = [];
-  for (let i = 0; i < 4; i++) {
-    parts.push(tag(put(box(1.7, 0.06, 0.11), 0, 0.44 + i * 0.005, -0.16 + i * 0.13), woodCol));
-  }
   for (let i = 0; i < 3; i++) {
-    parts.push(tag(put(box(1.7, 0.11, 0.06), 0, 0.62 + i * 0.15, 0.28, 0, -0.18), woodCol));
+    parts.push(tag(put(box(1.7, 0.06, 0.15), 0, 0.44 + i * 0.005, -0.18 + i * 0.19), woodCol));
+  }
+  for (let i = 0; i < 2; i++) {
+    parts.push(tag(put(box(1.7, 0.15, 0.06), 0, 0.64 + i * 0.22, 0.28, 0, -0.18), woodCol));
   }
   for (const s of [-1, 1]) {
     parts.push(tag(put(box(0.07, 0.44, 0.62), s * 0.74, 0.22, 0.04), C.ironDark));
@@ -1819,7 +1843,6 @@ function planter(x: number, y: number, z: number, rng: Rng): Geo {
   const parts: Geo[] = [
     tag(put(cyl(r, r * 0.82, h, 8), 0, h / 2, 0), C.stone),
     tag(put(cyl(r * 1.06, r * 1.06, 0.06, 8), 0, h, 0), C.paleStone),
-    tag(put(cyl(r * 0.9, r * 0.9, 0.05, 8), 0, h - 0.02, 0), C.soil),
   ];
   const n = 3;
   for (let i = 0; i < n; i++) {
@@ -1856,7 +1879,7 @@ function crate(x: number, y: number, z: number, rng: Rng): Geo {
     parts.push(tag(put(box(w, hh, d), rng.range(-0.08, 0.08), h + hh / 2, rng.range(-0.08, 0.08)), col));
     // Something in the crate: fruit, bolts of cloth, whatever it is.
     if (i === n - 1 && rng.chance(0.6)) {
-      for (let k = 0; k < 4; k++) {
+      for (let k = 0; k < 2; k++) {
         parts.push(
           tag(
             put(
@@ -1880,17 +1903,16 @@ function crate(x: number, y: number, z: number, rng: Rng): Geo {
 function bed(x: number, y: number, z: number, rng: Rng): Geo {
   const r = rng.range(1.4, 2.6);
   const parts: Geo[] = [
-    tag(put(cyl(r, r, 0.22, 10), 0, 0.11, 0), C.stone),
-    tag(put(cyl(r * 0.92, r * 0.92, 0.06, 10), 0, 0.21, 0), C.soil),
+    tag(put(cyl(r, r, 0.28, 8), 0, 0.14, 0), C.stone),
   ];
-  const n = Math.round(r * 3);
+  const n = Math.round(r * 2);
   for (let i = 0; i < n; i++) {
     const a = rng.range(0, TAU);
     const rr = rng.range(0, r * 0.78);
     const s = rng.range(0.22, 0.46);
     parts.push(
       tag(
-        put(blob(s, 5, 3), Math.cos(a) * rr, 0.24 + s * 0.6, Math.sin(a) * rr),
+        put(blob(s, 5, 3), Math.cos(a) * rr, 0.3 + s * 0.6, Math.sin(a) * rr),
         rng.chance(0.22) ? C.blossom : C.leafWarm.clone().lerp(C.leaf, rng.next()),
         rng.chance(0.22) ? 0.3 : 0,
         0.05,
@@ -1906,12 +1928,12 @@ function hedge(x: number, y: number, z: number, len: number, yaw: number, rng: R
   const parts: Geo[] = [
     tag(put(box(len, h, 0.75), 0, h / 2, 0), C.leaf.clone().lerp(C.leafBlue, rng.range(0, 0.4)), 0, 0.02),
   ];
-  const bumps = Math.max(1, Math.round(len / 1.2));
+  const bumps = Math.max(1, Math.round(len / 2.4));
   for (let i = 0; i < bumps; i++) {
     const t = (i + 0.5) / bumps;
     parts.push(
       tag(
-        put(blob(rng.range(0.3, 0.44), 5, 3), (t - 0.5) * len, h, rng.range(-0.1, 0.1)),
+        put(blob(rng.range(0.38, 0.55), 5, 3), (t - 0.5) * len, h, rng.range(-0.1, 0.1)),
         C.leaf.clone().lerp(C.leafWarm, rng.range(0, 0.5)),
         0,
         0.035,
@@ -2409,7 +2431,7 @@ function railSpan(r: number, a0: number, a1: number, y: number): Geo {
   const len = Math.hypot(dx, dz);
   const yaw = Math.atan2(dx, dz);
   const parts: Geo[] = [
-    tag(put(cyl(0.045, 0.055, 1.0, 6), x0, y + 0.5, z0), C.steel),
+    tag(put(cyl(0.045, 0.055, 1.0, 4), x0, y + 0.5, z0), C.steel),
   ];
   for (const hy of [1.0, 0.62]) {
     const bar = box(0.05, 0.05, len);

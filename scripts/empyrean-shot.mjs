@@ -33,11 +33,36 @@ import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 
+/**
+ * Every `page.evaluate` here can lose its execution context, and it is not a
+ * flake: the dev server is watching the same files you are editing, so a save
+ * during a capture run triggers an HMR reload and destroys the context out
+ * from under the very next call. Retrying once against the reloaded page is
+ * the whole fix; without it a twenty-minute run over nine viewpoints dies on
+ * whichever one happened to be open when you hit save.
+ */
+async function evalSafe(page, fn, arg, settle = 3000) {
+  try {
+    return await page.evaluate(fn, arg);
+  } catch (e) {
+    if (!/context was destroyed|Target closed|Execution context/i.test(String(e))) throw e;
+    await page.waitForTimeout(settle);
+    try {
+      return await page.evaluate(fn, arg);
+    } catch {
+      return null;
+    }
+  }
+}
+
 const PORT = Number(process.env.SF_PORT ?? 5177);
 const BASE = `http://127.0.0.1:${PORT}`;
 const WAIT = Number(process.env.EMP_WAIT ?? 26000);
 const DAY = process.env.EMP_DAY;
 const CHAR = process.env.EMP_CHAR ?? "";
+const WEATHER = process.env.EMP_WEATHER;
+/** Comma-separated system names to hide, for bisecting an occlusion. */
+const HIDE = process.env.EMP_HIDE;
 const OUT_DIR = process.env.EMP_DIR ?? ".shots";
 
 /**
@@ -50,26 +75,44 @@ const OUT_DIR = process.env.EMP_DIR ?? ".shots";
  * The city deck is at y=620 and 340 m across; the Beacon is at the origin.
  */
 const VIEWS = {
-  /** Standing on the Halo, looking up the north avenue at the Beacon. */
-  plaza: { at: [0, 621, 78], look: [0, 0.06], dist: 9 },
-  /** Eye level in a Bazaar street: the test of whether the ground is real. */
-  bazaar: { at: [-120, 621, 118], look: [2.35, 0.02], dist: 2.2 },
-  /** A pavement in the core, looking up between the towers. */
-  spires: { at: [0, 621, 96], look: [0, -0.55], dist: 4 },
-  /** The rim by the Observatory, looking out over the edge. */
-  rim: { at: [0, 621, -300], look: [Math.PI, 0.1], dist: 7 },
+  /* Aiming, which is the whole trick.
+   *
+   * `look[0]` is the camera's yaw, and the rig puts the lens at
+   * `target + (sin(yaw), cos(yaw)) * dist` looking back at the target — so to
+   * look INWARD from a point, yaw is `atan2(x, z)` of that point. `look[1]` is
+   * pitch, and it is positive DOWNWARD: negative pitch puts the lens below the
+   * target and looks up.
+   *
+   * Both of those were wrong in the first table and it cost an hour of
+   * diagnosing a bug that was not there. Standing at the foot of a
+   * three-hundred-metre tower looking level shows you a wall; a tower at 78 m
+   * range subtends 77 degrees, so a level shot of the Spires is a shot of
+   * their plinths and nothing else.
+   */
+
+  /** On the Halo, looking up the north avenue at the Beacon. */
+  plaza: { at: [0, 621, 86], look: [0, -0.42], dist: 11 },
+  /** Eye level on a Bazaar avenue, looking in. The ground-truth street shot. */
+  bazaar: { at: [178, 621, 0], look: [Math.PI / 2, -0.05], dist: 3.2 },
+  /** On the market ring road, looking along it. */
+  ring: { at: [119.5, 621, 69], look: [2.618, -0.12], dist: 5 },
+  /** Under the towers of the core, looking straight up them. */
+  spires: { at: [0, 621, 100], look: [0, -0.85], dist: 6 },
+  /** The rim by the Observatory, looking out over the edge and down. */
+  rim: { at: [0, 621, -306], look: [Math.PI, 0.16], dist: 8 },
   /** The promenade one deck down, under the overhang. */
-  promenade: { at: [0, 599, 352], look: [0.9, 0.05], dist: 6 },
-  /** Three hundred metres up, looking down the avenues. */
-  air: { at: [180, 900, 180], look: [-2.35, 0.62], dist: 14 },
+  promenade: { at: [0, 598, 352], look: [0.4, 0.02], dist: 6 },
+  /** The whole skyline from off the south rim, at deck height. */
+  skyline: { at: [0, 700, 640], look: [0, 0.05], dist: 18 },
+  /** High and outside, looking down the avenues at the plan. */
+  air: { at: [430, 1010, 430], look: [Math.PI / 4, 0.36], dist: 22 },
   /** Under the keel, looking up at the city through the stalactites. */
-  under: { at: [0, 300, 260], look: [0, -0.85], dist: 12 },
+  under: { at: [0, 300, 300], look: [0, -0.62], dist: 16 },
   /** On the ice, looking back up at the whole thing. */
-  ice: { at: [0, 2, 1200], look: [0, -0.42], dist: 26 },
+  ice: { at: [0, 3, 1250], look: [0, -0.30], dist: 30 },
   /** The card composition, from the shot-mode camera. */
   card: null,
 };
-
 async function up(url, ms) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -153,27 +196,47 @@ for (const name of names) {
   await page.waitForTimeout(WAIT);
 
   if (view !== null) {
-    await page.evaluate(
-      ([v, day]) => {
+    await evalSafe(
+      page,
+      ([v, day, wx, hide]) => {
+        const d = window.__empyrean;
+        if (!d) return;
+        // Freeze first, warp second. Gravity undoes a warp in about a second
+        // and a half, which is why every aerial viewpoint used to be a
+        // photograph of the pavement the player landed on.
+        d.freeze(true);
+        d.warp(v.at[0], v.at[1], v.at[2]);
+        d.look(v.look[0], v.look[1]);
+        d.dist(v.dist);
+        if (day !== undefined) d.day(Number(day));
+        if (wx !== undefined) d.weather(wx === "auto" ? null : wx);
+        if (hide) for (const n of hide.split(",")) d.hide(n.trim(), false);
+      },
+      [view, DAY, WEATHER, HIDE],
+      WAIT / 2,
+    );
+    // Settle: the camera eases, the crowd repaths, the shadows refit.
+    await page.waitForTimeout(6000);
+    // …and re-assert the pose, in case anything moved it while it settled.
+    await evalSafe(
+      page,
+      (v) => {
         const d = window.__empyrean;
         if (!d) return;
         d.warp(v.at[0], v.at[1], v.at[2]);
         d.look(v.look[0], v.look[1]);
-        // zoom() takes a wheel delta; solve for the boom length we want.
-        for (let i = 0; i < 60; i++) d.zoom(v.dist > 9 ? 60 : -60);
-        if (day !== undefined) d.day(Number(day));
+        d.dist(v.dist);
       },
-      [view, DAY],
+      view,
     );
-    // Settle: the camera eases, the crowd repaths, the shadows refit.
-    await page.waitForTimeout(6000);
+    await page.waitForTimeout(2500);
   } else if (DAY !== undefined) {
-    await page.evaluate((day) => window.__empyrean?.day(Number(day)), DAY);
+    await evalSafe(page, (day) => window.__empyrean?.day(Number(day)), DAY);
     await page.waitForTimeout(4000);
   }
 
-  const counts = await page.evaluate(() => window.__empyrean?.counts?.() ?? null);
-  const state = await page.evaluate(() => window.__empyrean?.state?.() ?? null);
+  const counts = await evalSafe(page, () => window.__empyrean?.counts?.() ?? null);
+  const state = await evalSafe(page, () => window.__empyrean?.state?.() ?? null);
 
   const out =
     explicitOut && names.length === 1

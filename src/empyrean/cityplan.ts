@@ -659,21 +659,30 @@ export function buildNav(): NavNode[] {
     if (!nodes[b].links.includes(a)) nodes[b].links.push(a);
   };
 
-  const radii = [HALO_R + 6, ...RING_R, RIM_R];
+  /* ---- rings: a node every ~14 m on both pavements ----
+   * Each ring is offset by *its own* half-width plus half its pavement. The
+   * first pass used the ring roads' figure for all of them, including the rim
+   * road, which is narrower — so all 244 nodes of the rim ring landed a
+   * quarter of a metre outside the pavement, in the lots. It survived the
+   * tests because "walkable" was written to mean "not the void", and the
+   * inside of a building is not the void. */
+  const rings: Array<{ r: number; half: number; walk: number; sides: number[] }> = [
+    { r: HALO_R + 6, half: 0, walk: 12, sides: [0] },
+    ...RING_R.map((r) => ({ r, half: W.ring.half, walk: W.ring.walk, sides: [-1, 1] })),
+    { r: RIM_R, half: W.rim.half, walk: W.rim.walk, sides: [-1, 1] },
+  ];
 
-  /* ---- rings: a node every ~14 m on both pavements ---- */
-  for (const rr of radii) {
-    const isHalo = rr === HALO_R + 6;
-    const off = isHalo ? 0 : W.ring.half + W.ring.walk * 0.5;
-    for (const side of isHalo ? [0] : [-1, 1]) {
-      const r = rr + off * side;
+  for (const ring of rings) {
+    const off = ring.half + ring.walk * 0.5;
+    for (const side of ring.sides) {
+      const r = ring.r + off * side;
       const n = Math.max(16, Math.round((TAU * r) / 14));
-      const ring: number[] = [];
+      const ids: number[] = [];
       for (let i = 0; i < n; i++) {
         const a = (i / n) * TAU;
-        ring.push(add(Math.cos(a) * r, Math.sin(a) * r, isHalo ? 12 : W.ring.walk));
+        ids.push(add(Math.cos(a) * r, Math.sin(a) * r, ring.walk));
       }
-      for (let i = 0; i < n; i++) link(ring[i], ring[(i + 1) % n]);
+      for (let i = 0; i < n; i++) link(ids[i], ids[(i + 1) % n]);
     }
   }
 
@@ -702,7 +711,10 @@ export function buildNav(): NavNode[] {
       const px = -Math.sin(s.a) * s.off * side;
       const pz = Math.cos(s.a) * s.off * side;
       const line: number[] = [];
-      for (let r = s.r0; r <= RIM_R + 0.5; r += 14) {
+      // Stop short of the rim road's own centreline: a spoke node sitting on
+      // it is a pedestrian standing in the carriageway.
+      const rEnd = RIM_R - W.rim.half - W.rim.walk * 0.5;
+      for (let r = s.r0; r <= rEnd + 0.5; r += 14) {
         line.push(add(Math.cos(s.a) * r + px, Math.sin(s.a) * r + pz, s.walk));
       }
       for (let i = 0; i + 1 < line.length; i++) link(line[i], line[i + 1]);
@@ -731,11 +743,24 @@ export function buildNav(): NavNode[] {
           const m = nodes[other];
           const d = Math.hypot(m.x - n.x, m.z - n.z);
           if (d > CROSS) continue;
-          // Only cross where the midpoint is actually pavement or road — this
-          // is what stops a "crossing" being cut straight through a building.
-          const mid = surfaceAt((n.x + m.x) / 2, (n.z + m.z) / 2);
-          if (mid.kind === "lot" || mid.kind === "void") continue;
-          link(n.id, other);
+          /* Sample the whole edge, not just its midpoint.
+           *
+           * A crossing is only a crossing if you can walk every metre of it.
+           * Testing the midpoint alone passes any chord that clips the corner
+           * of a block — the middle is in the road, both ends are on pavement,
+           * and the two metres in between are through somebody's shopfront.
+           * Five samples at this spacing is enough: the narrowest block in the
+           * plan is wider than the gap between them. */
+          let clear = true;
+          for (let t = 1; t <= 5; t++) {
+            const f = t / 6;
+            const k = surfaceAt(n.x + (m.x - n.x) * f, n.z + (m.z - n.z) * f).kind;
+            if (k === "lot" || k === "void" || k === "parapet") {
+              clear = false;
+              break;
+            }
+          }
+          if (clear) link(n.id, other);
         }
       }
     }

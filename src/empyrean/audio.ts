@@ -323,28 +323,6 @@ export function nightScale(daylight: number, layer: "crowd" | "birds" | "machine
 }
 
 /* ==================================================================== *
- * Legacy shim
- * ==================================================================== */
-
-/**
- * The old three-number interface `world.ts` still calls.
- *
- * @deprecated Move to `buildAudio()` + `handle.update(frameContext)`. This
- * path knows your speed, your throttle and your height and nothing else, so
- * it can drive the wind, the jets, the music and the mute — but it has no
- * idea where you are standing, and therefore stands you in the middle of the
- * Halo and plays you the Halo. Everything interesting in this file is behind
- * the `FrameContext` version.
- */
-export interface EmpyreanAudio {
-  /** @param speed m/s, @param burn 0..1 throttle, @param y world height */
-  update(speed: number, burn: number, y: number): void;
-  setMuted(muted: boolean): void;
-  resume(): void;
-  dispose(): void;
-}
-
-/* ==================================================================== *
  * Internals
  * ==================================================================== */
 
@@ -376,9 +354,9 @@ function writeMuted(m: boolean): void {
 /**
  * Everything the mix needs to know, as one struct that is written in place.
  *
- * Both entry points — the `FrameContext` one and the legacy shim — fill this
- * and hand it to the same `drive()`, so there is one implementation of the
- * mix and two ways to feed it.
+ * `update()` fills it from the `FrameContext` and hands it to `run()`, so
+ * everything downstream reads one flat struct of numbers rather than reaching
+ * through a camera and a player view sixty times a second.
  */
 interface Drive {
   dt: number;
@@ -1938,7 +1916,9 @@ export function buildAudio(buildCtx: BuildContext): AudioHandle | null {
         hit(t + 0.075, 2200, 3, 0.045, 0.05, {});
         break;
       case "ui":
-        ping(t, 1318.51, 0.03, 0.11, { partial: 3.0, partialGain: 0.15 });
+        // Scaled by `strength`, because the engine also uses this for the
+        // small ticks a footfall or a menu move makes, at a fifth.
+        ping(t, 1318.51, 0.03 * (0.35 + 0.65 * s), 0.11, { partial: 3.0, partialGain: 0.15 });
         break;
       default:
         // An event this file has never heard of is not an error. The rest of
@@ -2116,74 +2096,4 @@ export function buildAudio(buildCtx: BuildContext): AudioHandle | null {
   };
 
   return handle;
-}
-
-/* ==================================================================== *
- * The legacy entry point
- * ==================================================================== */
-
-/**
- * @deprecated `world.ts` still calls this. It drives the wind, the jets and
- * the music from three numbers and stands you in the middle of the Halo,
- * because it has no idea where you are. Swap it for:
- *
- * ```ts
- * const audio = buildAudio({ quality: quality.tier, seedSalt: "audio" });
- * // ...on the first pointerdown/keydown: audio?.resume();
- * // ...each frame: audio?.update(frameContext);
- * // ...on landing:  audio?.event("land", impact / 22);
- * ```
- */
-export function createEmpyreanAudio(): EmpyreanAudio | null {
-  const inner = buildAudio({ quality: "high", seedSalt: "audio" });
-  if (!inner) return null;
-
-  // One camera, one player view, built once and mutated — the same contract
-  // the real `FrameContext` has.
-  const camera = new THREE.PerspectiveCamera();
-  const shim = {
-    time: 0,
-    dt: 0.016,
-    camera,
-    player: {
-      position: new THREE.Vector3(0, ISLAND_Y, 0),
-      velocity: new THREE.Vector3(),
-      yaw: 0,
-      grounded: true,
-      burn: 0,
-      altitude: 0,
-    },
-    quality: "high" as const,
-    dayPhase: 0.75,
-    sunDir: new THREE.Vector3(0, 0.2, -1),
-    daylight: 0.45,
-    camRadiusSq: 0,
-  };
-  let last = typeof performance !== "undefined" ? performance.now() : 0;
-
-  return {
-    update(speed, burn, y) {
-      const now = typeof performance !== "undefined" ? performance.now() : last + 16;
-      shim.dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
-      last = now;
-      shim.time += shim.dt;
-      shim.player.position.set(0, y, 0);
-      shim.player.velocity.set(speed, 0, 0);
-      shim.player.burn = burn;
-      shim.player.grounded = Math.abs(y - ISLAND_Y) < 1.2;
-      shim.player.altitude = y >= ISLAND_Y - 40 ? y - ISLAND_Y : y;
-      camera.position.set(0, y + 2, 8);
-      camera.updateMatrixWorld();
-      inner.update?.(shim);
-    },
-    setMuted(m) {
-      inner.setMuted(m);
-    },
-    resume() {
-      inner.resume();
-    },
-    dispose() {
-      inner.dispose();
-    },
-  };
 }

@@ -43,6 +43,27 @@ describe("the system contract", () => {
     expect(low.stats.draws).toBe(1);
   });
 
+  /* The ground is where the city's shadows land, and a raw ShaderMaterial
+     receives none by default. Three things have to hold together for it to,
+     and every one of them fails silently — no error, no warning, just a deck
+     that no building ever darkens, which reads as "the lighting is a bit
+     flat" rather than as a bug. */
+  it("is wired to receive the shadows lighting.ts casts", () => {
+    const mesh = meshOf(high);
+    const mat = mesh.material as THREE.ShaderMaterial;
+    expect(mesh.receiveShadow, "the mesh must opt in").toBe(true);
+    expect(mat.lights, "without this the light uniforms are never bound").toBe(true);
+    expect(
+      Object.keys(mat.uniforms),
+      "UniformsLib.lights must be merged in or every shadow lookup reads noise",
+    ).toContain("directionalShadowMap");
+    // getShadowMask() reads `receiveShadow`, which lights_pars_begin declares
+    // for three's own materials and this shader has to declare for itself.
+    expect(mat.fragmentShader).toContain("uniform bool receiveShadow;");
+    expect(mat.fragmentShader).toContain("getShadowMask()");
+    expect(mat.vertexShader).toContain("shadowmap_vertex");
+  });
+
   it("updates without allocating a thing", () => {
     const mesh = meshOf(high);
     const mat = mesh.material as THREE.ShaderMaterial;

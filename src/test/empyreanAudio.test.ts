@@ -29,7 +29,6 @@ import {
   buildAudio,
   cityPresence,
   coinSemitone,
-  createEmpyreanAudio,
   districtMix,
   exposureAt,
   jetGain,
@@ -405,16 +404,6 @@ describe("The Empyrean — a browser with no Web Audio is a quiet world, not a b
       audio?.setMuted(true);
       audio?.setTram(0, 0, 0, true);
       audio?.dispose();
-    }).not.toThrow();
-  });
-
-  it("does the same through the legacy entry point", () => {
-    const legacy = createEmpyreanAudio();
-    expect(legacy).toBeNull();
-    expect(() => {
-      legacy?.resume();
-      legacy?.update(10, 1, 700);
-      legacy?.dispose();
     }).not.toThrow();
   });
 });
