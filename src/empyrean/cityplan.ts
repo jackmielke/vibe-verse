@@ -40,7 +40,7 @@
  * called for the player and every pedestrian every frame.
  */
 import { makeRng, fbm2, type Rng } from "@/shared/proc/rng";
-import { DECKS, ISLAND_Y, PLATEAU_R, PROMENADE_GAP } from "./config";
+import { DECKS, ISLAND_Y, PLATEAU_R } from "./config";
 
 export interface Vec2 {
   x: number;
@@ -189,15 +189,18 @@ export function surfaceAt(x: number, z: number): SurfaceHit {
   const last = DECKS[DECKS.length - 1];
   if (r > last.outer) return { kind: "void", y: -Infinity, deck: -1 };
 
-  /* ---- the promenade rings under the rim ---- */
+  /* ---- the promenade rings under the rim ----
+   *
+   * Membership only. An earlier version also had a "you are on the face of the
+   * step between two rings" clause with a fixed four-metre width, and the
+   * moment the rings were moved closer together than that, the clause fired
+   * *inside* the ring above and reported solid pavement as the void. The gap
+   * needs no constant: it is simply where no ring is. */
   if (r > PLATEAU_R) {
     for (let i = DECKS.length - 1; i >= 1; i--) {
       const d = DECKS[i];
-      const inner = d.outer - d.width;
-      if (r <= d.outer && r >= inner) return { kind: "promenade", y: d.y, deck: i };
-      // Between two rings is the face of the step, which you cannot stand on.
-      if (r < inner && r > inner - PROMENADE_GAP) {
-        return { kind: "void", y: -Infinity, deck: -1 };
+      if (r <= d.outer && r >= d.outer - d.width) {
+        return { kind: "promenade", y: d.y, deck: i };
       }
     }
     return { kind: "void", y: -Infinity, deck: -1 };

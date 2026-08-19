@@ -100,6 +100,24 @@ export interface LotBuild {
   max: { x: number; y: number; z: number };
 }
 
+/** What the engine can ask for that the plan does not already say. */
+export interface BuildingsOptions {
+  /**
+   * Lots to leave empty, by `Lot.id`.
+   *
+   * `interiors.ts` builds real rooms inside two of them — the café at
+   * `b1-6-11` and the gallery at `b2-12-00` — and a solid block on top of a
+   * room is a room nobody can get into. A skipped lot contributes no
+   * geometry, no blocker and no deck, and comes back with `built: false`.
+   *
+   * The list is the engine's to pass (`interiorPlan()` and the interiors
+   * handle both publish it as `claimedLots`); this file does not import it,
+   * because a system that imports another system is how twelve files become
+   * one module with twelve files in it.
+   */
+  skipLots?: readonly string[];
+}
+
 export interface BuildingsHandle extends System {
   blockers: Blocker[];
   decks: Deck[];
@@ -132,6 +150,20 @@ const T_METAL = 3;
 const T_TIMBER = 4;
 const T_LEAF = 5;
 const T_ROOF = 6;
+
+/**
+ * Curtain-wall variants, as the *glass* shader reads `aTone`.
+ *
+ * The glass bucket has its own meaning for the attribute: which piece of a
+ * tower this is, rather than what it is made of. It exists so that the one
+ * large-scale change of tone on a tower lands on the setback where a real
+ * building changes its cladding, instead of on a random square of wall.
+ * `W_MAIN` is deliberately 0, which is what everything that predates this
+ * already writes.
+ */
+const W_MAIN = 0;
+const W_UPPER = 1;
+const W_CROWN = 2;
 
 /** Glazing kinds, as the pane shader sees them. */
 const P_WINDOW = 0;
@@ -240,6 +272,64 @@ function offsetPoly(poly: P2[], off: number | number[]): P2[] | null {
   let inset = Infinity;
   for (let i = 0; i < n; i++) inset = Math.min(inset, amount(i));
   if (inset >= 0) for (const p of out) if (!insidePoly(poly, p.x, p.z, 0.02)) return null;
+  return out;
+}
+
+/**
+ * Cut the corners off a footprint.
+ *
+ * Convex corners only, and the cut is capped at a third of each adjacent
+ * edge. Both of those are containment, not taste: chamfering a *reflex*
+ * corner moves the wall outward, and outward is the pavement.
+ */
+function chamferPoly(poly: P2[], amount: number): P2[] | null {
+  const n = poly.length;
+  if (n < 3) return null;
+  const sign = Math.sign(shoelace(poly)) || 1;
+  const out: P2[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n];
+    const p = poly[i];
+    const next = poly[(i + 1) % n];
+    const ax = p.x - prev.x;
+    const az = p.z - prev.z;
+    const bx = next.x - p.x;
+    const bz = next.z - p.z;
+    const la = Math.hypot(ax, az) || 1;
+    const lb = Math.hypot(bx, bz) || 1;
+    const convex = (ax * bz - az * bx) * sign;
+    const d = Math.min(amount, la * 0.34, lb * 0.34);
+    if (convex <= 0 || d < 0.35) {
+      out.push(p);
+      continue;
+    }
+    out.push({ x: p.x - (ax / la) * d, z: p.z - (az / la) * d });
+    out.push({ x: p.x + (bx / lb) * d, z: p.z + (bz / lb) * d });
+  }
+  return out.length >= 3 ? out : null;
+}
+
+/** Unsigned area. Only ever used to notice that a shape has collapsed. */
+function areaOf(poly: P2[]): number {
+  return Math.abs(shoelace(poly));
+}
+
+/**
+ * Per-edge insets that squeeze a footprint along one axis and leave the
+ * others alone — a slab across a lot instead of a prism of it.
+ *
+ * Every offset is positive, so the result is inside the input for the same
+ * reason a uniform inset is.
+ */
+function squeezeOffsets(poly: P2[], ang: number, extra: number, base = 0): number[] {
+  const sign = Math.sign(shoelace(poly)) || 1;
+  const cx = Math.cos(ang);
+  const cz = Math.sin(ang);
+  const out: number[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const nrm = edgeNormal(poly, i, sign);
+    out.push(base + extra * Math.abs(nrm.x * cx + nrm.z * cz));
+  }
   return out;
 }
 
@@ -902,6 +992,21 @@ float hash11(float p) {
   p *= p + 33.33;
   return fract(p * (p + p));
 }
+/**
+ * Two numbers in, one well-mixed number out.
+ *
+ * Not a nicety. The first build hashed a grid of bays and floors with one
+ * 1-D hash of bay times a plus floor times b, and such a hash is only
+ * pseudo-random for inputs that are far apart: neighbouring bays land close
+ * together in the input, come out close together in the output, and clump.
+ * Every tower in the city was quilted with patches of same-toned cells for
+ * exactly that reason. Anything indexed by (bay, floor) uses this.
+ */
+float hash21(vec2 c) {
+  vec3 p = fract(vec3(c.x, c.y, c.x) * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
 vec3 skyColor(vec3 rd, vec3 sun) {
   float t = clamp(rd.y, 0.0, 1.0);
   float sunAmt = clamp(dot(rd, sun) * 0.5 + 0.5, 0.0, 1.0);
@@ -954,12 +1059,39 @@ varying vec3 vWPos;
  *
  * What is new here is that the floors are real. `vBase` is metres, so a floor
  * line is every 3.9 m on a 90 m tower and on a 400 m one alike.
+ *
+ * ## The quilt
+ *
+ * The first build of this shader lit a whole grid cell at a time — two and a
+ * half metres by four — off a 1-D hash of `bay * a + floor * b`, with a floor
+ * line under each one and nothing else at that scale. Adjacent cells clumped
+ * (see `hash21`), and from the pavement a three-hundred-metre tower read as a
+ * patchwork of tiles rather than as a building with a facade on it.
+ *
+ * The rule that came out of it, and the reason this function is shaped the
+ * way it is:
+ *
+ * - **variation is per bay, per floor band, or per window.** A bay is a
+ *   column of glass between two mullions; a floor band is a course. Both are
+ *   one-dimensional and both are architecture. Crossing two 1-D jitters gives
+ *   a weave at a metre or two. A 2-D jitter over a cell gives a patch, and a
+ *   patch is what a quilt is made of.
+ * - **anything that changes over more than a couple of metres is
+ *   structural** — a setback carries a different glass because a real tower's
+ *   setback does, and it arrives on `aTone` rather than out of a hash.
+ * - **the grid fades out once it is smaller than a pixel.** An unfiltered
+ *   metre-scale pattern at eight hundred metres is moire, and moire is the
+ *   same quilt seen from further away.
  */
 const GLASS_FRAG = HEAD + SKY_CHUNK + /* glsl */ `
 void main() {
   float s = vSeed;
   float warmth = hash11(s * 7.13);
   float cool   = hash11(s * 3.71 + 2.0);
+  /* Which cladding this piece of tower wears: shaft, above the setback, or
+     crown. Structural, not random. */
+  float upper = step(0.5, vTone);
+  float crown = step(1.5, vTone);
 
   vec3 cFoot  = mix(vec3(0.10, 0.05, 0.11), vec3(0.16, 0.07, 0.09), warmth);
   vec3 cLow   = mix(vec3(1.00, 0.56, 0.30), vec3(0.92, 0.40, 0.40), warmth);
@@ -973,29 +1105,60 @@ void main() {
   col = mix(col, cMid,   smoothstep(0.06, breakpoint, h));
   col = mix(col, cUpper, smoothstep(breakpoint, breakpoint + 0.30, h));
   col = mix(col, cTop,   smoothstep(0.80, 1.0, h));
+  /* The genuine change of material, at the one place a building has one. */
+  col = mix(col, mix(col, cTop, 0.20), upper);
+  col = mix(col, mix(col, vec3(0.86, 0.91, 1.00), 0.32), crown);
 
-  /* Real floors, in metres, with a spandrel panel under each one. */
+  /* ---- the facade, in metres ---- */
   float fh = 3.7 + hash11(s * 5.5) * 0.8;
-  float fl = fract(vBase / fh);
-  col *= 0.86 + 0.22 * smoothstep(0.06, 0.30, fl);
-  col *= 1.0 - 0.16 * smoothstep(0.90, 1.0, fl);
+  float bw = mix(2.55, 3.10, upper);
+  vec2 g = vec2(vUv.x / bw, vBase / fh);
 
-  /* Mullions every 2.6 m, and a structural belt every eighth floor. */
-  float mull = abs(fract(vUv.x / 2.6) - 0.5) * 2.0;
-  col *= 0.90 + 0.16 * mull;
+  /* How much of one bay a pixel covers, and how much of the pattern is
+     therefore worth drawing. Everything metre-scale below is faded into its
+     own mean by 'det' rather than left to alias. */
+  float px = max(fwidth(g.x), fwidth(g.y));
+  float det = 1.0 - smoothstep(0.28, 0.80, px);
+
+  vec2 f = fract(g);
+  float mull  = smoothstep(0.0, 0.06, min(f.x, 1.0 - f.x));
+  float trans = smoothstep(0.0, 0.05, min(f.y, 1.0 - f.y));
+  /* The spandrel under every sill: the opaque metre and a half that hides a
+     floor slab, and the reason a curtain wall is banded and not flat. */
+  float spandrel = 1.0 - smoothstep(0.17, 0.31, f.y);
+  float glazed = mull * trans * (1.0 - spandrel);
+  float frame = max(1.0 - mull, 1.0 - trans);
+  col *= mix(1.0, mix(mix(0.80, 1.02, glazed), 1.20, frame * 0.5), det);
+
+  /* Per bay and per floor band, never per cell. */
+  float bayJit   = hash21(vec2(floor(g.x), s * 0.37)) - 0.5;
+  float floorJit = hash21(vec2(s * 0.71, floor(g.y))) - 0.5;
+  col *= 1.0 + (bayJit * 0.085 + floorJit * 0.065) * det;
+
+  /* A structural belt every eighth floor. */
   float belt = abs(fract(vBase / (fh * 8.0)) - 0.5) * 2.0;
-  col *= mix(1.0, 0.72, smoothstep(0.94, 1.0, belt));
+  col *= mix(1.0, mix(1.0, 0.74, smoothstep(0.93, 1.0, belt)), det);
 
   /* Corner light: the lip that separates fifty overlapping slabs. */
   float corner = 1.0 - smoothstep(0.0, 1.5, vEdge);
   col += col * corner * 0.30;
 
-  /* Lit windows. Sparse by day, most of the building by night. */
-  vec2 cell = vec2(floor(vUv.x / 2.6), floor(vBase / fh));
-  float r = hash11(cell.x * 31.7 + cell.y * 7.3 + s);
-  float lit = step(mix(0.42, 0.955, uDaylight), r);
-  col += vec3(1.0, 0.78, 0.42) * lit * (0.30 + 0.60 * (1.0 - uDaylight))
-       * (1.0 - smoothstep(0.55, 0.98, h)) * 0.55;
+  /* Lit windows — inside the glazing and nowhere else, so one of them is a
+     window rather than a two-and-a-half by four metre tile. Sparse by day,
+     most of the building by night, and a flat average once a bay is smaller
+     than a pixel, so a distant tower keeps its warmth without speckling. */
+  float coverage = 1.0 - mix(0.42, 0.955, uDaylight);
+  float r = hash21(vec2(floor(g.x) + s, floor(g.y) - s));
+  /* Not a switch. Ramping the lit ones across the whole range costs nothing —
+     the hash is already uniform — and it is what stops a lit window reading
+     as a flat bright tile with a hard edge, which is the last thing left of
+     the quilt. Its mean is half the coverage, which is what the far field
+     fades to. */
+  float li = clamp((r - (1.0 - coverage)) / max(coverage, 0.001), 0.0, 1.0);
+  float lit = mix(coverage * 0.5, li * glazed, det);
+  col += vec3(1.0, 0.78, 0.42) * lit * (1.0 - crown * 0.7)
+       * (0.12 + 0.88 * pow(1.0 - uDaylight, 2.0))
+       * (1.0 - smoothstep(0.55, 0.98, h)) * 0.62;
 
   /* A dark foot for the first few metres of glass, in metres not fractions. */
   col = mix(cFoot * 1.5, col, smoothstep(0.5, 7.0, vBase));
@@ -1044,6 +1207,13 @@ void main() {
   vec3 N = normalize(vNrm);
   vec3 base = toneColor(vTone, vSeed);
 
+  /* Everything below is a pattern about a metre across, and every one of them
+     is dropped as it approaches the size of a pixel. A metre-scale pattern
+     drawn unfiltered at half a kilometre is moire, and moire on a facade
+     reads as blotches — the same fault as the quilt on the towers, arriving
+     from the other end of the street. */
+  float det = 1.0 - smoothstep(0.30, 0.95, max(fwidth(vUv.x), fwidth(vBase)));
+
   /* Coursing and joints, on the stony tones only. Copper and foliage get
      their own grain instead — a hedge with ashlar joints in it is a very
      particular kind of wrong. */
@@ -1051,28 +1221,52 @@ void main() {
   float course = abs(fract(vBase / 0.95) - 0.5) * 2.0;
   float joint  = abs(fract(vUv.x / 1.55) - 0.5) * 2.0;
   float mortar = min(smoothstep(0.03, 0.24, course), smoothstep(0.03, 0.18, joint));
-  base *= mix(1.0, 0.88 + 0.18 * mortar, clamp(stony, 0.0, 1.0));
+  base *= mix(1.0, 0.88 + 0.18 * mortar, clamp(stony, 0.0, 1.0) * det);
 
   float leafy = step(4.5, vTone) * step(vTone, 5.5);
-  float rough = hash11(floor(vUv.x * 1.7) * 3.1 + floor(vBase * 1.9) * 7.7 + vSeed);
-  base *= mix(1.0, 0.78 + 0.44 * rough, leafy);
+  float rough = hash21(vec2(floor(vUv.x * 1.7), floor(vBase * 1.9)) + vSeed);
+  base *= mix(1.0, 0.78 + 0.44 * rough, leafy * det);
 
   float coppery = step(2.5, vTone) * step(vTone, 3.5);
   float seam = abs(fract(vUv.x / 0.62) - 0.5) * 2.0;
-  base *= mix(1.0, 0.92 + 0.14 * smoothstep(0.0, 0.35, seam), coppery);
+  base *= mix(1.0, 0.92 + 0.14 * smoothstep(0.0, 0.35, seam), coppery * det);
 
+  /* ---- the light, which at this hour is three things and only one of them
+   * is the sun ----
+   *
+   * The sunset dome is a light source the size of the sky, so a wall facing
+   * away from the sun is not unlit, it is sky-lit: a vertical face still sees
+   * half of the hemisphere, which is what the wrap in 'dome' is for. Under it
+   * the snow, the pale paving and a frozen lake throw a warm bounce back up —
+   * keel.ts runs the same term for the rock, where it is worth more to the
+   * picture than the sun is. And the glow itself wraps: the bright half of
+   * the sky reaches faces well past the terminator.
+   *
+   * The first pass had the ambient as 0.20 + 0.52 * max(N.y, 0.0), which is
+   * 0.20 on every wall in the city, and the shadow side of every building
+   * clipped to black with its windows floating on it. Sky bounce is not a
+   * rounding error at dusk; it is most of the light. What must NOT happen is
+   * the fix going the other way into flat and milky, so the lift is coloured
+   * and directional — cold from above, warm from below, warmer toward the
+   * sun — and the direct term is trimmed to keep the ratio near five to one.
+   */
   vec3 L = normalize(uSun);
   float ndl = dot(N, L);
   float up = clamp(N.y, 0.0, 1.0);
-  float dn = clamp(-N.y, 0.0, 1.0);
-  vec3 skyAmb = vec3(0.34, 0.40, 0.68) * (0.20 + 0.52 * up);
-  vec3 iceAmb = vec3(0.64, 0.47, 0.54) * (0.09 + 0.32 * dn);
-  vec3 col = base * (skyAmb + iceAmb + vec3(1.10, 0.66, 0.36) * max(ndl, 0.0) * 1.20);
-  col += base * vec3(1.0, 0.60, 0.34) * pow(max(ndl, 0.0), 4.0) * 0.35;
+  float dome   = 0.5 + 0.5 * N.y;
+  float ground = 0.5 - 0.5 * N.y;
+  float wrap   = clamp(ndl * 0.5 + 0.5, 0.0, 1.0);
+  vec3 skyAmb  = vec3(0.30, 0.38, 0.66) * (0.22 + 0.78 * dome) * 0.70;
+  vec3 iceAmb  = vec3(0.66, 0.47, 0.42) * (0.10 + 0.90 * ground) * 0.46;
+  vec3 glowAmb = vec3(1.00, 0.62, 0.42) * pow(wrap, 2.0) * 0.30;
+  vec3 col = base * (skyAmb + iceAmb + glowAmb + vec3(1.10, 0.66, 0.36) * max(ndl, 0.0) * 1.05);
+  col += base * vec3(1.0, 0.60, 0.34) * pow(max(ndl, 0.0), 4.0) * 0.28;
 
   /* Contact shade. Measured in metres above this building's own foot, so a
-     kiosk and a spire both get exactly one storey of it. */
-  col *= 0.55 + 0.45 * smoothstep(0.0, 5.5, vBase);
+     kiosk and a spire both get exactly one storey of it. Shallow, because it
+     lands on the storey the player is standing next to and it compounds with
+     everything else that darkens a shadowed wall. */
+  col *= 0.70 + 0.30 * smoothstep(0.0, 5.5, vBase);
 
   vec3 toEye = uCam - vWPos;
   float dist = length(toEye);
@@ -1080,8 +1274,15 @@ void main() {
   float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.2);
   col += vec3(1.0, 0.72, 0.62) * fres * 0.22 * smoothstep(30.0, 260.0, dist);
 
-  /* Night: cold everywhere, warm where the street lamps reach. */
-  col = mix(col * vec3(0.26, 0.28, 0.42), col, uDaylight);
+  /* Dusk and night: cold everywhere, warm where the street lamps reach.
+   *
+   * uDaylight is 0.32 at the hour this world is painted at, so a straight
+   * mix(col * 0.26, col, uDaylight) was multiplying every wall in the city
+   * by a half before it had even been tone mapped. The dome does not switch
+   * off at sunset — it is the brightest it will be all day — so the curve
+   * holds most of its value through dusk and only lets go after it. */
+  float night = 1.0 - smoothstep(0.04, 0.62, uDaylight);
+  col *= mix(vec3(1.0), vec3(0.30, 0.33, 0.48), night);
   col += vec3(1.0, 0.55, 0.22) * (1.0 - uDaylight)
        * (1.0 - smoothstep(0.0, 15.0, vBase)) * 0.34 * (0.35 + 0.65 * up);
 
@@ -1109,20 +1310,31 @@ void main() {
   float shop = step(0.5, vTone) * step(vTone, 1.5);
   float dark = step(1.5, vTone);
 
-  float r = hash11(vSeed * 91.7 + floor(vUv.x * 3.0) * 13.1 + floor(vBase * 0.31) * 5.3);
+  /* vUv.x is openingId + 0..1: the integer part is which window this is,
+     which is the only thing distinguishing one window on a floor from the
+     twenty next to it. Hashing the position across the pane instead lit whole
+     floors at a time. */
+  float id = floor(vUv.x);
+  float u = fract(vUv.x);
+  float r = hash21(vec2(id + vSeed, floor(vBase * 0.31) - vSeed));
   float on = step(mix(0.55, 0.08, shop), r) * (1.0 - dark);
   vec3 warm = mix(vec3(1.00, 0.66, 0.32), vec3(1.00, 0.86, 0.60), hash11(vSeed * 5.9 + r));
 
-  vec3 day = env * mix(0.52, 0.30, shop) + vec3(0.02, 0.025, 0.045);
-  vec3 night = mix(vec3(0.02, 0.025, 0.05), warm * mix(1.4, 2.2, shop), on);
+  /* The room behind an unlit pane is not a black hole: at dusk it is full of
+     the same sky bounce the wall around it gets, and without that the shadow
+     side of a building reads as a cut-out with a few lit rectangles on it. */
+  vec3 amb = vec3(0.16, 0.19, 0.30) * 0.42 + vec3(0.20, 0.14, 0.13) * 0.24;
+  vec3 day = env * mix(0.52, 0.30, shop) + amb * 0.55;
+  vec3 night = mix(amb * 0.30 + vec3(0.02, 0.025, 0.05), warm * mix(1.4, 2.2, shop), on);
   vec3 col = mix(night, day + warm * on * mix(0.10, 0.55, shop), smoothstep(0.05, 0.55, uDaylight));
 
   /* A room behind the glass rather than a mirror: darker toward the head,
      brighter at the sill where the floor catches the light. */
   col *= mix(1.18, 0.74, vUv.y);
-  /* Transoms and glazing bars. */
-  float bar = abs(fract(vUv.x * max(vEdge, 1.0)) - 0.5) * 2.0;
-  col *= 0.84 + 0.20 * smoothstep(0.0, 0.28, bar);
+  /* Transoms and glazing bars, dropped once they are thinner than a pixel. */
+  float bar = abs(fract(u * max(vEdge, 1.0)) - 0.5) * 2.0;
+  float det = 1.0 - smoothstep(0.25, 0.75, fwidth(vUv.x) * max(vEdge, 1.0));
+  col *= mix(1.0, 0.84 + 0.20 * smoothstep(0.0, 0.28, bar), det);
   float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
   col = mix(col, env * 0.8, fres * 0.45);
 
@@ -1263,13 +1475,20 @@ function opening(
     wallTone, 0, 0, 0, 0,
   );
 
-  /* The glazing, at the back of the recess. */
+  /* The glazing, at the back of the recess.
+   *
+   * `u` runs from `key` to `key + 1` across the pane rather than 0 to 1: the
+   * fractional part is where you are across it, and the integer part is which
+   * opening this is. Without that the pane shader has nothing to tell one
+   * window from the next but its height, so every window on a floor lights up
+   * together and a facade comes out in stripes. */
+  const key = Math.floor(f.u0 + (s0 + s1) * 0.5) % 97;
   quad(
     pen, pen.pane,
     fx(f, s0, -depth), y0, fz(f, s0, -depth), fx(f, s1, -depth), y0, fz(f, s1, -depth),
     fx(f, s1, -depth), y1, fz(f, s1, -depth), fx(f, s0, -depth), y1, fz(f, s0, -depth),
     f.nx, 0, f.nz,
-    0, 0, 1, 0, 1, 1, 0, 1,
+    key, 0, key + 1, 0, key + 1, 1, key, 1,
     paneKind, divisions, divisions, divisions, divisions,
   );
 }
@@ -1430,11 +1649,12 @@ function shopfront(
     /* Glazing: sill on the riser, head under the fascia. */
     wallSpan(pen, b, f, g0, g1, HEAD, FASCIA, frameTone);
     const divs = Math.max(2, Math.round((g1 - g0) / 1.3));
+    const key = Math.floor(f.u0 + (g0 + g1) * 0.5) % 97;
     quad(
       pen, pen.pane,
       fx(f, g0, -0.28), SILL, fz(f, g0, -0.28), fx(f, g1, -0.28), SILL, fz(f, g1, -0.28),
       fx(f, g1, -0.28), HEAD, fz(f, g1, -0.28), fx(f, g0, -0.28), HEAD, fz(f, g0, -0.28),
-      f.nx, 0, f.nz, 0, 0, 1, 0, 1, 1, 0, 1,
+      f.nx, 0, f.nz, key, 0, key + 1, 0, key + 1, 1, key, 1,
       P_SHOP, divs, divs, divs, divs,
     );
     /* Reveals around the glazing, and a sill that sheds water outward. */
@@ -1724,11 +1944,41 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
   addBox(pen, base, y0 + plinthH + 0.9, y0);
   addDeck(pen, base, y0 + plinthH + 0.9);
 
+  /* ---- the plan shape ----
+   *
+   * Twenty-three towers extruded straight off their lots read from the
+   * pavement as a bundle of cylinders, because a chorded trapezoid seen from
+   * below *is* a cylinder. A few of them being a genuinely different shape —
+   * corners cut away, or a slab standing across the lot with its broad face
+   * to the street — is most of what makes the group read as a skyline rather
+   * than as a bundle.
+   *
+   * Every variant only ever shrinks the footprint, and the plinth keeps the
+   * whole lot underneath it either way, so none of this can put a wall over a
+   * pavement or move a shopfront.
+   */
+  const shape = rng.range(0, 1);
+  let shaft = base;
+  if (shape < 0.30) {
+    const cut = chamferPoly(base, rng.range(2.4, 5.0));
+    if (cut && areaOf(cut) > areaOf(base) * 0.55) shaft = cut;
+  } else if (shape < 0.52) {
+    const bb = bboxOf(base);
+    const across = Math.atan2(lot.frontNormal.z, lot.frontNormal.x);
+    const squeezed = offsetPoly(base, squeezeOffsets(base, across, Math.min(bb.hx, bb.hz) * 0.7));
+    if (squeezed && areaOf(squeezed) > areaOf(base) * 0.30) shaft = squeezed;
+  }
+
   /* ---- shaft, stepping in as it rises ---- */
   const segs = rng.int(2, 3);
   const setback = rng.range(1.3, 2.8);
+  /* Half of them step back evenly and half step back toward the street, which
+     is the difference between a wedding cake and a building. */
+  const lean = rng.chance(0.5)
+    ? squeezeOffsets(shaft, lot.a, setback * 1.4, setback * 0.45)
+    : null;
   const weights = segs === 2 ? [0.66, 0.34] : [0.52, 0.31, 0.17];
-  let cur = base;
+  let cur = shaft;
   let yA = y0 + plinthH + 0.9;
   const span = shaftTop - yA;
   for (let k = 0; k < segs && span > 6; k++) {
@@ -1738,12 +1988,12 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
        * forty metres below the height the plan gave it — which is invisible
        * from the pavement and obvious in the skyline the plan was written to
        * shape. */
-      const next = offsetPoly(cur, setback);
+      const next = offsetPoly(cur, lean ?? setback);
       if (next) cur = next;
     }
     const yB = k === segs - 1 ? shaftTop : yA + span * weights[k];
     const shell = shellOf(cur);
-    prismWalls(pen, pen.glass, shell, yA, yB, T_STONE);
+    prismWalls(pen, pen.glass, shell, yA, yB, k === 0 ? W_MAIN : W_UPPER);
     capPoly(pen, pen.stone, cur, yB, 1, T_ROOF);
     addBox(pen, cur, yB, yA);
     if (k < segs - 1) {
@@ -1760,7 +2010,7 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
   if (crownKind === 0) {
     const tip = offsetPoly(cur, Math.min(6, bboxOf(cur).hx * 0.55));
     if (tip) {
-      loft(pen, pen.glass, cur, roofY, tip, roofY + crownH, T_STONE);
+      loft(pen, pen.glass, cur, roofY, tip, roofY + crownH, W_CROWN);
       capPoly(pen, pen.stone, tip, roofY + crownH, 1, T_METAL);
       /* Not gated on the tier: anything with height in it is silhouette, and
        * the silhouette is what the lake shows. Only reveals, balconies and
@@ -1790,7 +2040,7 @@ function buildTower(pen: Pen, lot: Lot, rng: Rng): void {
     for (let k = 0; k < 3; k++) {
       const next = offsetPoly(step, 2.1);
       if (!next) break;
-      prismWalls(pen, pen.glass, shellOf(next), sy, sy + 5, T_STONE);
+      prismWalls(pen, pen.glass, shellOf(next), sy, sy + 5, W_CROWN);
       capPoly(pen, pen.stone, next, sy + 5, 1, T_ROOF);
       cornice(pen, shellOf(next), sy + 5, 0.7, 0.3, T_STONE, k === 2);
       step = next;
@@ -2307,7 +2557,7 @@ function buildBeacon(pen: Pen, lm: Landmark): void {
   const stations = [14, 96, 190, 280, 356, 418];
   const radii = [15, 13.4, 11.2, 9.0, 7.0, 5.6];
   for (let i = 0; i + 1 < stations.length; i++) {
-    tube(pen, pen.glass, lm.x, lm.z, radii[i], radii[i + 1], y0 + stations[i], y0 + stations[i + 1], 8, T_STONE, false);
+    tube(pen, pen.glass, lm.x, lm.z, radii[i], radii[i + 1], y0 + stations[i], y0 + stations[i + 1], 8, W_MAIN, false);
     tube(pen, pen.stone, lm.x, lm.z, radii[i + 1] + 0.7, radii[i + 1] + 0.7,
       y0 + stations[i + 1] - 1.1, y0 + stations[i + 1] + 1.1, 8, T_METAL, false);
   }
@@ -2330,8 +2580,8 @@ function buildBeacon(pen: Pen, lm: Landmark): void {
   }
 
   /* Lantern and mast. */
-  tube(pen, pen.glass, lm.x, lm.z, 5.6, 9, y0 + 421, y0 + 440, 8, T_STONE, false);
-  tube(pen, pen.glass, lm.x, lm.z, 9, 3.6, y0 + 440, y0 + 458, 8, T_STONE, true);
+  tube(pen, pen.glass, lm.x, lm.z, 5.6, 9, y0 + 421, y0 + 440, 8, W_MAIN, false);
+  tube(pen, pen.glass, lm.x, lm.z, 9, 3.6, y0 + 440, y0 + 458, 8, W_MAIN, true);
   tube(pen, pen.glow, lm.x, lm.z, 8.4, 8.4, y0 + 426, y0 + 438, 8, G_WARM, false);
   tube(pen, pen.stone, lm.x, lm.z, 1.3, 0.4, y0 + 458, y0 + TOP - 6, 6, T_METAL, false);
   tube(pen, pen.glow, lm.x, lm.z, 1.1, 0.2, y0 + TOP - 6, y0 + TOP, 5, G_WHITE, false);
@@ -2502,7 +2752,7 @@ function buildLaunch(pen: Pen, lm: Landmark): void {
     });
   }
   /* The control room leans out over the pads, the way they always do. */
-  tube(pen, pen.glass, lm.x, lm.z, 5.6, 7.6, y0 + 13.5, y0 + 18.4, 8, T_STONE, false);
+  tube(pen, pen.glass, lm.x, lm.z, 5.6, 7.6, y0 + 13.5, y0 + 18.4, 8, W_MAIN, false);
   const room = ngon(lm.x, lm.z, 7.6, 8);
   capPoly(pen, pen.stone, room, y0 + 18.4, 1, T_ROOF);
   cornice(pen, shellOf(room), y0 + 18.4, 0.6, 0.4, T_METAL, true);
@@ -2653,6 +2903,10 @@ function makeMaterial(name: string, frag: string, glow: boolean): THREE.ShaderMa
     // Every material here is double-sided, and not out of laziness: the lake
     // copy is this same geometry with scale.y = -1, which inverts winding.
     side: THREE.DoubleSide,
+    // `fwidth` is core in the GLSL ES 3.00 this compiles to on WebGL2 and
+    // every facade pattern in here is filtered against it; the flag only
+    // matters if something ever drops back to WebGL1.
+    extensions: { derivatives: true },
     fog: false,
     transparent: glow,
     depthWrite: !glow,
@@ -2666,18 +2920,23 @@ function makeMaterial(name: string, frag: string, glow: boolean): THREE.ShaderMa
  * Reflected, so read the note at the top of the file before touching a
  * gradient in here.
  */
-export function buildBuildings(ctx: BuildContext): BuildingsHandle {
+export function buildBuildings(ctx: BuildContext, options?: BuildingsOptions): BuildingsHandle {
   const plan = cityPlan();
   const pen = newPen(ctx.quality);
   const group = new THREE.Group();
   group.name = "empyrean-buildings";
+  const skip = options?.skipLots?.length ? new Set(options.skipLots) : null;
 
   const lots: LotBuild[] = [];
   for (const lot of plan.lots) {
     const before =
       pen.glass.triangles + pen.stone.triangles + pen.pane.triangles + pen.glow.triangles;
     resetBounds(pen);
-    buildLot(pen, lot, ctx.seedSalt);
+    /* A skipped lot is not a lot built quietly: nothing is written into any
+       bucket, so it contributes no geometry, and `buildLot` is where every
+       blocker and deck comes from, so it contributes neither of those
+       either. Somebody else is standing in this footprint. */
+    if (!skip?.has(lot.id)) buildLot(pen, lot, ctx.seedSalt);
     const after =
       pen.glass.triangles + pen.stone.triangles + pen.pane.triangles + pen.glow.triangles;
     const built = after > before;
@@ -2781,6 +3040,27 @@ export function lotCollision(
   resetBounds(pen);
   buildLot(pen, lot, salt);
   return { blockers: pen.blockers, decks: pen.decks, top: pen.top };
+}
+
+/**
+ * The distinct `aTone` values one lot writes into the curtain-wall bucket.
+ *
+ * The tone on the glass is which *piece of tower* a face belongs to, and the
+ * only large-scale change of colour a tower is allowed to have. Asserting it
+ * is a short list of known slots is how "the variation is structural" stays
+ * true: the moment somebody puts a hash in there, this returns two hundred
+ * values and the towers are quilted again.
+ */
+export function lotGlassTones(lot: Lot, quality: QualityTier, salt = ""): number[] {
+  const pen = newPen(quality);
+  buildLot(pen, lot, salt);
+  const out = new Set<number>();
+  for (const g of pen.glass.chunks) {
+    const a = g.getAttribute("aTone");
+    for (let i = 0; i < a.count; i++) out.add(a.getX(i));
+  }
+  for (let i = 0; i < pen.glass.verts; i++) out.add(pen.glass.tone[i]);
+  return [...out].sort((a, b) => a - b);
 }
 
 /** Every vertex one landmark contributes, as flat xyz. */

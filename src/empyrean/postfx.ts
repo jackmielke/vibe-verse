@@ -364,6 +364,8 @@ uniform float uContrast;
 uniform float uSaturation;
 uniform float uVignette;
 uniform float uLift;
+uniform float uShadowGain;
+uniform float uShadowRange;
 uniform float uDither;
 uniform float uCA;
 uniform float uNight;
@@ -422,6 +424,23 @@ void main() {
    * cool and the shadows go further toward indigo, which is what widens the
    * gap between a lamp and the dark it is standing in. */
   float luma = dot(col, LUMA);
+
+  /* The shadow lift, and the reason it is a *multiply* rather than an add.
+   *
+   * At the signature hour a facade turned away from the sun carries about a
+   * twentieth of the radiance of one turned toward it, and an ACES curve with
+   * any contrast behind it puts that at a couple of dozen codes — a building
+   * reads as a silhouette with lit windows punched in it. Real dusk has the
+   * whole sky dome filling those faces.
+   *
+   * Adding a constant would lift them and lift the true blacks with them, and
+   * a frame with no black in it is the other failure this world had. A gain
+   * that falls off with luma leaves 0 at 0, keeps the ratio between the
+   * channels — so a violet shadow stays violet instead of drifting grey — and
+   * only spends its range where there is something to recover. */
+  col *= 1.0 + uShadowGain * (1.0 - smoothstep(0.0, uShadowRange, luma));
+  luma = dot(col, LUMA);
+
   vec3 shadowTint = mix(vec3(0.94, 0.93, 1.10), vec3(0.84, 0.89, 1.18), uNight);
   vec3 highTint = mix(vec3(1.05, 1.00, 0.94), vec3(1.00, 0.99, 1.05), uNight);
   col = mix(col * shadowTint, col * highTint, smoothstep(0.15, 0.85, luma));
@@ -500,6 +519,13 @@ export interface PostFx {
   setBloom(v: number): void;
   /** Multiplier on the violet lift under the blacks. 0 for a true black. */
   setShadowLift(v: number): void;
+  /**
+   * How hard the grade lifts the shadows, and how far up the range it reaches.
+   *
+   * Multiplicative and luma-masked, so it recovers a shadowed facade without
+   * putting a floor under the blacks. `gain` 0 is the unlifted curve.
+   */
+  setShadowGain(gain: number, range?: number): void;
   dispose(): void;
 }
 
@@ -638,7 +664,7 @@ export function buildPostFx(
     // lamps, the jets and the crowns of the towers. Set under 1 it also caught
     // the sky and the snow, and standing anywhere near a lit surface turned
     // the frame into fog.
-    uThreshold: { value: 1.05 },
+    uThreshold: { value: 1.25 },
     uKnee: { value: 0.55 },
   });
 
@@ -664,13 +690,13 @@ export function buildPostFx(
     uScene: { value: sceneRT.texture },
     uDepth: { value: sceneRT.depthTexture ?? null },
     uTexel: { value: new THREE.Vector2() },
-    uThreshold: { value: 1.2 },
+    uThreshold: { value: 1.55 },
   });
 
   const shaftBlurMat = mk("EmpyreanShaftBlur", SHAFT_BLUR, {
     uSrc: { value: shaftA ? shaftA.texture : null },
     uSun: { value: new THREE.Vector2(0.5, 0.5) },
-    uDensity: { value: 0.78 },
+    uDensity: { value: 0.66 },
     uDecay: { value: 0.955 },
   });
 
@@ -679,15 +705,17 @@ export function buildPostFx(
     uGlow: { value: mips[0].texture },
     uAO: { value: aoOut ? aoOut.texture : white },
     uShafts: { value: shaftB ? shaftB.texture : black },
-    uGlowStrength: { value: high ? 0.34 : 0.28 },
-    uAOStrength: { value: wantAO ? 0.85 : 0 },
+    uGlowStrength: { value: high ? 0.30 : 0.25 },
+    uAOStrength: { value: wantAO ? 0.65 : 0 },
     uShaftStrength: { value: 0 },
     uShaftTint: { value: new THREE.Color(1.0, 0.78, 0.52) },
-    uExposure: { value: 0.62 },
-    uContrast: { value: 1.45 },
+    uExposure: { value: 0.52 },
+    uContrast: { value: 1.15 },
     uSaturation: { value: 1.24 },
     uVignette: { value: 0.42 },
-    uLift: { value: 0.0125 },
+    uLift: { value: 0.009 },
+    uShadowGain: { value: 0.5 },
+    uShadowRange: { value: 0.3 },
     uDither: { value: 1 / 255 },
     uCA: { value: 0.010 },
     uNight: { value: 0 },
@@ -703,7 +731,8 @@ export function buildPostFx(
   let rayGain = 1;
   let bloomGain = 1;
   let liftGain = 1;
-  const baseGlow = high ? 0.34 : 0.28;
+  let shadowGain = 0.5;
+  const baseGlow = high ? 0.30 : 0.25;
 
   const draw = (mat: THREE.Material, target: THREE.WebGLRenderTarget | null) => {
     quad.material = mat;
@@ -718,8 +747,11 @@ export function buildPostFx(
     gradeMat.uniforms.uSaturation.value = 1.24 + night * 0.1;
     gradeMat.uniforms.uVignette.value = 0.42 + night * 0.08;
     gradeMat.uniforms.uDither.value = (1 + night * 0.7) / 255;
-    gradeMat.uniforms.uLift.value = (0.0125 - night * 0.0025) * liftGain;
-    gradeMat.uniforms.uAOStrength.value = wantAO ? (0.85 - night * 0.2) * aoGain : 0;
+    gradeMat.uniforms.uLift.value = (0.009 - night * 0.0015) * liftGain;
+    // Night has less to recover and more to lose: the dark between the lamps
+    // is the subject, not a fault.
+    gradeMat.uniforms.uShadowGain.value = shadowGain * (1 - night * 0.35);
+    gradeMat.uniforms.uAOStrength.value = wantAO ? (0.65 - night * 0.14) * aoGain : 0;
   };
   applyDaylight();
 
@@ -824,7 +856,7 @@ export function buildPostFx(
            * moment for shafts, and a threshold that starts at zero would have
            * switched them off exactly then. */
           const up = THREE.MathUtils.smoothstep(sunDir.y, -0.12, 0.01);
-          shaftStrength = onScreen * up * rayGain * 0.85;
+          shaftStrength = onScreen * up * rayGain * 0.5;
         }
         if (shaftStrength > 0.001) {
           draw(shaftSrcMat, shaftA);
@@ -882,6 +914,12 @@ export function buildPostFx(
 
     setShadowLift(v) {
       liftGain = THREE.MathUtils.clamp(v, 0, 4);
+      applyDaylight();
+    },
+
+    setShadowGain(gain, range) {
+      shadowGain = THREE.MathUtils.clamp(gain, 0, 3);
+      if (range !== undefined) gradeMat.uniforms.uShadowRange.value = Math.max(0.02, range);
       applyDaylight();
     },
 

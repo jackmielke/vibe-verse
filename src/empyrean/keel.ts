@@ -96,13 +96,13 @@ void main() {
   /* Strata. Horizontal bands of slightly different rock, warped by noise so
    * they are not rings — this is the detail that stops four hundred metres of
    * cliff reading as one smooth extruded surface at any distance. */
-  float band = vH * 34.0 + vnoise(vec2(atan(vWPos.z, vWPos.x) * 3.0, vH * 8.0)) * 2.2;
+  float band = vH * 13.0 + vnoise(vec2(atan(vWPos.z, vWPos.x) * 3.0, vH * 8.0)) * 1.6;
   float strata = abs(fract(band) - 0.5) * 2.0;
-  base *= 0.86 + 0.24 * smoothstep(0.2, 0.8, strata);
+  base *= 0.91 + 0.15 * smoothstep(0.2, 0.8, strata);
 
   /* Direct sun: a hard warm rake across one side. */
   vec3 col = base * (0.22 + 0.95 * max(sunlit, 0.0));
-  col += vec3(1.00, 0.55, 0.30) * pow(max(sunlit, 0.0), 2.4) * 0.55;
+  col += vec3(1.00, 0.55, 0.30) * pow(max(sunlit, 0.0), 2.4) * 0.26;
 
   /* Bounce from the ice. Only on faces turned downward, and it falls off with
    * depth — this is the light that makes the underside legible instead of a
@@ -110,11 +110,15 @@ void main() {
   float down = clamp(-N.y * 0.5 + 0.5, 0.0, 1.0);
   col += vec3(0.58, 0.42, 0.66) * down * (1.0 - vH * 0.55) * 0.46;
 
-  /* Striation. The reference's underside is combed with vertical grooves all
-   * the way down; the geometry carries some of that, but the shading is what
-   * actually reads at a distance. */
+  /* Striation, at a third of the contrast it started with.
+   *
+   * The reference's underside is combed with vertical grooves, and the first
+   * pass rendered them as a 40% swing on top of a 4% geometric flute. Lit from
+   * the side by a low sun that reads as a ring of polished golden columns
+   * holding the city up — an arcade, not a rock. Rock is close to matte and
+   * its shape does the work; the shading only has to hint. */
   float groove = abs(fract(atan(vWPos.z, vWPos.x) * 9.0) - 0.5) * 2.0;
-  col *= 0.80 + 0.32 * groove;
+  col *= 0.93 + 0.11 * groove;
 
   /* Rim from the sky behind. */
   vec3 V = normalize(uCam - vWPos);
@@ -222,7 +226,7 @@ function buildRock(rings: number, segs: number): THREE.BufferGeometry {
        * underside. `rough` is the surface, and it gets coarser as the rock
        * narrows, because that is where it broke off. */
       const lobe = 1 + Math.sin(a * 4 + 0.7) * 0.10 + Math.sin(a * 3 - 2.1) * 0.06;
-      const flute = 1 + Math.sin(a * 17 + t * 2.2) * 0.055 * (0.35 + t);
+      const flute = 1 + Math.sin(a * 17 + t * 2.2) * 0.022 * (0.35 + t);
       const rough =
         1 +
         fbm2(Math.cos(a) * 2.6 + t * 3.1, Math.sin(a) * 2.6, 4, 2, 0.5, 404) *

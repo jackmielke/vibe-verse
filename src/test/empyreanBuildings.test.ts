@@ -21,6 +21,7 @@ import {
   buildBuildings,
   landmarkVertices,
   lotCollision,
+  lotGlassTones,
   lotVertices,
   outsideLot,
   type BuildingsHandle,
@@ -257,5 +258,126 @@ describe("the budget", () => {
     b.dispose();
     expect(b.group.children).toHaveLength(0);
     expect(disposed).toBe(expected.length * 2);
+  }, 60_000);
+});
+
+describe("lots somebody else is standing in", () => {
+  /**
+   * `interiors.ts` builds real rooms inside two lots and names them on
+   * `claimedLots`. A solid block on top of a room is a room nobody can get
+   * into, and it fails nothing: the build is green, the typecheck is green,
+   * the smoke run opens the route and sees a city. You find it by walking to
+   * the café and bouncing off the wall.
+   */
+  const CLAIMED = ["b1-6-11", "b2-12-00"];
+
+  it("has the lots the interiors claim", () => {
+    for (const id of CLAIMED) {
+      expect(plan.lots.find((l) => l.id === id), `${id} is gone from the plan`).toBeTruthy();
+    }
+  });
+
+  it("leaves a skipped lot completely empty", () => {
+    const full = built();
+    const some = buildBuildings({ quality: "high", seedSalt: "test" }, { skipLots: CLAIMED });
+    let droppedTris = 0;
+    let droppedBlockers = 0;
+    let droppedDecks = 0;
+    for (const id of CLAIMED) {
+      const lot = plan.lots.find((l) => l.id === id)!;
+      const before = full.lots.find((l) => l.id === id)!;
+      const after = some.lots.find((l) => l.id === id)!;
+      expect(before.built, `${id} was empty to begin with`).toBe(true);
+      expect(after.built, `${id} still built`).toBe(false);
+      expect(after.triangles, `${id} still has geometry`).toBe(0);
+      expect(after.top, `${id} still has a roof`).toBe(lot.y);
+      const c = lotCollision(lot, "high", "test");
+      droppedTris += before.triangles;
+      droppedBlockers += c.blockers.length;
+      droppedDecks += c.decks.length;
+      expect(droppedBlockers, `${id} contributed no blocker to drop`).toBeGreaterThan(0);
+    }
+    // Not "fewer": exactly the ones those lots were contributing, so a skip
+    // cannot quietly take a neighbour's wall with it.
+    expect(some.stats.triangles).toBe(full.stats.triangles - droppedTris);
+    expect(some.blockers.length).toBe(full.blockers.length - droppedBlockers);
+    expect(some.decks.length).toBe(full.decks.length - droppedDecks);
+    some.dispose();
+  }, 120_000);
+
+  it("still builds everything when nobody asks for anything", () => {
+    // The engine adds the second argument; every other caller does not.
+    const b = buildBuildings({ quality: "low", seedSalt: "test" }, {});
+    expect(b.lots.filter((l) => !l.built)).toHaveLength(0);
+    b.dispose();
+  }, 120_000);
+});
+
+describe("the facades are not a quilt", () => {
+  /**
+   * The tower shafts came out patched with fifteen-metre squares of different
+   * tone, so a three-hundred-metre building read as a patchwork of tiles.
+   * Two things were wrong and both are asserted here rather than looked at,
+   * because looking at it is a twenty-minute round trip through a software
+   * rasteriser.
+   *
+   *  - the tone varied per grid cell, off a 1-D hash of `bay * a + floor * b`
+   *    that clumped. Variation on a facade is per bay, per floor band or per
+   *    window; anything coarser than that has to be structural, and lands on
+   *    `aTone`, which is a short list of slots.
+   *  - nothing was filtered, so the metre-scale grid aliased into blotches at
+   *    any distance — the same quilt, arriving from further away.
+   */
+  const shaders = (name: string): string => {
+    let out = "";
+    built().group.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.ShaderMaterial | undefined;
+      if (o.name === name && m) out = m.fragmentShader;
+    });
+    expect(out, `${name} has no material`).not.toBe("");
+    return out;
+  };
+
+  it("keeps the curtain wall's tone to a handful of structural slots", () => {
+    const towers = plan.lots.filter((l) => l.use === "tower");
+    expect(towers.length).toBeGreaterThan(10);
+    for (const lot of towers) {
+      const tones = lotGlassTones(lot, "high", "test");
+      expect(tones.length, `${lot.id} tones`).toBeGreaterThan(0);
+      expect(tones.length, `${lot.id} has a hash on aTone`).toBeLessThanOrEqual(3);
+      for (const t of tones) expect([0, 1, 2], `${lot.id} tone ${t}`).toContain(t);
+      expect(tones, `${lot.id} has no main shaft`).toContain(0);
+    }
+  }, 120_000);
+
+  it("filters every metre-scale facade pattern against its own footprint", () => {
+    for (const name of ["empyrean-curtainwall", "empyrean-masonry", "empyrean-glazing"]) {
+      expect(shaders(name), `${name} draws an unfiltered grid`).toContain("fwidth(");
+    }
+  }, 60_000);
+
+  it("hashes a grid in two dimensions, never a sum of two indices", () => {
+    // hash11(x * 31.7 + y * 7.3) puts neighbouring cells next to each other
+    // in the input, and a hash is only pseudo-random for inputs that are far
+    // apart. That is what made the patches.
+    const glass = shaders("empyrean-curtainwall");
+    expect(glass).toContain("hash21(");
+    expect(glass).not.toMatch(/hash11\([^)]*\*[^)]*\+[^)]*\*/);
+  }, 60_000);
+
+  it("gives every window pane an identity of its own", () => {
+    /* The pane shader can only tell one window from another by what the
+       geometry hands it. When that was the position across the pane and the
+       height, every window on a floor lit up together and the facade came out
+       in stripes; `uv.x` now runs from `openingId` to `openingId + 1`. */
+    let panes: THREE.BufferGeometry | null = null;
+    built().group.traverse((o) => {
+      if (o.name === "empyrean-glazing") panes = (o as THREE.Mesh).geometry;
+    });
+    expect(panes).toBeTruthy();
+    const uv = (panes as unknown as THREE.BufferGeometry).getAttribute("uv");
+    const ids = new Set<number>();
+    for (let i = 0; i < uv.count; i++) ids.add(Math.floor(uv.getX(i)));
+    expect(ids.size, "every pane in the city is window number zero").toBeGreaterThan(20);
   }, 60_000);
 });

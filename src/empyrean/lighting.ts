@@ -152,60 +152,60 @@ const KEYS: DayKey[] = [
     // and a night that renders black is a night nobody looks at twice.
     y: -0.78,
     sunI: 0.45,
-    hemiI: 0.55,
+    hemiI: 0.9,
     rim: [0.66, 0.80, 1.0],
     rimI: 0.28,
-    fogD: 0.00010,
-    exposure: 1.02,
+    fogD: 0.00007,
+    exposure: 0.94,
   },
   {
     y: -0.20,
     sunI: 0.6,
-    hemiI: 0.72,
+    hemiI: 1.2,
     rim: [0.66, 0.80, 1.0],
     rimI: 0.3,
-    fogD: 0.00012,
-    exposure: 0.9,
+    fogD: 0.00008,
+    exposure: 0.82,
   },
   {
     // Civil twilight: the sun is gone and everything is lit by the band of sky
     // it is behind.
     y: -0.02,
     sunI: 2.1,
-    hemiI: 1.45,
+    hemiI: 2.45,
     rim: [0.70, 0.84, 1.0],
     rimI: 0.62,
-    fogD: 0.00015,
-    exposure: 0.68,
+    fogD: 0.000095,
+    exposure: 0.56,
   },
   {
     // The hour. Everything else in this table exists so that this one is not
     // the only one that works.
     y: 0.10,
     sunI: 3.2,
-    hemiI: 1.75,
+    hemiI: 3.05,
     rim: [0.72, 0.86, 1.0],
     rimI: 0.85,
-    fogD: 0.00016,
-    exposure: 0.62,
+    fogD: 0.0001,
+    exposure: 0.52,
   },
   {
     y: 0.35,
     sunI: 4.1,
-    hemiI: 1.95,
+    hemiI: 3.0,
     rim: [0.74, 0.88, 1.0],
     rimI: 0.6,
-    fogD: 0.00014,
-    exposure: 0.6,
+    fogD: 0.000095,
+    exposure: 0.52,
   },
   {
     y: 0.78,
     sunI: 4.7,
-    hemiI: 2.15,
+    hemiI: 2.85,
     rim: [0.74, 0.88, 1.0],
     rimI: 0.45,
-    fogD: 0.00013,
-    exposure: 0.57,
+    fogD: 0.00009,
+    exposure: 0.5,
   },
 ];
 
@@ -236,7 +236,7 @@ export function makeDayLook(): DayLook {
 const KEY_HEIGHT_FLOOR = 0.055;
 
 /** What the snow and the ice bounce back up. Cold, and never neutral. */
-const GROUND_VIOLET = /*@__PURE__*/ new THREE.Color().setRGB(0.28, 0.22, 0.42, THREE.SRGBColorSpace);
+const GROUND_VIOLET = /*@__PURE__*/ new THREE.Color().setRGB(0.42, 0.36, 0.55, THREE.SRGBColorSpace);
 
 /**
  * Everything about the light at `dayPhase` p.
@@ -272,7 +272,7 @@ export function dayLook(p: number, out: DayLook = makeDayLook()): DayLook {
    * puts a blue cast on every upward-facing surface in a city that is on fire.
    */
   out.skyColor.copy(pal.gold).lerp(pal.rose, 0.4).lerp(pal.blue, 0.3);
-  out.groundColor.copy(pal.fog).lerp(GROUND_VIOLET, 0.5);
+  out.groundColor.copy(pal.fog).lerp(GROUND_VIOLET, 0.42);
   out.fogColor.copy(pal.fog);
 
   let i = 0;

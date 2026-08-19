@@ -63,6 +63,7 @@ import { buildTraffic } from "./traffic";
 import { buildInteriors } from "./interiors";
 import { buildActivities } from "./activities";
 import { buildWeather, type Condition } from "./weather";
+import { buildVehicles } from "./vehicles";
 import { buildLighting, setShadowFlags } from "./lighting";
 import { buildPostFx } from "./postfx";
 import { buildAudio, type AudioHandle } from "./audio";
@@ -224,6 +225,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const traffic = add(buildTraffic(build));
   const activities = add(buildActivities(build));
   const weather = add(buildWeather(build));
+  const vehicles = add(buildVehicles(build));
   // A world that opens in whatever weather the clock happened to land on is a
   // world whose card art is a different picture every time it is captured.
   if (shotMode) weather.force("high-cloud");
@@ -259,6 +261,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
 
   // Interiors raise toasts of their own — a departure board, a guest book.
   interiors.onToast = (text, tone) => pushToast(text, tone ?? "info");
+  // Vehicles collide against the same world the body does.
+  vehicles.setWorld({
+    blockedAt: (x, z, y) => collision.blockedAt(x, z, y),
+    supportAt: collision.supportAt,
+  });
 
   /* ---- the body -------------------------------------------------------- */
   const BODY_H = 1.8;
@@ -487,13 +494,39 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       const jet = keys.has("Space") || stick.jet;
       // A tap of Space on the ground is a jump; a hold is the jetpack. City
       // gives the jetpack the whole key, but City has no stairs.
-      if (jet && !prevJet && flyer.grounded) jump(flyer);
+      if (jet && !prevJet && flyer.grounded && !vehicles.riding()) jump(flyer);
       prevJet = jet;
 
+      const ride = vehicles.riding();
       if (frozen) {
         flyer.velocity.set(0, 0, 0);
         flyer.grounded = false;
         flyer.burn = 0;
+      } else if (ride) {
+        /* Aboard something. The vehicle owns the body: it is driven with the
+         * same stick the legs use, and it says where the player ends up. The
+         * jetpack is off — the plume firing out of the back of a glider is
+         * the kind of detail that reads as a bug even to somebody who could
+         * not say why. */
+        vehicles.drive(
+          {
+            forward: f,
+            strafe: s,
+            lift: jet ? 1 : 0,
+            boost: keys.has("ShiftLeft") || keys.has("ShiftRight") || stick.boost,
+            camYaw: rigCam.yaw,
+          },
+          dt,
+        );
+        const r = vehicles.riding();
+        if (r) {
+          flyer.position.set(r.x, r.y, r.z);
+          flyer.yaw = r.yaw;
+          flyer.pitch = r.pitch;
+          flyer.grounded = false;
+          flyer.burn = 0;
+          flyer.velocity.set(0, 0, 0);
+        }
       } else stepFlyer(
         flyer,
         {
@@ -562,7 +595,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     /* ---- interaction ---- */
     nearest = null;
     let bestD = Infinity;
-    const offers = [...activities.interactables(), ...interiors.interactables()];
+    const offers = [
+      ...activities.interactables(),
+      ...interiors.interactables(),
+      ...vehicles.interactables(),
+    ];
     for (const it of offers) {
       if (it.enabled && !it.enabled()) continue;
       const d = Math.hypot(it.x - flyer.position.x, it.z - flyer.position.z);
@@ -577,6 +614,16 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       if (nearest) {
         nearest.activate();
         audio?.event("ui");
+        /* Getting out is a two-step handshake on purpose: the prompt's own
+         * activate() stashes an exit point and `dismount()` drains it, so
+         * pressing the key and calling dismount yields one exit and one
+         * place to stand — never two, and never none. */
+        const exit = vehicles.dismount();
+        if (exit) {
+          flyer.position.set(exit.x, exit.y, exit.z);
+          flyer.velocity.set(0, 0, 0);
+          flyer.grounded = true;
+        }
       }
     }
 
@@ -597,6 +644,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       mapTimer = 0;
       marks.length = 0;
       for (const s of traffic.stops) marks.push({ x: s.x, z: s.z, kind: "tram" });
+      for (const pad of vehicles.pads) marks.push({ x: pad.x, z: pad.z, kind: "waypoint" });
       marks.push({ x: traffic.tram.x, z: traffic.tram.z, kind: "tram", active: true });
       minimap.draw(flyer.position.x, flyer.position.z, flyer.yaw, flyer.position.y, marks);
     }
@@ -616,7 +664,13 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
         placeAccent: place.accent,
         clock: clockString(ctx.dayPhase),
         prompt: nearest ? { label: nearest.label, detail: nearest.detail } : null,
-        activity: activities.activity(),
+        activity: (() => {
+          const r = vehicles.riding();
+          // Riding wins the panel: while you are in a glider, the glide ratio
+          // is the thing you need on screen, not a courier's distance.
+          if (r) return { title: r.label, lines: r.lines.slice() };
+          return activities.activity();
+        })(),
         toasts: toasts.slice(),
         earned: activities.earned,
         found: activities.found,

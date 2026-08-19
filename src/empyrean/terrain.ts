@@ -28,7 +28,7 @@
  */
 import * as THREE from "three";
 import { fbm2, ridged2 } from "@/shared/proc/rng";
-import { GROUND_Y, LAKE_R, WATER_Y, WORLD_R } from "./config";
+import { GROUND_Y, ISLAND_Y, LAKE_R, WATER_Y, WORLD_R } from "./config";
 import { SUN_DIR } from "./sky";
 
 /**
@@ -62,7 +62,14 @@ export function groundHeight(x: number, z: number): number {
   // the plain and die back down into the haze instead of ending at a line.
   const t = (r - RANGE_INNER) / (RANGE_OUTER - RANGE_INNER);
   if (t <= 0 || t >= 1) return GROUND_Y + drift * Math.min(1, Math.max(0, (r - LAKE_R) / 360));
-  const band = Math.sin(Math.PI * Math.min(1, t * 1.25)) ** 0.85;
+  /* The band reaches full height fast and holds it.
+   *
+   * A gentle raised cosine puts the nearest peaks — the only ones that
+   * subtend any angle from the island — at a third of their amplitude, and
+   * the ranges render as a smooth white sheet with a texture on it. Ramping
+   * over the first fifth of the band instead means the mountains you can
+   * actually see are mountains. */
+  const band = Math.sin(Math.PI * Math.min(1, t * 2.2)) ** 0.7;
 
   // Ridged noise at two scales: the range, then the individual peaks on it.
   const ridge = ridged2(x * 0.00048, z * 0.00048, 4, 31);
@@ -76,9 +83,21 @@ export function groundHeight(x: number, z: number): number {
    * into a landscape with a building in it. The first pass topped out at 984 m
    * and did exactly that.
    */
-  const h = (ridge ** 2.6 * 0.62 + teeth ** 1.9 * 0.66) * 500 * band;
+  const h = (ridge ** 2.6 * 0.62 + teeth ** 1.9 * 0.72) * 560 * band;
 
-  return GROUND_Y + h + drift;
+  /* Hard ceiling, not a tuned amplitude.
+   *
+   * The rule is "no peak may out-climb the city deck", and it is a composition
+   * rule, not a terrain one — a mountain behind the island turns the picture
+   * from "a city in the sky" into "a landscape with a building in it". Every
+   * time the ridge noise has been retuned the amplitude has drifted over the
+   * line again, so the limit lives here where it cannot be tuned past. Eased
+   * rather than clipped, so the tallest peaks round over instead of being
+   * sheared flat into a mesa. */
+  const CEIL = ISLAND_Y * 0.84;
+  const raw = h + drift;
+  const capped = raw < CEIL * 0.7 ? raw : CEIL - (CEIL * 0.3 * CEIL * 0.3) / (raw - CEIL * 0.4);
+  return GROUND_Y + capped;
 }
 
 /* -------------------------------------------------------------------------

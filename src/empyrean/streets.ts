@@ -714,25 +714,30 @@ interface Flight {
 /**
  * Where the stairs go, and why they run sideways.
  *
- * The first promenade is twenty-two metres below the deck and four metres
- * outboard of it. A stair that took that drop radially would be a ladder, so
- * each flight descends *along the rim*, spiralling gently outward until it
- * lands in the middle of the ring below. Three flights from the deck to the
- * bottom promenade, at each of the eight avenue ends, so wherever you are on
- * the city the way down is at the end of the street you are standing in.
+ * The first promenade is a good drop below the deck and a few metres outboard
+ * of it. A stair that took that radially would be a ladder, so each flight
+ * descends *along the rim*, spiralling gently outward until it lands in the
+ * middle of the ring below. One flight per promenade, at each of the eight
+ * avenue ends, so wherever you are on the city the way down is at the end of
+ * the street you are standing in.
  */
 function stairFlights(k: number, q: Budget): Flight[] {
   const A = AVENUE_A0 + (k / AVENUE_N) * TAU;
   const going = 0.32;
-  const rStart = [PLATEAU_R + 3, DECKS[1].outer - 6, DECKS[2].outer - 6];
-  const rEnd = [
-    DECKS[1].outer - DECKS[1].width / 2,
-    DECKS[2].outer - DECKS[2].width / 2,
-    DECKS[3].outer - DECKS[3].width / 2,
-  ];
+  /* One flight per gap in `DECKS`, derived rather than listed.
+   *
+   * These were three hard-coded indices, and shrinking the skirt from three
+   * promenade rings to two turned them into a read past the end of a tuple —
+   * caught by the type checker only because `DECKS` is `as const`, and it
+   * would have been an undefined dereference on the first frame otherwise. */
+  const flights = DECKS.length - 1;
+  const rStart = DECKS.slice(0, flights).map((d, i) =>
+    i === 0 ? PLATEAU_R + 3 : d.outer - 6,
+  );
+  const rEnd = DECKS.slice(1).map((d) => d.outer - d.width / 2);
   const out: Flight[] = [];
   let off = 5.5 / PLATEAU_R;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < flights; i++) {
     const yTop = DECKS[i].y;
     const yBot = DECKS[i + 1].y;
     const steps = Math.max(6, Math.round((yTop - yBot) / q.riser));
@@ -1386,9 +1391,9 @@ vec3 stoneShade(float r, float a, float px, float detail, int k, out float gloss
     // A warm line down the middle of every promenade, which is the only thing
     // out here at night once the city is behind you.
     float m = 1e9;
-    m = min(m, abs(r - ${f4(DECKS[1].outer - DECKS[1].width / 2)}));
-    m = min(m, abs(r - ${f4(DECKS[2].outer - DECKS[2].width / 2)}));
-    m = min(m, abs(r - ${f4(DECKS[3].outer - DECKS[3].width / 2)}));
+${DECKS.slice(1)
+  .map((d) => `    m = min(m, abs(r - ${f4(d.outer - d.width / 2)}));`)
+  .join("\n")}
     float line = smoothstep(0.24, 0.07, m);
     col = mix(col, uAccent[4] * 0.7, line * 0.7);
     emis += uAccent[4] * line * (0.14 + uDusk * 0.85);
