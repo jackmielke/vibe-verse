@@ -149,14 +149,14 @@ describe("the ground", () => {
   it("climbs into real mountains outside it", () => {
     let peak = -Infinity;
     for (let a = 0; a < Math.PI * 2; a += 0.05) {
-      for (let r = LAKE_R * 1.2; r < 4000; r += 60) {
+      for (let r = LAKE_R * 1.2; r < 7000; r += 90) {
         peak = Math.max(peak, groundHeight(Math.cos(a) * r, Math.sin(a) * r));
       }
     }
     // Real mountains — but never taller than the plaza, because a peak that
     // out-climbs the island turns the picture from "a city in the sky" into
     // "a landscape with a building in it".
-    expect(peak).toBeGreaterThan(220);
+    expect(peak).toBeGreaterThan(320);
     expect(peak).toBeLessThan(ISLAND_Y);
   });
 

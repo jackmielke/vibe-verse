@@ -59,3 +59,9 @@ shots/
 # changes every few minutes of play, and a beginner's copy of it is one deleted
 # file away. Nothing in the site reads it.
 .dz/
+
+# Frames captured while building a world; never committed.
+.shots/
+
+# Agent scratch; never committed.
+__zz_compile.mjs

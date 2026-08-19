@@ -1,34 +1,55 @@
 /**
- * THE EMPYREAN — a city of glass hanging over a frozen mirror, and a jetpack.
+ * THE EMPYREAN — a city of glass on a rock that never landed.
  *
  * The React layer is deliberately thin, the way The Glass Lake and San Palmas
  * are: it owns the title card, the HUD and the touch controls, and mounts a
  * container the engine renders into. Everything that moves lives in
  * `src/empyrean/`.
+ *
+ * Two rules keep it thin, and both exist because they were broken once:
+ *
+ *  - **Nothing in the movement path touches React state.** The touch stick
+ *    writes straight into the engine's input object. A `setState` per pointer
+ *    move is a re-render per pointer move.
+ *  - **The engine pushes state at about ten hertz, not per frame.** Everything
+ *    on screen here is text and bars; none of it is worth sixty re-renders a
+ *    second, and the difference is measurable on a phone.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
-import type { EmpyreanState, EmpyreanWorld } from "@/empyrean/world";
+import type { EmpyreanState } from "@/empyrean/types";
+import type { EmpyreanWorld } from "@/empyrean/world";
+
+const EMPTY: EmpyreanState = {
+  altitude: 0,
+  speed: 0,
+  drop: 0,
+  thrusting: false,
+  who: "",
+  place: "The Halo",
+  placeAccent: "#ffd28a",
+  clock: "18:40",
+  prompt: null,
+  activity: null,
+  toasts: [],
+  earned: 0,
+  found: { got: 0, total: 0 },
+};
 
 export default function Empyrean() {
   // Passport: every world records that you were here. See lib/passport.ts.
   useWorldStamp("/empyrean", "The Empyrean");
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<HTMLCanvasElement | null>(null);
   const worldRef = useRef<EmpyreanWorld | null>(null);
   const [started, setStarted] = useState(false);
   const [booting, setBooting] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [chrome, setChrome] = useState(true);
   const [hint, setHint] = useState(true);
-  const [state, setState] = useState<EmpyreanState>({
-    altitude: 0,
-    speed: 0,
-    drop: 0,
-    thrusting: false,
-    who: "",
-    place: "The Plaza",
-  });
+  const [state, setState] = useState<EmpyreanState>(EMPTY);
 
   // `?shot=1` — the capture harness. Skips the title card and hides the HUD,
   // so the card art is a picture of the world rather than of its interface.
@@ -42,19 +63,20 @@ export default function Empyrean() {
   const start = useCallback(async () => {
     if (worldRef.current || booting) return;
     setBooting(true);
-    // Three plus a pile of shaders. It must not sit in the hub's chunk — pull
-    // it in only once somebody actually steps onto the plaza.
+    // Three plus a city. It must not sit in the hub's chunk — pull it in only
+    // once somebody actually steps onto the deck.
     const { createEmpyrean } = await import("@/empyrean/world");
     if (!containerRef.current) return;
     worldRef.current = createEmpyrean({
       container: containerRef.current,
+      minimap: mapRef.current,
       onState: setState,
       muted,
       shot: shotMode,
     });
     setBooting(false);
     setStarted(true);
-    window.setTimeout(() => setHint(false), 11000);
+    window.setTimeout(() => setHint(false), 14000);
   }, [booting, muted, shotMode]);
 
   useEffect(() => {
@@ -63,6 +85,15 @@ export default function Empyrean() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shotMode]);
 
+  // H hides the interface. A world this pretty deserves a way to look at it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "KeyH" && !e.repeat) setChrome((c) => !c);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const toggleMute = useCallback(() => {
     setMuted((m) => {
       worldRef.current?.setMuted(!m);
@@ -70,9 +101,9 @@ export default function Empyrean() {
     });
   }, []);
 
-  /* ---- Touch stick ------------------------------------------------------
-   * Writes straight into the engine's input object — no React state anywhere
-   * in the movement path. */
+  /* ---- Touch controls ---------------------------------------------------
+   * The stick writes straight into the engine's input object. The only React
+   * state here is the knob's own position, and that is one small element. */
   const padRef = useRef<HTMLDivElement | null>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const padTouch = useRef<number | null>(null);
@@ -109,12 +140,14 @@ export default function Empyrean() {
   }, []);
 
   const setJet = useCallback((on: boolean) => {
-    const world = worldRef.current;
-    if (world) world.stick.jet = on;
+    const w = worldRef.current;
+    if (w) w.stick.jet = on;
   }, []);
 
   const isTouch =
     typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+
+  const showChrome = started && !shotMode && chrome;
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#150c22] select-none">
@@ -122,7 +155,7 @@ export default function Empyrean() {
 
       {/* ---- Title card -------------------------------------------------- */}
       {!started && !shotMode && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center px-6 text-center">
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center px-6 text-center">
           {/* A painted stand-in for the thing behind it — the same five stops
               the sky shader uses, so the cut to the live world is a reveal
               rather than a jump. */}
@@ -146,23 +179,23 @@ export default function Empyrean() {
           <h1 className="font-heading text-4xl tracking-tight text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.45)] sm:text-6xl">
             The Empyrean
           </h1>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-white/90 drop-shadow-[0_1px_12px_rgba(0,0,0,0.5)]">
-            A city of glass on a rock that never landed, four hundred metres
-            over a frozen lake that shows you all of it upside down. Strap the
-            pack on and go and look at it — off the terraces, under the keel,
-            out to the white ranges and back.
+          <p className="mt-4 max-w-lg text-sm leading-relaxed text-white/90 drop-shadow-[0_1px_12px_rgba(0,0,0,0.5)]">
+            Eight avenues, three ring roads and a city of glass, six hundred
+            metres over a frozen lake that shows you all of it upside down.
+            Walk the Bazaar, ride the tram, race the rings, or just put the
+            pack on and go and look at the edge.
           </p>
           <button
             onClick={start}
             disabled={booting}
             className="mt-8 rounded-full border border-white/50 bg-white/15 px-8 py-3 text-sm font-semibold text-white shadow-[0_0_50px_rgba(255,190,120,0.55)] backdrop-blur-sm transition-colors hover:bg-white/25 disabled:opacity-60"
           >
-            {booting ? "Raising the island…" : "Take off"}
+            {booting ? "Raising the island…" : "Arrive"}
           </button>
           <p className="mt-5 text-[11px] text-white/80">
             {isTouch
-              ? "Stick to move · hold the rocket to fly · drag to look"
-              : "WASD to move · hold Space for the jetpack · Shift to boost · drag to look"}
+              ? "Stick to move · hold the rocket to fly · drag to look · tap ✦ to interact"
+              : "WASD · Space jetpack · Shift boost · E interact · drag to look · H hides this"}
           </p>
           <Link
             to="/"
@@ -174,19 +207,36 @@ export default function Empyrean() {
       )}
 
       {/* ---- HUD --------------------------------------------------------- */}
-      {started && !shotMode && (
+      {/* The minimap canvas is mounted whenever the world is, not only when
+          the chrome is showing: the engine holds a reference to it and
+          unmounting the node under a running renderer is how you get a
+          detached canvas being drawn into forever. Hidden, not removed. */}
+      <div
+        className={`pointer-events-none absolute bottom-4 right-4 z-20 transition-opacity duration-200 ${
+          showChrome ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        <div className="rounded-2xl border border-white/12 bg-black/45 p-1.5 backdrop-blur-md">
+          <canvas ref={mapRef} className="block rounded-xl" />
+        </div>
+      </div>
+
+      {showChrome && (
         <>
-          {/* Below, not beside: `chromeless: true` earns this world the app's
-              one home button, and that lives at left-3 top-3 in every
-              fullscreen world. */}
-          <div className="pointer-events-none absolute left-3 top-16 z-10 flex flex-col gap-2">
-            <div className="rounded-2xl border border-white/10 bg-black/35 px-3 py-2 backdrop-blur-md">
-              <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/80">
+          {/* Where you are. Below the app's own home button, which lives at
+              left-3 top-3 in every fullscreen world. */}
+          <div className="pointer-events-none absolute left-3 top-16 z-20 flex flex-col gap-2">
+            <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
+              <div
+                className="text-[10px] uppercase tracking-[0.28em]"
+                style={{ color: state.placeAccent }}
+              >
                 {state.place}
               </div>
-              <div className="mt-1 font-mono text-[11px] text-white/90">
-                {state.altitude.toFixed(0)} m
-                <span className="ml-3 text-amber-200/90">{state.speed.toFixed(0)} m/s</span>
+              <div className="mt-1 flex items-baseline gap-3 font-mono text-[11px] text-white/90">
+                <span>{state.altitude.toFixed(0)} m</span>
+                <span className="text-amber-200/90">{state.speed.toFixed(0)} m/s</span>
+                <span className="text-white/45">{state.clock}</span>
               </div>
               {state.drop > 12 && Number.isFinite(state.drop) && (
                 <div className="mt-0.5 font-mono text-[10px] text-rose-200/80">
@@ -194,43 +244,119 @@ export default function Empyrean() {
                 </div>
               )}
             </div>
+
             <div
               className={`rounded-2xl border px-3 py-1.5 font-mono text-[10px] backdrop-blur-md transition-colors ${
                 state.thrusting
                   ? "border-amber-300/60 bg-amber-400/15 text-amber-100"
-                  : "border-white/10 bg-black/35 text-white/50"
+                  : "border-white/10 bg-black/40 text-white/45"
               }`}
             >
               JETPACK {state.thrusting ? "FIRING" : "READY"}
             </div>
+
+            {(state.earned > 0 || state.found.got > 0) && (
+              <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-1.5 font-mono text-[10px] text-white/80 backdrop-blur-md">
+                <span className="text-amber-200">◎ {state.earned}</span>
+                {state.found.total > 0 && (
+                  <span className="ml-3 text-emerald-200/90">
+                    ✦ {state.found.got}/{state.found.total}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+          {/* Controls, top right. */}
+          <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
             {state.who && (
-              <span className="hidden rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-xs text-white/70 backdrop-blur-md sm:inline">
+              <span className="hidden rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/70 backdrop-blur-md sm:inline">
                 {state.who}
               </span>
             )}
             <button
               onClick={toggleMute}
-              className="rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur-md transition-colors hover:bg-black/55"
+              className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/90 backdrop-blur-md transition-colors hover:bg-black/60"
+              title="Mute"
             >
               {muted ? "🔇" : "🔊"}
             </button>
             <button
               onClick={() => worldRef.current?.recall()}
-              className="rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur-md transition-colors hover:bg-black/55"
+              className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/90 backdrop-blur-md transition-colors hover:bg-black/60"
             >
-              ↺ Plaza
+              ↺ Halo
             </button>
           </div>
 
-          {hint && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center px-6 sm:bottom-10">
-              <div className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-center text-[11px] text-white/75 backdrop-blur-md">
+          {/* The activity panel. Right side, above the map. */}
+          {state.activity && (
+            <div className="pointer-events-none absolute right-4 top-16 z-20 w-60">
+              <div className="rounded-2xl border border-cyan-200/25 bg-black/50 px-3 py-2.5 backdrop-blur-md">
+                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200/90">
+                  {state.activity.title}
+                </div>
+                {state.activity.lines.map((l, i) => (
+                  <div key={i} className="mt-1 font-mono text-[11px] leading-snug text-white/85">
+                    {l}
+                  </div>
+                ))}
+                {state.activity.progress !== undefined && (
+                  <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-amber-300 transition-[width] duration-300"
+                      style={{ width: `${Math.max(0, Math.min(1, state.activity.progress)) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Toasts. Centre, above the prompt. */}
+          <div className="pointer-events-none absolute inset-x-0 top-[14%] z-20 flex flex-col items-center gap-1.5 px-6">
+            {state.toasts.map((t) => (
+              <div
+                key={t.id}
+                className={`rounded-full border px-4 py-1.5 text-center text-[12px] backdrop-blur-md ${
+                  t.tone === "good"
+                    ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                    : t.tone === "warn"
+                      ? "border-amber-300/40 bg-amber-400/15 text-amber-100"
+                      : "border-white/15 bg-black/45 text-white/90"
+                }`}
+                style={{ opacity: Math.min(1, t.ttl * 2.5) }}
+              >
+                {t.text}
+              </div>
+            ))}
+          </div>
+
+          {/* The interact prompt. */}
+          {state.prompt && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-6">
+              <div className="rounded-2xl border border-white/20 bg-black/55 px-4 py-2 text-center backdrop-blur-md">
+                <div className="text-[13px] text-white">
+                  {!isTouch && (
+                    <kbd className="mr-2 rounded border border-white/25 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
+                      E
+                    </kbd>
+                  )}
+                  {state.prompt.label}
+                </div>
+                {state.prompt.detail && (
+                  <div className="mt-0.5 text-[11px] text-white/60">{state.prompt.detail}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {hint && !state.prompt && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center px-6 sm:bottom-10">
+              <div className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-center text-[11px] text-white/70 backdrop-blur-md">
                 {isTouch
-                  ? "Hold the rocket to climb · let go to fall"
-                  : "Hold Space to climb · let go to fall · R returns you to the plaza"}
+                  ? "Hold the rocket to climb · walk up to things and tap ✦"
+                  : "Hold Space to climb · E at anything with a prompt · R returns you to the Halo · H hides the interface"}
               </div>
             </div>
           )}
@@ -250,7 +376,7 @@ export default function Empyrean() {
                 }}
                 onPointerUp={padEnd}
                 onPointerCancel={padEnd}
-                className="absolute bottom-8 left-6 z-10 h-32 w-32 rounded-full border border-white/15 bg-black/25 backdrop-blur-sm"
+                className="absolute bottom-8 left-6 z-20 h-32 w-32 rounded-full border border-white/15 bg-black/25 backdrop-blur-sm"
               >
                 <div
                   className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 rounded-full border border-cyan-200/50 bg-cyan-300/20"
@@ -259,18 +385,28 @@ export default function Empyrean() {
                   }}
                 />
               </div>
-              <button
-                onPointerDown={(e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setJet(true);
-                }}
-                onPointerUp={() => setJet(false)}
-                onPointerCancel={() => setJet(false)}
-                onPointerLeave={() => setJet(false)}
-                className="absolute bottom-12 right-8 z-10 h-24 w-24 rounded-full border border-amber-200/30 bg-amber-400/15 text-3xl text-amber-100 backdrop-blur-sm active:bg-amber-400/35"
-              >
-                🚀
-              </button>
+              <div className="absolute bottom-10 right-6 z-20 flex flex-col items-center gap-3">
+                {state.prompt && (
+                  <button
+                    onPointerDown={() => worldRef.current?.interact()}
+                    className="h-16 w-16 rounded-full border border-cyan-200/40 bg-cyan-400/20 text-2xl text-cyan-50 backdrop-blur-sm active:bg-cyan-400/40"
+                  >
+                    ✦
+                  </button>
+                )}
+                <button
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    setJet(true);
+                  }}
+                  onPointerUp={() => setJet(false)}
+                  onPointerCancel={() => setJet(false)}
+                  onPointerLeave={() => setJet(false)}
+                  className="h-24 w-24 rounded-full border border-amber-200/30 bg-amber-400/15 text-3xl text-amber-100 backdrop-blur-sm active:bg-amber-400/35"
+                >
+                  🚀
+                </button>
+              </div>
             </>
           )}
         </>

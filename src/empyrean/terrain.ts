@@ -19,7 +19,8 @@
  *    plane by `scale.y = -1`. Geometrically exact — the reflection moves when
  *    you move, because it is the same geometry seen from underneath.
  *
- * The one rule that makes the second half work is in `citadel.ts`: every
+ * The one rule that makes the second half work is in `keel.ts` and
+ * `buildings.ts`: every
  * gradient there is driven by an attribute along the object's own height, not
  * by world Y. Mirror a world-Y gradient and the towers come out with their
  * colours the right way up inside an upside-down reflection, which is the
@@ -39,8 +40,8 @@ import { SUN_DIR } from "./sky";
  * can be four hundred metres tall and still sit low in the frame, which is
  * both what the reference shows and the only way to get a jagged horizon.
  */
-const RANGE_INNER = LAKE_R * 1.35;
-const RANGE_OUTER = 5200;
+const RANGE_INNER = LAKE_R * 1.30;
+const RANGE_OUTER = 7800;
 
 /**
  * Height of the snow at (x, z) — the same function the terrain mesh is built
@@ -55,17 +56,17 @@ export function groundHeight(x: number, z: number): number {
   if (r < LAKE_R) return GROUND_Y;
 
   // Drifts: low, wide, and always there, so the snow is never a flat sheet.
-  const drift = fbm2(x * 0.0016, z * 0.0016, 4, 2, 0.5, 7) * 14;
+  const drift = fbm2(x * 0.0011, z * 0.0011, 4, 2, 0.5, 7) * 20;
 
   // The ranges. A raised-cosine band across the ring so the peaks grow out of
   // the plain and die back down into the haze instead of ending at a line.
   const t = (r - RANGE_INNER) / (RANGE_OUTER - RANGE_INNER);
-  if (t <= 0 || t >= 1) return GROUND_Y + drift * Math.min(1, Math.max(0, (r - LAKE_R) / 240));
+  if (t <= 0 || t >= 1) return GROUND_Y + drift * Math.min(1, Math.max(0, (r - LAKE_R) / 360));
   const band = Math.sin(Math.PI * Math.min(1, t * 1.25)) ** 0.85;
 
   // Ridged noise at two scales: the range, then the individual peaks on it.
-  const ridge = ridged2(x * 0.00072, z * 0.00072, 4, 31);
-  const teeth = ridged2(x * 0.0042, z * 0.0042, 3, 91);
+  const ridge = ridged2(x * 0.00048, z * 0.00048, 4, 31);
+  const teeth = ridged2(x * 0.0028, z * 0.0028, 3, 91);
   /**
    * The ceiling on the ranges is a composition decision, not a terrain one.
    *
@@ -75,7 +76,7 @@ export function groundHeight(x: number, z: number): number {
    * into a landscape with a building in it. The first pass topped out at 984 m
    * and did exactly that.
    */
-  const h = (ridge ** 2.6 * 0.62 + teeth ** 1.9 * 0.66) * 340 * band;
+  const h = (ridge ** 2.6 * 0.62 + teeth ** 1.9 * 0.66) * 500 * band;
 
   return GROUND_Y + h + drift;
 }
@@ -93,8 +94,8 @@ export function groundHeight(x: number, z: number): number {
  * is a quarter of a million triangles of perfectly flat snow in the middle.
  */
 function buildSnow(): THREE.Mesh {
-  const RINGS = 150;
-  const SEGS = 220;
+  const RINGS = 170;
+  const SEGS = 256;
   const positions = new Float32Array((RINGS + 1) * (SEGS + 1) * 3);
   const normals = new Float32Array((RINGS + 1) * (SEGS + 1) * 3);
   const indices: number[] = [];
@@ -329,7 +330,8 @@ export function buildTerrain(): TerrainHandle {
    *
    * `scale.y = -1` about the water plane, so anything added here appears
    * exactly where its reflection belongs. Winding is inverted by the negative
-   * scale, which is why every material in `citadel.ts` is double-sided — the
+   * scale, which is why every material in the reflected systems is
+   * double-sided — the
    * alternative is a second set of cloned materials to keep in step, and this
    * world has no back faces worth culling.
    */

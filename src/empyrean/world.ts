@@ -1,52 +1,75 @@
 /**
  * THE EMPYREAN — the engine.
  *
- * Owns the renderer, the loop, the input and the teardown. Everything with an
- * opinion about how the place looks lives in its own file next door; this one
- * wires them together and makes sure that when the page unmounts, the WebGL
- * context goes with it. Browsers cap live contexts at around sixteen, and a
- * world that leaks one breaks the *next* world the visitor opens.
+ * Owns the renderer, the loop, the input, the systems list and the teardown.
+ * Everything with an opinion about how the world looks lives in its own file
+ * next door; this one wires them together, keeps one `FrameContext` up to
+ * date, and makes sure that when the page unmounts the WebGL context goes with
+ * it. Browsers cap live contexts at around sixteen, and a world that leaks one
+ * breaks the *next* world the visitor opens.
  *
- * The two things worth knowing before you change anything here:
+ * ## The shape
  *
- * **The body is whoever you already are.** The character is read straight from
- * the same `lobby.character` key the lobby, the hub and the profile all write,
- * through `loadCharacterRig` — which is the module that knows half the catalog
- * has no `url` at all and is assembled from primitives instead. There is no
- * picker in this world and there should not be one.
+ * ```
+ * scene
+ * ├── sky            one inverted sphere, pinned to the camera
+ * ├── terrain        snow, ranges, the lake
+ * │    └── mirror    scale.y = -1  ──▶  clone(true) of REFLECTED
+ * ├── REFLECTED      keel + buildings — the island's silhouette
+ * ├── DETAIL         streets, props, crowd, traffic, interiors, activities
+ * └── body + plume
+ * ```
  *
- * **The reflection is the scene graph, not a texture.** `terrain.mirror` is a
- * group scaled by -1 on Y; the citadel is `clone(true)`d into it, sharing every
- * geometry and material with the original. That is the whole mirror: one extra
- * draw per mesh, no second render pass, and it is correct from every angle
- * because it is the same geometry seen from underneath.
+ * A system declares `reflected` and lands in one group or the other. The lake
+ * reflection is a real mirrored clone rather than a second render pass, so
+ * everything in REFLECTED costs a second draw — worth it for the rock and the
+ * towers, which *are* the reflection, and not for eight hundred pedestrians
+ * who are four pixels each at a kilometre and a half.
+ *
+ * ## Two things this file must never be tempted into
+ *
+ * **Allocating in the loop.** Every vector here is preallocated and the frame
+ * context is one object mutated in place. A dozen systems each handed a fresh
+ * object sixty times a second is a garbage-collector pause you can see.
+ *
+ * **Knowing what a system does.** It knows a system has a group, an update and
+ * a dispose. Everything else — what a courier run is, how a tram moves — is
+ * behind an interface in `types.ts`. The moment this file starts special-casing
+ * one system, all twelve become one module with twelve files in it.
  */
 import * as THREE from "three";
 import { findCharacter } from "@/lib/characters";
 import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { RUN_SPEED } from "@/lib/worldPhysics";
-import { buildSky, SUN_DIR } from "./sky";
-import { buildTerrain, groundHeight } from "./terrain";
-import { buildCitadel, syncCitadelUniforms, type Blocker, type Deck } from "./citadel";
-import { buildPlume } from "./plume";
-import { buildPostFx } from "./postfx";
-import { createEmpyreanAudio, type EmpyreanAudio } from "./audio";
-import { makeFlyer, stepFlyer, BODY_R, type FlyerState } from "./flight";
-import { ISLAND_Y, KILL_Y, LAKE_R, PLATEAU_R, SPAWN, WATER_Y } from "./config";
 
-export interface EmpyreanState {
-  /** Metres above the snow. */
-  altitude: number;
-  /** Horizontal speed, m/s. */
-  speed: number;
-  /** Clear air directly below, m. */
-  drop: number;
-  thrusting: boolean;
-  /** Catalog label of whoever is flying, once the rig has arrived. */
-  who: string;
-  /** Roughly where you are, in words, for the HUD. */
-  place: string;
-}
+import type {
+  EmpyreanState,
+  FrameContext,
+  Interactable,
+  QualityTier,
+  System,
+  Toast,
+} from "./types";
+import { DECKS, ISLAND_Y, KILL_Y, PLATEAU_R, SPAWN } from "./config";
+import { cityPlan, districtAt, surfaceAt } from "./cityplan";
+import { buildSky, DEFAULT_DAY_PHASE, skyPalette, sunDirFor } from "./sky";
+import { buildTerrain } from "./terrain";
+import { buildKeel } from "./keel";
+import { buildStreets } from "./streets";
+import { buildBuildings } from "./buildings";
+import { buildProps } from "./props";
+import { buildCrowd } from "./crowd";
+import { buildTraffic } from "./traffic";
+import { buildInteriors } from "./interiors";
+import { buildActivities } from "./activities";
+import { buildLighting } from "./lighting";
+import { buildPostFx } from "./postfx";
+import { buildAudio, type AudioHandle } from "./audio";
+import { buildPlume } from "./plume";
+import { buildMinimap, type MapMark } from "./minimap";
+import { buildCollision, type Blocker, type Deck } from "./collide";
+import { CameraRig } from "./camera";
+import { makeFlyer, stepFlyer, jump, type FlyerState } from "./flight";
 
 /** Touch and the page write into this; the loop reads it. */
 export interface EmpyreanStick {
@@ -59,64 +82,79 @@ export interface EmpyreanStick {
 export interface EmpyreanWorld {
   readonly stick: EmpyreanStick;
   setMuted(muted: boolean): void;
-  /** Put the flyer back on the plaza. */
+  /** Put the flyer back on the Halo. */
   recall(): void;
+  /** The interact key, from the HUD's touch button. */
+  interact(): void;
+  /** 0..1 through the day. */
+  setDayPhase(p: number): void;
   dispose(): void;
 }
 
 export interface EmpyreanOptions {
   container: HTMLElement;
+  minimap?: HTMLCanvasElement | null;
   onState: (s: EmpyreanState) => void;
   muted?: boolean;
   /**
    * Capture mode. The camera flies a slow arc on the composition the whole
-   * world was built around — island centred, lake under it, mountains at the
+   * world was built around — island centred, lake under it, ranges at the
    * edges — and the player is not in the frame. `?shot` sets it.
    */
   shot?: boolean;
 }
 
-interface Quality {
-  tier: "low" | "high";
-  maxRatio: number;
-  antialias: boolean;
-  shadow: boolean;
-}
-
-function pickQuality(): Quality {
+function pickQuality(): QualityTier {
   const coarse = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
   const small = typeof window !== "undefined" && window.innerWidth < 900;
-  if (coarse || small) return { tier: "low", maxRatio: 1.75, antialias: false, shadow: false };
-  return { tier: "high", maxRatio: 2, antialias: true, shadow: false };
+  return coarse || small ? "low" : "high";
 }
 
+/** How fast the clock runs. A full day in twenty real minutes. */
+const DAY_SECONDS = 1200;
+
 /** Where you are, said out loud. Cheap, and it does a lot for the HUD. */
-function placeName(p: THREE.Vector3): string {
+function placeOf(p: THREE.Vector3): { name: string; accent: string } {
   const r = Math.hypot(p.x, p.z);
-  if (r < PLATEAU_R * 1.5) {
-    if (p.y > ISLAND_Y + 120) return "Above the spires";
-    if (p.y > ISLAND_Y - 6) return "The Plaza";
-    if (p.y > ISLAND_Y - 70) return "The Terraces";
-    return "Under the keel";
+  if (r > DECKS[DECKS.length - 1].outer + 40) {
+    if (p.y < 40) return { name: "The Mirror", accent: "#bcd8ff" };
+    if (p.y < ISLAND_Y - 120) return { name: "Under the keel", accent: "#c9a2ff" };
+    return { name: "The high air", accent: "#8fd6ff" };
   }
-  if (p.y > ISLAND_Y + 220) return "The high air";
-  if (r < LAKE_R) return p.y < 4 ? "On the mirror" : "Over the mirror";
-  if (r < LAKE_R * 1.4) return "The shore";
-  return "The white ranges";
+  if (p.y > ISLAND_Y + 200) return { name: "Above the spires", accent: "#bfe9ff" };
+  if (p.y < ISLAND_Y - 90) return { name: "Under the keel", accent: "#c9a2ff" };
+
+  // Standing at a landmark beats standing in a district.
+  for (const l of cityPlan().landmarks) {
+    if (Math.hypot(l.x - p.x, l.z - p.z) < l.clear + 8) {
+      return { name: l.name, accent: "#ffd28a" };
+    }
+  }
+  const d = districtAt(r);
+  return { name: d.name, accent: d.accent };
+}
+
+function clockString(dayPhase: number): string {
+  const mins = Math.floor(((dayPhase % 1) + 1) % 1 * 24 * 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const { container, onState } = options;
   const quality = pickQuality();
   const shotMode = !!options.shot;
+  const low = quality === "low";
 
   /* ---- renderer -------------------------------------------------------- */
   const renderer = new THREE.WebGLRenderer({
-    antialias: quality.antialias,
+    antialias: false, // the post chain resolves; MSAA on an HDR target is dear
     powerPreference: "high-performance",
     alpha: false,
+    stencil: false,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.maxRatio));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, low ? 1.6 : 2));
   renderer.setSize(
     container.clientWidth || window.innerWidth,
     container.clientHeight || window.innerHeight,
@@ -125,6 +163,8 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   // the only thing in this world that tone maps, and it does it exactly once.
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.setClearColor(0x150c22, 1);
+  renderer.shadowMap.enabled = !low;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
   const canvas = renderer.domElement;
   canvas.style.display = "block";
@@ -132,50 +172,66 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   canvas.style.cursor = "grab";
 
   const scene = new THREE.Scene();
-  // Deep and pink, matched to the below-horizon haze the sky dome paints, so
-  // the range fades into the sky rather than into a wall of grey.
-  scene.fog = new THREE.FogExp2(0xf3bfb2, 0.00016);
+  const fog = new THREE.FogExp2(0xf3bfb2, 0.00010);
+  scene.fog = fog;
 
   const camera = new THREE.PerspectiveCamera(
     58,
     (container.clientWidth || 1) / (container.clientHeight || 1),
-    0.35,
-    22000,
+    0.3,
+    26000,
   );
 
-  /* ---- world ----------------------------------------------------------- */
+  /* ---- the two graphs -------------------------------------------------- */
+  const reflected = new THREE.Group();
+  reflected.name = "empyrean-silhouette";
+  const detail = new THREE.Group();
+  detail.name = "empyrean-detail";
+  scene.add(reflected, detail);
+
+  /* ---- systems --------------------------------------------------------- */
+  const build = { quality, seedSalt: "v2" };
+  const systems: System[] = [];
+  const add = <T extends System>(s: T): T => {
+    systems.push(s);
+    (s.reflected ? reflected : detail).add(s.group);
+    return s;
+  };
+
   const sky = buildSky();
   scene.add(sky.mesh);
 
   const terrain = buildTerrain();
   scene.add(terrain.group);
 
-  const citadel = buildCitadel();
-  scene.add(citadel.group);
+  const lighting = buildLighting(build, renderer);
+  scene.add(lighting.group);
 
-  // The reflection. `clone(true)` copies the hierarchy and shares every
-  // geometry and material, so the mirrored city costs draws and nothing else —
-  // and it can never drift out of step with the real one.
-  const citadelMirror = citadel.group.clone(true);
-  terrain.mirror.add(citadelMirror);
-  // The ranges reflect too. Same trick, one mesh.
+  const keel = add(buildKeel(build));
+  const buildings = add(buildBuildings(build));
+  const streets = add(buildStreets(build));
+  const props = add(buildProps(build));
+  const interiors = add(buildInteriors(build));
+  const crowd = add(buildCrowd(build));
+  const traffic = add(buildTraffic(build));
+  const activities = add(buildActivities(build));
+
+  /* The reflection: a real clone of the silhouette, mirrored through the
+   * water plane. Shares every geometry and material, so it costs draws and
+   * nothing else — and it can never drift out of step with the original. */
+  const mirrorClone = reflected.clone(true);
+  terrain.mirror.add(mirrorClone);
   const snow = terrain.group.getObjectByName("empyrean-snow") as THREE.Mesh | null;
   if (snow) terrain.mirror.add(snow.clone());
 
-  /* ---- light ----------------------------------------------------------
-   * Two lights, and both of them are the sky. Only the snow and the character
-   * are lit by them at all — the towers, the rock, the water and the lamps are
-   * shaders that compute their own radiance. */
-  const sun = new THREE.DirectionalLight(0xffd0a4, 3.1);
-  sun.position.copy(SUN_DIR).multiplyScalar(3000);
-  scene.add(sun);
-  const skyFill = new THREE.HemisphereLight(0xffc6d6, 0x6f5c8a, 1.7);
-  scene.add(skyFill);
-  // A cold kicker from the anti-sun side, which is what keeps a character
-  // from being a black cut-out against a very bright sky.
-  const rim = new THREE.DirectionalLight(0x9fd4ff, 0.85);
-  rim.position.set(-SUN_DIR.x, 0.4, -SUN_DIR.z).multiplyScalar(1000);
-  scene.add(rim);
+  /* ---- collision ------------------------------------------------------- */
+  const blockers: Blocker[] = [
+    ...buildings.blockers,
+    ...interiors.blockers,
+    ...(props.blockers ?? []),
+  ];
+  const decks: Deck[] = [...buildings.decks, ...interiors.decks];
+  const collision = buildCollision(blockers, decks);
 
   /* ---- the body -------------------------------------------------------- */
   const BODY_H = 1.8;
@@ -199,7 +255,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     height: BODY_H,
     fitBy: "height",
     center: true,
-    castShadow: false,
+    castShadow: !low,
     walkSpeed: RUN_SPEED * 0.5,
   })
     .then((r) => {
@@ -214,62 +270,28 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       /* A missing model costs you a body, not the world. */
     });
 
-  /* ---- collision -------------------------------------------------------
-   * Two flat arrays and a linear scan. Ninety-odd boxes at sixty frames is
-   * five thousand comparisons a second, which is nothing, and a spatial index
-   * here would be a structure to keep correct in exchange for no measurable
-   * win. */
-  const blockers: Blocker[] = citadel.blockers;
-  const decks: Deck[] = citadel.decks;
-
-  const flyerWorld = {
-    supportAt(x: number, z: number, fromY: number): number {
-      // The ground: snow outside the lake, ice on it. The lake is frozen and
-      // you are meant to be able to stand on your own reflection.
-      let best = Math.hypot(x, z) < LAKE_R ? WATER_Y : groundHeight(x, z);
-      for (let i = 0; i < decks.length; i++) {
-        const d = decks[i];
-        if (d.y > fromY || d.y <= best) continue;
-        if (d.r !== undefined) {
-          if (Math.hypot(x, z) <= d.r) best = d.y;
-        } else if (
-          Math.abs(x - (d.x ?? 0)) <= (d.hx ?? 0) &&
-          Math.abs(z - (d.z ?? 0)) <= (d.hz ?? 0)
-        ) {
-          best = d.y;
-        }
-      }
-      return best;
-    },
-    blockedAt(x: number, z: number, y: number): boolean {
-      for (let i = 0; i < blockers.length; i++) {
-        const b = blockers[i];
-        // Not inside a building you are standing on the roof of, and not
-        // inside one you are flying underneath.
-        if (y >= b.top - 0.15 || y < b.bottom - 0.15) continue;
-        if (Math.abs(x - b.x) <= b.hx + BODY_R && Math.abs(z - b.z) <= b.hz + BODY_R) return true;
-      }
-      return false;
-    },
-    killY: KILL_Y,
-    spawn: SPAWN,
-  };
-
   const flyer: FlyerState = makeFlyer(SPAWN);
+  const rigCam = new CameraRig(SPAWN.yaw);
 
   /* ---- input ----------------------------------------------------------- */
   const keys = new Set<string>();
   const stick: EmpyreanStick = { x: 0, y: 0, jet: false, boost: false };
-  let camYaw = SPAWN.yaw;
-  let camPitch = 0.14;
-  let camDist = 13;
+  let wantInteract = false;
+  let prevJet = false;
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.repeat) {
+      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+        e.preventDefault();
+      }
+      return;
+    }
     keys.add(e.code);
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
       e.preventDefault();
     }
     if (e.code === "KeyR") recall();
+    if (e.code === "KeyE") wantInteract = true;
     audio?.resume();
   };
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -278,8 +300,8 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", onBlur);
 
-  // Drag to look. Deliberately not pointer lock: this world has a HUD you
-  // want to be able to click, it opens on a phone as often as not, and the
+  // Drag to look. Deliberately not pointer lock: the HUD has buttons you want
+  // to be able to click, this opens on a phone as often as not, and the
   // capture harness cannot spend a gesture on acquiring a lock.
   let dragId = -1;
   let lastX = 0;
@@ -295,8 +317,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   };
   const onPointerMove = (e: PointerEvent) => {
     if (e.pointerId !== dragId) return;
-    camYaw -= (e.clientX - lastX) * 0.0042;
-    camPitch = THREE.MathUtils.clamp(camPitch + (e.clientY - lastY) * 0.0042, -0.85, 1.15);
+    rigCam.look(e.clientX - lastX, e.clientY - lastY);
     lastX = e.clientX;
     lastY = e.clientY;
   };
@@ -311,7 +332,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   canvas.addEventListener("pointercancel", onPointerUp);
 
   const onWheel = (e: WheelEvent) => {
-    camDist = THREE.MathUtils.clamp(camDist * Math.exp(e.deltaY * 0.0011), 3.5, 160);
+    rigCam.zoom(e.deltaY);
     e.preventDefault();
   };
   canvas.addEventListener("wheel", onWheel, { passive: false });
@@ -326,31 +347,56 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   };
   window.addEventListener("resize", onResize);
 
-  /* ---- audio ----------------------------------------------------------- */
-  let audio: EmpyreanAudio | null = shotMode ? null : createEmpyreanAudio();
+  /* ---- audio and image ------------------------------------------------- */
+  let audio: AudioHandle | null = shotMode ? null : buildAudio(build);
   audio?.setMuted(options.muted ?? false);
-
-  const postfx = buildPostFx(renderer, quality.tier);
+  const postfx = buildPostFx(renderer, quality);
+  const minimap = options.minimap ? buildMinimap(options.minimap, low ? 132 : 168) : null;
 
   function recall() {
+    activities.abort();
     flyer.position.set(SPAWN.x, SPAWN.y, SPAWN.z);
     flyer.velocity.set(0, 0, 0);
     flyer.yaw = SPAWN.yaw;
-    camYaw = SPAWN.yaw;
-    camPitch = 0.14;
+    rigCam.reset(SPAWN.yaw);
   }
+
+  /* ---- the frame context ----------------------------------------------- */
+  const ctx: FrameContext = {
+    time: 0,
+    dt: 0,
+    camera,
+    player: {
+      position: flyer.position,
+      velocity: flyer.velocity,
+      yaw: flyer.yaw,
+      grounded: flyer.grounded,
+      burn: flyer.burn,
+      altitude: 0,
+    },
+    quality,
+    dayPhase: DEFAULT_DAY_PHASE,
+    sunDir: sunDirFor(DEFAULT_DAY_PHASE),
+    daylight: 0.32,
+    camRadiusSq: 0,
+  };
 
   /* ---- loop ------------------------------------------------------------ */
   const clock = new THREE.Clock();
   let raf = 0;
   let disposed = false;
-  let stateTimer = 0;
-  const camTarget = new THREE.Vector3();
-  const camWant = new THREE.Vector3();
+  let hudTimer = 0;
+  let mapTimer = 0;
+  const toasts: Toast[] = [];
+  let toastId = 1;
+  let nearest: Interactable | null = null;
+  const marks: MapMark[] = [];
   const packPos = new THREE.Vector3();
-  // First frame is placed, not lerped — a camera that eases in from the origin
-  // spends the first second flying through the mountains.
-  let camPlaced = false;
+
+  const pushToast = (text: string, tone: Toast["tone"] = "info") => {
+    toasts.push({ id: toastId++, text, ttl: 4, tone });
+    while (toasts.length > 4) toasts.shift();
+  };
 
   const tick = () => {
     if (disposed) return;
@@ -358,17 +404,28 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     const dt = Math.min(clock.getDelta(), 0.05);
     const time = clock.elapsedTime;
 
+    /* ---- clock ---- */
+    ctx.time = time;
+    ctx.dt = dt;
+    ctx.dayPhase = (ctx.dayPhase + dt / DAY_SECONDS) % 1;
+    const pal = skyPalette(ctx.dayPhase);
+    ctx.daylight = pal.daylight;
+    sunDirFor(ctx.dayPhase, ctx.sunDir);
+    sky.setDayPhase(ctx.dayPhase);
+    lighting.setDayPhase(ctx.dayPhase);
+    fog.color.copy(pal.fog);
+    // Thicker at night: it is the only thing that keeps the far ranges from
+    // becoming a black band under a bright sky.
+    fog.density = THREE.MathUtils.lerp(0.00016, 0.00009, pal.daylight);
+
     if (shotMode) {
       /* The card composition, exactly: island centred and a little above the
        * lens, the lake filling the lower third, the sun behind the towers. A
-       * very slow orbit so a recorder gets motion without the frame changing
+       * very slow orbit, so a recorder gets motion without the frame changing
        * enough to stop being the picture. */
-      const a = Math.PI * 0.5 + time * 0.018;
-      // Just inside the lake's edge, a couple of hundred metres up: high
-      // enough that the ice reads as a mirror rather than as a line, low
-      // enough that you are still looking *up* at the city.
-      camera.position.set(Math.sin(a) * 850, 250, Math.cos(a) * 850);
-      camera.lookAt(0, ISLAND_Y - 20, 0);
+      const a = Math.PI * 0.5 + time * 0.014;
+      camera.position.set(Math.sin(a) * 1420, 420, Math.cos(a) * 1420);
+      camera.lookAt(0, ISLAND_Y + 60, 0);
       body.visible = false;
     } else {
       /* ---- gather input ---- */
@@ -382,83 +439,52 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       f = THREE.MathUtils.clamp(f - stick.y, -1, 1);
       s = THREE.MathUtils.clamp(s + stick.x, -1, 1);
 
+      const jet = keys.has("Space") || stick.jet;
+      // A tap of Space on the ground is a jump; a hold is the jetpack. City
+      // gives the jetpack the whole key, but City has no stairs.
+      if (jet && !prevJet && flyer.grounded) jump(flyer);
+      prevJet = jet;
+
       stepFlyer(
         flyer,
         {
           forward: f,
           strafe: s,
           run: keys.has("ShiftLeft") || keys.has("ShiftRight") || stick.boost,
-          jet: keys.has("Space") || stick.jet,
-          camYaw,
+          jet,
+          camYaw: rigCam.yaw,
         },
-        flyerWorld,
+        {
+          supportAt: collision.supportAt,
+          blockedAt: (x, z, y) => collision.blockedAt(x, z, y),
+          killY: KILL_Y,
+          spawn: SPAWN,
+        },
         dt,
       );
 
+      if (flyer.landed > 6) audio?.event("land", Math.min(1, flyer.landed / 30));
+      if (flyer.stepped > 0.05) audio?.event("ui", 0.2);
+
       body.position.copy(flyer.position);
       body.rotation.set(0, flyer.yaw, 0);
-      // Lean. Applied to the body's own X after the yaw, so it tips forward
-      // along the direction of travel rather than sideways.
       body.rotateX(flyer.pitch);
 
-      /* ---- camera ----
-       * A plain orbit at `camDist`, raised a little so you are looking slightly
-       * down at the body, and pulled up whenever it would end up inside the
-       * plaza. No collision sweep against the towers: a camera that ducks
-       * around fifty slabs is a camera that never stops moving. */
-      /* Aim above the head, not at the feet.
-       *
-       * Aiming at the body and then lifting the lens tips the whole view
-       * downward, and the world opens on three-quarters of a frame of paving.
-       * Aiming a couple of metres over the character puts the horizon back
-       * where a person standing there would find it and leaves the body in
-       * the lower third, which is where a third-person camera wants it. */
-      camTarget.copy(flyer.position);
-      camTarget.y += 3.0;
-      const cp = Math.cos(camPitch);
-      camWant.set(
-        camTarget.x + Math.sin(camYaw) * cp * camDist,
-        camTarget.y + Math.sin(camPitch) * camDist,
-        camTarget.z + Math.cos(camYaw) * cp * camDist,
-      );
-      const floor = flyerWorld.supportAt(camWant.x, camWant.z, camWant.y) + 1.2;
-      if (camWant.y < floor) camWant.y = floor;
-      /**
-       * And pull in if that put the lens inside a building.
-       *
-       * Not a sweep — a handful of samples along the line back to the body,
-       * taking the first clear one. A proper sweep against fifty slabs gives a
-       * camera that is always ducking; this only fires when the shot is
-       * genuinely inside something, which on a plaza this dense is often
-       * enough that without it the world opens on the inside of a wall.
-       */
-      if (flyerWorld.blockedAt(camWant.x, camWant.z, camWant.y)) {
-        for (let step = 1; step <= 6; step++) {
-          const k = 1 - step / 7;
-          const tx = camTarget.x + (camWant.x - camTarget.x) * k;
-          const tz = camTarget.z + (camWant.z - camTarget.z) * k;
-          const ty = camTarget.y + (camWant.y - camTarget.y) * k;
-          if (!flyerWorld.blockedAt(tx, tz, ty)) {
-            camWant.set(tx, ty, tz);
-            break;
-          }
-          if (step === 6) camWant.copy(camTarget).y += 1.0;
-        }
-      }
-      if (camPlaced) camera.position.lerp(camWant, Math.min(1, dt * 7));
-      else {
-        camera.position.copy(camWant);
-        camPlaced = true;
-      }
-      camera.lookAt(camTarget);
+      rigCam.update(camera, flyer, collision, dt);
     }
+
+    /* ---- publish the player ---- */
+    ctx.player.yaw = flyer.yaw;
+    ctx.player.grounded = flyer.grounded;
+    ctx.player.burn = flyer.burn;
+    ctx.player.altitude = flyer.drop;
+    ctx.camRadiusSq = camera.position.x * camera.position.x + camera.position.z * camera.position.z;
 
     /* ---- the world moves ---- */
     sky.update(time, camera);
     terrain.update(time, camera);
-    citadel.update(time);
-    syncCitadelUniforms(citadel.group, SUN_DIR, camera.position);
-    syncCitadelUniforms(citadelMirror, SUN_DIR, camera.position);
+    lighting.shadowsFor(camera, flyer.position);
+    for (let i = 0; i < systems.length; i++) systems[i].update?.(ctx);
 
     // The pack sits between the shoulder blades, in body space.
     packPos.set(0, 1.1, -0.24).applyEuler(body.rotation).add(body.position);
@@ -473,21 +499,70 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     }
 
     const speed = Math.hypot(flyer.velocity.x, flyer.velocity.z);
-    audio?.update(speed, flyer.burn, Math.max(0, flyer.position.y));
+    audio?.update?.(ctx);
+    audio?.setTram(traffic.tram.x, traffic.tram.y, traffic.tram.z, true);
+
+    /* ---- interaction ---- */
+    nearest = null;
+    let bestD = Infinity;
+    const offers = [...activities.interactables(), ...interiors.interactables()];
+    for (const it of offers) {
+      if (it.enabled && !it.enabled()) continue;
+      const d = Math.hypot(it.x - flyer.position.x, it.z - flyer.position.z);
+      const dy = Math.abs(it.y - flyer.position.y);
+      if (d < it.radius && dy < 6 && d < bestD) {
+        bestD = d;
+        nearest = it;
+      }
+    }
+    if (wantInteract) {
+      wantInteract = false;
+      if (nearest) {
+        nearest.activate();
+        audio?.event("ui");
+      }
+    }
+
+    for (const t of activities.drainToasts()) {
+      toasts.push({ ...t, id: toastId++ });
+      while (toasts.length > 4) toasts.shift();
+    }
+    for (let i = toasts.length - 1; i >= 0; i--) {
+      toasts[i].ttl -= dt;
+      if (toasts[i].ttl <= 0) toasts.splice(i, 1);
+    }
 
     postfx.render(scene, camera, time);
 
-    /* ---- HUD ---- */
-    stateTimer += dt;
-    if (stateTimer > 0.1) {
-      stateTimer = 0;
+    /* ---- the minimap, at fifteen hertz ---- */
+    mapTimer += dt;
+    if (minimap && mapTimer > 1 / 15) {
+      mapTimer = 0;
+      marks.length = 0;
+      for (const s of traffic.stops) marks.push({ x: s.x, z: s.z, kind: "tram" });
+      marks.push({ x: traffic.tram.x, z: traffic.tram.z, kind: "tram", active: true });
+      minimap.draw(flyer.position.x, flyer.position.z, flyer.yaw, flyer.position.y, marks);
+    }
+
+    /* ---- the HUD, at ten hertz ---- */
+    hudTimer += dt;
+    if (hudTimer > 0.1) {
+      hudTimer = 0;
+      const place = placeOf(flyer.position);
       onState({
         altitude: flyer.position.y,
         speed,
         drop: flyer.drop,
         thrusting: flyer.thrusting,
         who,
-        place: placeName(flyer.position),
+        place: place.name,
+        placeAccent: place.accent,
+        clock: clockString(ctx.dayPhase),
+        prompt: nearest ? { label: nearest.label, detail: nearest.detail } : null,
+        activity: activities.activity(),
+        toasts: toasts.slice(),
+        earned: activities.earned,
+        found: activities.found,
       });
     }
   };
@@ -495,25 +570,42 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
 
   /**
    * Test aid. The only honest way to check a world this size is to open it,
-   * and the harness that opens it needs to be able to put the flyer somewhere
-   * specific without holding W for ninety seconds in a software rasteriser.
+   * and the harness that opens it needs to be able to put the player
+   * somewhere specific without holding W for ninety seconds in a software
+   * rasteriser.
    */
   const debug = {
     character: () => charId,
     warp: (x: number, y: number, z: number) => {
       flyer.position.set(x, y, z);
       flyer.velocity.set(0, 0, 0);
-      camPlaced = false;
+      rigCam.reset(flyer.yaw);
     },
     look: (yaw: number, pitch: number) => {
-      camYaw = yaw;
-      camPitch = pitch;
+      rigCam.yaw = yaw;
+      rigCam.pitch = pitch;
     },
+    zoom: (d: number) => rigCam.zoom(d),
+    day: (p: number) => {
+      ctx.dayPhase = p;
+    },
+    counts: () => ({
+      systems: systems.length,
+      ...collision.counts,
+      lots: cityPlan().lots.length,
+      calls: renderer.info.render.calls,
+      tris: renderer.info.render.triangles,
+      programs: renderer.info.programs?.length ?? 0,
+    }),
     state: () => ({
       position: flyer.position.toArray(),
       grounded: flyer.grounded,
-      support: flyerWorld.supportAt(flyer.position.x, flyer.position.z, flyer.position.y + 0.35),
+      surface: surfaceAt(flyer.position.x, flyer.position.z).kind,
+      place: placeOf(flyer.position).name,
+      prompt: nearest?.label ?? null,
+      dayPhase: ctx.dayPhase,
     }),
+    toast: (t: string) => pushToast(t),
   };
   (window as unknown as { __empyrean?: typeof debug }).__empyrean = debug;
 
@@ -523,6 +615,13 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       audio?.setMuted(muted);
     },
     recall,
+    interact() {
+      wantInteract = true;
+      audio?.resume();
+    },
+    setDayPhase(p) {
+      ctx.dayPhase = ((p % 1) + 1) % 1;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -542,9 +641,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       rig?.dispose();
       rig = null;
       delete (window as unknown as { __empyrean?: unknown }).__empyrean;
+      minimap?.dispose();
+      for (const s of systems) s.dispose();
       sky.dispose();
       terrain.dispose();
-      citadel.dispose();
+      lighting.dispose();
       plume.dispose();
       postfx.dispose();
       scene.clear();
@@ -556,3 +657,9 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     },
   };
 }
+
+/** Re-exported so the page can type its state without importing the engine. */
+export type { EmpyreanState } from "./types";
+
+/** Unused here, kept so `PLATEAU_R` stays imported for future bounds checks. */
+export const CITY_RADIUS = PLATEAU_R;

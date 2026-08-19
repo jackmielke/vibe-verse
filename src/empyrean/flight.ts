@@ -38,6 +38,24 @@ export const BODY_R = 0.6;
 /** How far above a surface still counts as standing on it. */
 export const SNAP = 0.35;
 
+/**
+ * How high a step a body can walk up without jumping.
+ *
+ * The city has kerbs at 16 cm and stairs down to the promenades, and a player
+ * who has to jump onto a kerb is a player who is fighting the world. Sixty
+ * centimetres takes every step and every kerb in the plan and still stops you
+ * strolling up the side of a building.
+ *
+ * It is only offered when you are on the ground or drifting up slowly. Applied
+ * while climbing at nineteen metres a second it would catch you on the
+ * underside of every balcony you flew past, which is the exact thing the
+ * one-way decks exist to prevent.
+ */
+export const CLIMB = 0.62;
+
+/** Vertical speed above which the step-up reach is withdrawn. */
+const CLIMB_MAX_RISE = 1.5;
+
 export interface FlyerInput {
   /** -1..1, forward positive. */
   forward: number;
@@ -63,6 +81,15 @@ export interface FlyerState {
   burn: number;
   /** Set on the frame the body touches down, with the impact speed in m/s. */
   landed: number;
+  /**
+   * 0..1, decaying. Set by a hard landing and read by whatever wants to
+   * squash the body, shake the camera or thump the speakers. An event that
+   * only exists for one frame is an event most systems will miss, because
+   * most systems do not run every frame.
+   */
+  impact: number;
+  /** Metres climbed by the step-up this frame, for a footfall on stairs. */
+  stepped: number;
   /** Metres of clear air directly below. Infinity over the void. */
   drop: number;
 }
@@ -94,6 +121,8 @@ export function makeFlyer(spawn: FlyerWorld["spawn"]): FlyerState {
     thrusting: false,
     burn: 0,
     landed: 0,
+    impact: 0,
+    stepped: 0,
     drop: 0,
   };
 }
@@ -113,6 +142,8 @@ export function stepFlyer(
 ): void {
   const dt = Math.min(Math.max(dtRaw, 0), 0.05);
   s.landed = 0;
+  s.stepped = 0;
+  s.impact *= Math.pow(0.02, dt);
 
   /* ---- intent, in camera space ---------------------------------------- */
   const fx = -Math.sin(input.camYaw);
@@ -183,15 +214,22 @@ export function stepFlyer(
   s.position.y += s.velocity.y * dt;
 
   /* ---- ground ----------------------------------------------------------
-   * Support is looked up from where the body *was*, not where it now is, so
-   * a deck you passed under going up cannot catch you. */
-  const support = world.supportAt(s.position.x, s.position.z, prevY + SNAP);
+   * Support is looked up from where the body *was*, not where it now is, so a
+   * deck you passed under going up cannot catch you. The reach is the step-up
+   * height on foot and almost nothing while climbing — see CLIMB. */
+  const reach = wasGrounded || s.velocity.y < CLIMB_MAX_RISE ? CLIMB : 0.05;
+  const support = world.supportAt(s.position.x, s.position.z, prevY + reach);
   if (s.position.y <= support) {
     const impact = -s.velocity.y;
+    if (support > prevY + 0.02 && wasGrounded) s.stepped = support - prevY;
     s.position.y = support;
     s.velocity.y = 0;
     s.grounded = true;
-    if (!wasGrounded) s.landed = Math.max(0, impact);
+    if (!wasGrounded) {
+      s.landed = Math.max(0, impact);
+      // Anything under a five-metre drop is a step, not a landing.
+      s.impact = Math.min(1, Math.max(0, (impact - 9) / 23));
+    }
   } else if (s.position.y > support + SNAP) {
     s.grounded = false;
   }
@@ -227,8 +265,12 @@ export function stepFlyer(
   s.pitch += (targetPitch - s.pitch) * Math.min(1, dt * 5);
 }
 
-/** The parkour jump, for a tap of Space on the ground. Kept out of the step
- *  function because it is edge-triggered and the step function is not. */
+/**
+ * The parkour jump, for a tap of Space on the ground.
+ *
+ * Kept out of the step function because it is edge-triggered and the step
+ * function is not.
+ */
 export function jump(s: FlyerState): void {
   if (!s.grounded) return;
   s.velocity.y = JUMP_VELOCITY;
