@@ -1,15 +1,57 @@
 {
-<<<<<<< HEAD
-  "generated_at": "2026-08-18T23:26:23.404Z",
+  "generated_at": "2026-08-19T05:08:07.668Z",
   "window_days": 45,
   "commits": [
     {
-=======
-  "generated_at": "2026-08-18T23:24:39.717Z",
-  "window_days": 45,
-  "commits": [
+      "sha": "093a863d",
+      "date": "2026-08-19",
+      "subject": "The lido's pools: water that behaves like water",
+      "lede": "They were a MeshStandardMaterial with a low roughness, an environment map and a constant alpha, which is physically reasonable and photographed as a flat sheet of turquoise paint. A perfectly flat surface with a static reflection has nothing in it that moves or that changes with angle, and those are the two things that say \"water\" before anything else does.",
+      "places": [],
+      "files": 2
+    },
     {
-      "sha": "d3309f77",
+      "sha": "50850953",
+      "date": "2026-08-19",
+      "subject": "Document the lido and the ground probe; refresh stamps",
+      "lede": "The lido's boot position is load-bearing — it has to come up before props and vegetation, because neither knows the park is coming and both plant into open ground. Run it after them and there are trees in the wave pool. That was worth writing down next to the rest of the load order rather than leaving it as a line in boot.ts that looks reorderable.",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "805dc285",
+      "date": "2026-08-19",
+      "subject": "dz-ground: ask the world what is under a dark pixel",
+      "lede": "Three captures came back with a large near-black field across the near and middle ground and correctly-lit terrain beyond it, and four different theories about it all predicted the same photograph: dark ground cover, a canopy underside, a shadow-map artifact and a metalness bug are indistinguishable in a frame. Two of the four were confidently wrong.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "614eefa0",
+      "date": "2026-08-19",
+      "subject": "Drop Zero: give it back its home button",
+      "lede": "`AppChrome` decides whether a world owns the viewport by asking `CHROMELESS_ROUTES.has(pathname)`, and a pathname never carries a query. Drop Zero's registry route is `/drop-zero?mode=classic`, so the set held a string no URL could ever equal: the nav pill rendered over the crosshair, and — the worse half — the chromeless branch is also the branch that hands a fullscreen world its HomeButton, so the classic mode had ",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "7b67b96f",
+      "date": "2026-08-19",
+      "subject": "THE LIDO, a realism pass, and one bot out of two",
+      "lede": "A separate realm in the same world: a municipal water park on the island's NE shelf. A 28 m tower of flumes into three splash pools, a wave pool with a shelving floor you can walk into, a 163 m lazy river whose current actually carries you, splash pads with a bucket always tipping, a diving stack, cabins, a kiosk, a car park, and twenty-two signs in one draw call. 1,319 colliders. Built BEFORE props and vegetation in",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "ceeecb94",
+      "date": "2026-08-18",
+      "subject": "npm run stamp",
+      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_017vYGwEXHXBMSj4cT1EfrNF",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "be85b80f",
       "date": "2026-08-18",
       "subject": "Vibe City: make The Deep a place you can actually see",
       "lede": "The trench shipped a working dive and an invisible destination. Every number the harness measured passed — you crossed −40 under power, the floor held at −92, the pearl paid — and the screenshot at the bottom was a flat teal rectangle. Then a black one. The measurements were all about the swimmer, and none of them were about the picture.",
@@ -19,7 +61,14 @@
       "files": 8
     },
     {
->>>>>>> 7b4dc2d (npm run stamp)
+      "sha": "694c6c71",
+      "date": "2026-08-18",
+      "subject": "Three things you could only see from the wrong end of the room",
+      "lede": "Every shot of this realm so far has been taken from the near gable looking down the nave, which is the composition it was designed for and therefore the one that hides its faults. Turning round found all three of these at once.",
+      "places": [],
+      "files": 5
+    },
+    {
       "sha": "9eb66186",
       "date": "2026-08-18",
       "subject": "Sweep the Conservatory less often",
@@ -974,86 +1023,6 @@
       "lede": "`postprocessing` was declared `^6.35.0` and resolved to 6.39, which is the release that raised its floor to `three >= 0.168`. Three is pinned at 0.160 here and moving it is a day of work in forty worlds, so npm called the tree impossible and installed nothing at all — no node_modules, and therefore no typecheck, no build, no test, no smoke. Every check CLAUDE.md asks for before pushing to a live `main` was unavailabl",
       "places": [],
       "files": 5
-    },
-    {
-      "sha": "3ed7b4a5",
-      "date": "2026-08-13",
-      "subject": "Vibe Island stopped opening if your character had no model file",
-      "lede": "Anyone whose saved character was one of the code-built ones — Flux and the two dozen others in `src/lib/characters.ts` with an empty `url` — opened /city and got the crash screen. The report was \"whenever I try to open Vibe Island it says a corner of the Vibeverse glitched\", and `client_errors` had been saying `Cannot access 'headMount' before initialization` since 16:18 that afternoon.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "8868df2a",
-      "date": "2026-08-13",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "b6b15b85",
-      "date": "2026-08-12",
-      "subject": "The form fills itself in while you type",
-      "lede": "Pasting a link was a leap of faith: you pressed Submit and only then found out what we had decided your game was called. Now the card fills in underneath the field, which is the same information a beat earlier and the difference between a form and a conversation.",
-      "places": [
-        "the machinery underneath"
-      ],
-      "files": 7
-    },
-    {
-      "sha": "5dfcd2b7",
-      "date": "2026-08-12",
-      "subject": "Hats that are actually on the head, and three more of them",
-      "lede": "Hats were parented to the model holder at a fixed 1.78 m — \"just above a ~1.85 m model's head\" — which is true of a character standing still and of nothing else. Every character in the catalogue is a different GLB fitted to the same overall height, so their heads sit at different places inside it: the same number floats over a short one and cuts through a tall one. And because the mount never moved, the hat stayed bo",
-      "places": [
-        "Vibe Island",
-        "the machinery underneath"
-      ],
-      "files": 7
-    },
-    {
-      "sha": "29d52c3e",
-      "date": "2026-08-12",
-      "subject": "The city's controls fit on one row",
-      "lede": "Ten chips wanting 752px, and the strip holding them was never wider than half the screen — so three rows at 900px and two at 1440px.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "7077dd7e",
-      "date": "2026-08-12",
-      "subject": "Swimming, and snow that settles",
-      "lede": "Two things you could see the world wanting the moment it had a beach.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 11
-    },
-    {
-      "sha": "2fb84f59",
-      "date": "2026-08-12",
-      "subject": "Vibe Island stops showing you somebody else's screen first",
-      "lede": "Clicking Vibe Island painted the character picker for a beat, then a loading screen, then the island. Same for Powder Peak, the moon, Mars, TJ's, Vibestar and the mines — half the world list is a `/city?spawn=…` link, so this was most of what \"going to a world\" looked like.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 1
-<<<<<<< HEAD
-    },
-    {
-      "sha": "5545ca63",
-      "date": "2026-08-12",
-      "subject": "The avatar is the character's actual face",
-      "lede": "The chip in the corner has always shown an emoji — 🤖 for Vibey, 🦀 for Pinch — which identifies a species rather than a character. Sixty-three characters are built from one rig and photographed from it, so the corner can show the one you picked.",
-      "places": [],
-      "files": 67
-=======
->>>>>>> 7b4dc2d (npm run stamp)
     }
   ]
 }

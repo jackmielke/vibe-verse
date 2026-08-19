@@ -28,7 +28,7 @@
  *   node tools/build-log.mjs --days 45 # window (default 45)
  */
 import { execSync } from "node:child_process";
-import { writeFileSync, existsSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -119,9 +119,29 @@ function shallow() {
   }
 }
 
+/**
+ * Keeping the committed file on a shallow clone is right — the alternative is
+ * publishing a log truncated at the graft boundary — but it was trusting that
+ * file blindly, and that is how a bad merge shipped `<<<<<<< HEAD` inside a
+ * public JSON endpoint and kept shipping it. Every deploy is a shallow clone,
+ * so every deploy took this branch, kept the corrupt file, and exited 0.
+ *
+ * So: only keep it if it is actually JSON. A truncated log is a worse log; an
+ * unparseable one is not a log at all, and regenerating whatever this clone can
+ * see beats serving something no client can read.
+ */
 if (shallow() && existsSync(OUT)) {
-  console.warn("build-log: shallow clone — keeping the committed build-log.json");
-  process.exit(0);
+  let intact = false;
+  try {
+    JSON.parse(readFileSync(OUT, "utf8"));
+    intact = true;
+  } catch (e) {
+    console.warn(`build-log: committed build-log.json does not parse (${e.message}) — regenerating`);
+  }
+  if (intact) {
+    console.warn("build-log: shallow clone — keeping the committed build-log.json");
+    process.exit(0);
+  }
 }
 
 let commits;
