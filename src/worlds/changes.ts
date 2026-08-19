@@ -124,7 +124,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "c02b5ca", iso: "2026-06-17T20:19:43+00:00", subject: "Changes" },
   ],
   "empyrean": [
-    { sha: "1297ab3", iso: "2026-08-19T08:14:18+00:00", subject: "THE EMPYREAN: a glass city on a rock that never landed" },
+    { sha: "b6f91e7", iso: "2026-08-19T23:28:43+00:00", subject: "Cut stone on the terrace faces, and a promenade you can see from" },
+    { sha: "3bac233", iso: "2026-08-19T23:23:45+00:00", subject: "Four hundred trees were black because green times green is not green" },
+    { sha: "af9a0aa", iso: "2026-08-19T23:18:55+00:00", subject: "The shopfronts were six hundred metres tall" },
+    { sha: "36e3199", iso: "2026-08-19T22:54:09+00:00", subject: "Step the nav graph by its clearance, not by a guess at a spacing" },
+    { sha: "0ba1c64", iso: "2026-08-19T22:30:32+00:00", subject: "Two daylights, and a snowfield that fog could not touch" },
+    { sha: "35052c5", iso: "2026-08-19T22:14:27+00:00", subject: "A budget on what the world costs, and a clock that dwells" },
   ],
   "evolve": [
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
