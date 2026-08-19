@@ -107,12 +107,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
   "drop-zero": [
+    { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
+    { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
     { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
     { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
-    { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
-    { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
   ],
   "dunes": [
     { sha: "271da81", iso: "2026-08-16T20:40:40+00:00", subject: "The Dune Sea was drawing the sky where the ground should be" },
@@ -139,12 +139,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0a6ba9a", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "frisco": [
+    { sha: "57ae7cc", iso: "2026-08-19T05:18:21+00:00", subject: "Streets that are lit at night, and headlights on the traffic" },
     { sha: "939bb6f", iso: "2026-08-18T22:49:12+00:00", subject: "Sixteen hundred people who turn corners instead of vanishing" },
     { sha: "a12f0c3", iso: "2026-08-18T22:34:28+00:00", subject: "Twenty-five foot lots, garage doors, and the long way out of a terrace" },
     { sha: "bdf0cd6", iso: "2026-08-18T22:18:06+00:00", subject: "Chunk the city so it can be frustum-culled" },
     { sha: "4ab570f", iso: "2026-08-18T22:07:20+00:00", subject: "Fire escapes, lane markings, and two districts you can start in" },
     { sha: "74ca69d", iso: "2026-08-18T21:47:54+00:00", subject: "Traffic that stops at the lights, and fifteen hundred cars at the kerb" },
-    { sha: "151c50c", iso: "2026-08-18T21:20:21+00:00", subject: "Crossings, shopfronts, roof clutter — and the camera that would not move" },
   ],
   "garden": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -318,12 +318,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "45648c1", iso: "2026-05-14T04:33:38+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
+    { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
     { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
     { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
     { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
-    { sha: "e3f8766", iso: "2026-08-09T20:58:42-07:00", subject: "Players can finally soak each other" },
-    { sha: "8a0487a", iso: "2026-08-09T20:26:21-07:00", subject: "The end card says Play again" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
