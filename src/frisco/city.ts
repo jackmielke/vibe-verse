@@ -842,6 +842,70 @@ function shopFront(
 }
 
 /**
+ * The bottom five metres of a tower.
+ *
+ * Every generated tower in this city ran as one banded box from the pavement to
+ * the parapet, which is a shape no tower has and the one part of it you are
+ * standing next to. Walk down Market — where the world opens — and both sides
+ * are forty storeys of identical window courses meeting the ground with nothing
+ * at all: no lobby, no entrance, no way in, no change of material. It reads as
+ * scenery from six feet away and it is the single most-looked-at facade in the
+ * world.
+ *
+ * A lobby is: a taller ground storey in a darker stone, dark glazing inset on
+ * all four faces because a tower in a block faces streets on every side, a thin
+ * canopy over each entrance, and a band of trim where the podium meets the
+ * shaft. Fifty triangles.
+ *
+ * It stays inside the tower's footprint on purpose. The collider is the tower's
+ * base extents, so anything proud of them is something you walk through — the
+ * canopy is the exception, and it is four metres up where you walk under it.
+ */
+function towerLobby(
+  b: Batch,
+  cx: number, base: number, cz: number,
+  w: number, d: number,
+  yaw: number,
+  wall: [number, number, number],
+  rng: Rng,
+): void {
+  const H = rng.range(4.6, 6.4);
+  const stone = mix(wall, rgb(0x4a4d55), 0.45);
+  const glassDark = rgb(0x1d2730);
+  const trim = shade(stone, 1.14);
+
+  // The podium itself, a hair inside the shaft so the join reads as a change of
+  // plane rather than as z-fighting.
+  b.box(cx, base, cz, w * 0.995, H, d * 0.995, stone, 1, yaw);
+  // A band of trim at the top of it.
+  b.box(cx, base + H, cz, w * 1.012, 0.34, d * 1.012, trim, 1, yaw);
+
+  const cs = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  // The four faces: outward normal in the block's frame, and the half-extent
+  // that runs across each.
+  const faces: Array<[number, number, number, number]> = [
+    [1, 0, w, d], [-1, 0, w, d],
+    [0, 1, d, w], [0, -1, d, w],
+  ];
+  for (const [lx, lz, depth, across] of faces) {
+    const ox = lx * cs - lz * sn;
+    const oz = lx * sn + lz * cs;
+    const facing = Math.atan2(oz, ox);
+    // Glazing across most of the face, from just above the pavement.
+    b.box(
+      cx + ox * (depth + 0.02), base + 0.45, cz + oz * (depth + 0.02),
+      0.05, H - 1.1, across * 0.86, glassDark, 1, facing,
+    );
+    // A canopy over the entrance, on the middle third.
+    b.box(
+      cx + ox * (depth + 0.9), base + H - 1.5, cz + oz * (depth + 0.9),
+      0.95, 0.18, Math.min(across * 0.34, 4.5), trim, 1, facing,
+    );
+  }
+}
+
+/**
  * A garage door under a row house.
  *
  * The other half of San Francisco's street frontage, and the half a shopfront
@@ -1077,6 +1141,8 @@ function fillBlock(
     const floors = Math.max(3, Math.round(h / 7));
     const taper = rng.range(0.82, 1.0);
     buildings.bandedBox(cx, base, cz, w, h, d, wall, glass, floors, taper, yaw);
+    // Only on towers tall enough to have a lobby rather than be one.
+    if (h > 22) towerLobby(buildings, cx, base, cz, w, d, yaw, wall, rng);
     // A parapet and a rooftop box, which is what makes a flat roof read as a
     // roof rather than as the top of a box.
     const towerRoof = mix(roofC, wall, 0.3);

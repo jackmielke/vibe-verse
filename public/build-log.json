@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-08-19T05:08:07.668Z",
+  "generated_at": "2026-08-19T05:24:27.800Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "6db5ac35",
+      "date": "2026-08-19",
+      "subject": "npm run stamp",
+      "lede": "",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "57ae7cce",
+      "date": "2026-08-19",
+      "subject": "Streets that are lit at night, and headlights on the traffic",
+      "lede": "Nine thousand glowing window courses turned the skyline into San Francisco from the air the day they went in, and from the pavement the roads stayed a black void with a few bright dots floating over them — which is what a power cut looks like, not a city. Four things fix it.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "8db6bf86",
+      "date": "2026-08-19",
+      "subject": "build-log.json has been serving a merge conflict",
+      "lede": "`public/build-log.json` is published at myvibeverse.com/build-log.json, and the committed copy contains `<<<<<<< HEAD` and `=======` — a conflict resolved by committing both sides. It has not been parseable JSON since.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "093a863d",
       "date": "2026-08-19",
@@ -999,30 +1023,6 @@
       "lede": "The headline has been mint green since the first commit — which is the accent the play *currency* uses everywhere else, so the loudest type on the site was quietly saying \"coins\" rather than \"vibeverse\". Jack asked for white, and for options rather than one guess.",
       "places": [],
       "files": 6
-    },
-    {
-      "sha": "91761b29",
-      "date": "2026-08-14",
-      "subject": "COIL's card plays COIL",
-      "lede": "A screenshot of a game is a picture of a game not being played. It shows the art and hides the only thing anybody wants to know, which is what it feels like to move in there. COIL's card is three seconds of the real thing now — no editing, no capture card, no human. The world plays itself and we film it.",
-      "places": [],
-      "files": 9
-    },
-    {
-      "sha": "9c635abd",
-      "date": "2026-08-14",
-      "subject": "Two coins, told apart on the front door — and the token's market cap",
-      "lede": "**The market cap, top right.** `$VIBE $70.78K ▼4.2%`, next to the play balance. A number that moves is the cheapest possible proof that the token half of this is not a metaphor, and until now the only page that knew the price was the wallet.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "4260719e",
-      "date": "2026-08-14",
-      "subject": "A fresh clone could not install, so none of the checks could run",
-      "lede": "`postprocessing` was declared `^6.35.0` and resolved to 6.39, which is the release that raised its floor to `three >= 0.168`. Three is pinned at 0.160 here and moving it is a day of work in forty worlds, so npm called the tree impossible and installed nothing at all — no node_modules, and therefore no typecheck, no build, no test, no smoke. Every check CLAUDE.md asks for before pushing to a live `main` was unavailabl",
-      "places": [],
-      "files": 5
     }
   ]
 }

@@ -242,7 +242,11 @@ for (const name of shots) {
   }
   writeFileSync(`${OUT}/${name}.png`, await page.screenshot());
   await page.evaluate(() => window.__frisco.freeze?.(false));
-  if (process.env.FRISCO_JPEG) {
+  /* Only the pose the card is actually cut from. `FRISCO_JPEG` used to fire on
+     every pose in the list, so `card,downtown` wrote the card art twice and
+     what shipped was the second one — a shot down onto a rooftop, on the front
+     page of the world, silently. */
+  if (process.env.FRISCO_JPEG && name === (process.env.FRISCO_JPEG_POSE ?? "card")) {
     writeFileSync(
       resolve(process.env.FRISCO_JPEG),
       await page.screenshot({ type: "jpeg", quality: 86 }),
