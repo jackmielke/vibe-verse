@@ -97,6 +97,59 @@ describe("the day cycle", () => {
     expect(night.exposure).toBeGreaterThan(noon.exposure);
   });
 
+  it("makes the sky dome the light source at dusk and the sun's at noon", () => {
+    /* The frames this table was tuned against: at 1.75 against a key of 3.2
+     * the snowfield's own shading fell under `terrain.ts`'s floor and four
+     * kilometres of mountains rendered as one flat plate. A sun on the
+     * horizon is going through forty times the air a noon sun is; the dome
+     * is what is lighting the world at that hour, and the ratio has to say
+     * so rather than being a constant fraction of the key. */
+    const dusk = dayLook(0.75, makeDayLook());
+    const noon = dayLook(0.5, makeDayLook());
+    expect(dusk.hemiIntensity / dusk.sunIntensity).toBeGreaterThan(0.8);
+    expect(noon.hemiIntensity / noon.sunIntensity).toBeLessThan(0.75);
+    expect(dusk.hemiIntensity / dusk.sunIntensity).toBeGreaterThan(
+      noon.hemiIntensity / noon.sunIntensity,
+    );
+  });
+
+  it("moves the fill and the exposure together, so the frame does not blow", () => {
+    // The two are one decision: a table of light this much brighter through
+    // an unchanged grade is a white one. Any hour whose product leaves this
+    // band is an hour somebody raised one of them and forgot the other.
+    for (let p = 0; p < 1; p += 1 / 96) {
+      const look = dayLook(p, makeDayLook());
+      const product = look.hemiIntensity * look.exposure;
+      expect(product, `phase ${p.toFixed(3)}`).toBeGreaterThan(0.7);
+      expect(product, `phase ${p.toFixed(3)}`).toBeLessThan(1.8);
+    }
+  });
+
+  it("gives a vertical surface a fill worth having", () => {
+    /* A hemisphere light weights the sky half out at `n.y = 0`, so a wall is
+     * lit by `0.5 * (sky + ground)` and nothing else — which makes the ground
+     * colour, not the sky colour, half of every facade in the city. It was
+     * dark enough that shadowed walls had no colour left in them. */
+    const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const dusk = dayLook(0.75, makeDayLook());
+    const wall = 0.5 * (lum(dusk.skyColor) + lum(dusk.groundColor)) * dusk.hemiIntensity;
+    expect(wall).toBeGreaterThan(0.8);
+    // And it is a bounce off pale stone and ice, not a black card.
+    expect(lum(dusk.groundColor)).toBeGreaterThan(0.1);
+  });
+
+  it("keeps the fog thin enough that a long view stays a view", () => {
+    /* Aerial perspective is the point and a uniform milky wash is not. At
+     * 0.00016 the ranges were 80% gone at eight kilometres, which is inside
+     * the world's own extent; this keeps the distance beautiful and the
+     * middle distance legible. */
+    for (let p = 0; p < 1; p += 1 / 96) {
+      const d = dayLook(p, makeDayLook()).fogDensity;
+      expect(d, `phase ${p.toFixed(3)}`).toBeGreaterThan(0);
+      expect(d, `phase ${p.toFixed(3)}`).toBeLessThanOrEqual(0.00011);
+    }
+  });
+
   it("keeps the sunset warm and the night cold", () => {
     const dusk = dayLook(0.75, makeDayLook());
     const night = dayLook(0, makeDayLook());

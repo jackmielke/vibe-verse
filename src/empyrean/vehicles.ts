@@ -60,6 +60,8 @@
  * metres and from the air, which is where most people will first see them.
  */
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+
 import { GRAVITY } from "@/lib/worldPhysics";
 
 import type { BuildContext, FrameContext, Interactable, System } from "./types";
@@ -168,9 +170,13 @@ const MAX_STEPS = 16;
 /**
  * How thick the rock under a walkable surface is treated as being.
  *
- * The rim wall is twenty-two metres from the deck to the first promenade and
- * the rings step down by twenty-two to twenty-six, so thirty-four covers every
- * face a vehicle can fly into without claiming the whole keel.
+ * Deliberately more than the deepest step in `DECKS` — it has to cover the
+ * whole rim wall and the underside of every promenade ring, and being too
+ * generous only means a vehicle stops a few metres early against solid rock,
+ * while being too mean means it flies through the island. It is read as a
+ * slab rather than "everything below", so the keel stays open air: flying
+ * under the island is one of the better things this world offers, and the
+ * spike is a shape a pilot can see and avoid.
  */
 const ISLAND_SLAB = 34;
 
@@ -592,29 +598,28 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     return d;
   };
 
-  /* ---- materials ------------------------------------------------------- */
-  const matHull = keep(
+  /* ---- materials -------------------------------------------------------
+   *
+   * Four, for three vehicles and three pads, and every one of them is shared.
+   *
+   * The first version had eight materials and thirty-odd meshes per craft,
+   * which was eighty-three draw calls for four thousand triangles — more
+   * calls than the entire city, whose hundred and eighty-two buildings are
+   * four. Every one of those calls is a state change and a validation pass in
+   * the browser's GL layer, and on a phone a few hundred is where it starts
+   * to hurt; the triangles were never the problem.
+   *
+   * The fix is the one the rest of this world already uses: colour lives in a
+   * vertex attribute rather than in a material, so every part of a craft that
+   * is lit can be one merged geometry and one call. What is left is the two
+   * things that genuinely cannot share a program with it — the transparent
+   * canopy, and the unlit additive glow the bloom pass turns into light. */
+  const matBody = keep(
     new THREE.MeshStandardMaterial({
-      name: "EmpyreanVehicleHull",
-      color: 0xdfe6ef,
-      roughness: 0.36,
-      metalness: 0.5,
-    }),
-  );
-  const matDark = keep(
-    new THREE.MeshStandardMaterial({
-      name: "EmpyreanVehicleTrim",
-      color: 0x2c3340,
-      roughness: 0.55,
-      metalness: 0.35,
-    }),
-  );
-  const matWarm = keep(
-    new THREE.MeshStandardMaterial({
-      name: "EmpyreanVehicleWarm",
-      color: 0xc08a4a,
+      name: "EmpyreanVehicleBody",
+      vertexColors: true,
       roughness: 0.44,
-      metalness: 0.62,
+      metalness: 0.5,
     }),
   );
   const matGlass = keep(
@@ -628,45 +633,39 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
       side: THREE.DoubleSide,
     }),
   );
-  /** One emissive per vehicle, so a pad and its craft glow the same colour. */
-  const glowMats = new Map<VehicleKind, THREE.MeshBasicMaterial>();
-  const columnMats = new Map<VehicleKind, THREE.ShaderMaterial>();
-
-  const ACCENT: Record<VehicleKind, number> = {
-    skiff: 0xffb35c,
-    glider: 0x9ce8a8,
-    lifter: 0xc8a2ff,
-  };
-
-  for (const kind of ["skiff", "glider", "lifter"] as VehicleKind[]) {
-    glowMats.set(
-      kind,
-      keep(
-        new THREE.MeshBasicMaterial({
-          name: `EmpyreanVehicleGlow-${kind}`,
-          color: new THREE.Color(ACCENT[kind]).multiplyScalar(1.7),
-          toneMapped: false,
-          fog: false,
-        }),
-      ),
-    );
-    columnMats.set(kind, keep(padColumnMaterial(ACCENT[kind])));
-  }
+  const matGlow = keep(
+    new THREE.MeshBasicMaterial({
+      name: "EmpyreanVehicleGlow",
+      vertexColors: true,
+      toneMapped: false,
+      fog: false,
+    }),
+  );
+  const matColumn = keep(padColumnMaterial());
 
   /* ---- geometry -------------------------------------------------------- */
   const crafts: Craft[] = [];
   const byKind = new Map<VehicleKind, Craft>();
+
+  /** The pads never move, so all three of them are one static merge each. */
+  const padPaint: THREE.BufferGeometry[] = [];
+  const padPost: THREE.BufferGeometry[] = [];
+  const padColumn: THREE.BufferGeometry[] = [];
 
   for (const pad of pads) {
     const g = new THREE.Group();
     g.name = `empyrean-${pad.kind}`;
     g.rotation.order = "YXZ";
 
-    const glow = glowMats.get(pad.kind)!;
-    if (pad.kind === "skiff") buildSkiff(g, matHull, matDark, matWarm, matGlass, glow, keep, !low);
-    else if (pad.kind === "glider") buildGlider(g, matHull, matDark, matGlass, glow, keep, !low);
-    else buildLifter(g, matHull, matDark, matWarm, glow, keep, !low);
+    const bin: CraftParts = { body: [], glass: [], glow: [] };
+    const accent = ACCENT[pad.kind];
+    if (pad.kind === "skiff") skiffParts(bin, accent);
+    else if (pad.kind === "glider") gliderParts(bin, accent);
+    else lifterParts(bin, accent);
 
+    flush(g, bin.body, matBody, `empyrean-${pad.kind}-body`, !low, keep);
+    flush(g, bin.glass, matGlass, `empyrean-${pad.kind}-glass`, false, keep);
+    flush(g, bin.glow, matGlow, `empyrean-${pad.kind}-glow`, false, keep);
     group.add(g);
 
     const skidH =
@@ -696,8 +695,13 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     byKind.set(pad.kind, c);
 
     /* ---- the pad it is standing on ---- */
-    group.add(buildPad(pad, ACCENT[pad.kind], columnMats.get(pad.kind)!, glow, keep));
+    if (pad.kind === "glider") railParts(pad, accent, padPaint, padPost, padColumn);
+    else padParts(pad, accent, padPaint, padPost, padColumn);
   }
+
+  flush(group, padPost, matBody, "empyrean-pad-posts", false, keep);
+  flush(group, padPaint, matGlow, "empyrean-pad-paint", false, keep);
+  flush(group, padColumn, matColumn, "empyrean-pad-columns", false, keep);
 
   /* ---- the world it collides with -------------------------------------- */
   let world: {
@@ -763,9 +767,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
    * promenade can cut back across the middle of the city at deck-minus-twenty.
    * Each walkable surface is treated as a slab `ISLAND_SLAB` thick — the rim
    * wall, and the underside of each promenade ring — which is what a vehicle
-   * can actually hit. Below that the keel is open air, on purpose: flying
-   * under the island is one of the better things this world offers, and the
-   * spike is a shape a pilot can see and avoid.
+   * can actually hit — see `ISLAND_SLAB`.
    */
   function insideIsland(x: number, z: number, y: number): boolean {
     const s = surfaceAt(x, z);
@@ -1560,11 +1562,9 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
         c.group.rotation.set(c.pitch, c.yaw, c.roll);
       }
 
-      /* The pad columns breathe, faster while nobody is aboard. */
-      for (const m of columnMats.values()) {
-        m.uniforms.uTime.value = frame.time;
-        m.uniforms.uNight.value = 1 - frame.daylight * 0.55;
-      }
+      /* The pad columns breathe, and come up at dusk like everything else. */
+      matColumn.uniforms.uTime.value = frame.time;
+      matColumn.uniforms.uNight.value = 1 - frame.daylight * 0.55;
     },
 
     dispose() {
@@ -1636,104 +1636,187 @@ function shortestAngle(a: number): number {
  * Geometry
  *
  * All procedural, all `three` primitives, no assets and no textures — see the
- * root CLAUDE.md. Every geometry is registered with `keep` so `dispose` can
- * release it: this world runs on a WebGL context a browser will not give back
- * twice.
+ * root CLAUDE.md.
+ *
+ * ## Why none of this is a mesh until the end
+ *
+ * A vehicle is thirty small pieces: a nose, a canopy, two skids, four legs,
+ * four fans, nine pylons. Built the obvious way that is thirty meshes and
+ * thirty draw calls, and three vehicles and three pads came to eighty-three —
+ * more than the whole city, for four thousand triangles. Draw calls are the
+ * number that decides whether this runs on a phone, and they have nothing to
+ * do with how much geometry is in them.
+ *
+ * So the builders below do not make meshes. Each one drops transformed,
+ * vertex-coloured geometries into one of three bins — lit, transparent,
+ * glowing — and `flush` merges each bin into a single mesh. A craft is three
+ * draws; all three pads together are three more. Colour that used to come
+ * from a material comes from a `color` attribute instead, which is the same
+ * trick `buildings.ts` and `props.ts` already use for the same reason.
+ *
+ * The pads are merged in *world* space, because they never move. The craft
+ * are merged in their own local space, because they very much do.
  * ====================================================================== */
 
 type Keep = <T extends { dispose(): void }>(d: T) => T;
+
+/** The three programs a vehicle is allowed to need. */
+interface CraftParts {
+  body: THREE.BufferGeometry[];
+  glass: THREE.BufferGeometry[];
+  glow: THREE.BufferGeometry[];
+}
+
+const ACCENT: Record<VehicleKind, number> = {
+  skiff: 0xffb35c,
+  glider: 0x9ce8a8,
+  lifter: 0xc8a2ff,
+};
+
+/** Body palette. Named rather than inlined so a craft can be re-liveried. */
+const HULL = 0xdfe6ef;
+const TRIM = 0x2c3340;
+const WARM = 0xc08a4a;
+
+const _partM = new THREE.Matrix4();
+const _partQ = new THREE.Quaternion();
+const _partE = new THREE.Euler();
+const _partP = new THREE.Vector3();
+const _partS = new THREE.Vector3();
+const _partC = new THREE.Color();
+
+/**
+ * Put one primitive where it belongs, paint it, and hand it to a bin.
+ *
+ * The transform is baked into the vertices — this geometry will never have an
+ * object of its own to carry it — and the colour is baked into an attribute,
+ * which is what lets twenty parts in three colours share one material and one
+ * call. `THREE.Color.set` converts an sRGB hex into the renderer's linear
+ * working space, which is the space vertex colours are read in; skip that and
+ * every painted part comes out noticeably too bright.
+ */
+function part(
+  bin: THREE.BufferGeometry[],
+  geo: THREE.BufferGeometry,
+  hex: number,
+  x: number,
+  y: number,
+  z: number,
+  rx = 0,
+  ry = 0,
+  rz = 0,
+  sx = 1,
+  sy = 1,
+  sz = 1,
+  order: THREE.EulerOrder = "XYZ",
+): void {
+  _partE.set(rx, ry, rz, order);
+  _partQ.setFromEuler(_partE);
+  _partM.compose(_partP.set(x, y, z), _partQ, _partS.set(sx, sy, sz));
+  geo.applyMatrix4(_partM);
+
+  const n = geo.getAttribute("position").count;
+  const col = new Float32Array(n * 3);
+  _partC.set(hex);
+  for (let i = 0; i < n; i++) {
+    col[i * 3] = _partC.r;
+    col[i * 3 + 1] = _partC.g;
+    col[i * 3 + 2] = _partC.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  bin.push(geo);
+}
+
+/** A glowing part, painted above 1.0 so the bloom pass has something to find. */
+function lit(
+  bin: THREE.BufferGeometry[],
+  geo: THREE.BufferGeometry,
+  accent: number,
+  x: number,
+  y: number,
+  z: number,
+  rx = 0,
+  ry = 0,
+  rz = 0,
+  sx = 1,
+  sy = 1,
+  sz = 1,
+  order: THREE.EulerOrder = "XYZ",
+): void {
+  _partE.set(rx, ry, rz, order);
+  _partQ.setFromEuler(_partE);
+  _partM.compose(_partP.set(x, y, z), _partQ, _partS.set(sx, sy, sz));
+  geo.applyMatrix4(_partM);
+
+  const n = geo.getAttribute("position").count;
+  const col = new Float32Array(n * 3);
+  _partC.set(accent).multiplyScalar(1.7);
+  for (let i = 0; i < n; i++) {
+    col[i * 3] = _partC.r;
+    col[i * 3 + 1] = _partC.g;
+    col[i * 3 + 2] = _partC.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  bin.push(geo);
+}
+
+/** Merge a bin into one mesh and hang it off `parent`. Empty bins cost nothing. */
+function flush(
+  parent: THREE.Object3D,
+  bin: THREE.BufferGeometry[],
+  mat: THREE.Material,
+  name: string,
+  castShadow: boolean,
+  keep: Keep,
+): void {
+  if (bin.length === 0) return;
+  const merged = bin.length === 1 ? bin[0] : mergeGeometries(bin, false);
+  if (!merged) return;
+  if (bin.length > 1) for (const g of bin) g.dispose();
+  merged.computeBoundingSphere();
+  keep(merged);
+  const mesh = new THREE.Mesh(merged, mat);
+  mesh.name = name;
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = false;
+  parent.add(mesh);
+  bin.length = 0;
+}
 
 /**
  * The skiff.
  *
  * A shallow lifting-body hull with the cockpit cut into the top of it, two
  * intake pods on outriggers and a pair of curved skids. Read from thirty
- * metres it is the open seat that says "get in": the silhouette is deliberately
- * a scoop rather than a canopy.
+ * metres it is the open seat that says "get in": the silhouette is
+ * deliberately a scoop rather than a canopy.
  */
-function buildSkiff(
-  g: THREE.Group,
-  hull: THREE.Material,
-  dark: THREE.Material,
-  warm: THREE.Material,
-  glass: THREE.Material,
-  glow: THREE.Material,
-  keep: Keep,
-  shadows: boolean,
-): void {
-  const body = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.95, 1.35, 5.4, 7, 1, false)), hull);
-  body.rotation.x = Math.PI / 2;
-  body.scale.set(1, 1, 0.42);
-  body.position.y = 0.95;
-  body.castShadow = shadows;
-  g.add(body);
+function skiffParts(p: CraftParts, accent: number): void {
+  const H = Math.PI / 2;
 
-  const nose = new THREE.Mesh(keep(new THREE.ConeGeometry(0.95, 1.9, 7)), hull);
-  nose.rotation.x = -Math.PI / 2;
-  nose.scale.set(1, 1, 0.42);
-  nose.position.set(0, 0.95, -3.05);
-  nose.castShadow = shadows;
-  g.add(nose);
+  part(p.body, new THREE.CylinderGeometry(0.95, 1.35, 5.4, 7, 1, false), HULL, 0, 0.95, 0, H, 0, 0, 1, 1, 0.42);
+  part(p.body, new THREE.ConeGeometry(0.95, 1.9, 7), HULL, 0, 0.95, -3.05, -H, 0, 0, 1, 1, 0.42);
 
   // The cockpit: a dark tub sunk into the deck with a low screen in front.
-  const tub = new THREE.Mesh(keep(new THREE.BoxGeometry(1.15, 0.5, 1.9)), dark);
-  tub.position.set(0, 1.22, 0.3);
-  g.add(tub);
-
-  const screen = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.72, 0.72, 0.62, 12, 1, true, -1.1, 2.2)), glass);
-  screen.position.set(0, 1.62, -0.72);
-  g.add(screen);
-
-  const seat = new THREE.Mesh(keep(new THREE.BoxGeometry(0.72, 0.72, 0.2)), warm);
-  seat.position.set(0, 1.62, 1.02);
-  g.add(seat);
+  part(p.body, new THREE.BoxGeometry(1.15, 0.5, 1.9), TRIM, 0, 1.22, 0.3);
+  part(p.glass, new THREE.CylinderGeometry(0.72, 0.72, 0.62, 12, 1, true, -1.1, 2.2), 0x9fd8ff, 0, 1.62, -0.72);
+  part(p.body, new THREE.BoxGeometry(0.72, 0.72, 0.2), WARM, 0, 1.62, 1.02);
 
   // Intake pods on short outriggers. The glowing throat is the "it is on" cue.
-  const podGeo = keep(new THREE.CylinderGeometry(0.46, 0.52, 2.0, 10, 1, true));
-  const throatGeo = keep(new THREE.CircleGeometry(0.42, 10));
-  const armGeo = keep(new THREE.BoxGeometry(0.9, 0.16, 0.5));
   for (const side of [-1, 1]) {
-    const pod = new THREE.Mesh(podGeo, warm);
-    pod.rotation.x = Math.PI / 2;
-    pod.position.set(side * 1.55, 0.86, 0.65);
-    pod.castShadow = shadows;
-    g.add(pod);
+    part(p.body, new THREE.CylinderGeometry(0.46, 0.52, 2.0, 10, 1, true), WARM, side * 1.55, 0.86, 0.65, H);
+    lit(p.glow, new THREE.CircleGeometry(0.42, 10), accent, side * 1.55, 0.86, 1.66);
+    part(p.body, new THREE.BoxGeometry(0.9, 0.16, 0.5), TRIM, side * 0.95, 0.86, 0.65);
 
-    const throat = new THREE.Mesh(throatGeo, glow);
-    throat.position.set(side * 1.55, 0.86, 1.66);
-    g.add(throat);
-
-    const arm = new THREE.Mesh(armGeo, dark);
-    arm.position.set(side * 0.95, 0.86, 0.65);
-    g.add(arm);
-  }
-
-  // Skids: two curved rails, so it has something to settle onto.
-  const skidGeo = keep(new THREE.TorusGeometry(1.6, 0.09, 5, 10, Math.PI * 0.55));
-  const legGeo = keep(new THREE.BoxGeometry(0.12, 0.5, 0.12));
-  for (const side of [-1, 1]) {
-    const skid = new THREE.Mesh(skidGeo, dark);
-    skid.rotation.set(Math.PI / 2, 0, Math.PI * 0.72);
-    skid.position.set(side * 0.95, 0.42, 0.1);
-    g.add(skid);
+    // Skids: two curved rails, so it has something to settle onto.
+    part(p.body, new THREE.TorusGeometry(1.6, 0.09, 5, 10, Math.PI * 0.55), TRIM, side * 0.95, 0.42, 0.1, H, 0, Math.PI * 0.72);
     for (const zz of [-1.1, 1.1]) {
-      const leg = new THREE.Mesh(legGeo, dark);
-      leg.position.set(side * 0.95, 0.62, zz);
-      g.add(leg);
+      part(p.body, new THREE.BoxGeometry(0.12, 0.5, 0.12), TRIM, side * 0.95, 0.62, zz);
     }
+    lit(p.glow, new THREE.BoxGeometry(0.06, 0.1, 3.6), accent, side * 1.0, 1.14, 0.1);
   }
 
-  const fin = new THREE.Mesh(keep(new THREE.BoxGeometry(0.1, 1.0, 1.3)), warm);
-  fin.position.set(0, 1.55, 2.2);
-  fin.rotation.x = -0.22;
-  g.add(fin);
-
-  const stripe = new THREE.Mesh(keep(new THREE.BoxGeometry(0.06, 0.1, 3.6)), glow);
-  for (const side of [-1, 1]) {
-    const s = stripe.clone();
-    s.position.set(side * 1.0, 1.14, 0.1);
-    g.add(s);
-  }
+  part(p.body, new THREE.BoxGeometry(0.1, 1.0, 1.3), WARM, 0, 1.55, 2.2, -0.22);
 }
 
 /**
@@ -1744,70 +1827,31 @@ function buildSkiff(
  * you can pick out from the far side of the island: nothing else in the world
  * is that wide and that thin.
  */
-function buildGlider(
-  g: THREE.Group,
-  hull: THREE.Material,
-  dark: THREE.Material,
-  glass: THREE.Material,
-  glow: THREE.Material,
-  keep: Keep,
-  shadows: boolean,
-): void {
+function gliderParts(p: CraftParts, accent: number): void {
+  const H = Math.PI / 2;
   const half = GLIDER.span / 2;
 
-  const pod = new THREE.Mesh(keep(new THREE.CapsuleGeometry(0.44, 2.6, 4, 10)), hull);
-  pod.rotation.x = Math.PI / 2;
-  pod.position.set(0, 0.72, -0.4);
-  pod.castShadow = shadows;
-  g.add(pod);
-
-  const boom = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.2, 0.07, 3.4, 8)), hull);
-  boom.rotation.x = Math.PI / 2;
-  boom.position.set(0, 0.78, 2.4);
-  g.add(boom);
-
-  const canopy = new THREE.Mesh(keep(new THREE.SphereGeometry(0.5, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55)), glass);
-  canopy.position.set(0, 0.98, -1.1);
-  canopy.scale.set(1, 0.9, 1.9);
-  g.add(canopy);
+  part(p.body, new THREE.CapsuleGeometry(0.44, 2.6, 4, 10), HULL, 0, 0.72, -0.4, H);
+  part(p.body, new THREE.CylinderGeometry(0.2, 0.07, 3.4, 8), HULL, 0, 0.78, 2.4, H);
+  part(
+    p.glass,
+    new THREE.SphereGeometry(0.5, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    0x9fd8ff,
+    0, 0.98, -1.1, 0, 0, 0, 1, 0.9, 1.9,
+  );
 
   /* The wing: a tapered, slightly swept plate with dihedral, made from two
-   * boxes rather than one so each half can be tilted on its own. A single
-   * flat plank reads as a paper aeroplane; three degrees of dihedral is the
-   * difference between a toy and an aircraft. */
-  const wingGeo = keep(new THREE.BoxGeometry(half, 0.1, 1.25));
+   * halves rather than one plank so each can be tilted on its own. Three
+   * degrees of dihedral is the difference between a toy and an aircraft. */
   for (const side of [-1, 1]) {
-    const w = new THREE.Mesh(wingGeo, hull);
-    w.position.set((side * half) / 2, 0.92, -0.15);
-    w.rotation.z = side * 0.055;
-    w.rotation.y = side * -0.06;
-    w.scale.z = 1;
-    w.castShadow = shadows;
-    g.add(w);
-
-    const tip = new THREE.Mesh(keep(new THREE.BoxGeometry(0.5, 0.1, 0.7)), glow);
-    tip.position.set(side * (half - 0.1), 0.92 + side * side * 0.02 + half * 0.055 * 0.5, -0.15);
-    tip.rotation.z = side * 0.055;
-    g.add(tip);
+    part(p.body, new THREE.BoxGeometry(half, 0.1, 1.25), HULL, (side * half) / 2, 0.92, -0.15, 0, side * -0.06, side * 0.055);
+    lit(p.glow, new THREE.BoxGeometry(0.5, 0.1, 0.7), accent, side * (half - 0.1), 0.94 + half * 0.0275, -0.15, 0, 0, side * 0.055);
+    // V-tail, because a T-tail on a fifteen-metre span looks like a model.
+    part(p.body, new THREE.BoxGeometry(2.2, 0.08, 0.75), HULL, side * 0.85, 1.28, 3.7, 0, 0, side * 0.62);
   }
 
-  // V-tail, because a T-tail on a fifteen-metre span looks like a model.
-  const tailGeo = keep(new THREE.BoxGeometry(2.2, 0.08, 0.75));
-  for (const side of [-1, 1]) {
-    const t = new THREE.Mesh(tailGeo, hull);
-    t.position.set(side * 0.85, 1.28, 3.7);
-    t.rotation.z = side * 0.62;
-    g.add(t);
-  }
-
-  const skid = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.14, 0.14, 1.6, 8)), dark);
-  skid.rotation.x = Math.PI / 2;
-  skid.position.set(0, 0.16, -0.5);
-  g.add(skid);
-
-  const stripe = new THREE.Mesh(keep(new THREE.BoxGeometry(0.14, 0.06, 2.6)), glow);
-  stripe.position.set(0, 1.14, -0.4);
-  g.add(stripe);
+  part(p.body, new THREE.CylinderGeometry(0.14, 0.14, 1.6, 8), TRIM, 0, 0.16, -0.5, H);
+  lit(p.glow, new THREE.BoxGeometry(0.14, 0.06, 2.6), accent, 0, 1.14, -0.4);
 }
 
 /**
@@ -1817,77 +1861,27 @@ function buildGlider(
  * a hook underneath. It is the only one of the three with no aerodynamic
  * shape at all, on purpose: it should look like it works for a living.
  */
-function buildLifter(
-  g: THREE.Group,
-  hull: THREE.Material,
-  dark: THREE.Material,
-  warm: THREE.Material,
-  glow: THREE.Material,
-  keep: Keep,
-  shadows: boolean,
-): void {
-  const deck = new THREE.Mesh(keep(new THREE.BoxGeometry(2.6, 0.3, 3.4)), hull);
-  deck.position.y = 0.8;
-  deck.castShadow = shadows;
-  g.add(deck);
+function lifterParts(p: CraftParts, accent: number): void {
+  const H = Math.PI / 2;
 
-  const cage = new THREE.Mesh(keep(new THREE.TorusGeometry(0.95, 0.07, 5, 12, Math.PI)), warm);
-  cage.position.set(0, 0.95, -1.0);
-  cage.rotation.y = Math.PI / 2;
-  g.add(cage);
+  part(p.body, new THREE.BoxGeometry(2.6, 0.3, 3.4), HULL, 0, 0.8, 0);
+  part(p.body, new THREE.TorusGeometry(0.95, 0.07, 5, 12, Math.PI), WARM, 0, 0.95, -1.0, 0, H, 0);
+  part(p.body, new THREE.BoxGeometry(2.2, 0.12, 1.1), TRIM, 0, 2.32, 1.2);
+  part(p.body, new THREE.TorusGeometry(0.22, 0.06, 5, 10), WARM, 0, 0.42, 0);
+  lit(p.glow, new THREE.SphereGeometry(0.16, 8, 6), accent, 0, 2.5, 1.2);
 
-  const post = new THREE.Mesh(keep(new THREE.BoxGeometry(0.16, 1.5, 0.16)), dark);
   for (const sx of [-1, 1]) {
-    const p = post.clone();
-    p.position.set(sx * 0.95, 1.6, 1.4);
-    g.add(p);
-  }
-  const roof = new THREE.Mesh(keep(new THREE.BoxGeometry(2.2, 0.12, 1.1)), dark);
-  roof.position.set(0, 2.32, 1.2);
-  g.add(roof);
-
-  const ductGeo = keep(new THREE.TorusGeometry(1.0, 0.2, 6, 16));
-  const bladeGeo = keep(new THREE.BoxGeometry(1.7, 0.05, 0.22));
-  const armGeo = keep(new THREE.BoxGeometry(1.5, 0.16, 0.3));
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const duct = new THREE.Mesh(ductGeo, dark);
-      duct.rotation.x = Math.PI / 2;
-      duct.position.set(sx * 2.15, 1.05, sz * 1.5);
-      duct.castShadow = shadows;
-      g.add(duct);
-
-      const blade = new THREE.Mesh(bladeGeo, warm);
-      blade.position.set(sx * 2.15, 1.05, sz * 1.5);
-      blade.rotation.y = sx * sz * 0.4;
-      g.add(blade);
-
-      const arm = new THREE.Mesh(armGeo, hull);
-      arm.position.set(sx * 1.45, 1.05, sz * 1.5);
-      g.add(arm);
-    }
-  }
-
-  const skidGeo = keep(new THREE.BoxGeometry(0.16, 0.16, 4.0));
-  const legGeo = keep(new THREE.BoxGeometry(0.14, 0.55, 0.14));
-  for (const sx of [-1, 1]) {
-    const s = new THREE.Mesh(skidGeo, dark);
-    s.position.set(sx * 1.05, 0.12, 0);
-    g.add(s);
+    part(p.body, new THREE.BoxGeometry(0.16, 1.5, 0.16), TRIM, sx * 0.95, 1.6, 1.4);
+    part(p.body, new THREE.BoxGeometry(0.16, 0.16, 4.0), TRIM, sx * 1.05, 0.12, 0);
     for (const sz of [-1.4, 1.4]) {
-      const l = new THREE.Mesh(legGeo, dark);
-      l.position.set(sx * 1.05, 0.42, sz);
-      g.add(l);
+      part(p.body, new THREE.BoxGeometry(0.14, 0.55, 0.14), TRIM, sx * 1.05, 0.42, sz);
+    }
+    for (const sz of [-1, 1]) {
+      part(p.body, new THREE.TorusGeometry(1.0, 0.2, 6, 16), TRIM, sx * 2.15, 1.05, sz * 1.5, H);
+      part(p.body, new THREE.BoxGeometry(1.7, 0.05, 0.22), WARM, sx * 2.15, 1.05, sz * 1.5, 0, sx * sz * 0.4, 0);
+      part(p.body, new THREE.BoxGeometry(1.5, 0.16, 0.3), HULL, sx * 1.45, 1.05, sz * 1.5);
     }
   }
-
-  const hook = new THREE.Mesh(keep(new THREE.TorusGeometry(0.22, 0.06, 5, 10)), warm);
-  hook.position.set(0, 0.42, 0);
-  g.add(hook);
-
-  const beacon = new THREE.Mesh(keep(new THREE.SphereGeometry(0.16, 8, 6)), glow);
-  beacon.position.set(0, 2.5, 1.2);
-  g.add(beacon);
 }
 
 /**
@@ -1899,60 +1893,100 @@ function buildLifter(
  * can find one. The column is additive and unlit, so the bloom in `postfx.ts`
  * turns it into a landmark from the far side of the island without costing a
  * light.
+ *
+ * Everything here is emitted in world space and merged with the other two
+ * pads: they are three fixed marks on a deck and there is no reason for any
+ * of them to be an object.
  */
-function buildPad(
+function padParts(
   pad: VehiclePad,
   accent: number,
-  columnMat: THREE.ShaderMaterial,
-  glow: THREE.Material,
-  keep: Keep,
-): THREE.Group {
-  const g = new THREE.Group();
-  g.name = `empyrean-pad-${pad.kind}`;
-  g.position.set(pad.x, pad.y + 0.03, pad.z);
-  g.rotation.y = pad.yaw;
+  paint: THREE.BufferGeometry[],
+  post: THREE.BufferGeometry[],
+  column: THREE.BufferGeometry[],
+): void {
+  const px = pad.x;
+  const pz = pad.z;
+  const py = pad.y + 0.03;
+  const c = Math.cos(pad.yaw);
+  const sn = Math.sin(pad.yaw);
+  /** Pad-local (x, z) to world, through the pad's own yaw. */
+  const wx = (lx: number, lz: number) => px + lx * c + lz * sn;
+  const wz = (lx: number, lz: number) => pz - lx * sn + lz * c;
 
-  const ring = new THREE.Mesh(
-    keep(new THREE.RingGeometry(6.4, 7.4, 40)),
-    keep(
-      new THREE.MeshBasicMaterial({
-        color: new THREE.Color(accent).multiplyScalar(0.9),
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    ),
+  lit(paint, new THREE.RingGeometry(6.4, 7.4, 40), accent, px, py, pz, -Math.PI / 2);
+  lit(
+    paint,
+    new THREE.RingGeometry(3.2, 3.6, 24, 1, -0.5, 1.0),
+    accent,
+    wx(0, -1.5), py, wz(0, -1.5),
+    -Math.PI / 2, pad.yaw, 0,
+    1, 1, 1,
+    "YXZ",
   );
-  ring.rotation.x = -Math.PI / 2;
-  g.add(ring);
 
-  const chevron = new THREE.Mesh(keep(new THREE.RingGeometry(3.2, 3.6, 24, 1, -0.5, 1.0)), glow);
-  chevron.rotation.x = -Math.PI / 2;
-  chevron.position.z = -1.5;
-  g.add(chevron);
-
-  const pylonGeo = keep(new THREE.CylinderGeometry(0.12, 0.18, 1.5, 6));
-  const capGeo = keep(new THREE.SphereGeometry(0.2, 8, 6));
   for (let i = 0; i < 3; i++) {
     const a = -Math.PI / 2 + (i / 3) * Math.PI * 2;
-    const px = Math.cos(a) * 6.9;
-    const pz = Math.sin(a) * 6.9;
-    const p = new THREE.Mesh(pylonGeo, keep(new THREE.MeshStandardMaterial({ color: 0x333a46, roughness: 0.7 })));
-    p.position.set(px, 0.75, pz);
-    g.add(p);
-    const cap = new THREE.Mesh(capGeo, glow);
-    cap.position.set(px, 1.6, pz);
-    g.add(cap);
+    const lx = Math.cos(a) * 6.9;
+    const lz = Math.sin(a) * 6.9;
+    part(post, new THREE.CylinderGeometry(0.12, 0.18, 1.5, 6), 0x333a46, wx(lx, lz), py + 0.75, wz(lx, lz));
+    lit(paint, new THREE.SphereGeometry(0.2, 8, 6), accent, wx(lx, lz), py + 1.6, wz(lx, lz));
   }
 
-  const column = new THREE.Mesh(keep(new THREE.CylinderGeometry(1.5, 2.6, 40, 12, 1, true)), columnMat);
-  column.position.y = 20;
-  column.frustumCulled = false;
-  g.add(column);
+  lit(column, new THREE.CylinderGeometry(1.5, 2.6, 40, 12, 1, true), accent, px, py + 20, pz);
+}
 
-  return g;
+/**
+ * The glider's launch rail.
+ *
+ * Not a circle, because there is nowhere to put one: the promenade rings are
+ * seven metres wide and a fifteen-metre wingspan already overhangs both edges
+ * of the ledge it is perched on. A pad ring drawn out here would be half over
+ * the parapet and half over six hundred metres of nothing.
+ *
+ * A rail is also the better object. It says which way the thing is going to
+ * leave, it explains the catapult, and pointing it off the edge is the whole
+ * invitation.
+ */
+function railParts(
+  pad: VehiclePad,
+  accent: number,
+  paint: THREE.BufferGeometry[],
+  post: THREE.BufferGeometry[],
+  column: THREE.BufferGeometry[],
+): void {
+  const py = pad.y + 0.03;
+  const c = Math.cos(pad.yaw);
+  const sn = Math.sin(pad.yaw);
+  const wx = (lx: number, lz: number) => pad.x + lx * c + lz * sn;
+  const wz = (lx: number, lz: number) => pad.z - lx * sn + lz * c;
+  const L = GLIDER.railLength * 0.7;
+
+  for (const side of [-1, 1]) {
+    part(
+      post, new THREE.BoxGeometry(0.26, 0.2, L), 0x333a46,
+      wx(side * 1.15, 0), py + 0.1, wz(side * 1.15, 0),
+      0, pad.yaw, 0,
+    );
+    // A pair of low stanchions at the inboard end, to stand the tail on.
+    part(
+      post, new THREE.CylinderGeometry(0.1, 0.15, 0.9, 6), 0x333a46,
+      wx(side * 1.15, L * 0.42), py + 0.55, wz(side * 1.15, L * 0.42),
+    );
+    lit(
+      paint, new THREE.SphereGeometry(0.17, 8, 6), accent,
+      wx(side * 1.15, L * 0.42), py + 1.05, wz(side * 1.15, L * 0.42),
+    );
+  }
+
+  // The centre stripe, running out to the lip: the direction of travel.
+  lit(
+    paint, new THREE.BoxGeometry(0.36, 0.05, L * 1.02), accent,
+    wx(0, -L * 0.06), py + 0.04, wz(0, -L * 0.06),
+    0, pad.yaw, 0,
+  );
+
+  lit(column, new THREE.CylinderGeometry(1.5, 2.6, 40, 12, 1, true), accent, pad.x, py + 20, pad.z);
 }
 
 /**
@@ -1961,8 +1995,15 @@ function buildPad(
  * Additive, unlit, fog-free and fading out with height, with a slow travelling
  * band so it reads as alive rather than as a decal. It brightens at night —
  * `uNight` — for the same reason every lamp in the city does.
+ *
+ * One material for all three columns: the accent arrives on the `color`
+ * attribute rather than in a uniform, which is the only reason three pads on
+ * opposite sides of the island can be a single draw. `vertexColors` on a
+ * `ShaderMaterial` gets `#define USE_COLOR` and the `attribute vec3 color`
+ * declaration from three's own prefix, so this shader must not declare it
+ * again.
  */
-function padColumnMaterial(accent: number): THREE.ShaderMaterial {
+function padColumnMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     name: "EmpyreanPadColumn",
     transparent: true,
@@ -1970,15 +2011,17 @@ function padColumnMaterial(accent: number): THREE.ShaderMaterial {
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
     fog: false,
+    vertexColors: true,
     uniforms: {
       uTime: { value: 0 },
       uNight: { value: 1 },
-      uColor: { value: new THREE.Color(accent) },
     },
     vertexShader: /* glsl */ `
       varying float vH;
+      varying vec3 vCol;
       void main() {
         vH = uv.y;
+        vCol = color;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -1986,13 +2029,13 @@ function padColumnMaterial(accent: number): THREE.ShaderMaterial {
       precision highp float;
       uniform float uTime;
       uniform float uNight;
-      uniform vec3 uColor;
       varying float vH;
+      varying vec3 vCol;
       void main() {
         float fade = pow(1.0 - vH, 2.2);
         float band = 0.5 + 0.5 * sin((vH - uTime * 0.11) * 22.0);
         float a = fade * (0.22 + 0.18 * band) * uNight;
-        gl_FragColor = vec4(uColor * (0.9 + band * 0.5), a);
+        gl_FragColor = vec4(vCol * (0.55 + band * 0.3), a);
       }
     `,
   });

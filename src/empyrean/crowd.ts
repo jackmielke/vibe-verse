@@ -3,9 +3,26 @@
  *
  * Several hundred of them, walking the pavement graph in `cityplan.ts` with
  * somewhere to actually be: a shop door, the Beacon, the tram platform, a
- * bench in the Terraces, a stretch of rim rail with four hundred metres of
+ * wide kerb in the Bazaar, a stretch of rim rail with four hundred metres of
  * nothing under it. They path there, they arrive, they do something for a
  * while, and then they pick somewhere else.
+ *
+ * ## The mix, which is the whole point
+ *
+ * At any moment about seventy per cent of them are walking, seventeen are
+ * standing — outside a shop, at a platform, in a pair facing each other — six
+ * are sitting and five are on the rim rail. That distribution is the deliverable.
+ * Push the errands longer and everyone is permanently in transit, which reads
+ * as a commute; push the dwells longer and the pavement is a waxwork. Neither
+ * is visible in a screenshot, so `src/test/empyreanCrowd.test.ts` measures it
+ * through `nearest`: who is standing here, and are they still here in five
+ * seconds.
+ *
+ * Sitting and leaning are the two long dwells and they draw from the same
+ * pool, so on fixed weights they take turns winning — a hundred people on the
+ * rim and nobody sitting for two minutes, then the reverse. Each is therefore
+ * damped by how many are already doing it (`satiate`), which is both what
+ * stabilises the mix and what a full bench does.
  *
  * ## Why the crowd is the performance story of this world
  *
@@ -1124,6 +1141,14 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
    * -------------------------------------------------------------------- */
 
   let daylight = 1;
+  /* How much of the crowd should be sitting and how much on the rail. Not
+     quotas — the falloff below is soft — but the numbers the mix settles on. */
+  let sitTarget = 40;
+  let leanTarget = 34;
+  const satiate = (have: number, want: number): number => {
+    const t = have / Math.max(1, want);
+    return 1 / (1 + t * t);
+  };
 
   const pickDestination = (i: number) => {
     // Eight candidates, best score wins: district pull for the hour, a taste
@@ -1137,8 +1162,19 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       const pull = DISTRICT_PULL[DISTRICT_IDS[graph.district[node]] ?? "core"];
       const kind = dests.kind[c];
       let score = (pull?.base ?? 1) + (pull?.dusk ?? 0) * (1 - daylight);
-      if (kind === D_RIM) score *= 2.1 * (0.5 + daylight * 0.9);
-      if (kind === D_SIT) score *= 1.5 * (0.6 + daylight * 0.7);
+      /* Damped by how many people are already doing it.
+       *
+       * Sitting and leaning on the rail are the two long dwells, they draw
+       * from the same pool, and left to compete on a fixed weight they take
+       * turns winning: a hundred people on the rim and nobody on a bench for
+       * two minutes, then the reverse. Nothing about that is visible as a
+       * bug and all of it is visible as a city that keeps changing its mind.
+       *
+       * So the weight falls off as the share fills, which halves at target
+       * and collapses past it — a bench nobody is on is worth more than the
+       * tenth seat on a full one, which is also true of benches. */
+      if (kind === D_RIM) score *= 5.5 * (0.5 + daylight * 0.9) * satiate(leanCount, leanTarget);
+      if (kind === D_SIT) score *= 1.1 * (0.6 + daylight * 0.7) * satiate(sitCount, sitTarget);
       if (kind === D_DOOR) score *= 1.25;
       if (kind === D_TRAM) score *= 0.7;
       /* Sharply local, except for the two things people cross a city for.
@@ -1222,11 +1258,11 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     switch (kind) {
       case D_RIM:
         aState[i] = ST_LEAN;
-        aTimer[i] = rng.range(50, 150);
+        aTimer[i] = rng.range(40, 110);
         break;
       case D_SIT:
         aState[i] = ST_SIT;
-        aTimer[i] = rng.range(60, 190);
+        aTimer[i] = rng.range(40, 110);
         break;
       case D_LANDMARK:
         aState[i] = ST_STAND;
@@ -1349,6 +1385,8 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
    * -------------------------------------------------------------------- */
 
   let liveCount = 0;
+  let sitCount = 0;
+  let leanCount = 0;
   let clock = 0;
 
   const update = (ctx: FrameContext) => {
@@ -1374,6 +1412,8 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
        forty people on a whole island. */
     const cap = ctx.quality === "low" ? Math.min(MAX, POP.low) : MAX;
     const target = Math.round(cap * (0.74 + 0.26 * daylight));
+    sitTarget = target * 0.085;
+    leanTarget = target * (0.03 + 0.06 * daylight);
 
     const cam = ctx.camera.position;
     const px = ctx.player.position;
@@ -1396,6 +1436,8 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     // counted.
     const crowded = liveCount;
     let live = 0;
+    let nowSit = 0;
+    let nowLean = 0;
 
     /* ---- everybody ------------------------------------------------------ */
     for (let i = 0; i < MAX; i++) {
@@ -1409,6 +1451,8 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         continue;
       }
       live++;
+      if (aState[i] === ST_SIT) nowSit++;
+      else if (aState[i] === ST_LEAN) nowLean++;
 
       const state = aState[i];
       aTimer[i] -= dt;
@@ -1582,13 +1626,13 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       }
 
       /* -- pose blending ------------------------------------------------- */
-      const wantSit = aState[i] === ST_SIT ? 1 : 0;
-      const wantLean = aState[i] === ST_LEAN ? 1 : 0;
+      const toSit = aState[i] === ST_SIT ? 1 : 0;
+      const toLean = aState[i] === ST_LEAN ? 1 : 0;
       if (aLookT[i] > 0) aLookT[i] -= dt;
       const wantLook = aLookT[i] > 0 ? 1 : 0;
       const blend = Math.min(1, dt * 3.2);
-      aSit[i] += (wantSit - aSit[i]) * blend;
-      aLean[i] += (wantLean - aLean[i]) * blend;
+      aSit[i] += (toSit - aSit[i]) * blend;
+      aLean[i] += (toLean - aLean[i]) * blend;
       aLook[i] += (wantLook - aLook[i]) * blend;
 
       /* -- draw ---------------------------------------------------------- */
@@ -1603,22 +1647,8 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     }
 
     liveCount = live;
-    if (typeof process !== "undefined" && process.env.CROWD_DEBUG && Math.round(clock * 60) % 1800 === 0) {
-      let w = 0, st = 0, si = 0, le = 0, wa = 0, pa = 0, lot = 0, off = 0;
-      for (let i = 0; i < MAX; i++) {
-        if (!aActive[i]) continue;
-        const k = surfaceAt(ax[i], az[i]).kind;
-        if (k === "lot") lot++;
-        if (k === "void" || k === "parapet") off++;
-        if (aState[i] === ST_WALK) w++;
-        else if (aState[i] === ST_STAND) st++;
-        else if (aState[i] === ST_SIT) si++;
-        else if (aState[i] === ST_LEAN) le++;
-        else if (aState[i] === ST_PAUSE) pa++;
-        else wa++;
-      }
-      console.log(`t=${clock.toFixed(0)} live=${live} walk=${w} stand=${st} sit=${si} lean=${le} pause=${pa} wait=${wa} lot=${lot} off=${off}`);
-    }
+    sitCount = nowSit;
+    leanCount = nowLean;
 
     /* ---- a few paths, and only a few ------------------------------------ */
     for (let k = 0; k < REPATH_BUDGET && repathCount > 0; k++) {

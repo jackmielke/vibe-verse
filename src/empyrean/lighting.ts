@@ -39,6 +39,13 @@
  * including one sitting on it, and falls to 0 through the twenty minutes after
  * it sets. **`postfx.setDaylight` wants the second one.**
  *
+ * It is worth knowing that the same confusion is live elsewhere in the world:
+ * `buildings.ts` ends its masonry shader with
+ * `col = mix(col * vec3(0.26, 0.28, 0.42), col, uDaylight)` and feeds it the
+ * lamp switch, so at the signature hour every facade in the city is multiplied
+ * by about 0.48 before the grade ever sees it. That is most of why a shadowed
+ * wall reads as a silhouette, and no amount of hemisphere here can reach it.
+ *
  * ## One shadow camera, not a cascade
  *
  * A cascade is the right answer in most worlds and the wrong one here, for
@@ -145,6 +152,36 @@ interface DayKey {
  * The rim is the exception. It is the cold kicker from the anti-sun side and
  * it exists to keep a character from being a black cut-out against a very
  * bright sky, which is a job with no colour in the palette that matches it.
+ *
+ * ## `hemiI` went up by about 1.7× and that is the point of this table
+ *
+ * The first pass keyed the sky fill off the key light — 1.75 against a sun of
+ * 3.2 at the signature hour, a ratio of 0.55 — and that is backwards for this
+ * place. A sun on the horizon is going through forty times the air it goes
+ * through at noon; the *dome* is the light source at dusk, and the sun is a
+ * warm rim on top of it. So the ratio is now highest at sunset (3.05 against
+ * 3.2) and lowest at noon (2.85 against 4.7), which is the shape of the real
+ * thing rather than a constant fraction of the key.
+ *
+ * Driven in a browser, 1.75 put the snowfield's own shading *underneath*
+ * `terrain.ts`'s floor of `vec3(0.30, 0.26, 0.38)`, so four kilometres of
+ * mountains rendered as one flat lavender plate. At 3.05 the ranges have
+ * relief again. Nothing else changed to make that happen.
+ *
+ * `exposure` came down with it — a table of light this much brighter through
+ * an unchanged grade is a blown one — and `fogD` came down too, because the
+ * long views were fading into the fog colour a good deal sooner than a
+ * beautiful aerial perspective wants to.
+ *
+ * ## What this table does *not* reach
+ *
+ * Only `terrain.ts`, the standard-material half of `props.ts`, `vehicles.ts`
+ * and the player's own body are lit by these lights. `buildings.ts`,
+ * `keel.ts`, `crowd.ts`, `traffic.ts` and `interiors.ts` all build raw
+ * `ShaderMaterial`s with `lights: false` and hand-write their own ambient;
+ * `streets.ts` takes `getShadowMask()` from the rig here and nothing else.
+ * So turning `hemiI` up does not brighten a facade, and if the facades are
+ * the thing that is wrong, this is not the file it is wrong in.
  */
 const KEYS: DayKey[] = [
   {
@@ -235,7 +272,15 @@ export function makeDayLook(): DayLook {
 /** The `sunDir.y` the key light is never allowed below. About three degrees. */
 const KEY_HEIGHT_FLOOR = 0.055;
 
-/** What the snow and the ice bounce back up. Cold, and never neutral. */
+/**
+ * What the snow and the ice bounce back up. Cold, and never neutral.
+ *
+ * Brighter than it looks like it should be, and mixed less far into the fog
+ * colour than it was (0.42, from 0.5), because a hemisphere light's ground
+ * half is the *only* fill a vertical surface gets from below — the sky half
+ * is weighted out of it at `n.y = 0`. A dark ground colour is therefore a
+ * dark wall, and this city is standing on pale stone over a frozen lake.
+ */
 const GROUND_VIOLET = /*@__PURE__*/ new THREE.Color().setRGB(0.42, 0.36, 0.55, THREE.SRGBColorSpace);
 
 /**

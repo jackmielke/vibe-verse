@@ -142,6 +142,41 @@ describe("the crowd", () => {
     expect(moved / seen).toBeGreaterThan(0.5);
   }, 30000);
 
+  it("is neither a conveyor belt nor a museum", () => {
+    /* The failure this guards is not a crash, it is a mood. Tune the errands
+       a little too long and every single body is in transit for ever, which
+       reads as a commute; tune the dwells too long and the pavement is a
+       waxwork. Both look completely fine in a screenshot.
+
+       Measured through the only door there is: note who is standing where,
+       wait five seconds, and ask who is still standing there. */
+    const probes: Array<{ id: number; x: number; z: number }> = [];
+    for (let a = 0; a < 90; a++) {
+      const ang = (a / 90) * Math.PI * 2;
+      for (const r of [70, 150, 210, 270, 320]) {
+        const hit = crowd.nearest(Math.cos(ang) * r, Math.sin(ang) * r, 16);
+        if (hit) probes.push({ id: hit.id, x: hit.x, z: hit.z });
+      }
+    }
+    expect(probes.length).toBeGreaterThan(80);
+
+    for (let f = 0; f < 300; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+    }
+
+    let stayed = 0;
+    for (const p of probes) {
+      const hit = crowd.nearest(p.x, p.z, 1.1);
+      if (hit && hit.id === p.id) stayed++;
+    }
+    const still = stayed / probes.length;
+    // Somebody is always talking outside a shop, sitting, or on the rail…
+    expect(still).toBeGreaterThan(0.08);
+    // …and the street is never a waiting room.
+    expect(still).toBeLessThan(0.7);
+  }, 30000);
+
   it("answers `nearest` honestly", () => {
     const hit = crowd.nearest(0, 0, 900);
     expect(hit).not.toBeNull();
@@ -366,19 +401,3 @@ describe("the traffic", () => {
 });
 
 
-describe("mix", () => {
-  it("measures", () => {
-    const c = makeCtx();
-    const crowd = buildCrowd({ quality: "high", seedSalt: "n" });
-    let t = 0;
-    for (let f = 0; f < 60 * 300; f++) {
-      c.time += c.dt;
-      const t0 = performance.now();
-      crowd.update?.(c);
-      t += performance.now() - t0;
-    }
-    console.log("crowd ms/frame", (t / (60 * 300)).toFixed(3), "count", crowd.count);
-    crowd.dispose();
-    expect(1).toBe(1);
-  }, 200000);
-});

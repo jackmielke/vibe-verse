@@ -32,7 +32,7 @@ import {
   type VehiclesHandle,
 } from "@/empyrean/vehicles";
 import { DECKS, ISLAND_Y, KILL_Y, LAKE_R, PLATEAU_R, WATER_Y } from "@/empyrean/config";
-import { surfaceAt } from "@/empyrean/cityplan";
+import { HALO_R, LANDMARKS, surfaceAt } from "@/empyrean/cityplan";
 import { GRAVITY } from "@/lib/worldPhysics";
 
 /* -------------------------------------------------------------------------
@@ -248,17 +248,21 @@ describe("empyrean vehicles — boarding round-trips", () => {
     const glider = by("glider");
     const lifter = by("lifter");
 
-    // The Launch Terrace is at r = 300 on the north-east avenue.
-    expect(Math.hypot(skiff.x, skiff.z)).toBeGreaterThan(280);
-    expect(Math.hypot(skiff.x, skiff.z)).toBeLessThan(PLATEAU_R);
+    // The skiff is out at the Launch Terrace, inside the landmark's own
+    // cleared radius so nothing else is ever placed on top of it.
+    const terrace = LANDMARKS.find((l) => l.id === "launch")!;
+    expect(Math.hypot(skiff.x - terrace.x, skiff.z - terrace.z)).toBeLessThan(terrace.clear);
     expect(skiff.y).toBeCloseTo(ISLAND_Y, 0);
 
-    // The glider is on the first promenade ring, below the city deck.
+    // The glider is on the first promenade ring, below the city deck. Read
+    // off `DECKS` rather than written down: the rings have been resized.
     expect(glider.y).toBeCloseTo(DECKS[1].y, 1);
     expect(Math.hypot(glider.x, glider.z)).toBeGreaterThan(PLATEAU_R);
+    expect(surfaceAt(glider.x, glider.z).kind).toBe("promenade");
 
     // The lifter is on the Halo plaza.
-    expect(Math.hypot(lifter.x, lifter.z)).toBeLessThan(56);
+    expect(Math.hypot(lifter.x, lifter.z)).toBeLessThan(HALO_R);
+    expect(surfaceAt(lifter.x, lifter.z).kind).toBe("plaza");
     expect(lifter.y).toBeCloseTo(ISLAND_Y, 1);
   });
 
@@ -601,9 +605,12 @@ describe("the skiff — heavier than the jetpack", () => {
   it("settles on its skids instead of dropping onto them", () => {
     const v = build();
     board(v, "skiff");
-    // Up, out over the deck, then let go of everything.
-    fly(v, input({ forward: 0.3, lift: 1 }), 6, 60);
-    fly(v, STILL, 30, 60, 6);
+    // Up, a short way along the deck, then let go of everything. Kept short
+    // on purpose: `DECKS` belongs to `config.ts` and the rim has moved in
+    // before, so a test that needs forty metres of deck is a test that breaks
+    // when somebody else narrows a promenade.
+    fly(v, input({ forward: 0.12, lift: 1 }), 4, 60);
+    fly(v, STILL, 30, 60, 4);
     const r = v.riding()!;
     expect(r.altitude).toBeLessThan(0.6);
     expect(r.lines.join(" ")).toContain("skids");
@@ -648,8 +655,17 @@ describe("empyrean vehicles — the system contract", () => {
     const v = build();
     expect(v.name).toBe("vehicles");
     expect(v.group).toBeInstanceOf(THREE.Object3D);
-    // Three craft and three pads.
+    // Three craft, and one merged mesh per pad program.
     expect(v.group.children.length).toBe(6);
+
+    /* Three vehicles and three pads, merged: a handful of meshes, not thirty.
+     * `empyreanBudget.test.ts` holds the real ceiling at twenty draws; this is
+     * the same rule stated where somebody editing the geometry will see it. */
+    let draws = 0;
+    v.group.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) draws += 1;
+    });
+    expect(draws).toBeLessThanOrEqual(14);
 
     const geos = new Set<THREE.BufferGeometry>();
     v.group.traverse((o) => {

@@ -112,8 +112,41 @@ function pickQuality(): QualityTier {
   return coarse || small ? "low" : "high";
 }
 
-/** How fast the clock runs. A full day in twenty real minutes. */
-const DAY_SECONDS = 1200;
+/**
+ * How fast the clock runs — and why it does not run at a constant rate.
+ *
+ * The whole world is painted at one hour. The reference is a sunset; the sky
+ * palette, the glass, the water's analytic reflection and the rock's bounce
+ * light were all tuned at `dayPhase` 0.75, and it is the reason anybody would
+ * open the route. A linear clock at any speed spends 96% of its time not being
+ * that, and a visitor who stays five minutes mostly sees dusk turning into
+ * night.
+ *
+ * But a world with no clock at all is worse: night here is a city of lit glass
+ * over a black lake under an aurora, and it would be a waste never to reach
+ * it. So the clock *dwells*. `RATE` is how many phase-units pass per second at
+ * the fastest, and `dwell()` slows it to a crawl through the golden hour and
+ * lets it run through the middle of the night. A full circuit takes about
+ * forty minutes, of which roughly half is spent within sight of the hour the
+ * place was designed at.
+ */
+const DAY_SECONDS = 2400;
+
+/**
+ * How fast time passes at a given hour, 0..1 of full rate.
+ *
+ * A cosine bump centred on sunset, floored so the clock never actually stops —
+ * a frozen sky is a bug report, and somebody watching for it would see the
+ * light stop changing rather than a beautiful hour holding.
+ */
+function dwell(phase: number): number {
+  const SUNSET = 0.75;
+  let d = Math.abs(((phase - SUNSET) % 1) + 1) % 1;
+  if (d > 0.5) d = 1 - d;
+  // Full rate more than a fifth of a day away; a fifth of it at the hour.
+  const near = 1 - Math.min(1, d / 0.2);
+  return 1 - 0.8 * near * near;
+}
 
 /** Where you are, said out loud. Cheap, and it does a lot for the HUD. */
 function placeOf(p: THREE.Vector3): { name: string; accent: string } {
@@ -236,7 +269,13 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const vehicles = add(buildVehicles(build));
   // A world that opens in whatever weather the clock happened to land on is a
   // world whose card art is a different picture every time it is captured.
-  if (shotMode) weather.force("high-cloud");
+  if (shotMode) {
+    /* Pinned, not merely started, at the signature hour. A capture takes
+     * thirty seconds or more under a software rasteriser, and a clock that
+     * runs during it makes the card art a different picture every time it is
+     * taken — which is indistinguishable from the world having changed. */
+    weather.force("high-cloud");
+  }
 
   /* Who casts.
    *
@@ -447,6 +486,12 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   let hudTimer = 0;
   let mapTimer = 0;
   let nearest: Interactable | null = null;
+  /** Held, not rebuilt: see the scan in the loop. */
+  const offerGroups: readonly Interactable[][] = [
+    activities.interactables(),
+    interiors.interactables(),
+    vehicles.interactables(),
+  ];
   const marks: MapMark[] = [];
   const packPos = new THREE.Vector3();
 
@@ -462,7 +507,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     /* ---- clock ---- */
     ctx.time = time;
     ctx.dt = dt;
-    ctx.dayPhase = (ctx.dayPhase + dt / DAY_SECONDS) % 1;
+    if (!shotMode) ctx.dayPhase = (ctx.dayPhase + (dt / DAY_SECONDS) * dwell(ctx.dayPhase)) % 1;
     const pal = skyPalette(ctx.dayPhase);
     ctx.daylight = pal.daylight;
     sunDirFor(ctx.dayPhase, ctx.sunDir);
@@ -611,18 +656,26 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     audio?.setTram(traffic.tram.x, traffic.tram.y, traffic.tram.z, true);
 
     /* ---- interaction ---- */
+    /* Scanned without building a list.
+     *
+     * Each system hands back a stable array whose entries it mutates in place
+     * — a board prompt follows its craft, a "stop" prompt follows the player —
+     * so the arrays can be held from build time and walked. Spreading the
+     * three into a new array every frame, which is what this did first, is
+     * three allocations sixty times a second in the one file whose header
+     * says not to allocate in the loop. */
     nearest = null;
     let bestD = Infinity;
-    const offers = [
-      ...activities.interactables(),
-      ...interiors.interactables(),
-      ...vehicles.interactables(),
-    ];
-    for (const it of offers) {
-      if (it.enabled && !it.enabled()) continue;
-      const d = Math.hypot(it.x - flyer.position.x, it.z - flyer.position.z);
-      const dy = Math.abs(it.y - flyer.position.y);
-      if (d < it.radius && dy < 6 && d < bestD) {
+    for (let g = 0; g < offerGroups.length; g++) {
+      const group = offerGroups[g];
+      for (let i = 0; i < group.length; i++) {
+        const it = group[i];
+        if (it.enabled && !it.enabled()) continue;
+        const dx = it.x - flyer.position.x;
+        const dz = it.z - flyer.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d >= it.radius || d >= bestD) continue;
+        if (Math.abs(it.y - flyer.position.y) >= 6) continue;
         bestD = d;
         nearest = it;
       }

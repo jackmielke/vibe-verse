@@ -65,3 +65,6 @@ shots/
 
 # Agent scratch; never committed.
 __zz_compile.mjs
+
+# Agent scratch.
+.tmp-console.mjs

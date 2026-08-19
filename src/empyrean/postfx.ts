@@ -24,22 +24,56 @@
  * disc, the glass slabs and four hundred terrace lamps write well over 1, and
  * the bloom is the only thing that knows what to do about that.
  *
- * ## What changed, and the one number to know about
+ * ## The tone curve, and why it is not the curve fit any more
  *
- * **The chain now encodes sRGB.** It did not before, and could not have: a
- * `RawShaderMaterial` gets no prefix from three, so `linearToOutputTexel` is
- * not in scope and nothing was converting. Linear values were being written
- * straight into an sRGB framebuffer, which is a gamma-2.2 crush of the
- * midtones — survivable at noon, and the reason a night grade was impossible,
- * because everything below 20% went to black and stayed there.
+ * **The chain encodes sRGB.** It did not always: a `RawShaderMaterial` gets no
+ * prefix from three, so `linearToOutputTexel` is not in scope and nothing was
+ * converting. Linear values were being written straight into an sRGB
+ * framebuffer, which is a gamma-2.2 crush of the midtones.
  *
- * Fixing it would have brightened the whole world, so the fix comes with its
- * inverse: exposure drops from 0.94 to 0.62 and a post-tonemap gamma of 1.45
- * goes in behind it. Those two numbers are not taste, they are a curve fit —
- * `encode(aces(0.62·L)^1.45)` tracks the old `aces(0.94·L)` to within two
- * points across the whole range (0.10 → 0.14, 0.5 → 0.597, 2.0 → 0.89) while
- * being a correct pipeline with shadow detail in it. `setExposure` and
- * `setContrast` are the two knobs; move exposure first.
+ * The encode arrived with a compensation designed to preserve the old look —
+ * `exposure 0.62` and a post-tonemap gamma of `1.45`, fitted so that
+ * `encode(aces(0.62·L)^1.45)` tracked the old uncorrected `aces(0.94·L)` to
+ * within two points. The fit was accurate and the goal was wrong: what it
+ * preserved was the crush. Driven in a browser it put a shadowed facade at
+ * about 31/255 and the median of an entire dusk street at 32 — a night
+ * photograph with a sunset in the top third of it.
+ *
+ * So the curve is now chosen against frames rather than against the old one:
+ *
+ * - **`uContrast` 1.45 → 1.10.** A flat post-ACES gamma barely touches
+ *   anything above 0.6 (0.9 moves by three points) and does nearly all of its
+ *   work below 0.3, so it is exactly the wrong knob to hold the highlights
+ *   with and exactly the right one to stop crushing the shadows with.
+ * - **`uShadowGain`, new, 0.55 over a 0.30 luma range.** A *multiplicative*
+ *   lift: black times anything is still black, so it recovers a facade
+ *   without putting a floor under the frame the way `uLift` does, and it
+ *   keeps the channel ratios, so a violet shadow stays violet. Between them
+ *   the street's median goes 32 → 53 while its 1st percentile moves 11 → 12.
+ * - **Exposure comes from `lighting.ts` every frame** and its table dropped
+ *   with this (0.62 → 0.52 at the signature hour), because the sky fill on
+ *   the other side of the same change went up by 1.7×.
+ *
+ * `setExposure`, `setContrast` and `setShadowGain` are the knobs, in that
+ * order.
+ *
+ * ## What washed the long views out, and what did not
+ *
+ * From a few hundred metres up the whole frame used to go low-contrast
+ * pink-lavender. Measured with the passes switched off one at a time, the
+ * bloom and the god rays together account for about ten codes of it — they
+ * were the obvious suspects and they were nearly innocent. They are still
+ * trimmed here (shafts 0.85 → 0.6 over a 1.2 → 1.45 threshold, bloom
+ * threshold 1.05 → 1.18) because the sunward half of an aerial frame does not
+ * need the help, but that is taste and not the fix.
+ *
+ * The rest of it is not in this file. `terrain.ts`'s snow shader ends with
+ * `gl_FragColor.rgb = max(rgb, vec3(0.30, 0.26, 0.38))`, *after* the fog
+ * chunk — so four kilometres of snowfield is pinned to one flat linear value
+ * that no fog can fade and no grade can put a gradient back into. Raising the
+ * sky fill lifted the snow's own shading above that floor at the signature
+ * hour, which is why the ranges have relief again; at night and at a low sun
+ * it still shows. It belongs to whoever owns `terrain.ts`.
  *
  * ## What is in the chain and why
  *
@@ -507,9 +541,9 @@ export interface PostFx {
   setSunDirection(dir: THREE.Vector3): void;
   /** 0 at night, 1 in full day. Re-tunes the whole grade. */
   setDaylight(v: number): void;
-  /** Straight from `lighting.exposure`. ~0.62 by day, ~1.0 at night. */
+  /** Straight from `lighting.exposure`. ~0.52 by day, ~0.94 at night. */
   setExposure(v: number): void;
-  /** Post-tonemap gamma. 1.45 by default; see the header before moving it. */
+  /** Post-tonemap gamma. 1.10 by default; see the header before moving it. */
   setContrast(v: number): void;
   /** 0..1 multiplier on the occlusion. 0 turns SSAO off outright. */
   setAmbientOcclusion(v: number): void;
@@ -660,10 +694,11 @@ export function buildPostFx(
   const preMat = mk("EmpyreanBloomPrefilter", BLOOM_PREFILTER, {
     uScene: { value: sceneRT.texture },
     uTexel: { value: new THREE.Vector2() },
-    // Above 1, so only things that genuinely exceed white bleed: the sun, the
-    // lamps, the jets and the crowns of the towers. Set under 1 it also caught
-    // the sky and the snow, and standing anywhere near a lit surface turned
-    // the frame into fog.
+    // Well above 1, so only things that genuinely exceed white bleed: the
+    // sun, the lamps, the jets and the crowns of the towers. Set under 1 it
+    // also caught the sky and the snow, and standing anywhere near a lit
+    // surface turned the frame into fog. At 1.05 it was still catching the
+    // gold band low in the sky, which is most of an aerial frame.
     uThreshold: { value: 1.18 },
     uKnee: { value: 0.55 },
   });
@@ -850,7 +885,13 @@ export function buildPostFx(
           // so fade rather than stop.
           const off = Math.max(Math.abs(nx), Math.abs(ny));
           const onScreen = 1 - THREE.MathUtils.smoothstep(off, 1.0, 1.9);
-          /* And nothing at all once the sun is properly under the horizon.
+          /* 0.6, down from 0.85: measured against the same frame with the
+           * pass switched off, the shafts were adding about nine codes to
+           * the sunward half of an aerial view and nothing anybody would
+           * call a shaft. They earn their keep at street level, where the
+           * sun is behind a slab, and that is what this is tuned for.
+           *
+           * And nothing at all once the sun is properly under the horizon.
            * The band is deliberately below zero: at the hour this world is
            * painted at the sun sits *on* the horizon, which is the single best
            * moment for shafts, and a threshold that starts at zero would have
