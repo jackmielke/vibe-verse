@@ -1106,10 +1106,24 @@ export const worldsOfKind = (kind: WorldKind): WorldEntry[] =>
 /** Everything you can actually play or walk around in — not the app's own UI. */
 export const PLAYABLE = WORLDS.filter((w) => w.kind !== "tool");
 
-/** Routes that own the whole viewport, aliases included. */
-export const CHROMELESS_ROUTES: string[] = WORLDS.filter((w) => w.chromeless).flatMap(
-  routesOf,
-);
+/**
+ * Routes that own the whole viewport, aliases included.
+ *
+ * **Pathnames, not routes.** `AppChrome` tests these against `useLocation()`'s
+ * `pathname`, which never carries a query — so an entry like
+ * `/drop-zero?mode=classic` matched nothing, and Drop Zero shipped with the
+ * global nav pill sitting on its crosshair and *no* home button, because the
+ * chromeless branch is also the branch that hands a fullscreen world its only
+ * way out. Chromeless is a property of the page, so every query variant of the
+ * same path inherits it.
+ */
+export const CHROMELESS_ROUTES: string[] = [
+  ...new Set(
+    WORLDS.filter((w) => w.chromeless).flatMap((w) =>
+      routesOf(w).map((r) => r.split("?")[0]),
+    ),
+  ),
+];
 
 /** Worlds that stamp the passport, plus the one you have to earn. */
 export interface PassportRoute {

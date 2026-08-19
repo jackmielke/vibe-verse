@@ -82,6 +82,47 @@ const SHOTS = {
     },
   },
   /**
+   * The lido from the air. It is the one POI that is a place rather than a
+   * street, so the vantage that reads it is the one that shows the slide
+   * tower against the wave pool with the lazy river wrapping both.
+   */
+  lido: {
+    settle: SETTLE,
+    pose: (e) => {
+      const l = e.ctx.services.lido;
+      if (!l) {
+        const pos = V(e, 0, 120, 220);
+        return { pos, ...aim(pos, V(e, 0, 20, 0)) };
+      }
+      const r = Math.max(l.radius, 70);
+      const pos = V(e, l.center.x - r * 0.95, l.decks.main + r * 0.62, l.center.z + r * 1.05);
+      return { pos, ...aim(pos, V(e, l.center.x, l.decks.main + 6, l.center.z)) };
+    },
+  },
+  /**
+   * Standing on the lido's main deck. Same argument as `street`: pose the
+   * PLAYER's feet on the deck — a metre of clearance is a metre of permanent
+   * falling, and the engine derives the camera from the player anyway.
+   */
+  lidodeck: {
+    settle: SETTLE,
+    pose: (e) => {
+      const l = e.ctx.services.lido;
+      if (!l) {
+        const pos = V(e, 0, 2, 40);
+        return { pos, ...aim(pos, V(e, 0, 2, 0)) };
+      }
+      // Out towards the edge of the deck, looking back across the water, so
+      // the frame carries pool in the middle and structure behind it.
+      const r = Math.max(l.radius, 40) * 0.6;
+      const a = 2.3;
+      const gx = l.center.x + Math.cos(a) * r;
+      const gz = l.center.z + Math.sin(a) * r;
+      const pos = V(e, gx, l.decks.main + 0.06, gz);
+      return { pos, ...aim(pos, V(e, l.center.x, pos.y + 2.2, l.center.z)) };
+    },
+  },
+  /**
    * Eye height in the plaza. Materials, trim, shadows — the hard test.
    *
    * `pos` is the PLAYER's feet, not the camera: the engine derives the camera

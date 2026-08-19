@@ -107,12 +107,25 @@ describe("the passport", () => {
 describe("fullscreen worlds", () => {
   it("hides the app chrome on every URL a world answers on", () => {
     /* Arriving by an alias must not hand you a nav bar sitting on the
-       crosshair — /fps and /san-palmas are the same shooter. */
+       crosshair — /fps and /san-palmas are the same shooter.
+
+       Look it up the way `AppChrome` does: by PATHNAME. Comparing whole route
+       strings on both sides made this test tautological, and it passed for as
+       long as `/drop-zero?mode=classic` was in the list and `/drop-zero` was
+       the URL a player actually had — nav on the crosshair, and no home
+       button, since that is the same branch. */
     const chromeless = new Set(CHROMELESS_ROUTES);
     for (const w of WORLDS.filter((x) => x.chromeless)) {
       for (const route of routesOf(w)) {
-        expect(chromeless.has(route), `${route} keeps the nav`).toBe(true);
+        const pathname = route.split("?")[0];
+        expect(chromeless.has(pathname), `${route} keeps the nav`).toBe(true);
       }
+    }
+  });
+
+  it("lists no query strings — a pathname is all AppChrome ever gets", () => {
+    for (const route of CHROMELESS_ROUTES) {
+      expect(route.includes("?"), `${route} can never match a pathname`).toBe(false);
     }
   });
 });
