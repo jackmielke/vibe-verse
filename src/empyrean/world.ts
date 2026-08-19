@@ -795,6 +795,36 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       if (name === "body") body.visible = on;
     },
     names: () => systems.map((s) => s.name),
+    /**
+     * Every drawable in the world with its *world-space* bounding box.
+     *
+     * `hide` answers "which system is covering the screen"; this answers the
+     * next question, which is "and where is it, actually". A thing drawn in
+     * the wrong place looks exactly like a thing drawn in the wrong shape
+     * until you read the numbers — the towers hanging under the island were
+     * mistaken for the rock twice before anybody measured them.
+     */
+    bboxes: () => {
+      const out: Array<{ name: string; min: number[]; max: number[]; tris: number }> = [];
+      const walk = (o: THREE.Object3D, label: string) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.geometry) {
+          const b = new THREE.Box3().setFromObject(m);
+          const pos = m.geometry.getAttribute("position");
+          out.push({
+            name: `${label}/${m.name || m.type}`,
+            min: b.min.toArray().map((v) => Math.round(v)),
+            max: b.max.toArray().map((v) => Math.round(v)),
+            tris: Math.round(((m.geometry.index?.count ?? pos?.count ?? 0) / 3) * (m as THREE.InstancedMesh).count || (pos?.count ?? 0) / 3),
+          });
+        }
+        for (const c of o.children) walk(c, label);
+      };
+      walk(reflected, "reflected");
+      walk(detail, "detail");
+      walk(terrain.group, "terrain");
+      return out;
+    },
     room: () => interiors.inside(flyer.position.x, flyer.position.y, flyer.position.z),
     counts: () => ({
       systems: systems.length,

@@ -98,16 +98,22 @@ const VIEWS = {
   ring: { at: [119.5, 621, 69], look: [2.618, -0.12], dist: 5 },
   /** Under the towers of the core, looking straight up them. */
   spires: { at: [0, 621, 100], look: [0, -0.85], dist: 6 },
-  /** The rim by the Observatory, looking out over the edge and down. */
-  rim: { at: [0, 621, -306], look: [Math.PI, 0.16], dist: 8 },
-  /** The promenade one deck down, under the overhang. */
-  promenade: { at: [0, 598, 352], look: [0.4, 0.02], dist: 6 },
+  /** The west avenue's end at the rim, looking back up it at the city.
+      Not the Observatory: r=306 on that bearing is the *middle* of it, and
+      this used to be a very nice photograph of the inside of its staircase. */
+  rim: { at: [-330, 621, 0], look: [-Math.PI / 2, 0.16], dist: 8 },
+  /** The first promenade ring, under the overhang. r must be inside the
+      ring's own 7 m band (341–348) and y a metre above its deck; at 352/598
+      this hung in the step face between two rings, photographing a fascia
+      from a foot away. The rings moved when the skirt was halved. */
+  promenade: { at: [-344, 605, 0], look: [-Math.PI / 2 + 0.5, 0.0], dist: 6 },
   /** The whole skyline from off the south rim, at deck height. */
   skyline: { at: [0, 700, 640], look: [0, 0.05], dist: 18 },
   /** High and outside, looking down the avenues at the plan. */
   air: { at: [430, 1010, 430], look: [Math.PI / 4, 0.36], dist: 22 },
-  /** Under the keel, looking up at the city through the stalactites. */
-  under: { at: [0, 300, 300], look: [0, -0.62], dist: 16 },
+  /** Outside the rock and below the rim, looking up at the keel. At 300,300
+      this was *inside* the rock — the whole frame was one unlit flank. */
+  under: { at: [0, 250, 700], look: [0, -0.34], dist: 20 },
   /** On the ice, looking back up at the whole thing. */
   ice: { at: [0, 3, 1250], look: [0, -0.30], dist: 30 },
   /** The card composition, from the shot-mode camera. */

@@ -295,3 +295,44 @@ describe("the decks", () => {
     }
   });
 });
+
+/* -------------------------------------------------------------------------
+ * Nothing a building draws is below the ground it stands on
+ * ---------------------------------------------------------------------- */
+
+/**
+ * A building's lowest vertex is its pavement, and its pavement is the deck.
+ *
+ * `shopfront` took a height and a level and confused the two: a head at
+ * `height - 0.95` is a head at y = 3.55, which in a world whose ground is six
+ * hundred metres up is most of a kilometre below the shop. Every glazed bay,
+ * pilaster and signboard in the city was drawn stretched from just above the
+ * ice to the deck, and a hundred and five lots' worth of it hung under the
+ * island as a curtain of pale vertical slabs — photographed from four
+ * viewpoints, and diagnosed twice as the rock before anybody read a bounding
+ * box.
+ *
+ * Nothing else could see it. The lots were built, the towers stood, the draw
+ * calls and triangle counts were in budget, and from above — which is where
+ * the card art is taken — the city is perfect.
+ */
+describe("what the buildings draw", () => {
+  it("keeps every vertex at or above the deck", () => {
+    const buildings = buildBuildings(ctx);
+    const bad: string[] = [];
+    buildings.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.geometry) return;
+      m.geometry.computeBoundingBox();
+      const lo = m.geometry.boundingBox!.min.y;
+      if (lo < ISLAND_Y - 2) bad.push(`${m.name || m.type} reaches y=${lo.toFixed(1)}`);
+    });
+    /* And per lot, so a single stray shop is named rather than hidden inside
+       one merged mesh's bounding box. */
+    for (const l of buildings.lots) {
+      if (l.built && l.min.y < ISLAND_Y - 2) bad.push(`${l.id} (${l.use}) reaches y=${l.min.y.toFixed(1)}`);
+    }
+    buildings.dispose();
+    expect(bad.slice(0, 8), `${bad.length} pieces hang below the deck`).toEqual([]);
+  });
+});

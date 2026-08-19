@@ -1569,8 +1569,17 @@ function shopfront(
 ): void {
   const b = pen.stone;
   const RISER = 0.62;
-  const HEAD = Math.min(height - 0.95, 3.55);
-  const FASCIA = height - 0.85;
+  /* All four are **absolute world Y**, and it matters: `height` is the
+     shopfront's own height, so a head at `height - 0.95` is a head 0.95 m
+     below the pavement of a world whose ground is six hundred metres up.
+     Every use below reads them as absolute — `FASCIA - yLo` is used as a UV
+     span, which is only a height if `FASCIA` is a level — and for a while two
+     of them were not. The city grew a curtain of stretched shopfront hanging
+     from the underside of the island down to four metres above the ice: a
+     hundred and five lots of it, visible from every viewpoint that looked at
+     the rock, and mistaken for the rock twice. */
+  const HEAD = yLo + Math.min(height - 0.95, 3.55);
+  const FASCIA = yLo + height - 0.85;
   const SILL = yLo + RISER;
   const bays = Math.max(1, Math.round(f.len / 3.9));
   const bw = f.len / bays;
