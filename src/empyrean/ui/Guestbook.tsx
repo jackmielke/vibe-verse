@@ -87,7 +87,7 @@ export default function Guestbook() {
   };
 
   return (
-    <div className="w-full max-w-md rounded-3xl border border-white/25 bg-white/10 p-4 text-left shadow-[0_20px_80px_rgba(10,10,40,0.45)] backdrop-blur-xl">
+    <div className="w-full max-w-md rounded-[1.75rem] sm:rounded-3xl border border-white/25 bg-white/10 p-4 text-left shadow-[0_20px_80px_rgba(10,10,40,0.45)] backdrop-blur-xl">
       <div className="flex items-baseline justify-between">
         <p className="text-[10px] uppercase tracking-[0.34em] text-white/80">
           Notes from the edge
@@ -95,7 +95,7 @@ export default function Guestbook() {
         <span className="text-[10px] text-white/55">{notes.length} left so far</span>
       </div>
 
-      <div className="mt-3 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+      <div className="mt-3 max-h-32 sm:max-h-40 space-y-1.5 overflow-y-auto pr-1">
         {notes.length === 0 && (
           <p className="py-3 text-center text-xs text-white/60">
             Nobody's written anything yet. Go first.
@@ -117,13 +117,13 @@ export default function Guestbook() {
         ))}
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <input
           value={author}
           onChange={(e) => setAuthor(e.target.value)}
           maxLength={32}
           placeholder="your name"
-          className="w-28 shrink-0 rounded-full border border-white/20 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-white/45 outline-none backdrop-blur-md focus:border-white/45"
+          className="w-24 shrink-0 rounded-full sm:w-28 border border-white/20 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-white/45 outline-none backdrop-blur-md focus:border-white/45"
         />
         <input
           value={body}
@@ -133,7 +133,7 @@ export default function Guestbook() {
           }}
           maxLength={MAX_BODY}
           placeholder="leave a note in the sky…"
-          className="min-w-0 flex-1 rounded-full border border-white/20 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-white/45 outline-none backdrop-blur-md focus:border-white/45"
+          className="min-w-[8rem] flex-1 rounded-full border border-white/20 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-white/45 outline-none backdrop-blur-md focus:border-white/45"
         />
         <button
           onClick={() => void send()}

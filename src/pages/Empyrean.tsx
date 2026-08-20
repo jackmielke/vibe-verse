@@ -200,7 +200,7 @@ export default function Empyrean() {
           {/* Everything readable lives on one pane of glass. */}
           <div className="group w-full max-w-xl rounded-[1.75rem] border border-white/25 bg-white/10 px-5 py-6 shadow-[0_30px_120px_rgba(6,10,40,0.55)] backdrop-blur-2xl sm:rounded-[2rem] sm:px-6 sm:py-8">
             {/* The island itself, hung on the glass like a poster. */}
-            <div className="relative mx-auto mb-4 w-32 xs:w-40 sm:mb-6 sm:w-56">
+            <div className="relative mx-auto mb-4 w-36 sm:mb-6 sm:w-56">
               <div className="absolute -inset-3 rounded-[1.75rem] bg-[radial-gradient(60%_60%_at_50%_45%,rgba(120,220,255,.55),transparent_70%)] blur-2xl" />
               <img
                 src={empyreanCity.url}
