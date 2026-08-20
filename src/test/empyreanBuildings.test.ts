@@ -314,6 +314,88 @@ describe("lots somebody else is standing in", () => {
   }, 120_000);
 });
 
+describe("the skybridges", () => {
+  /**
+   * They were tried once, blamed for a screen-filling black rectangle that
+   * turned out to belong to another system entirely, and parked for a day.
+   * See the README. What is asserted here is the part that a frame does not
+   * show you: where the deck is, and that the floor stops where the tube does.
+   */
+  const HALF = (3.0 * Math.SQRT2) / 2;
+
+  it("joins towers to each other, above the city and below their crowns", () => {
+    const b = built();
+    expect(b.bridges.length, "no skybridges were built at all").toBeGreaterThan(3);
+    expect(b.bridges.length).toBeLessThanOrEqual(9);
+    for (const br of b.bridges) {
+      const tag = `${Math.round(br.ax)},${Math.round(br.az)}`;
+      expect(br.len, `${tag} span`).toBeGreaterThan(40);
+      expect(br.len, `${tag} span`).toBeLessThan(100);
+      // High enough to be a skybridge rather than an alley.
+      expect(br.y, `${tag} height`).toBeGreaterThan(ISLAND_Y + 100);
+      /* And clear of both crowns. Every crown in `buildTower` tapers, steps
+         or grows a mast; a tube driven into one comes out of the far side of
+         a spire that has narrowed away from under it. */
+      expect(br.y, `${tag} into A's crown`).toBeLessThan(br.topA - 30);
+      expect(br.y, `${tag} into B's crown`).toBeLessThan(br.topB - 30);
+    }
+  }, 120_000);
+
+  it("gives a bridge a floor that ends where the bridge does", () => {
+    /* A blocker is a floor, and the lesson this file already carries about a
+       tapering spire's crown applies to anything lying at an angle: one
+       axis-aligned box around a tube at forty degrees to the axes is metres
+       of clear air on either side of a wall you can see straight through. */
+    const b = built();
+    const decks = b.decks.filter((d) => d.y > ISLAND_Y + 100 && Math.abs((d.hx ?? 0) - HALF) < 1e-6);
+    expect(decks.length, "no bridge decks").toBeGreaterThan(50);
+    for (const d of decks) {
+      const cx = d.x ?? 0;
+      const cz = d.z ?? 0;
+      // Which bridge is this box on? The nearest centreline wins.
+      let best = Infinity;
+      let along = 0;
+      for (const br of b.bridges) {
+        const dx = br.bx - br.ax;
+        const dz = br.bz - br.az;
+        const l = Math.hypot(dx, dz) || 1;
+        const t = ((cx - br.ax) * dx + (cz - br.az) * dz) / (l * l);
+        const off = Math.abs((cx - br.ax) * (-dz / l) + (cz - br.az) * (dx / l));
+        if (Math.abs(d.y - br.y) > 0.01) continue;
+        if (off < best) {
+          best = off;
+          along = t;
+        }
+      }
+      // On the centreline, and between the two towers rather than past them.
+      expect(best, "a bridge deck off its own centreline").toBeLessThan(1e-6);
+      expect(along, "a bridge deck past its own end").toBeGreaterThan(-1e-6);
+      expect(along, "a bridge deck past its own end").toBeLessThan(1 + 1e-6);
+      // The box is a floor: it has an underside, and it is thin.
+      const blocker = b.blockers.find(
+        (bl) => Math.abs(bl.x - cx) < 1e-6 && Math.abs(bl.z - cz) < 1e-6 && Math.abs(bl.top - d.y) < 1e-6,
+      );
+      expect(blocker, "a bridge deck with nothing under it").toBeTruthy();
+      expect(blocker!.top - blocker!.bottom, "a bridge that is a solid block").toBeLessThan(1.0);
+    }
+  }, 120_000);
+
+  it("does not disturb the stream any lot draws from", () => {
+    /* The whole reason the bridges have their own generator. `makeRng` is a
+       stream, so one extra draw inside `buildLot` reshapes every building
+       after it — and the lot vertices below are what half this file asserts
+       against. */
+    const before = lotVertices(plan.lots.find((l) => l.use === "tower")!, "high", "test");
+    const after = lotVertices(plan.lots.find((l) => l.use === "tower")!, "high", "test");
+    expect(after).toEqual(before);
+    const a = buildBuildings({ quality: "low", seedSalt: "bridges" });
+    const c = buildBuildings({ quality: "low", seedSalt: "bridges" });
+    expect(c.bridges).toEqual(a.bridges);
+    a.dispose();
+    c.dispose();
+  }, 120_000);
+});
+
 describe("the facades are not a quilt", () => {
   /**
    * The tower shafts came out patched with fifteen-metre squares of different

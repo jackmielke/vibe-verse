@@ -46,6 +46,8 @@ import type {
   EmpyreanState,
   FrameContext,
   Interactable,
+  PhotoOptions,
+  PhotoShot,
   QualityTier,
   System,
   Toast,
@@ -63,7 +65,9 @@ import { buildTraffic } from "./traffic";
 import { buildInteriors } from "./interiors";
 import { buildActivities } from "./activities";
 import { buildWeather, type Condition } from "./weather";
+import { buildFestival } from "./festival";
 import { buildLaunchSite } from "./launchsite";
+import { buildLakeside } from "./lakeside";
 import { buildVehicles } from "./vehicles";
 import { buildLighting, setShadowFlags } from "./lighting";
 import { buildPostFx } from "./postfx";
@@ -72,6 +76,7 @@ import { buildPlume } from "./plume";
 import { buildMinimap, type MapMark } from "./minimap";
 import { buildCollision, type Blocker, type Deck } from "./collide";
 import { CameraRig } from "./camera";
+import { createPhotoMode } from "./capture";
 import { makeFlyer, stepFlyer, jump, type FlyerState } from "./flight";
 
 /** Touch and the page write into this; the loop reads it. */
@@ -99,6 +104,21 @@ export interface EmpyreanWorld {
   setDayPhase(p: number | null): void;
   /** Pin the weather, or `null` to hand it back to the cycle. */
   setWeather(c: Condition | null): void;
+  /**
+   * Photo mode: take the lens off the body, or give it back.
+   *
+   * While it is on the body does not move — it is the subject — the camera rig
+   * is not stepped, and the free camera is flown with the same keys and the
+   * same stick. Leaving puts the rig back exactly where the player was.
+   */
+  setPhoto(on: boolean): void;
+  /** Framing and grade, from the panel. See `PhotoOptions`. */
+  setPhotoOptions(o: Partial<PhotoOptions>): void;
+  /**
+   * Take the picture: one frame drawn at capture resolution, read back in the
+   * same task, cropped and graded into a PNG. `null` if it could not be made.
+   */
+  capture(): Promise<PhotoShot | null>;
   dispose(): void;
 }
 
@@ -297,10 +317,21 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const traffic = add(buildTraffic(build));
   const activities = add(buildActivities(build));
   const weather = add(buildWeather(build));
+  /* The festival. Invisible and free for two thirds of the day — it switches
+     itself off from the sun's own altitude — so it costs nothing at the
+     sunset the world is painted at and is the whole reason to set the clock
+     to two in the morning. */
+  const festival = add(buildFestival(build));
   /* The spaceport, nearly two kilometres out on the snow. Not reflected: it
      is four hundred metres past the far shore, so its mirror image would be
      buried in a hillside. */
   const launch = add(buildLaunchSite(build));
+  /* Mirrorfoot, on the ice 880 m out on bearing 27°. Not reflected: it stands
+     *on* the mirror, so its reflection would be its own underside.
+     Its first deck is the lake itself. Without it `supportAt` answers
+     -Infinity everywhere off the island, and every descent to the ice — which
+     is now a thing worth making — ends at `KILL_Y` back on the Halo. */
+  const lakeside = add(buildLakeside(build));
   const vehicles = add(buildVehicles(build));
   // A world that opens in whatever weather the clock happened to land on is a
   // world whose card art is a different picture every time it is captured.
@@ -337,12 +368,14 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     ...buildings.blockers,
     ...interiors.blockers,
     ...(props.blockers ?? []),
+    ...lakeside.blockers,
   ];
-  const decks: Deck[] = [...buildings.decks, ...interiors.decks];
+  const decks: Deck[] = [...buildings.decks, ...interiors.decks, ...lakeside.decks];
   const collision = buildCollision(blockers, decks);
 
   // Interiors raise toasts of their own — a departure board, a guest book.
   interiors.onToast = (text, tone) => pushToast(text, tone ?? "info");
+  lakeside.onToast = (text, tone) => pushToast(text, tone ?? "info");
   // Vehicles collide against the same world the body does.
   vehicles.setWorld({
     blockedAt: (x, z, y) => collision.blockedAt(x, z, y),
@@ -432,8 +465,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
       e.preventDefault();
     }
-    if (e.code === "KeyR") recall();
-    if (e.code === "KeyE") wantInteract = true;
+    /* Neither of these belongs to a camera. R teleports the body to the Halo
+       and E starts a race, and doing either from inside the viewfinder throws
+       away the shot you were framing. */
+    if (e.code === "KeyR" && !photo.active) recall();
+    if (e.code === "KeyE" && !photo.active) wantInteract = true;
     audio?.resume();
   };
   const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -498,7 +534,9 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     if (!dragging) return;
     const dx = x - lastX;
     const dy = y - lastY;
-    rigCam.look(dx, dy);
+    // Photo mode borrows the drag, at the same rate and with the same signs.
+    if (photo.active) photo.look(dx, dy);
+    else rigCam.look(dx, dy);
     /* Pixels per second, smoothed over about three frames. One frame's delta
        is far too noisy to throw a camera with: a single hiccup at the moment
        you let go and the view spins off across the island. */
@@ -605,6 +643,20 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
 
   /* ---- loop ------------------------------------------------------------ */
   const clock = new THREE.Clock();
+
+  /* Photo mode. It is handed the renderer, the camera, the canvas, the body
+   * and two callbacks, because `capture.ts` may not import `postfx.ts` any
+   * more than any other pair of systems may import each other — and those two
+   * calls are all it needs to draw a frame twice the size and put it back. */
+  const photo = createPhotoMode({
+    renderer,
+    camera,
+    canvas,
+    body,
+    draw: () => postfx.render(scene, camera, clock.elapsedTime),
+    resize: (w, h) => postfx.setSize(w, h),
+    onShutter: () => audio?.event("photo"),
+  });
   let raf = 0;
   let disposed = false;
   let hudTimer = 0;
@@ -615,6 +667,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     activities.interactables(),
     interiors.interactables(),
     vehicles.interactables(),
+    lakeside.interactables(),
   ];
   const marks: MapMark[] = [];
   const packPos = new THREE.Vector3();
@@ -680,6 +733,12 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       camera.position.set(Math.sin(a) * 1250, 340, Math.cos(a) * 1250);
       camera.lookAt(0, ISLAND_Y + 20, 0);
       body.visible = false;
+    } else if (photo.active) {
+      /* The lens is off the body. Nothing steps the flyer, so the character
+       * stays exactly where it was left — which is the point, it is the
+       * subject — and the rig is not touched, so leaving photo mode puts the
+       * camera back behind the player without a transition. */
+      photo.update(dt, keys, stick);
     } else {
       /* ---- gather input ---- */
       let f = 0;
@@ -1014,6 +1073,16 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       return out;
     },
     room: () => interiors.inside(flyer.position.x, flyer.position.y, flyer.position.z),
+    /* Photo mode, from a harness.
+     *
+     * The shutter is the one thing in this world whose output cannot be
+     * checked by looking at the screen — a capture that reads back a cleared
+     * drawing buffer writes a black PNG and looks perfect while it does it. So
+     * `shoot()` is reachable from here, and the harness can measure the file
+     * it produced. */
+    photo: (on = true) => (on ? photo.enter() : photo.exit()),
+    photoSet: (o: Partial<PhotoOptions>) => photo.set(o),
+    shoot: () => photo.shoot(),
     /* Where the benches are.
      *
      * `props.ts` places them from its own occupancy grid, so there is no way
@@ -1065,6 +1134,16 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       pinnedWeather = c;
       weather.force(c);
     },
+    setPhoto(on) {
+      if (on) photo.enter();
+      else photo.exit();
+    },
+    setPhotoOptions(o) {
+      photo.set(o);
+    },
+    capture() {
+      return photo.shoot();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -1088,6 +1167,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       rig = null;
       delete (window as unknown as { __empyrean?: unknown }).__empyrean;
       minimap?.dispose();
+      photo.dispose();
       for (const s of systems) s.dispose();
       sky.dispose();
       terrain.dispose();

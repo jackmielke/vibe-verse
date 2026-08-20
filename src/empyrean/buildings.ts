@@ -118,11 +118,28 @@ export interface BuildingsOptions {
   skipLots?: readonly string[];
 }
 
+/** One skybridge, for the tests and the debug overlay. World space. */
+export interface BridgeBuild {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  /** World Y of the walking surface. */
+  y: number;
+  /** Centre-to-centre length. */
+  len: number;
+  /** The two towers' shaft tops, so a test can check the bridge clears them. */
+  topA: number;
+  topB: number;
+}
+
 export interface BuildingsHandle extends System {
   blockers: Blocker[];
   decks: Deck[];
   /** Per-lot bounds and roof heights, in plan order. */
   lots: LotBuild[];
+  /** Every skybridge, in build order. */
+  bridges: BridgeBuild[];
   stats: { draws: number; triangles: number; vertices: number };
 }
 
@@ -2996,6 +3013,222 @@ function buildLandmark(pen: Pen, lm: Landmark): void {
 }
 
 /* -------------------------------------------------------------------------
+ * Skybridges
+ *
+ * Glass tubes between tower shafts, off the lots the loop actually built.
+ * They are the one thing in this file that belongs to two lots at once and
+ * to neither, so they are emitted after the loop, the way the landmarks are.
+ *
+ * Four things about them are load-bearing, and three of them are this file's
+ * standing rules rather than anything about bridges:
+ *
+ * - **Their own generator.** `makeRng("empyrean-skybridges:…")` and not a
+ *   draw off a lot's stream: adding one draw to a lot shifts every draw after
+ *   it in the same generator, which reshapes twenty-three towers and moves a
+ *   baseline several tests are pinned to. Nothing above this line changes.
+ * - **Their own `baseY` and `span`.** A bridge is an object, so `aH` and
+ *   `aBase` run along its own five metres. Drive them off world Y and the
+ *   lake shows a bridge shaded upside down inside an upside-down city.
+ * - **The floor ends where the bridge does.** The deck is a chain of small
+ *   squares along the centreline rather than one box around the whole span:
+ *   `world.ts` stands the player on axis-aligned boxes, and one box around a
+ *   tube lying at forty degrees to the axes is nine metres of clear air on
+ *   either side of a wall you can see straight through. The squares are sized
+ *   so that their half-diagonal is exactly the deck's half-width, which puts
+ *   every corner of every box on or inside the deck at any angle.
+ * - **Both ends are buried in their towers.** The tube runs centroid to
+ *   centroid and six metres past each: a bridge that stops at a wall leaves a
+ *   seam that z-fights from half the compass, and one that stops short of it
+ *   leaves a slot of daylight under the handrail.
+ * ---------------------------------------------------------------------- */
+
+/** Half-width of the walking deck. */
+const BRIDGE_HW = 3.0;
+/** Head height inside the tube. */
+const BRIDGE_H = 4.4;
+/** Deck slab thickness. */
+const BRIDGE_FLOOR = 0.55;
+/** How far past each centroid the tube runs, so no end is ever visible. */
+const BRIDGE_BURY = 6;
+/** At most this many. Nine reads as a habit; thirty reads as a net. */
+const BRIDGE_COUNT = 9;
+/** Spans worth building. Shorter is a corridor; longer is a bridge too far. */
+const BRIDGE_MIN = 46;
+const BRIDGE_MAX = 96;
+/** A bridge has to clear the deck by this much to be a skybridge at all. */
+const BRIDGE_MIN_RISE = 100;
+/**
+ * How far below the shorter tower's shaft top a deck has to sit.
+ *
+ * Every crown in `buildTower` tapers, steps or grows a mast, and the widest
+ * of them takes thirty metres to do it. A tube driven into that comes out of
+ * the far side of a spire that has visibly narrowed away from under it.
+ */
+const BRIDGE_CROWN = 34;
+
+interface BridgeEnd {
+  x: number;
+  z: number;
+  /** World Y of this tower's foot and of the top of its shaft. */
+  foot: number;
+  top: number;
+}
+
+/**
+ * Which towers get joined to which.
+ *
+ * Nearest unused neighbour, walking the towers in plan order. It names no
+ * coordinate, so reseeding `cityplan.ts` moves the bridges with the towers
+ * instead of leaving them in the air.
+ */
+function chooseBridges(ends: BridgeEnd[]): Array<[BridgeEnd, BridgeEnd]> {
+  const used = new Set<number>();
+  const out: Array<[BridgeEnd, BridgeEnd]> = [];
+  for (let i = 0; i < ends.length && out.length < BRIDGE_COUNT; i++) {
+    if (used.has(i)) continue;
+    let best = -1;
+    let bestD = Infinity;
+    for (let j = i + 1; j < ends.length; j++) {
+      if (used.has(j)) continue;
+      const d = Math.hypot(ends[j].x - ends[i].x, ends[j].z - ends[i].z);
+      if (d < BRIDGE_MIN || d > BRIDGE_MAX || d >= bestD) continue;
+      bestD = d;
+      best = j;
+    }
+    if (best < 0) continue;
+    used.add(i);
+    used.add(best);
+    out.push([ends[i], ends[best]]);
+  }
+  return out;
+}
+
+/** One tube, from inside tower A to inside tower B, its deck at `deckY`. */
+function buildBridge(pen: Pen, a: BridgeEnd, b: BridgeEnd, deckY: number, seed: number): void {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const len = Math.hypot(dx, dz);
+  if (!(len > 1)) return;
+  const tx = dx / len;
+  const tz = dz / len;
+  // Left of the way it is going, in the ground plane.
+  const px = -tz;
+  const pz = tx;
+
+  const y0 = deckY - BRIDGE_FLOOR;
+  const y1 = deckY;
+  const y2 = deckY + BRIDGE_H;
+  const y3 = y2 + 0.5;
+
+  pen.baseY = y0;
+  pen.span = y3 - y0;
+  pen.seed = seed;
+
+  /** `s` metres along from A, `t` metres to its left. */
+  const bx = (s: number, t: number) => a.x + tx * s + px * t;
+  const bz = (s: number, t: number) => a.z + tz * s + pz * t;
+  const rect = (s0: number, s1: number, hw: number): P2[] => [
+    { x: bx(s0, -hw), z: bz(s0, -hw) },
+    { x: bx(s1, -hw), z: bz(s1, -hw) },
+    { x: bx(s1, hw), z: bz(s1, hw) },
+    { x: bx(s0, hw), z: bz(s0, hw) },
+  ];
+
+  const S0 = -BRIDGE_BURY;
+  const S1 = len + BRIDGE_BURY;
+
+  /* The deck: a metal slab with a dark soffit, which is the face most of the
+     city sees, because most of the city is underneath it. */
+  const deck = rect(S0, S1, BRIDGE_HW);
+  prismWalls(pen, pen.stone, shellOf(deck), y0, y1, T_METAL);
+  capPoly(pen, pen.stone, deck, y1, 1, T_METAL);
+  capPoly(pen, pen.stone, deck, y0, -1, T_BASALT);
+
+  /* The glazing, set a hair inside the deck so the slab reads as a slab, and
+     a metal band over it for the roof. Straight into the curtain-wall bucket,
+     so a bridge reflects the same evening the towers do. */
+  prismWalls(pen, pen.glass, shellOf(rect(S0, S1, BRIDGE_HW - 0.14)), y1, y2, W_UPPER);
+  prismWalls(pen, pen.stone, shellOf(rect(S0, S1, BRIDGE_HW)), y2, y3, T_METAL);
+  capPoly(pen, pen.stone, rect(S0, S1, BRIDGE_HW), y3, 1, T_METAL);
+
+  /* Mullions every six metres, so the tube has a structure and not just a
+     skin — and as a *post down each side* rather than one box across the
+     section. A box across the section is the cheap way to draw the same
+     silhouette and it is a solid metre of metal standing in a corridor you
+     can walk down; from outside the two are indistinguishable, which is
+     exactly why it would have shipped. */
+  const rot = Math.atan2(tz, tx);
+  const ribs = Math.max(2, Math.round(len / 6));
+  for (let k = 0; k <= ribs; k++) {
+    const s = (len * k) / ribs;
+    for (const side of [-1, 1]) {
+      const t = side * (BRIDGE_HW - 0.05);
+      boxAt(pen, pen.stone, bx(s, t), (y1 + y2) / 2, bz(s, t), 0.15, (y2 - y1) / 2, 0.16, rot, T_METAL);
+    }
+  }
+
+  /* A lit line under each handrail — high tier only, the rule every cornice
+     in this file already follows. */
+  if (pen.quality === "high") {
+    for (const side of [-1, 1]) {
+      const off = side * (BRIDGE_HW - 0.08);
+      glowStrip(
+        pen,
+        bx(1.5, off), bz(1.5, off), bx(len - 1.5, off), bz(len - 1.5, off),
+        y1 + 0.5, y1 + 0.9, px * side, pz * side, G_COOL,
+      );
+    }
+  }
+
+  /* The floor, as collision. See the note at the top of this section for why
+     it is a chain of squares and not one box. */
+  const half = (BRIDGE_HW * Math.SQRT2) / 2;
+  const steps = Math.max(1, Math.ceil(len / half));
+  for (let k = 0; k <= steps; k++) {
+    const s = (len * k) / steps;
+    const cx = bx(s, 0);
+    const cz = bz(s, 0);
+    pen.blockers.push({ x: cx, z: cz, hx: half, hz: half, top: y1, bottom: y0 });
+    pen.decks.push({ y: y1, x: cx, z: cz, hx: half, hz: half });
+  }
+}
+
+/** Every skybridge in the city. */
+function buildSkybridges(
+  pen: Pen,
+  lots: readonly Lot[],
+  salt: string,
+  skip: Set<string> | null,
+): BridgeBuild[] {
+  const rng = makeRng(`empyrean-skybridges:${salt}`);
+  const ends: BridgeEnd[] = [];
+  for (const lot of lots) {
+    if (lot.landmark || lot.use !== "tower") continue;
+    if (skip?.has(lot.id)) continue;
+    if (lot.height < BRIDGE_MIN_RISE + 40) continue;
+    ends.push({ x: lot.centroid.x, z: lot.centroid.z, foot: lot.y, top: lot.y + lot.height });
+  }
+  const out: BridgeBuild[] = [];
+  for (const [a, b] of chooseBridges(ends)) {
+    /* Below the shorter tower's crown by enough to miss it, and above the
+       deck by enough to be a skybridge. A pair that cannot satisfy both is
+       skipped rather than fudged: a bridge into a spire's taper comes out of
+       the far side of it. */
+    const ceil = Math.min(a.top, b.top) - BRIDGE_CROWN;
+    const floor = Math.max(a.foot, b.foot) + BRIDGE_MIN_RISE;
+    if (ceil - floor < 30) continue;
+    const y = rng.range(floor + 10, ceil);
+    buildBridge(pen, a, b, y, 17 + out.length * 13);
+    out.push({
+      ax: a.x, az: a.z, bx: b.x, bz: b.z, y,
+      len: Math.hypot(b.x - a.x, b.z - a.z),
+      topA: a.top, topB: b.top,
+    });
+  }
+  return out;
+}
+
+/* -------------------------------------------------------------------------
  * The system
  * ---------------------------------------------------------------------- */
 
@@ -3066,6 +3299,7 @@ export function buildBuildings(ctx: BuildContext, options?: BuildingsOptions): B
     });
   }
   for (const lm of plan.landmarks) buildLandmark(pen, lm);
+  const bridges = buildSkybridges(pen, plan.lots, ctx.seedSalt, skip);
 
   const glassMat = makeMaterial("EmpyreanGlass", GLASS_FRAG, false);
   const stoneMat = makeMaterial("EmpyreanMasonry", STONE_FRAG, false);
@@ -3100,6 +3334,7 @@ export function buildBuildings(ctx: BuildContext, options?: BuildingsOptions): B
     blockers: pen.blockers,
     decks: pen.decks,
     lots,
+    bridges,
     stats: { draws: geos.length, triangles, vertices },
     update(frame: FrameContext) {
       for (let i = 0; i < mats.length; i++) {

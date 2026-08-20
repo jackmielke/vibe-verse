@@ -334,11 +334,41 @@ void main() {
   float crack = smoothstep(0.985, 1.0, vnoise(vWPos.xz * 0.0032 + 3.1));
   col += vec3(0.55, 0.60, 0.75) * crack * 0.35;
 
+  /* ---- close up, the ice has a surface -------------------------------
+   *
+   * At a kilometre and a half this is a mirror and should be nothing else.
+   * Underfoot a mirror with nothing on it is a floor made of sky, and once
+   * there was a reason to fly down and stand on it that stopped being an
+   * acceptable answer. So a band of surface is faded in over the hundred and
+   * fifty metres nearest the lens: wind scour running one way, a fine frost
+   * grain, and a finer set of cracks than the wide field above.
+   *
+   * It is done here rather than as geometry because it costs nothing — no
+   * draw, no triangle, no memory — and because it covers the whole lake. The
+   * camp at Mirrorfoot lays real scour and bubbles on the ice it stands on,
+   * which is worth doing where somebody is looking closely at it, but it is
+   * 550 m of a 1500 m disc: land anywhere else and this is what stops the
+   * ground being blank.
+   */
+  float near = 1.0 - smoothstep(45.0, 195.0, length(vWPos.xz - uCam.xz));
+  if (near > 0.002) {
+    float scour = vnoise(vWPos.xz * vec2(0.055, 0.010) + 11.0);
+    float grain = vnoise(vWPos.xz * 1.30);
+    float fine  = smoothstep(0.955, 1.0, vnoise(vWPos.xz * 0.028 + 7.3));
+    col += vec3(0.72, 0.80, 0.92) * smoothstep(0.52, 0.94, scour) * near * 0.15;
+    col += vec3(0.10, 0.12, 0.16) * (grain - 0.5) * near * 0.55;
+    col += vec3(0.58, 0.68, 0.85) * fine * near * 0.55;
+  }
+
   /* Alpha is what lets the mirrored island through, so it is deliberately
    * low and barely varies: even looking straight down the lake keeps a third
    * of its own colour, and even at the grazing angle the card art is composed
-   * at it keeps two thirds of the city. */
-  gl_FragColor = vec4(col, mix(0.30, 0.55, f));
+   * at it keeps two thirds of the city.
+   *
+   * The near band adds to it, which is both what a steep view of ice actually
+   * does — less reflection, more surface — and what stops the ground under a
+   * standing player reading as a hole with the sky at the bottom of it. */
+  gl_FragColor = vec4(col, mix(0.30, 0.55, f) + near * 0.20);
 }
 `;
 

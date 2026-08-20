@@ -30,6 +30,8 @@ import { buildTraffic } from "@/empyrean/traffic";
 import { buildInteriors } from "@/empyrean/interiors";
 import { buildActivities } from "@/empyrean/activities";
 import { buildWeather } from "@/empyrean/weather";
+import { buildFestival } from "@/empyrean/festival";
+import { buildLakeside } from "@/empyrean/lakeside";
 import { buildVehicles } from "@/empyrean/vehicles";
 
 /**
@@ -105,6 +107,8 @@ function buildAll(quality: "low" | "high"): Array<{ name: string } & ReturnType<
     buildTraffic(ctx),
     buildActivities(ctx),
     buildWeather(ctx),
+    buildFestival(ctx),
+    buildLakeside(ctx),
     buildVehicles(ctx),
   ];
   /* Two seconds of frames, not two.
@@ -140,6 +144,17 @@ const CEILING: Record<string, { draws: number; tris: number }> = {
   traffic: { draws: 12, tris: 120_000 },
   activities: { draws: 14, tris: 120_000 },
   weather: { draws: 10, tris: 90_000 },
+  /* The festival is two draw calls and about five thousand triangles, and
+     both of those are constants — the show is a closed form and the buffers
+     are built once. What it can quietly become expensive in is *fill*: every
+     quad is additive and overlapping, so a generous triangle ceiling here
+     would not catch the failure that matters. The number to watch is the
+     quad size in `festival.ts`, and `empyreanFestival.test.ts` guards it. */
+  festival: { draws: 4, tris: 8_000 },
+  /* Measured standing on the ice at the camp, which is the worst case; from
+     the deck it is 3 draws and 4.4k, and it is nothing at all with the camp
+     behind you. */
+  lakeside: { draws: 12, tris: 20_000 },
   vehicles: { draws: 20, tris: 60_000 },
   launchsite: { draws: 14, tris: 12_000 },
 };

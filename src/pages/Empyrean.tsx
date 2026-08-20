@@ -18,13 +18,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
-import type { EmpyreanState } from "@/empyrean/types";
+import type { EmpyreanState, PhotoOptions, PhotoShot } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
 
 import empyreanArt from "@/assets/empyrean-inspiration.png.asset.json";
 import empyreanCity from "@/assets/empyrean-city.png.asset.json";
 
 import EmpyreanSkyPanel, { readSkyChoice } from "@/components/EmpyreanSkyPanel";
+import EmpyreanPhotoPanel, { PHOTO_START } from "@/components/EmpyreanPhotoPanel";
 // Type-only, so naming the five conditions here costs nothing at runtime and
 // the panel's string ids are checked against the engine's own union.
 import type { Condition } from "@/empyrean/weather";
@@ -63,14 +64,36 @@ export default function Empyrean() {
   const [hint, setHint] = useState(true);
   const [state, setState] = useState<EmpyreanState>(EMPTY);
 
+  /* ---- Photo mode -------------------------------------------------------
+   * The page owns the framing the way it owns every other menu, and pushes it
+   * into the engine; the engine owns the lens. The refs shadow the state
+   * because the key handler and the shutter both run from closures that would
+   * otherwise be a render behind — and a shutter that captures the settings
+   * you had a moment ago is the worst kind of bug to notice. */
+  const [photoOn, setPhotoOn] = useState(false);
+  const [photoOpts, setPhotoOpts] = useState<PhotoOptions>(PHOTO_START);
+  const [guides, setGuides] = useState(false);
+  const [shot, setShot] = useState<PhotoShot | null>(null);
+  const [busy, setBusy] = useState(false);
+  const optsRef = useRef<PhotoOptions>(PHOTO_START);
+  const shotRef = useRef<PhotoShot | null>(null);
+  const busyRef = useRef(false);
+
   // `?shot=1` — the capture harness. Skips the title card and hides the HUD,
   // so the card art is a picture of the world rather than of its interface.
   const shotMode =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).has("shot");
 
   // Teardown on unmount, always — a leaked WebGL context breaks whichever
-  // world the visitor opens next, which is a miserable thing to debug.
-  useEffect(() => () => worldRef.current?.dispose(), []);
+  // world the visitor opens next, which is a miserable thing to debug. The
+  // photograph is a blob URL and leaks just as quietly if nobody revokes it.
+  useEffect(
+    () => () => {
+      worldRef.current?.dispose();
+      if (shotRef.current) URL.revokeObjectURL(shotRef.current.url);
+    },
+    [],
+  );
 
   const start = useCallback(async () => {
     if (worldRef.current || booting) return;
@@ -104,13 +127,100 @@ export default function Empyrean() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shotMode]);
 
-  // H hides the interface. A world this pretty deserves a way to look at it.
+  /* ---- Photo mode, the page's half ------------------------------------- */
+
+  const keepShot = useCallback((next: PhotoShot | null) => {
+    // One photograph is held at a time, and the one it replaces is revoked.
+    if (shotRef.current) URL.revokeObjectURL(shotRef.current.url);
+    shotRef.current = next;
+    setShot(next);
+  }, []);
+
+  const patchPhoto = useCallback((patch: Partial<PhotoOptions>) => {
+    const next = { ...optsRef.current, ...patch };
+    optsRef.current = next;
+    setPhotoOpts(next);
+    worldRef.current?.setPhotoOptions(patch);
+  }, []);
+
+  const setPhoto = useCallback(
+    (on: boolean) => {
+      const world = worldRef.current;
+      if (!world) return;
+      setPhotoOn(on);
+      world.setPhoto(on);
+      // The whole framing goes down on the way in, so the engine can never be
+      // holding a setting the panel is not showing.
+      if (on) world.setPhotoOptions(optsRef.current);
+      else keepShot(null);
+    },
+    [keepShot],
+  );
+
+  const shutter = useCallback(async () => {
+    const world = worldRef.current;
+    if (!world || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      keepShot(await world.capture());
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }, [keepShot]);
+
+  /**
+   * H hides the interface, P is the shutter release you look for first.
+   *
+   * Everything else here only fires inside photo mode. The guard on
+   * `activeElement` is not paranoia: the sky panel's slider and the panel's own
+   * buttons are focusable, and without it Enter fires the shutter *and* clicks
+   * whatever was focused, which takes two photographs.
+   */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === "KeyH" && !e.repeat) setChrome((c) => !c);
+      if (e.repeat) return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName ?? "";
+      const typing = tag === "INPUT" || tag === "TEXTAREA" || !!el?.isContentEditable;
+      const clickable = tag === "BUTTON" || tag === "A";
+      if (typing && e.code !== "Escape") return;
+
+      if (e.code === "KeyH") setChrome((c) => !c);
+      if (e.code === "KeyP" && started && !shotMode) {
+        e.preventDefault();
+        setPhoto(!photoOn);
+        return;
+      }
+      if (!photoOn) return;
+      if (e.code === "Escape") setPhoto(false);
+      if (e.code === "Enter" && !clickable) {
+        e.preventDefault();
+        void shutter();
+      }
+      if (e.code === "KeyB") patchPhoto({ showBody: !optsRef.current.showBody });
+      if (e.code === "KeyG") setGuides((g) => !g);
+      // The lens, without leaving the shot to find the slider.
+      if (e.code === "BracketLeft") patchPhoto({ fov: Math.max(12, optsRef.current.fov - 4) });
+      if (e.code === "BracketRight") patchPhoto({ fov: Math.min(110, optsRef.current.fov + 4) });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [photoOn, started, shotMode, setPhoto, shutter, patchPhoto]);
+
+  /**
+   * Press a key on the engine's behalf.
+   *
+   * The free camera is flown from the engine's own key set, and a touch device
+   * has no keys — so the viewfinder's up and down buttons synthesise the two
+   * it needs. Cheaper and less fragile than widening the input object for two
+   * buttons that exist on one platform.
+   */
+  const holdKey = useCallback((code: string, down: boolean) => {
+    window.dispatchEvent(
+      new KeyboardEvent(down ? "keydown" : "keyup", { code, bubbles: true }),
+    );
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -166,7 +276,11 @@ export default function Empyrean() {
   const isTouch =
     typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
-  const showChrome = started && !shotMode && chrome;
+  /* The one thing photo mode has to guarantee is that the picture contains
+     only the world, so the whole HUD goes — the place card, the prompts, the
+     toasts, the minimap and the buttons — and not merely the parts that would
+     have been in shot. */
+  const showChrome = started && !shotMode && chrome && !photoOn;
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#150c22] select-none">
@@ -230,8 +344,8 @@ export default function Empyrean() {
             </button>
             <p className="mt-4 text-[11px] leading-relaxed text-white/80 sm:mt-5">
               {isTouch
-                ? "Stick to move · hold the rocket to fly · drag to look · tap the clock for the hour"
-                : "WASD · Space jetpack · Shift boost · E interact · drag to look · the clock sets the hour and the weather · H hides this"}
+                ? "Stick to move · hold the rocket to fly · drag to look · tap the clock for the hour · 📷 for photo mode"
+                : "WASD · Space jetpack · Shift boost · E interact · drag to look · the clock sets the hour and the weather · P photo mode · H hides this"}
             </p>
           </div>
 
@@ -319,6 +433,16 @@ export default function Empyrean() {
               onHour={(p) => worldRef.current?.setDayPhase(p)}
               onWeather={(c) => worldRef.current?.setWeather(c as Condition | null)}
             />
+            {/* Photo mode. Next to the clock, because they are the two
+                controls that are about the picture rather than about flying,
+                and a control nobody finds is a control that does not exist. */}
+            <button
+              onClick={() => setPhoto(true)}
+              className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/90 backdrop-blur-md transition-colors hover:bg-black/60"
+              title="Photo mode (P)"
+            >
+              📷
+            </button>
             <button
               onClick={toggleMute}
               className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/90 backdrop-blur-md transition-colors hover:bg-black/60"
@@ -400,8 +524,8 @@ export default function Empyrean() {
             <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center px-6 sm:bottom-10">
               <div className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-center text-[11px] text-white/70 backdrop-blur-md">
                 {isTouch
-                  ? "Hold the rocket to climb · walk up to things and tap ✦"
-                  : "Hold Space to climb · E at anything with a prompt · R returns you to the Halo · H hides the interface"}
+                  ? "Hold the rocket to climb · walk up to things and tap ✦ · 📷 takes over the camera"
+                  : "Hold Space to climb · E at anything with a prompt · R returns you to the Halo · P is photo mode · H hides the interface"}
               </div>
             </div>
           )}
@@ -451,6 +575,79 @@ export default function Empyrean() {
                 >
                   🚀
                 </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* ---- Photo mode -------------------------------------------------- */}
+      {photoOn && started && !shotMode && (
+        <>
+          <EmpyreanPhotoPanel
+            state={state}
+            options={photoOpts}
+            onOptions={patchPhoto}
+            onShutter={() => void shutter()}
+            onClose={() => setPhoto(false)}
+            shot={shot}
+            onDismissShot={() => keepShot(null)}
+            busy={busy}
+            showControls={chrome}
+            guides={guides}
+            onGuides={setGuides}
+            onHour={(p) => worldRef.current?.setDayPhase(p)}
+            onWeather={(c) => worldRef.current?.setWeather(c as Condition | null)}
+            touch={isTouch}
+          />
+
+          {/* Flying the lens on a phone. The stick is the same one the legs
+              use — the engine reads it in photo mode too — and the two arrows
+              press the keys the free camera climbs and drops on. */}
+          {isTouch && chrome && (
+            <>
+              <div
+                ref={padRef}
+                onPointerDown={(e) => {
+                  padTouch.current = e.pointerId;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  padMove(e.clientX, e.clientY);
+                }}
+                onPointerMove={(e) => {
+                  if (padTouch.current === e.pointerId) padMove(e.clientX, e.clientY);
+                }}
+                onPointerUp={padEnd}
+                onPointerCancel={padEnd}
+                className="absolute bottom-[12.5rem] left-5 z-40 h-24 w-24 rounded-full border border-white/15 bg-black/30 backdrop-blur-sm"
+              >
+                <div
+                  className="pointer-events-none absolute left-1/2 top-1/2 h-11 w-11 rounded-full border border-amber-200/50 bg-amber-300/20"
+                  style={{
+                    transform: `translate(calc(-50% + ${knob.x * 26}px), calc(-50% + ${knob.y * 26}px))`,
+                  }}
+                />
+              </div>
+              <div className="absolute bottom-[12.5rem] right-5 z-40 flex flex-col gap-2">
+                {(
+                  [
+                    ["Space", "▲"],
+                    ["KeyC", "▼"],
+                  ] as const
+                ).map(([code, glyph]) => (
+                  <button
+                    key={code}
+                    onPointerDown={(e) => {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      holdKey(code, true);
+                    }}
+                    onPointerUp={() => holdKey(code, false)}
+                    onPointerCancel={() => holdKey(code, false)}
+                    onPointerLeave={() => holdKey(code, false)}
+                    className="h-12 w-12 rounded-full border border-white/20 bg-black/40 text-lg text-white/85 backdrop-blur-sm active:bg-white/20"
+                  >
+                    {glyph}
+                  </button>
+                ))}
               </div>
             </>
           )}

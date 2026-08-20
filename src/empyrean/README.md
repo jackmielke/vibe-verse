@@ -258,6 +258,65 @@ Kept because each one cost a rebuild and would cost another.
   inside of every solid building, and a raycast against three hundred thousand
   triangles with no BVH is not a unit test. Emit the boxes from the same
   polygons the geometry is lofted from, and if you cannot, look at it.
+- **Skybridges were tried, blamed for a screen-filling black rectangle, and
+  parked for a day. The rectangle was never theirs.** Nine glass tubes
+  between the tower crowns went in; the city grew one hard-edged near-black
+  rectangle occluding everything in a sixty-degree cone; the geometry was
+  rewritten end to end — `boxAt` on the glass bucket, then `prism` with the
+  pen's own base, span and seed — and the artefact did not move by a pixel.
+  That was the clue, and it was read the wrong way round. The artefact did
+  not change when the geometry changed because it never came out of the
+  geometry.
+
+  Where it does come from, measured rather than argued. Freeze the camera at
+  `warp(0, 980, 300); look(0, 0.30); dist(24)` — 980 m over the Spires,
+  looking down — and it is there every time, 696 × 546 px of flat black in a
+  1100 × 620 frame, in a fresh Chromium, on a clean checkout, over four
+  separate sessions. Then hide one system at a time from that same frozen
+  pose, in one page load, with the same timing for every frame:
+  `hide("interiors")` is the only one of the twelve that takes it away, and
+  showing interiors again brings it straight back. It arrived with The
+  Meridian; the build before that one does not have it.
+
+  Three measurements are worth re-using on the next one of these, and the
+  first two are the ones that cost the most to get:
+
+  - **`hide("buildings")` does not remove it — it makes it *bigger*.** At the
+    aerial pose the rectangle grows from 546 px tall to 592, because towers
+    had been drawing over its lower edge. At `warp(0, 700, 640)` — the
+    skyline pose, where the city is between you and it — hiding the buildings
+    makes it *appear*, 696 × 482 at (202, 0), repeatably. So it is behind the
+    city, at a depth, being depth-tested normally, and `buildings.ts` is
+    nowhere near it.
+  - **Its edges do not converge.** The left edge sits at x = 202 at y = 60
+    and at x = 202 at y = 530 alike. Under this camera's pitch a world-
+    vertical edge leans about ninety pixels across that span. Take the two
+    together and it is geometry, at a depth, whose vertices are placed
+    somewhere other than in world space.
+  - **The colour tells you nothing, and this is a trap worth naming.** The
+    fill comes out (20, 9, 26), which looks like a smoking gun and is not:
+    `postfx.ts`'s shadow lift maps *both* an unwritten pixel and a surface
+    returning `vec3(0.0)` onto the same violet. Nor is the one-pixel edge
+    evidence of anything — `world.ts` asks for `antialias: false` and the
+    post chain is single-sampled, so every edge in every frame here is one
+    pixel hard.
+
+  The old note said `hide("buildings")` made it vanish, and that is the
+  useful half of the lesson: the thing is strongly pose-dependent, so a
+  single frame with a system switched off is not a control unless the same
+  frame with it switched on has the artefact in it. Toggle it twice.
+
+  **The bridges are in, and they are not that.** Seven of them, chosen by
+  nearest-unused-neighbour over the built tower lots so a reseed of the plan
+  moves them with the towers: 58 to 85 m long, decks at 777 to 813 m, +2,326
+  triangles at the high tier and +2,298 at the low, and the same four draw
+  calls. The rest of what they cost to get right is in the block comment over
+  `buildSkybridges`. The one worth knowing from out here is the floor: it is a
+  chain of squares whose half-diagonal is exactly the deck's half-width,
+  because `world.ts` stands the player on axis-aligned boxes, and one box
+  around a tube lying at forty degrees to the axes is metres of thin air you
+  can stand on beside a wall you can see straight through — which is the
+  tapering spire's crown, above, arriving from a different direction.
 - **Test the world, not just the modules.** `src/test/empyreanWorld.test.ts`
   builds every system, steps it, and looks for the failures whose symptom is a
   black screen rather than an exception: a NaN in a position buffer (one

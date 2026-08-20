@@ -40,6 +40,12 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
  * from under the very next call. Retrying once against the reloaded page is
  * the whole fix; without it a twenty-minute run over nine viewpoints dies on
  * whichever one happened to be open when you hit save.
+ *
+ * The retry covers the `evaluate` calls and it cannot cover the screenshot:
+ * a save timed badly enough lands the capture on a page that has reloaded and
+ * not yet painted, which comes out as a flat sheet of the renderer's clear
+ * colour or of white. Both look exactly like a broken world and neither is.
+ * Do not edit while a run is in flight.
  */
 async function evalSafe(page, fn, arg, settle = 3000) {
   try {
@@ -116,6 +122,39 @@ const VIEWS = {
   under: { at: [0, 250, 700], look: [0, -0.34], dist: 20 },
   /** On the ice, looking back up at the whole thing. */
   ice: { at: [0, 3, 1250], look: [0, -0.30], dist: 30 },
+  /* ---- Mirrorfoot, the camp on the ice ---------------------------------
+   *
+   * 880 m out on bearing 27°, which is 45° off the sunset — the island reads
+   * as a silhouette between gold sky and blue instead of being washed flat by
+   * the sun's own disc. All four are given in world coordinates because the
+   * camp is at a fixed place, unlike the tower, which is chosen by a rule.
+   */
+  /* Two traps live down here and both cost a shot before they were written
+   * down.
+   *
+   * **The lens will not go below `supportAt + 1.1`,** and the lake is now a
+   * real standable surface rather than the void, so a third-person shot that
+   * wants to look *up* from ice level has its lens shoved above the target
+   * and photographs the planks. Float the body instead — which is what
+   * `under` and `skyline` already do, for the same reason.
+   *
+   * **First person reverses both signs.** At `dist` 2.2 or under the rig
+   * drops the boom and puts the lens on the character's head, where the yaw
+   * is the direction you are looking rather than the side the lens sits on,
+   * and positive pitch looks UP rather than placing the lens above. So a
+   * first-person view is the third-person numbers with `Math.PI` on the yaw
+   * and the pitch negated. Written the third-person way, the two below
+   * photographed the deck from above and the inside of the rock. Nothing here
+   * uses first person now; the note is what it cost to find out. */
+
+  /** The camp from eighty metres out, with the rock hanging over the top. */
+  mirrorfoot: { at: [400, 20, 784], look: [0.4713, -0.19], dist: 78 },
+  /** Over the Long Look, looking up past it at the island. The whole point. */
+  longlook: { at: [388.2, 6, 760.8], look: [0.4713, -0.24], dist: 14 },
+  /** The approach: 280 m up and 700 m out, camp below and island above. */
+  descent: { at: [491, 236, 964], look: [0.4713, 0.0873], dist: 500 },
+  /** Off the rim at deck height, looking down at the camp. Does it read? */
+  overrim: { at: [175, 592, 344], look: [3.613, 0.45], dist: 12 },
   /* Standing on the Kestrel's rooftop pad in the Bazaar — the flyer, its
      markings and its light column, with the city behind them. The height is
      the roof of lot b1-0-11 and is not a round number on purpose: it is
@@ -124,6 +163,38 @@ const VIEWS = {
   flypad: { at: [188, 669.3, 56.7], look: [2.0, -0.16], dist: 13 },
   /** Off the Bazaar at roof height, so the pads' light columns line up. */
   flyroofs: { at: [250, 700, 250], look: [Math.PI * 0.78, 0.12], dist: 26 },
+  /* ---- The four rooms you can walk into ---------------------------------
+   *
+   * Given in each room's own frame and resolved in the page from
+   * `__empyreanRooms()`, which `interiors.ts` publishes for the same reason the Meridian's five are: every
+   * one of these lots is chosen by a rule over the city plan, so a pair of
+   * world coordinates here is a photograph of whatever ends up standing there
+   * after the next reseed.
+   *
+   * `lx` is across the room, `lz` is out through its own front door — so a
+   * positive `lz` is outside on the pavement and a negative one is at the back
+   * wall — and `out: true` faces the street rather than the back of the room.
+   */
+
+  /** Twelve Anchor Row, from the pavement: the lit flat in the dark block. */
+  home: { room: { id: "home", lz: 9.5, ly: 1.0, out: false, pitch: -0.22, dist: 9 } },
+  /** Standing in the middle of it, looking at the table and the kitchen. */
+  homein: { room: { id: "home", lz: -1.5, ly: 0.6, out: false, pitch: 0.05, dist: 4.5 } },
+  /** From the back wall looking out of the window at the street. */
+  homeout: { room: { id: "home", lx: 0.5, lz: -6.0, ly: 0.9, out: true, pitch: 0.04, dist: 5.5 } },
+  /** The Glasshouse from the doorway, down the length of it. */
+  glasshouse: { room: { id: "glasshouse", lz: 7.0, ly: 1.0, out: false, pitch: 0.02, dist: 5 } },
+  /** Under the fig, looking up into the vault. */
+  glassvault: { room: { id: "glasshouse", lz: -1.0, ly: 1.2, out: false, pitch: -0.45, dist: 6 } },
+  /** The Armature, from just inside the shutter. */
+  armature: { room: { id: "armature", lz: 6.5, ly: 1.2, out: false, pitch: 0.02, dist: 6 } },
+  /** At the bench, with the arc and the wall of names. */
+  armbench: { room: { id: "armature", lx: 2.0, lz: -1.0, ly: 1.1, out: false, pitch: 0.0, dist: 4.5 } },
+  /** The Rimbath, from the back wall, looking out through the glass. */
+  bath: { room: { id: "bath", lx: 0, lz: -3.2, ly: 1.1, out: true, pitch: 0.06, dist: 6 } },
+  /** Standing in the water, looking along the tank at the sunset. */
+  bathwater: { room: { id: "bath", lx: -6.0, lz: -0.6, ly: 0.4, out: false, pitch: 0.02, dist: 5 } },
+
   /* ---- The Meridian ----------------------------------------------------
    *
    * The one tower you can go inside. These five are given in the *tower's*
@@ -150,6 +221,32 @@ const VIEWS = {
   skydeck: { spire: { deck: true, ly: "deck", out: true, pitch: -0.10, dist: 8 } },
   /** Standing on the glass floor, looking straight down at the street. */
   glassfloor: { spire: { ledge: true, ly: "deck", out: true, pitch: 0.70, dist: 4 } },
+
+  /* ---- The ring tram ---------------------------------------------------
+   *
+   * Both of these are the Launch Terrace stop, at 45 degrees, and both are
+   * timed rather than placed: the tram *starts* stood at that platform and
+   * dwells there for seven seconds of world time. Under this container's
+   * rasteriser that is about three quarters of a minute of wall clock, which
+   * is comfortably longer than the boot and the settle above — so the train
+   * is in frame. On real hardware it will have left, and the shot is then a
+   * perfectly honest photograph of an empty stop.
+   *
+   * The lens is placed by hand rather than by a viewpoint name because it has
+   * to stand off the *track*: the boom sits at target + (sin yaw, cos yaw) *
+   * dist, so yaw is the atan2 of the direction from the tram to the camera. */
+  /** Alongside the leading car, from the outside of the ring. */
+  tram: {
+    at: [Math.cos(Math.PI / 4) * 218, 621.4, Math.sin(Math.PI / 4) * 218],
+    look: [Math.atan2(Math.cos(Math.PI / 4), Math.sin(Math.PI / 4)), 0.10],
+    dist: 11,
+  },
+  /** Standing on the platform where you wait for it. */
+  tramstop: {
+    at: [Math.cos(Math.PI / 4) * 212, 620.9, Math.sin(Math.PI / 4) * 212],
+    look: [Math.atan2(-Math.cos(Math.PI / 4), -Math.sin(Math.PI / 4)), 0.06],
+    dist: 9,
+  },
 
   /** The card composition, from the shot-mode camera. */
   card: null,
@@ -193,6 +290,32 @@ function resolveSpire(spec) {
     dist: spec.dist ?? 6,
   };
 }
+/**
+ * Turn a room-frame viewpoint into the `at`/`look`/`dist` the rig wants.
+ *
+ * Same trick as `resolveSpire`, and for the same reason: the only place a
+ * room's position is known is the module that chose the lot it stands on.
+ * Returns null if the room is gone, which is itself the answer to "did that
+ * survive the last change".
+ */
+function resolveRoom(spec) {
+  const hook = window.__empyreanRooms;
+  if (typeof hook !== "function") return null;
+  const r = hook().find((k) => k.id === spec.id);
+  if (!r) return null;
+  const s = Math.sin(r.yaw);
+  const c = Math.cos(r.yaw);
+  const lx = spec.lx ?? 0;
+  const lz = spec.lz ?? 0;
+  const dx = spec.out ? c : -c;
+  const dz = spec.out ? s : -s;
+  return {
+    at: [r.x + lx * s + lz * c, r.y + (spec.ly ?? 1.0), r.z - lx * c + lz * s],
+    look: [Math.atan2(-dx, -dz), spec.pitch ?? 0],
+    dist: spec.dist ?? 6,
+  };
+}
+
 async function up(url, ms) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -253,6 +376,7 @@ for (const name of names) {
    * neither a minifier nor a page that has reloaded under you, and the second
    * of those happens here every time Vite re-optimises a dependency. */
   await page.addInitScript(`window.__resolveSpire = ${resolveSpire.toString()};`);
+  await page.addInitScript(`window.__resolveRoom = ${resolveRoom.toString()};`);
   if (CHAR) {
     await page.addInitScript((c) => {
       try {
@@ -317,6 +441,11 @@ for (const name of names) {
           if (!r) return;
           Object.assign(v, r);
         }
+        if (v.room) {
+          const r = window.__resolveRoom(v.room);
+          if (!r) return;
+          Object.assign(v, r);
+        }
         // Freeze first, warp second. Gravity undoes a warp in about a second
         // and a half, which is why every aerial viewpoint used to be a
         // photograph of the pavement the player landed on.
@@ -341,6 +470,10 @@ for (const name of names) {
         if (!d) return;
         if (v.spire) {
           const r = window.__resolveSpire(v.spire);
+          if (r) Object.assign(v, r);
+        }
+        if (v.room) {
+          const r = window.__resolveRoom(v.room);
           if (r) Object.assign(v, r);
         }
         if (!v.at) return;

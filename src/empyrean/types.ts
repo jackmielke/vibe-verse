@@ -232,3 +232,49 @@ export interface EmpyreanState {
   /** What has been found, for the collectibles line. */
   found: { got: number; total: number };
 }
+
+/* -------------------------------------------------------------------------
+ * Photo mode
+ * ---------------------------------------------------------------------- */
+
+/**
+ * How a photograph is framed and graded.
+ *
+ * The page owns these — they are menu state, and the menus are the page's —
+ * and pushes them into the engine, which is the same narrow arrangement the
+ * hour and the weather already use. Nothing here comes back out: the only
+ * thing photo mode knows that the panel does not is where the lens is, and no
+ * control shows that.
+ */
+export interface PhotoOptions {
+  /** Vertical field of view, degrees. 14 is a long lens, 100 a very wide one. */
+  fov: number;
+  /** Width ÷ height of the finished picture, or null for the viewport's own. */
+  aspect: number | null;
+  /** Whether the character is in the shot. */
+  showBody: boolean;
+  /**
+   * The look, as a CSS filter string. `"none"` for the world as it renders.
+   *
+   * A string rather than an id, because the list of looks is a thing a person
+   * reads and picks from — which makes it the panel's, next to the words that
+   * name them. The engine's whole job is to bake into the file exactly what
+   * the viewfinder is showing, and it can do that without knowing what
+   * "Kodachrome" is.
+   */
+  filter: string;
+  /** Extra vignette baked into the file, 0..1. */
+  vignette: number;
+  /** Multiplier on the viewport's resolution. 2 renders twice the pixels. */
+  scale: number;
+}
+
+/** One photograph. The caller owns `url` and must revoke it. */
+export interface PhotoShot {
+  /** Object URL of a PNG. */
+  url: string;
+  width: number;
+  height: number;
+  /** Suggested filename. */
+  name: string;
+}
