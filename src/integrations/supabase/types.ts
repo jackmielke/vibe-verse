@@ -1983,6 +1983,27 @@ export type Database = {
         }
         Relationships: []
       }
+      empyrean_notes: {
+        Row: {
+          author: string
+          body: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          author: string
+          body: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          author?: string
+          body?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       event_attendees: {
         Row: {
           attended: boolean | null
