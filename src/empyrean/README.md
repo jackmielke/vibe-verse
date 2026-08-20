@@ -175,6 +175,26 @@ measurement came back *60.1 fps, 0 draws, 0 triangles* — a perfect score for
 a title card, printed as `ok`. `PERF_ENTER` names the button, and a live GL
 context that drew nothing now prints as `menu?` rather than as a fast world.
 
+## Card art, and why there is no moving one
+
+`node scripts/route-shot.mjs "/empyrean?shot=1" src/assets/worlds/empyrean.jpg`.
+The `?shot` camera is a fixed composition from off the south rim; it is not an
+attract mode and nothing plays itself in it.
+
+`route-gif` was run rather than reasoned about, and it refused:
+
+    400x224 · 4 frames (4 distinct) · 3.85s · 1.0 fps
+    REJECTED: 4 distinct frames, need 8.
+
+So this world keeps its still, which is the right answer — but not quite for
+the reason the recorder gives. Every frame it managed to capture *was*
+distinct; it only captured four, because SwiftShader renders this world at
+about one frame a second and the clip is three seconds long. The recorder
+cannot tell "nothing moves here" from "the rasteriser is too slow to sample
+it", and on a machine with a GPU this might well pass. If somebody wants a
+moving card, record it somewhere with hardware and let the eight-frame floor
+mean what it says.
+
 ## Verifying
 
 `npm run typecheck` (never bare `tsc --noEmit` — see the root `CLAUDE.md`),
@@ -202,3 +222,10 @@ finished frame of a world that is not there.
 
 Neither a green build nor a green test suite has ever caught this world
 looking wrong.
+
+**The prompts are checked in a browser, not only in a test.** Warp to each
+interactable and read `__empyrean.state().prompt`: four races, two courier
+stations, the photo hunt, the Market Hall and the tram board all offer
+themselves where they should. The tests cover what happens after you press
+the key; this covers the key being offered at all, which is a different
+failure and a sillier one.
