@@ -294,11 +294,17 @@ export function buildActivities(ctx: BuildContext): ActivitiesHandle {
       stopReady = slot !== null && frame.player.grounded && speed < 2.5;
 
       /* One line of onboarding, once, a few seconds in: enough to know there
-       * is something here, not enough to be a tutorial. */
+       * is something here, not enough to be a tutorial.
+       *
+       * It leads with the aircraft because the aircraft is *visible from
+       * where you are standing* — it is parked on a lit pad twenty metres up
+       * the avenue from the arrival point, on purpose — and because getting
+       * into it is one keypress. A first line that names something you can
+       * see and act on immediately is worth three that describe the world. */
       if (!opened && frame.time > 6) {
         opened = true;
         toaster.push(
-          `Sunmotes are scattered all over the island — ${finds.total - finds.got} still out there. The Launch Terrace starts the races.`,
+          `That aircraft on the pad flies — walk over and press E. ${finds.total - finds.got} sunmotes still out there.`,
           "info",
           7,
         );

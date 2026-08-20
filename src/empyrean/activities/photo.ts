@@ -124,6 +124,22 @@ export const SHOTS: Shot[] = [
     pay: 14,
   },
   {
+    /* The one shot in the set that is of something *outside* the world's own
+       silhouette, and the one that has a clock attached: the pad lights every
+       seven minutes and a photograph of a rocket on the ground and a
+       photograph of one leaving are different pictures. Standing on the first
+       promenade ring, on the pad's own bearing, so the whole island is behind
+       you and there is nothing but snow between. */
+    id: "kestrel",
+    title: "Kestrel Field",
+    hint: "The first promenade ring on the south-west bearing. Two kilometres out on the snow there is a spaceport; wait for it.",
+    at: P(344.5, -115.9, 605),
+    look: { x: -820, y: 70, z: -1680 },
+    near: 16,
+    arc: 24,
+    pay: 18,
+  },
+  {
     id: "rail",
     title: "Under the Observatory",
     hint: "The first promenade ring, directly below the Observatory, looking back up at its telescope.",
