@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-08-20T10:11:30.551Z",
+  "generated_at": "2026-08-20T11:52:58.003Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "6345a15f",
+      "date": "2026-08-20",
+      "subject": "Twice as many people, and 334 benches that finally have somebody on them",
+      "lede": "The Halo was empty and nobody could work out why, because it looks like a plaza and a plaza is walkable. It is: `buildNav` simply puts zero nav nodes inside `HALO_R`. One ring at r=62 and nothing across it, so the pathfinder had no way to route anybody over the biggest open space in the city, and the Beacon — which asked for ten people standing in front of it — got none, because the nearest node was 24 m off its 38 m",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "5d29e355",
+      "date": "2026-08-20",
+      "subject": "Ignore .scratch/ anywhere, which is the general case",
+      "lede": "Four separate patterns have accumulated in this part of `.gitignore` and each was added the morning after a scratch file turned up in a commit — including one of mine last night, when `git add -A` swept three of an agent's throwaway tests into a commit about the sky. A directory named `.scratch`, at any depth, is the general case rather than a fifth prefix to guess at.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "5c8be22a",
+      "date": "2026-08-20",
+      "subject": "Recapture the card, stamp the dates, regenerate the build log",
+      "lede": "The card was taken before the towers became glass and before there was a spaceport on the horizon. `npm run stamp` reads each world's `source` to work out when it last changed, and that date is on every card in the hub — so it has to be run after a night like this one or every card lies by a day.",
+      "places": [],
+      "files": 4
+    },
     {
       "sha": "8def08e7",
       "date": "2026-08-20",
@@ -965,32 +989,6 @@
       "lede": "Three reasons to go somewhere, in one new file.",
       "places": [],
       "files": 6
-    },
-    {
-      "sha": "c2d5a7c8",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco gets its landmarks, and the city gets its walls back",
-      "lede": "Twelve buildings, hand-made from the real ones: the Transamerica Pyramid, Salesforce Tower, Coit Tower, the Ferry Building, Grace Cathedral, the Dragon Gate, the Dewey Monument on Union Square, Pier 39, the crooked block of Lombard Street, the Powell Street cable car turnaround, the Bay Bridge, and Alcatraz. They are the only things in the world that get the cartoon outline, because an outline on everything is an out",
-      "places": [],
-      "files": 13
-    },
-    {
-      "sha": "92c749d7",
-      "date": "2026-08-17",
-      "subject": "The water soundscape, and an ending nobody had ever reached",
-      "lede": "THE FINDING: the victory path had never executed once. Not broken — DRAIN_CURVE holds the lobby at 100 for eighteen seconds and only reaches one survivor at t=820 simulated seconds, a fourteen-minute match at 60 fps and about a day and a half under SwiftSHADER. That is why neither end card had ever been seen. match.skipToEnd() makes the ending reachable the way skipToLive made the ground reachable, and it deliberatel",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "53371bc3",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: a toy San Francisco you can fly around",
-      "lede": "A new world at /frisco — downtown San Francisco built as painted wood rather than photographed concrete. Two street grids meeting at Market, the hills in the right order, the bay on two sides, and eleven districts that read as themselves from the air: Chinatown red and gold, the Financial District glass and slate, North Beach in pastels.",
-      "places": [
-        "The Long Silence"
-      ],
-      "files": 20
     }
   ]
 }
