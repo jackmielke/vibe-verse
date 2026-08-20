@@ -22,6 +22,7 @@ import type { EmpyreanState } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
 import Guestbook from "@/empyrean/ui/Guestbook";
 import empyreanArt from "@/assets/empyrean-inspiration.png.asset.json";
+import empyreanCity from "@/assets/empyrean-city.png.asset.json";
 
 import EmpyreanSkyPanel, { readSkyChoice } from "@/components/EmpyreanSkyPanel";
 // Type-only, so naming the five conditions here costs nothing at runtime and
@@ -204,8 +205,7 @@ export default function Empyrean() {
               <img
                 src={empyreanCity.url}
                 alt="The Empyrean: a floating city of iridescent glass towers above a frozen lake"
-                className="relative w-full rounded-[1.5rem] border border-white/35 shadow-[0_20px_60px_rgba(6,10,40,.6)] transition-transform duration-500 ease-out will-change-transform group-hover:-translate-y-1.5 group-hover:rotate-[1.5deg] motion-safe:animate-[float_6s_ease-in-out_infinite]"
-                style={{ animationName: undefined }}
+                className="relative w-full rounded-[1.5rem] border border-white/35 shadow-[0_20px_60px_rgba(6,10,40,.6)] transition-transform duration-500 ease-out will-change-transform group-hover:-translate-y-1.5 group-hover:rotate-[1.5deg]"
               />
             </div>
             <p className="mb-3 text-[11px] uppercase tracking-[0.42em] text-cyan-100/85">
