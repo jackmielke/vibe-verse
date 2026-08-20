@@ -1027,6 +1027,37 @@ vec3 skyColor(vec3 rd, vec3 sun) {
   c += vec3(1.0, 0.72, 0.44) * pow(max(dot(rd, sun), 0.0), 70.0) * 1.1;
   return c;
 }
+
+/**
+ * What a pane of glass on this island can actually see.
+ *
+ * skyColor is the dome, and a dome is only half of what a mirror standing
+ * in a city reflects. The other half is the reason a glass tower looks like
+ * glass at all: a hard horizon, the snowfield under it, and — for anything
+ * within a few degrees of level, which is most of a facade seen from the
+ * pavement — the warm mass of the buildings opposite. Reflect only the sky
+ * and every tower in the city is a smooth gradient, which is what plaster
+ * looks like.
+ */
+vec3 envColor(vec3 rd, vec3 sun) {
+  vec3 c = skyColor(rd, sun);
+
+  /* The ground half. A real horizon is a *line*, not a fade: the last ten
+     degrees of sky meet six hundred metres of lit snow with nothing in
+     between, and that line drawn across fifty towers at slightly different
+     angles is most of what sells them as mirrors. */
+  vec3 snow = mix(vec3(0.86, 0.74, 0.78), vec3(0.55, 0.46, 0.62), smoothstep(-0.06, -0.5, rd.y));
+  c = mix(c, snow, smoothstep(0.012, -0.030, rd.y));
+
+  /* The city opposite. Anything within a few degrees of level is looking at
+     another facade, not at the sky — warm, darker than the sky, and varying
+     as you sweep along the street rather than constant. */
+  float level = 1.0 - smoothstep(0.0, 0.19, abs(rd.y));
+  float sweep = 0.5 + 0.5 * sin(atan(rd.z, rd.x) * 5.0);
+  vec3 opposite = mix(vec3(0.30, 0.20, 0.26), vec3(0.62, 0.42, 0.34), sweep);
+  c = mix(c, opposite, level * 0.42);
+  return c;
+}
 `;
 
 const HEAD = /* glsl */ `
@@ -1129,7 +1160,7 @@ void main() {
   float spandrel = 1.0 - smoothstep(0.17, 0.31, f.y);
   float glazed = mull * trans * (1.0 - spandrel);
   float frame = max(1.0 - mull, 1.0 - trans);
-  col *= mix(1.0, mix(mix(0.80, 1.02, glazed), 1.20, frame * 0.5), det);
+  col *= mix(1.0, mix(mix(0.72, 1.02, glazed), 1.26, frame * 0.5), det);
 
   /* Per bay and per floor band, never per cell. */
   float bayJit   = hash21(vec2(floor(g.x), s * 0.37)) - 0.5;
@@ -1168,10 +1199,55 @@ void main() {
   float dist = length(toEye);
   vec3 V = toEye / max(dist, 0.001);
   vec3 N = normalize(vNrm);
-  float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.6);
 
-  vec3 env = skyColor(reflect(-V, N), normalize(uSun));
-  col = mix(col, env * 0.86, 0.12 + 0.42 * fres);
+  /* ---- every pane is very slightly out of plane, and that is the whole
+   * trick ----------------------------------------------------------------
+   *
+   * A curtain wall is a few thousand sheets of glass hung on a frame, and
+   * not one of them is exactly flat or exactly aligned: they bow a fraction
+   * of a degree under their own weight and under the pressure difference
+   * across them. You never see the deflection. What you see is that the pane
+   * beside this one is reflecting a *different part of the sky* — so a real
+   * glass tower shimmers in a coarse checker at the size of its panes, and
+   * an ideal flat one is a mirror-smooth gradient that reads as painted
+   * metal. This is the single line that separates the two.
+   *
+   * Under a degree, on both axes, from a 2-D hash of (bay, floor) — a 1-D
+   * hash of the two combined clumps, and a clumped wobble is a dent. */
+  vec2 pane = vec2(floor(g.x), floor(g.y));
+  float wobX = (hash21(pane + vec2(s * 0.19, 11.3)) - 0.5) * 0.030;
+  float wobY = (hash21(pane + vec2(41.7, s * 0.23)) - 0.5) * 0.022;
+  vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), N));
+  vec3 B = cross(N, T);
+  /* Only where there is glass, and only while a pane is bigger than a pixel:
+     wobbling the mullions is nonsense, and wobbling something sub-pixel is
+     just noise with a hash behind it. */
+  vec3 Ng = normalize(N + (T * wobX + B * wobY) * glazed * det);
+
+  float fres = pow(1.0 - clamp(dot(Ng, V), 0.0, 1.0), 2.6);
+  vec3 sunDir = normalize(uSun);
+  vec3 R = reflect(-V, Ng);
+  vec3 env = envColor(R, sunDir);
+
+  /* Glass is a dark body under a bright reflection; plaster is a bright body
+     under a dim one. The old figures — a painted gradient at full strength
+     with 12% environment over it at face-on — were the second thing, and
+     that is exactly how the towers read. The glazing goes dark and lets the
+     reflection carry the colour; the mullions and spandrels stay opaque and
+     keep theirs, because they are aluminium and stone and they should not
+     mirror anything. */
+  float mirror = mix(0.10, 0.34, glazed) + fres * mix(0.30, 0.66, glazed);
+  col *= mix(1.0, 0.52, glazed * det);
+  col = mix(col, env, mirror);
+
+  /* The glint. A low sun on a facade of slightly-wobbled panes does not give
+     you a soft sheen, it gives you a handful of panes that are suddenly a
+     hundred times brighter than their neighbours — and because the wobble is
+     per pane, so is this. Two lobes: a hard one that picks out individual
+     panes and a broad one for the wash around them. */
+  float mirrorDot = max(dot(R, sunDir), 0.0);
+  float glint = pow(mirrorDot, 900.0) * 9.0 + pow(mirrorDot, 42.0) * 0.55;
+  col += vec3(1.0, 0.86, 0.62) * glint * mix(0.25, 1.0, glazed) * uSunUp;
 
   col += mix(vec3(0.45, 0.85, 1.0), vec3(1.0, 0.72, 0.85), warmth)
        * fres * smoothstep(35.0, 220.0, dist) * 0.85;
