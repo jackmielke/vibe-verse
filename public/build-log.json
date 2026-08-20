@@ -1,7 +1,39 @@
 {
-  "generated_at": "2026-08-20T00:06:21.133Z",
+  "generated_at": "2026-08-20T05:52:33.417Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "2767213d",
+      "date": "2026-08-20",
+      "subject": "Give the hour and the weather to the player",
+      "lede": "The world has had a full day cycle and five weather conditions since it was built, and until now the only thing that could reach either was a debug hook meant for a screenshot script. That is a strange thing to hide: the whole argument for a world painted at one specific minute of one specific sunset is that the light *is* the world, and moving it is five different places for the price of one.",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "91b06353",
+      "date": "2026-08-20",
+      "subject": "Glass, rather than a painting of glass",
+      "lede": "The towers were a bright painted gradient with 12% environment mixed over them at face-on. That is what plaster looks like. Glass is the other way round — a dark body under a bright reflection — and three things were missing before it could be:",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "290ede15",
+      "date": "2026-08-20",
+      "subject": "Bind the look drag where nothing can get above it",
+      "lede": "Jack cannot turn the camera by dragging — in this world *or* in Vibe Island, in an ordinary Chrome window, holding the left button. Two completely different bindings failing the same way says the fault is not in either one's arithmetic, so this stops relying on the part that can be taken away.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "5bab24ba",
+      "date": "2026-08-20",
+      "subject": "Regenerate the published build log",
+      "lede": "",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "5eae0835",
       "date": "2026-08-20",
@@ -985,38 +1017,6 @@
       "lede": "Completes the bake-off at `/homes`. The ten added here are structural rather than tonal — the point of fifteen is lost the moment two of them are the same layout in different colours:",
       "places": [],
       "files": 17
-    },
-    {
-      "sha": "92b06836",
-      "date": "2026-08-16",
-      "subject": "Fifteen front doors, and a way to walk through them — first five",
-      "lede": "`/homes` is a bake-off. Each candidate is a whole page — its own layout, type, palette and card — not a skin over one design, because fifteen token-swaps of the same page tell you nothing a swatch could not. The variety has to be structural or the exercise is theatre.",
-      "places": [],
-      "files": 11
-    },
-    {
-      "sha": "d410df58",
-      "date": "2026-08-16",
-      "subject": "Stamped the royale cards with the teammate's date",
-      "lede": "`npm run stamp` on this machine rewrites every timestamp from +00:00 to Z, which is 500 lines of churn and no information, so this is the two entries that actually changed.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "819ed128",
-      "date": "2026-08-16",
-      "subject": "The teammate stopped standing in a field, and started keeping score",
-      "lede": "It played one life. Soaked out at 0% meant standing still until somebody killed the process — through the end card, through the next lobby, through the next match. One session sat in an empty field for eleven hours. And it learned nothing: every match started the beginner it was the first time.",
-      "places": [],
-      "files": 5
-    },
-    {
-      "sha": "1feddd5a",
-      "date": "2026-08-15",
-      "subject": "Measured what the worlds cost, and stopped guessing which models are rigged",
-      "lede": "`route-smoke.mjs` answers \"is the world there\". Nothing answered \"and what does it cost\", so `npm run perf` now does: draw calls, triangles, shader programs, texture bytes, live GL contexts and JS heap, per route. It counts at the WebGL layer rather than through renderer.info, because forty-odd worlds build their renderer in forty-odd places and most never expose it.",
-      "places": [],
-      "files": 7
     }
   ]
 }
