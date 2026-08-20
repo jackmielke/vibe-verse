@@ -1,7 +1,119 @@
 {
-  "generated_at": "2026-08-19T20:43:20.914Z",
+  "generated_at": "2026-08-20T00:06:21.133Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "5eae0835",
+      "date": "2026-08-20",
+      "subject": "Note what the recorder actually measured, and that the prompts were walked",
+      "lede": "`route-gif` refused this world — four distinct frames against a floor of eight — and the honest reading is not \"nothing moves here\": every frame it captured was distinct, and it only got four because SwiftShader renders the Empyrean at about a frame a second. The recorder cannot tell an inert world from a slow rasteriser. The still stands, but the reason is written down.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "382bbc28",
+      "date": "2026-08-20",
+      "subject": "Banners that read as banners",
+      "lede": "A banner run's accent panels were mixed thirty per cent toward cream, which turns the Spires' #8fd6ff into something within a few points of white. Hung on a five-centimetre cable against a navy sky, a two-metre near-white rectangle reads as a blank quad floating in the middle of the avenue — the comment beside the stiffening pole already says that is the thing to avoid, and the colour was doing it anyway. Twelve per ",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "fe9febbf",
+      "date": "2026-08-19",
+      "subject": "Teach route-perf to click past a menu, and measure what this costs",
+      "lede": "The first perf run on /empyrean came back **60.1 fps, 0 draws, 0 triangles**, printed as `ok`. That is a perfect score for a title card: route-perf clicks the middle of the viewport once, which is not where the Arrive button is, so the world never booted. `PERF_ENTER=<button text>` names it and retries — the handler is often attached after the button is painted under SwiftShader — and a route that holds a live WebGL ",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "ca5f877a",
+      "date": "2026-08-19",
+      "subject": "Recapture the card, and stamp the dates",
+      "lede": "The card art was taken before the shopfronts were fixed, so it had the curtain of stretched glazing hanging under the island in it — which is the one part of the picture the card is *about*. The keel is a keel now.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "b6f91e7c",
+      "date": "2026-08-19",
+      "subject": "Cut stone on the terrace faces, and a promenade you can see from",
+      "lede": "The wall you stand against on the promenade is a hundred metres of fascia two metres from the lens, and it was one flat mauve field with a soft vertical shimmer over it — a rhythm expressed as a 22% shading swing is a rhythm you can only read from a kilometre away. A retaining wall reads as masonry from three things: bays with real edges, courses across them, and a plinth and a cornice saying which way is up. All thr",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "3bac2332",
+      "date": "2026-08-19",
+      "subject": "Four hundred trees were black because green times green is not green",
+      "lede": "Every tree carries its leaf colour on `instanceColor`, and three multiplies that by the vertex colour — so tagging the canopy geometry green as well squared it: #4f8f4e rendered as #183618. In a city that is otherwise all warm light at dusk, four hundred black blobs along the avenues were the loudest wrong thing at street level, and the thing that looked wrong was the *shading*, which is in a different file.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "af9a0aa9",
+      "date": "2026-08-19",
+      "subject": "The shopfronts were six hundred metres tall",
+      "lede": "`shopfront` takes a level and a height, and two of its four derived numbers confused the one for the other:",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "36e3199b",
+      "date": "2026-08-19",
+      "subject": "Step the nav graph by its clearance, not by a guess at a spacing",
+      "lede": "The crossing stitcher walked each candidate edge at a fixed interval and asked `surfaceAt` whether it was still on pavement. Five even samples let eighteen edges through a building; one every 1.2 m still let twenty through. Both were the same mistake — pick a spacing, hope no corner an avenue cuts off a block is thinner than it — and there is no spacing that is safe, because the sliver is as thin as the geometry happ",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "5efbbeb0",
+      "date": "2026-08-19",
+      "subject": "Untrack the scratch harnesses agents leave behind",
+      "lede": "`.tmp-t.mjs` and `__zz_vshot.mjs` are one-off Playwright drivers written to look at a frame and then forgotten. They got swept into a commit by a `git add -A` while their author was still using them, which is how a throwaway becomes a file somebody has to wonder about in six months.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "0ba1c645",
+      "date": "2026-08-19",
+      "subject": "Two daylights, and a snowfield that fog could not touch",
+      "lede": "The lighting pass landed and it found two bugs it could not reach from its own files. Both were mine.",
+      "places": [],
+      "files": 22
+    },
+    {
+      "sha": "35052c54",
+      "date": "2026-08-19",
+      "subject": "A budget on what the world costs, and a clock that dwells",
+      "lede": "**`src/test/empyreanBudget.test.ts`** counts draw calls and triangles per system and holds a ceiling on each. Frame rate cannot be measured here — no GPU, so Chromium rasterises on the CPU — but the numbers that *cause* frame rate can, and they are exact: they are what the page asks the driver to do, and they are identical on real hardware.",
+      "places": [],
+      "files": 11
+    },
+    {
+      "sha": "c1bc8854",
+      "date": "2026-08-19",
+      "subject": "Unseal the café and the gallery; stop photographing the menu",
+      "lede": "Three things the last round turned up.",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "a5938dd2",
+      "date": "2026-08-19",
+      "subject": "A test that catches the bugs a green build cannot",
+      "lede": "`src/test/empyreanWorld.test.ts` builds every system that does not need a renderer, steps it two frames, and looks for the failures whose symptom is a black screen rather than an exception:",
+      "places": [],
+      "files": 14
+    },
+    {
+      "sha": "e32bc7fe",
+      "date": "2026-08-19",
+      "subject": "The city is standing: ten systems, integrated, and it renders",
+      "lede": "Still on the branch, not main — the frames show real problems and it is not worth a live deploy yet. But it typechecks, builds, and opening `/empyrean` gives you a street with kerbs, lit windows, trees, benches, a tram, birds and a five-hundred-metre Beacon at the end of it.",
+      "places": [],
+      "files": 30
+    },
     {
       "sha": "f5c5994d",
       "date": "2026-08-19",
@@ -905,124 +1017,6 @@
       "lede": "`route-smoke.mjs` answers \"is the world there\". Nothing answered \"and what does it cost\", so `npm run perf` now does: draw calls, triangles, shader programs, texture bytes, live GL contexts and JS heap, per route. It counts at the WebGL layer rather than through renderer.info, because forty-odd worlds build their renderer in forty-odd places and most never expose it.",
       "places": [],
       "files": 7
-    },
-    {
-      "sha": "98618ddb",
-      "date": "2026-08-15",
-      "subject": "A fresh clone still could not npm ci",
-      "lede": "`npm ci` refuses to run at all: package.json and package-lock.json are out of sync, missing @testing-library/dom and the seven transitive packages under it.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "45ae074e",
-      "date": "2026-08-15",
-      "subject": "Restamped after merging main",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "27c6217c",
-      "date": "2026-08-15",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "97f99b36",
-      "date": "2026-08-15",
-      "subject": "Take the wheel of any car in Vibe City",
-      "lede": "Walk into the road, wait for a car to stop, and drive it away.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "7d18916b",
-      "date": "2026-08-15",
-      "subject": "Every day of the vibeverse, one square each",
-      "lede": "The Chronicle told you what was built. It could not tell you what the building looked like — and the shape of the work turns out to be the better story.",
-      "places": [],
-      "files": 7
-    },
-    {
-      "sha": "f6b29fbb",
-      "date": "2026-08-15",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01KSa7cEFu3r5gZdH7gNjnBz",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "cbd5788a",
-      "date": "2026-08-15",
-      "subject": "Real cars in Vibe City, and you can walk into them",
-      "lede": "The traffic was `BoxGeometry(1.8, 1.25, 4.2)` sliding along the street centrelines at a constant speed. No wheels, no lights, no collision, and cross traffic drove straight through itself at every junction. The comment defending it was honest — from any altitude where you can see the grid, you cannot see that nobody is turning — and it stopped being true the moment anybody stood on the pavement.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "a9604565",
-      "date": "2026-08-15",
-      "subject": "Fixed the swim stroke lurching, and made it a real crawl",
-      "lede": "The stroke was being re-randomised every frame, and nothing about the pose was to blame.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 5
-    },
-    {
-      "sha": "9e1e6e4e",
-      "date": "2026-08-14",
-      "subject": "Your own line in the history",
-      "lede": "The Chronicle tells the vibeverse's story and had nothing to say about yours. The passport does, and it is the only page that can: it knows the earliest arrival in this browser, `REPO_LIFE` knows the first commit there ever was, and the difference between them is a fact nothing else here could produce — not when you turned up, but how far into the story.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "baef199b",
-      "date": "2026-08-14",
-      "subject": "Build log catches up with the Chronicle",
-      "lede": "Regenerated by `prebuild` on the last build, so it now carries the Chronicle and the merge rather than stopping short of them. Generated artifact — the churn is a timestamp and the newest commits, nothing to read.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "c40073b9",
-      "date": "2026-08-14",
-      "subject": "The Chronicle learns its own birthday",
-      "lede": "`npm run stamp && npm run chronicle`, now that the page has a commit to read. It is the fifty-third world and the newest line in its own history: born 2026-08-14, one commit, one hand.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "7dad4f4a",
-      "date": "2026-08-14",
-      "subject": "The Chronicle: every world, in the order it appeared",
-      "lede": "The vibeverse has fifty-two worlds and no memory of building any of them. `/game` shows what exists and the passport shows where you have been; nothing has ever shown how the place came to be. This is that — and it writes itself, out of git, so it is exactly as true as the repository and cannot drift from it. Add a world and it writes itself a line here.",
-      "places": [],
-      "files": 12
-    },
-    {
-      "sha": "c8d63a06",
-      "date": "2026-08-14",
-      "subject": "Build log catches up with the last two commits",
-      "lede": "Regenerated by the build, so it now carries the chrome default and the motion-card work rather than stopping two commits short of them.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "05126219",
-      "date": "2026-08-14",
-      "subject": "Chrome is the front door now, and five more to try",
-      "lede": "`DEFAULT_LOOK` moves to chrome, so a first-time visitor with nothing saved gets the brushed-metal wordmark instead of the mint one. Checked with a clean profile rather than assumed: no localStorage, and the h1 comes up with a transparent fill and the gradient behind it.",
-      "places": [],
-      "files": 3
     }
   ]
 }
