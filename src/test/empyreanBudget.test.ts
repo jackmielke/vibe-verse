@@ -141,6 +141,7 @@ const CEILING: Record<string, { draws: number; tris: number }> = {
   activities: { draws: 14, tris: 120_000 },
   weather: { draws: 10, tris: 90_000 },
   vehicles: { draws: 20, tris: 60_000 },
+  launchsite: { draws: 14, tris: 12_000 },
 };
 
 /** What the whole world may cost before anything is culled. */

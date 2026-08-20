@@ -134,6 +134,18 @@ const C = {
   blossom: new THREE.Color("#f3b6c8"),
   soil: new THREE.Color("#5b4433"),
   water: new THREE.Color("#7fd7d2"),
+  /* The play colours. Deliberately the only genuinely saturated things in a
+     world that is otherwise all dusk pastels — a playground that matches its
+     surroundings is a playground nobody's eye finds. */
+  playRed: new THREE.Color("#ef6a5a"),
+  playYellow: new THREE.Color("#ffc94d"),
+  playBlue: new THREE.Color("#59b8f0"),
+  playGreen: new THREE.Color("#6fd18a"),
+  /* Safety surfacing. Warm, not green: the first version was a pale green
+     disc on grass, which is invisible, and without it the four pieces of
+     equipment read as four unrelated objects in a field rather than as one
+     playground. */
+  playSoft: new THREE.Color("#dba884"),
 } as const;
 
 /** District signal colours, straight off the plan, as THREE colours. */
@@ -1147,6 +1159,33 @@ export function buildProps(ctx: BuildContext): PropsHandle {
     );
   }
 
+  /* Where the playground goes, decided *before* anything is planted.
+   *
+   * The first version placed it after the garden loop and the loop had
+   * already put four trees through the climbing frame — a playground you
+   * cannot see is worse than no playground, because it costs the triangles
+   * anyway. The trees and beds below refuse to sample inside `PLAY_CLEAR`
+   * metres of this. */
+  const PLAY_CLEAR = 7.4;
+  let playSite: { x: number; z: number; a: number } | null = null;
+  {
+    let bestArea = 0;
+    for (const lot of plan.lots) {
+      if (lot.use !== "garden" || lot.district !== "gardens") continue;
+      const area = Math.abs(polyArea(lot.poly));
+      if (area > bestArea) {
+        bestArea = area;
+        playSite = { x: lot.centroid.x, z: lot.centroid.z, a: lot.a };
+      }
+    }
+    /* 190 m² is the smallest lot the six-metre pad fits in with room to walk
+       round it. Below that there is no playground, rather than a playground
+       jammed against a hedge. */
+    if (bestArea <= 190) playSite = null;
+  }
+  const nearPlay = (x: number, z: number) =>
+    playSite !== null && Math.hypot(x - playSite.x, z - playSite.z) < PLAY_CLEAR;
+
   /* Garden lots: trees, beds and a hedge round the edge. */
   for (const lot of plan.lots) {
     if (lot.use !== "garden") continue;
@@ -1156,6 +1195,7 @@ export function buildProps(ctx: BuildContext): PropsHandle {
     for (let tries = 0; tries < want * 12 && placed < want; tries++) {
       const p = samplePoly(lot.poly, lot.centroid, rng, 2.4);
       if (!p) continue;
+      if (nearPlay(p.x, p.z)) continue;
       treeAt(p.x, p.z, DECK_Y, rng.range(0.85, 1.6), rng.range(0.35, 1));
       placed++;
     }
@@ -1164,6 +1204,7 @@ export function buildProps(ctx: BuildContext): PropsHandle {
     for (let i = 0; i < beds; i++) {
       const p = samplePoly(lot.poly, lot.centroid, rng, 2.6);
       if (!p) continue;
+      if (nearPlay(p.x, p.z)) continue;
       pushStreet(bed(p.x, DECK_Y, p.z, rng), p.x, p.z);
       note("bed", p.x, p.z, DECK_Y);
     }
@@ -1185,6 +1226,39 @@ export function buildProps(ctx: BuildContext): PropsHandle {
         pushStreet(hedge(mx, DECK_Y, mz, seg * 0.98, yaw, rng), mx, mz);
         note("hedge", mx, mz, DECK_Y);
       }
+    }
+  }
+
+  /* =====================================================================
+   * 2b. Somewhere for children, and somewhere to eat outdoors
+   *
+   * The garden lots were planting and nothing else — pleasant, and not a
+   * place anybody uses. A playground and a scatter of picnic tables say the
+   * city is somebody's home rather than somebody's rendering, and between
+   * them they cost about what four trees do.
+   * ================================================================== */
+
+  if (playSite) {
+    const c = playSite;
+    pushStreet(playground(c.x, DECK_Y, c.z, c.a + Math.PI / 2, rng), c.x, c.z);
+    note("playground", c.x, c.z, DECK_Y);
+    /* Only the frames are solid. The pad, the chute and the ball are things
+       you walk over, and a playground you cannot walk into is scenery. */
+    blockAt(c.x - 2.4, c.z - 2.9, 1.3, 1.3, DECK_Y, 2);
+    blockAt(c.x + 2.6, c.z - 1.2, 1.9, 0.3, DECK_Y, 2.4);
+  }
+
+  for (const lot of plan.lots) {
+    if (lot.use !== "garden") continue;
+    if (!rng.chance(0.55)) continue;
+    const tables = rng.int(1, 2);
+    for (let i = 0; i < tables; i++) {
+      const p2 = samplePoly(lot.poly, lot.centroid, rng, 2.6);
+      if (!p2) continue;
+      if (nearPlay(p2.x, p2.z)) continue;
+      pushStreet(picnicTable(p2.x, DECK_Y, p2.z, rng.range(0, TAU), rng), p2.x, p2.z);
+      note("picnic-table", p2.x, p2.z, DECK_Y);
+      blockAt(p2.x, p2.z, 1.0, 0.85, DECK_Y, 0.8);
     }
   }
 
@@ -1914,6 +1988,138 @@ function crate(x: number, y: number, z: number, rng: Rng): Geo {
   }
   const g = mergeBucket(parts) as Geo;
   return put(g, x, y, z, rng.range(0, TAU));
+}
+
+/**
+ * A picnic table: a top, two benches, and legs that meet the ground.
+ *
+ * The cheapest way to say that a garden is used rather than looked at.
+ */
+function picnicTable(x: number, y: number, z: number, yaw: number, rng: Rng): Geo {
+  const parts: Geo[] = [];
+  const wood = C.wood.clone().lerp(C.woodPale, rng.next());
+  const plank = (w: number, h: number, d: number, px: number, py: number, pz: number) =>
+    parts.push(tag(put(box(w, h, d), px, py, pz), wood));
+  plank(1.9, 0.07, 0.82, 0, 0.74, 0);
+  for (const s of [-1, 1]) {
+    plank(1.9, 0.06, 0.32, 0, 0.45, s * 0.72);
+    // A pair of splayed legs under each bench, and the frame under the top.
+    parts.push(tag(put(box(0.08, 0.45, 0.08), -0.72, 0.22, s * 0.72), C.ironDark));
+    parts.push(tag(put(box(0.08, 0.45, 0.08), 0.72, 0.22, s * 0.72), C.ironDark));
+    parts.push(tag(put(box(0.09, 0.74, 0.09), s * 0.66, 0.37, 0), C.ironDark));
+  }
+  const g = mergeBucket(parts) as Geo;
+  return put(g, x, y, z, yaw);
+}
+
+/**
+ * A playground.
+ *
+ * Every world like this one is full of places to look at and short of places
+ * that are obviously *for* somebody. A slide, two swings, a roundabout and a
+ * climbing frame say that children live here more directly than any number of
+ * pedestrians walking past, and they cost about as much geometry as one tree.
+ *
+ * Built as one merged lump on purpose — it is street dressing, it never
+ * moves, and the whole family is a single contribution to one octant's chunk.
+ */
+function playground(cx: number, y: number, cz: number, yaw: number, rng: Rng): Geo {
+  const parts: Geo[] = [];
+  const bar = (w: number, h: number, d: number, px: number, py: number, pz: number, col: THREE.Color) =>
+    parts.push(tag(put(box(w, h, d), px, py, pz), col));
+
+  /* The soft surface: a low disc of rubberised something, which is the thing
+     that actually reads as "playground" from thirty metres away. */
+  parts.push(tag(put(cyl(5.6, 5.6, 0.10, 18), 0, 0.05, 0), C.playSoft));
+
+  /* ---- the slide ---- */
+  {
+    const px = -3.1;
+    const pz = 1.4;
+    bar(1.5, 0.09, 1.5, px, 1.72, pz, C.playYellow);
+    for (const [ox, oz] of [[-0.62, -0.62], [0.62, -0.62], [-0.62, 0.62], [0.62, 0.62]]) {
+      bar(0.09, 1.72, 0.09, px + ox, 0.86, pz + oz, C.steel);
+    }
+    // A canopy, because a slide with a little roof is a slide a child drew.
+    bar(1.7, 0.08, 1.7, px, 2.55, pz, C.playRed);
+    bar(0.07, 0.8, 0.07, px - 0.7, 2.14, pz - 0.7, C.steel);
+    bar(0.07, 0.8, 0.07, px + 0.7, 2.14, pz + 0.7, C.steel);
+    // The chute, sloping away, and the ladder on the other side.
+    const chute = box(0.9, 0.07, 2.9);
+    put(chute, 0, 0, 0, 0, -0.55, 0);
+    put(chute, px, 1.06, pz + 1.95);
+    parts.push(tag(chute, C.playBlue));
+    for (let i = 0; i < 4; i++) {
+      bar(0.7, 0.06, 0.07, px, 0.34 + i * 0.42, pz - 1.05 - i * 0.18, C.steel);
+    }
+  }
+
+  /* ---- the swings ---- */
+  {
+    const px = 2.6;
+    const pz = -1.2;
+    // An A-frame each end, and a beam across.
+    for (const s of [-1, 1]) {
+      const legA = box(0.1, 2.4, 0.1);
+      put(legA, 0, 0, 0, 0, 0, 0.22);
+      put(legA, px + s * 1.5 - 0.5, 1.2, pz);
+      parts.push(tag(legA, C.playGreen));
+      const legB = box(0.1, 2.4, 0.1);
+      put(legB, 0, 0, 0, 0, 0, -0.22);
+      put(legB, px + s * 1.5 + 0.5, 1.2, pz);
+      parts.push(tag(legB, C.playGreen));
+    }
+    bar(3.4, 0.11, 0.11, px, 2.36, pz, C.playGreen);
+    for (const s of [-1, 1]) {
+      const sx = px + s * 0.75;
+      for (const r of [-0.22, 0.22]) {
+        bar(0.03, 1.5, 0.03, sx + r, 1.6, pz, C.ironDark);
+      }
+      bar(0.56, 0.06, 0.26, sx, 0.84, pz, C.playYellow);
+    }
+  }
+
+  /* ---- the roundabout ---- */
+  {
+    const px = 2.2;
+    const pz = 2.6;
+    parts.push(tag(put(cyl(1.5, 1.4, 0.14, 12), px, 0.28, pz), C.playRed));
+    parts.push(tag(put(cyl(0.18, 0.22, 0.3, 8), px, 0.15, pz), C.steel));
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TAU + 0.4;
+      const h = box(0.06, 0.5, 0.06);
+      put(h, px + Math.cos(a) * 1.15, 0.6, pz + Math.sin(a) * 1.15);
+      parts.push(tag(h, C.brass));
+    }
+  }
+
+  /* ---- the climbing frame ---- */
+  {
+    const px = -2.4;
+    const pz = -2.9;
+    const cols = [C.playBlue, C.playYellow, C.playRed, C.playGreen];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TAU + Math.PI / 4;
+      bar(0.08, 1.9, 0.08, px + Math.cos(a) * 1.1, 0.95, pz + Math.sin(a) * 1.1, cols[i]);
+    }
+    for (const h of [0.7, 1.3, 1.88]) {
+      bar(2.28, 0.06, 0.06, px, h, pz - 1.1, C.steel);
+      bar(2.28, 0.06, 0.06, px, h, pz + 1.1, C.steel);
+      bar(0.06, 0.06, 2.28, px - 1.1, h, pz, C.steel);
+      bar(0.06, 0.06, 2.28, px + 1.1, h, pz, C.steel);
+    }
+  }
+
+  /* A ball, left where somebody left it. */
+  parts.push(
+    tag(
+      put(blob(0.22, 6, 4), rng.range(-4.5, 4.5), 0.22, rng.range(-4.5, 4.5)),
+      rng.chance(0.5) ? C.playRed : C.playBlue,
+    ),
+  );
+
+  const g = mergeBucket(parts) as Geo;
+  return put(g, cx, y, cz, yaw);
 }
 
 function bed(x: number, y: number, z: number, rng: Rng): Geo {

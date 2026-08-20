@@ -117,6 +117,13 @@ function geometries(root: THREE.Object3D): Array<{ name: string; geo: THREE.Buff
 }
 
 describe("the world, assembled", () => {
+  /* Thirty seconds, not the default five.
+   *
+   * These two build the entire world — a hundred and eighty buildings, the
+   * interiors, eight hundred props, the crowd and the traffic — and on a
+   * four-core box with three other suites running they overrun. A timeout
+   * here reads as "the world is broken" rather than "the box is busy", which
+   * is the most expensive kind of false alarm this repository can produce. */
   it("gives every system a distinct name", () => {
     const names = all().map((s) => s.name);
     expect(new Set(names).size, names.join(",")).toBe(names.length);
@@ -147,9 +154,13 @@ describe("the world, assembled", () => {
     /* Generous bounds — this is not an art review, it is a check that nothing
        was transformed in the wrong space. The island is 400 m in radius and
        spans from the keel's tip to the top of the Beacon; anything an order of
-       magnitude outside that is a bug, and weather and activities are exempt
-       because both legitimately work in camera space or high above the city. */
-    const EXEMPT = new Set(["weather", "activities"]);
+       magnitude outside that is a bug. Three systems are exempt and each for
+       its own reason: weather works in camera space, activities put gates high
+       above the city, and the launch site is a spaceport nearly two kilometres
+       out on the snow whose vehicle is twenty kilometres up in the middle of
+       a launch. All three are outside the island by design rather than by
+       accident, which is the distinction this test cannot make for itself. */
+    const EXEMPT = new Set(["weather", "activities", "launchsite"]);
     const bad: string[] = [];
     const box = new THREE.Box3();
     const size = new THREE.Vector3();

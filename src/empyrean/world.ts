@@ -63,6 +63,7 @@ import { buildTraffic } from "./traffic";
 import { buildInteriors } from "./interiors";
 import { buildActivities } from "./activities";
 import { buildWeather, type Condition } from "./weather";
+import { buildLaunchSite } from "./launchsite";
 import { buildVehicles } from "./vehicles";
 import { buildLighting, setShadowFlags } from "./lighting";
 import { buildPostFx } from "./postfx";
@@ -287,6 +288,10 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const traffic = add(buildTraffic(build));
   const activities = add(buildActivities(build));
   const weather = add(buildWeather(build));
+  /* The spaceport, nearly two kilometres out on the snow. Not reflected: it
+     is four hundred metres past the far shore, so its mirror image would be
+     buried in a hillside. */
+  const launch = add(buildLaunchSite(build));
   const vehicles = add(buildVehicles(build));
   // A world that opens in whatever weather the clock happened to land on is a
   // world whose card art is a different picture every time it is captured.
@@ -379,6 +384,10 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
 
   const flyer: FlyerState = makeFlyer(SPAWN);
   const rigCam = new CameraRig(SPAWN.yaw);
+
+  /* The edge, so the announcement fires once a launch rather than once a
+     frame for the four seconds the phase lasts. */
+  let prevLaunchPhase = "";
 
   /* ---- notifications ---- */
   const toasts: Toast[] = [];
@@ -708,7 +717,16 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
           flyer.pitch = r.pitch;
           flyer.grounded = false;
           flyer.burn = 0;
-          flyer.velocity.set(0, 0, 0);
+          /* The craft's own velocity, not zero.
+           *
+           * The body is not integrating while you are aboard — the vehicle
+           * says where you are — but two things downstream read this vector
+           * and both were being handed a stationary player at eighty metres a
+           * second: the HUD's speed readout, and the camera's field of view,
+           * which is the one tool in the box that conveys speed at all. So
+           * the fastest thing in this world was also the only thing in it
+           * that felt like standing still. */
+          flyer.velocity.set(r.vx, r.vy, r.vz);
         }
       } else stepFlyer(
         flyer,
@@ -829,6 +847,27 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
 
     postfx.render(scene, camera, time);
 
+    /* ---- the spaceport announces itself ----
+     *
+     * There is a rocket on the horizon and it launches once every seven
+     * minutes, which means that without this it launches while you are
+     * looking the other way roughly every time. A line telling you it is
+     * about to happen is the difference between a world that has a spaceport
+     * in it and a world where somebody once saw a rocket.
+     *
+     * The sound arrives after the light does, and from the plaza that is very
+     * nearly six seconds. Announcing the *sound* rather than the ignition is
+     * both more accurate and better theatre: you get the count, you look, and
+     * the noise turns up late — which is the single most convincing thing
+     * about watching a launch from two kilometres away. */
+    if (launch.phase === "ignition" && prevLaunchPhase !== "ignition") {
+      const delay = launch.soundDelayFrom(
+        flyer.position.x, flyer.position.y, flyer.position.z,
+      );
+      pushToast(`Kestrel Field: liftoff — sound in ${delay.toFixed(0)}s`, "good");
+    }
+    prevLaunchPhase = launch.phase;
+
     /* ---- the minimap, at fifteen hertz ---- */
     mapTimer += dt;
     if (minimap && mapTimer > 1 / 15) {
@@ -917,6 +956,18 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       if (name === "body") body.visible = on;
     },
     names: () => systems.map((s) => s.name),
+    /* The spaceport's clock. It launches once every seven minutes of world
+       time, and under a software rasteriser that is nearly half an hour of
+       real time — so a harness that wants a photograph of a launch has to be
+       able to ask when one is, rather than sit there hoping. */
+    launch: () => ({
+      phase: launch.phase,
+      t: launch.t,
+      countdown: launch.countdown,
+      altitude: launch.altitude,
+      onScreen: launch.onScreen,
+      vehicle: launch.vehicle.toArray(),
+    }),
     /**
      * Every drawable in the world with its *world-space* bounding box.
      *

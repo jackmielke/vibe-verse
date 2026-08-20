@@ -1,5 +1,5 @@
 /**
- * The Empyrean's three rideable things.
+ * The Empyrean's rideable things.
  *
  * Four kinds of failure live in this file, and none of the four shows up in a
  * build, a typecheck, or a screenshot:
@@ -32,7 +32,7 @@ import {
   type VehiclesHandle,
 } from "@/empyrean/vehicles";
 import { DECKS, ISLAND_Y, KILL_Y, LAKE_R, PLATEAU_R, WATER_Y } from "@/empyrean/config";
-import { HALO_R, LANDMARKS, surfaceAt } from "@/empyrean/cityplan";
+import { cityPlan, HALO_R, LANDMARKS, surfaceAt } from "@/empyrean/cityplan";
 import { buildBuildings } from "@/empyrean/buildings";
 import { buildInteriors } from "@/empyrean/interiors";
 import { buildProps } from "@/empyrean/props";
@@ -276,7 +276,8 @@ describe("empyrean vehicles — boarding round-trips", () => {
       if (Math.abs(support - pad.y) > 0.6) bad.push(`${where} floats ${(pad.y - support).toFixed(1)} m`);
       if (collision.blockedAt(pad.x, pad.z, pad.y + 1.2)) bad.push(`${where} is inside a building`);
       // And there is room for the vehicle, not merely for its centre point.
-      const hull = pad.kind === "lifter" ? 2.9 : pad.kind === "glider" ? 3.4 : 2.4;
+      const hull =
+        pad.kind === "lifter" ? 2.9 : pad.kind === "glider" ? 3.4 : pad.kind === "flyer" ? 3.6 : 2.4;
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
         if (collision.blockedAt(pad.x + Math.cos(a) * hull, pad.z + Math.sin(a) * hull, pad.y + 1.2)) {
@@ -285,7 +286,7 @@ describe("empyrean vehicles — boarding round-trips", () => {
         }
       }
       // The craft came with its pad.
-      v.positionOf(pad.kind, out);
+      v.positionOfPad(v.pads.indexOf(pad), out);
       if (Math.hypot(out.x - pad.x, out.z - pad.z) > 0.01) bad.push(`${where} left its vehicle behind`);
     }
     expect(bad).toEqual([]);
@@ -343,18 +344,26 @@ describe("empyrean vehicles — boarding round-trips", () => {
     expect(lifter.y).toBeCloseTo(ISLAND_Y, 1);
   });
 
-  it("offers exactly three prompts on foot and none of them while riding", () => {
+  it("offers one prompt per craft on foot and none of them while riding", () => {
     const v = build();
-    expect(v.interactables().map((i) => i.id).sort()).toEqual([
-      "vehicle-glider",
-      "vehicle-lifter",
-      "vehicle-skiff",
-    ]);
+    const ids = v.interactables().map((i) => i.id).sort();
+    // One per pad, and every id distinct — seven of them share a kind, so the
+    // id cannot be the kind and a duplicate would silently hide a whole
+    // aircraft behind another one's prompt.
+    expect(ids.length).toBe(v.pads.length);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("vehicle-skiff");
+    expect(ids).toContain("vehicle-glider");
+    expect(ids).toContain("vehicle-lifter");
+    expect(ids.filter((i) => i.startsWith("vehicle-flyer-")).length).toBe(
+      v.pads.filter((p) => p.kind === "flyer").length,
+    );
     expect(v.riding()).toBeNull();
 
     board(v, "lifter");
-    const ids = v.interactables().map((i) => i.id);
-    expect(ids).not.toContain("vehicle-skiff");
+    const riding = v.interactables().map((i) => i.id);
+    expect(riding).not.toContain("vehicle-skiff");
+    expect(riding).not.toContain("vehicle-flyer-0");
     expect(v.riding()).not.toBeNull();
   });
 
@@ -724,6 +733,379 @@ describe("the lifter — slow, square and precise", () => {
 });
 
 /* =========================================================================
+ * The flyer
+ *
+ * The one aircraft here with a hard requirement rather than a feel: somebody
+ * who has never flown anything has to be able to get in and fly it, on a
+ * keyboard, at the first attempt, with nobody explaining anything. Every
+ * assertion below is one of the ways that promise can quietly stop being
+ * true — a throttle that does not hold, a bank that does not come back to
+ * level, a floor that lets go, a dismount that drops you.
+ * ====================================================================== */
+
+/** Board a flyer by its prompt. `n` indexes the flyer fleet, not the pads. */
+function boardFlyer(v: VehiclesHandle, n = 0): void {
+  const it = v.interactables().find((i) => i.id === `vehicle-flyer-${n}`);
+  expect(it, `no board prompt for flyer ${n}`).toBeTruthy();
+  it!.activate();
+  expect(v.ridingKind()).toBe("flyer");
+}
+
+/** The pads the flyers are on, in fleet order. */
+function flyerPads(v: VehiclesHandle) {
+  return v.pads.filter((p) => p.kind === "flyer");
+}
+
+describe("the flyer — where they are parked", () => {
+  it("puts one on a roof in each of several sixths of the compass", () => {
+    const v = build();
+    const roofs = flyerPads(v).filter((p) => p.roofLot);
+    expect(roofs.length).toBeGreaterThanOrEqual(5);
+
+    const sixth = (p: { x: number; z: number }) => {
+      const a = Math.atan2(p.z, p.x);
+      const t = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      return Math.floor((t / (Math.PI * 2)) * 6);
+    };
+    // One per sixth: the whole point of the rule is that there is a pad on
+    // whichever side of the island you happen to be standing on.
+    const sixths = roofs.map(sixth);
+    expect(new Set(sixths).size).toBe(roofs.length);
+
+    // And across more than one district, which is the other half of the rule.
+    const districts = new Set(
+      roofs.map((p) => cityPlan().lots.find((l) => l.id === p.roofLot)!.district),
+    );
+    expect(districts.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("stands every rooftop pad on a real roof deck, not in the air", () => {
+    /* The failure this is for has no symptom you would notice from the
+       ground: the pad is painted at `lot.y + lot.height` because the plan
+       says so, the lot in question turns out to be something else entirely or
+       to have been built shorter, and the aircraft and its markings hang in
+       mid-air forty metres up, visible only from the roof next door. */
+    const v = build();
+    const lots = cityPlan().lots;
+    const bad: string[] = [];
+    for (const pad of flyerPads(v)) {
+      if (!pad.roofLot) continue;
+      const lot = lots.find((l) => l.id === pad.roofLot);
+      if (!lot) {
+        bad.push(`${pad.name} claims lot ${pad.roofLot}, which is not in the plan`);
+        continue;
+      }
+      // `use === "block"` is the contract: those and only those get a flat
+      // roof deck registered at exactly this height.
+      if (lot.use !== "block") bad.push(`${pad.name} is on a ${lot.use}, not a block`);
+      if (Math.abs(pad.y - (lot.y + lot.height)) > 0.001) {
+        bad.push(`${pad.name} is at ${pad.y.toFixed(1)}, roof is ${(lot.y + lot.height).toFixed(1)}`);
+      }
+      if (pad.y <= ISLAND_Y + 8) bad.push(`${pad.name} is barely off the deck`);
+      // Inside the roof, with room for the paint and the wings.
+      let clear = Infinity;
+      for (let i = 0; i < lot.poly.length; i++) {
+        const a = lot.poly[i];
+        const b = lot.poly[(i + 1) % lot.poly.length];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const len2 = dx * dx + dz * dz;
+        const t = Math.max(0, Math.min(1, ((pad.x - a.x) * dx + (pad.z - a.z) * dz) / len2));
+        clear = Math.min(clear, Math.hypot(pad.x - (a.x + dx * t), pad.z - (a.z + dz * t)));
+      }
+      if (clear < 5.8) bad.push(`${pad.name} has ${clear.toFixed(1)} m of roof around it`);
+      // And clear of the head-house buildings.ts puts at every roof centroid.
+      const off = Math.hypot(pad.x - lot.centroid.x, pad.z - lot.centroid.z);
+      if (off < 4.5) bad.push(`${pad.name} is ${off.toFixed(1)} m from the roof's centre`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("keeps one of them somewhere you can walk to", () => {
+    /* Reaching a roof is the jetpack's job, and "find the jetpack" cannot be
+       the price of the first flight. One flyer is on the deck, near where the
+       world puts you. */
+    const v = build();
+    const ground = flyerPads(v).filter((p) => !p.roofLot);
+    expect(ground.length).toBeGreaterThanOrEqual(1);
+    for (const pad of ground) {
+      const s = surfaceAt(pad.x, pad.z);
+      expect(s.kind).not.toBe("void");
+      expect(s.kind).not.toBe("parapet");
+      expect(pad.y).toBeCloseTo(ISLAND_Y, 0);
+    }
+    // Within a short walk of the spawn point, which is (0, ·, 78).
+    const near = ground.some((p) => Math.hypot(p.x - 0, p.z - 78) < 45);
+    expect(near, "no walkable flyer within a short walk of the spawn").toBe(true);
+  });
+});
+
+describe("the flyer — it cannot be flown wrong", () => {
+  it("holds the speed you left the throttle at", () => {
+    const v = build();
+    boardFlyer(v, 1);
+    let t = fly(v, input({ forward: 1 }), 8, 60);
+    const cruising = v.riding()!.speed;
+    expect(cruising).toBeGreaterThan(40);
+    /* Hands off the keyboard entirely. Eight seconds and not thirty, because
+       thirty is nine hundred more metres and the fence at the shore eases the
+       throttle off out there — which is the fence working, and would read
+       here as a throttle that does not hold. */
+    t = fly(v, input({}), 8, 60, t);
+    const later = v.riding()!;
+    expect(Math.hypot(later.x, later.z), "drifted into the fence").toBeLessThan(LAKE_R * 0.8);
+    expect(Math.abs(later.speed - cruising)).toBeLessThan(2);
+    // And it is still the right way up and still at a height.
+    expect(Math.abs(later.pitch)).toBeLessThan(0.2);
+    expect(later.y).toBeGreaterThan(ISLAND_Y - 40);
+  });
+
+  it("holds its height with nothing held down", () => {
+    const v = build();
+    boardFlyer(v, 1);
+    const t = fly(v, input({ forward: 1 }), 10, 60);
+    const y0 = v.riding()!.y;
+    fly(v, input({}), 25, 60, t);
+    expect(Math.abs(v.riding()!.y - y0)).toBeLessThan(3);
+  });
+
+  it("rolls level again the moment you stop turning", () => {
+    const v = build();
+    boardFlyer(v, 1);
+    let t = fly(v, input({ forward: 1 }), 8, 60);
+    t = fly(v, input({ forward: 0, strafe: 1 }), 6, 60, t);
+    const turning = v.riding()!.yaw;
+    // A real turn, not a nudge.
+    t = fly(v, input({ strafe: 1 }), 4, 60, t);
+    expect(Math.abs(shortest(v.riding()!.yaw - turning))).toBeGreaterThan(0.5);
+    // Let go, and it is level within a couple of seconds.
+    t = fly(v, input({}), 3, 60, t);
+    const settled = v.riding()!.yaw;
+    fly(v, input({}), 3, 60, t);
+    expect(Math.abs(shortest(v.riding()!.yaw - settled))).toBeLessThan(0.06);
+  });
+
+  it("will not be flown into the snow, however hard you try", () => {
+    /* Off the rim, throttle wide open, boost held, stick jammed forward, for
+       two minutes. The soft floor is the only thing between that and sixty
+       metres a second of frozen lake. */
+    const v = build();
+    boardFlyer(v, 1);
+    let t = fly(v, input({ forward: 1, boost: true }), 6, 60);
+    // Get it out over the ice, then hold everything down.
+    t = fly(v, input({ forward: 1, strafe: 0.35, boost: true }), 20, 60, t);
+    let lowest = Infinity;
+    for (let i = 0; i < 60 * 120; i++) {
+      v.drive(input({ forward: 1, boost: true }), 1 / 60);
+      v.update?.(frame(t, 1 / 60));
+      t += 1 / 60;
+      const r = v.riding()!;
+      lowest = Math.min(lowest, r.y);
+      expect(Number.isFinite(r.y)).toBe(true);
+    }
+    // Never near the ice, and never anywhere near the kill plane.
+    expect(lowest).toBeGreaterThan(WATER_Y + 12);
+  });
+
+  it("comes down when you ask, and settles rather than arrives", () => {
+    const v = build();
+    boardFlyer(v, 1);
+    let t = fly(v, input({ forward: 1 }), 10, 60);
+    t = fly(v, input({ lift: 1 }), 12, 60, t);
+    const high = v.riding()!.y;
+    expect(high).toBeGreaterThan(ISLAND_Y + 80);
+
+    // Hold S: the throttle shuts, and then it descends.
+    t = fly(v, input({ forward: -1 }), 60, 60, t);
+    const r = v.riding()!;
+    expect(r.y).toBeLessThan(high - 200);
+
+    // Keep holding it until it is down, and check the touchdown was gentle.
+    let prevY = r.y;
+    let worst = 0;
+    for (let i = 0; i < 60 * 90; i++) {
+      v.drive(input({ forward: -1 }), 1 / 60);
+      v.update?.(frame(t, 1 / 60));
+      t += 1 / 60;
+      const now = v.riding()!;
+      if (now.altitude < 1) {
+        // The last metre: how fast was it still going down?
+        worst = Math.max(worst, (prevY - now.y) * 60);
+        break;
+      }
+      prevY = now.y;
+    }
+    expect(v.riding()!.altitude).toBeLessThan(1);
+    // A settle, not a drop. The glider scores landings; this one must not
+    // be able to make a bad one.
+    expect(worst).toBeLessThan(4);
+    expect(v.lastLanding()).toBeNull();
+  });
+
+  it("never ends up inside a building or under the world", () => {
+    const world = makeWorld();
+    const v = build();
+    boardFlyer(v, 1);
+    let t = 0;
+    for (let i = 0; i < 60 * 120; i++) {
+      // A slow sweep of everything, so it visits the tower, the rim, the ice
+      // and the air under the island across the run.
+      const s = Math.sin(i / 170);
+      const f = Math.cos(i / 430);
+      v.drive(
+        input({ forward: f, strafe: s, lift: i % 900 < 220 ? 1 : 0, boost: i % 1700 < 800 }),
+        1 / 60,
+      );
+      v.update?.(frame(t, 1 / 60));
+      t += 1 / 60;
+      const r = v.riding()!;
+      expect(Number.isFinite(r.x + r.y + r.z + r.yaw + r.pitch + r.speed)).toBe(true);
+      expect(r.y).toBeGreaterThan(KILL_Y);
+      expect(world.blockedAt(r.x, r.z, r.y - 0.7)).toBe(false);
+    }
+  });
+
+  it("stays inside the lake with the throttle wide open", () => {
+    const v = build();
+    boardFlyer(v, 1);
+    fly(v, input({ forward: 1, boost: true }), 200, 60);
+    const r = v.riding()!;
+    expect(Math.hypot(r.x, r.z)).toBeLessThan(LAKE_R * 1.35);
+  });
+
+  it("flies the same at 30 Hz as at 144 Hz", () => {
+    const a = build();
+    const b = build();
+    boardFlyer(a, 1);
+    boardFlyer(b, 1);
+    const stick = input({ forward: 1, strafe: 0.45, lift: 0, boost: true });
+    fly(a, stick, 30, 30);
+    fly(b, stick, 30, 144);
+    const ra = a.riding()!;
+    const rb = b.riding()!;
+    expect(Math.hypot(ra.x - rb.x, ra.z - rb.z)).toBeLessThan(6);
+    expect(Math.abs(ra.y - rb.y)).toBeLessThan(2);
+    expect(Math.abs(ra.speed - rb.speed)).toBeLessThan(0.5);
+  });
+});
+
+describe("the flyer — getting in and out", () => {
+  it("boards and dismounts every one of them, twice", () => {
+    const v = build();
+    const n = flyerPads(v).length;
+    expect(n).toBeGreaterThanOrEqual(6);
+    for (let i = 0; i < n; i++) {
+      const pad = flyerPads(v)[i];
+      boardFlyer(v, i);
+      // The seat is at the pad it was parked on.
+      const seated = v.riding()!;
+      expect(Math.hypot(seated.x - pad.x, seated.z - pad.z)).toBeLessThan(2);
+      expect(seated.y).toBeGreaterThan(pad.y);
+      expect(seated.label).toContain(pad.name);
+
+      fly(v, input({ forward: 1 }), 4, 60);
+      const out = v.dismount();
+      expect(out, `flyer ${i} dismounted nowhere`).toBeTruthy();
+      expect(v.riding()).toBeNull();
+      // Straight back in.
+      boardFlyer(v, i);
+      expect(v.dismount()).toBeTruthy();
+    }
+  });
+
+  it("hands you back to the jetpack when you step out at altitude", () => {
+    /* The rule this is for: a dismount must never be a fall. The other three
+       craft answer that by winching you home; the flyer answers it by leaving
+       you exactly where you were, because everybody in this world is wearing
+       a jetpack and the transfer between two ways of flying is the point. */
+    const world = makeWorld();
+    const v = build();
+    boardFlyer(v, 1);
+    const t = fly(v, input({ forward: 1 }), 6, 60);
+    fly(v, input({ lift: 1 }), 20, 60, t);
+    const r = v.riding()!;
+    expect(r.y).toBeGreaterThan(ISLAND_Y + 150);
+
+    const step = v.interactables().find((i) => i.id === "vehicle-exit");
+    expect(step, "no way out of a flyer in the air").toBeTruthy();
+    expect(step!.detail).toContain("jetpack");
+    step!.activate();
+    const out = v.dismount()!;
+    expect(out).toBeTruthy();
+
+    // Somewhere survivable: real numbers, near where the aircraft was, well
+    // above the kill plane, and not inside anything.
+    expect(Number.isFinite(out.x + out.y + out.z)).toBe(true);
+    expect(out.y).toBeGreaterThan(KILL_Y + 200);
+    expect(Math.hypot(out.x - r.x, out.z - r.z)).toBeLessThan(12);
+    expect(Math.abs(out.y - r.y)).toBeLessThan(12);
+    expect(world.blockedAt(out.x, out.z, out.y)).toBe(false);
+
+    // And the aircraft winched itself home rather than being left hanging.
+    const pad = flyerPads(v)[1];
+    const at = new THREE.Vector3();
+    v.positionOfPad(v.pads.indexOf(pad), at);
+    expect(Math.hypot(at.x - pad.x, at.z - pad.z)).toBeLessThan(0.01);
+  });
+
+  it("leaves you on the roof when you step out on one", () => {
+    const v = build();
+    const pad = flyerPads(v).find((p) => p.roofLot)!;
+    boardFlyer(v, flyerPads(v).indexOf(pad));
+    const out = v.dismount()!;
+    expect(out.y).toBeCloseTo(pad.y, 0);
+    expect(Math.hypot(out.x - pad.x, out.z - pad.z)).toBeLessThan(8);
+  });
+});
+
+describe("the flyer — the fleet is one draw, and it moves", () => {
+  it("is an InstancedMesh, not seven of everything", () => {
+    /* The permanent rule in this repo, and the reason it is permanent: a
+       fleet that is not instanced is a fleet of draw calls, and a fleet that
+       is instanced and never has its matrices written is a fleet that
+       updates its state perfectly and leaves all its geometry at the origin.
+       This checks both. */
+    const v = build();
+    const inst: THREE.InstancedMesh[] = [];
+    v.group.traverse((o) => {
+      if ((o as THREE.InstancedMesh).isInstancedMesh) inst.push(o as THREE.InstancedMesh);
+    });
+    const n = v.pads.filter((p) => p.kind === "flyer").length;
+    expect(inst.length).toBeGreaterThanOrEqual(1);
+    for (const m of inst) expect(m.count).toBe(n);
+
+    v.update?.(frame(0, 1 / 60));
+    const body = inst.find((m) => m.name.includes("body"))!;
+    const m4 = new THREE.Matrix4();
+    const at = new THREE.Vector3();
+    const seen: THREE.Vector3[] = [];
+    for (let i = 0; i < body.count; i++) {
+      body.getMatrixAt(i, m4);
+      at.setFromMatrixPosition(m4);
+      expect(Number.isFinite(at.x + at.y + at.z)).toBe(true);
+      // Not at the origin, which is where an unwritten instance sits.
+      expect(at.length()).toBeGreaterThan(1);
+      expect(at.y).toBeGreaterThan(ISLAND_Y - 40);
+      seen.push(at.clone());
+    }
+    // And they are seven different places, not one place seven times.
+    for (let i = 1; i < seen.length; i++) {
+      expect(seen[i].distanceTo(seen[0])).toBeGreaterThan(1);
+    }
+
+    // The ridden one moves its own instance.
+    boardFlyer(v, 1);
+    const before = new THREE.Vector3();
+    body.getMatrixAt(1, m4);
+    before.setFromMatrixPosition(m4);
+    fly(v, input({ forward: 1 }), 8, 60);
+    body.getMatrixAt(1, m4);
+    at.setFromMatrixPosition(m4);
+    expect(at.distanceTo(before)).toBeGreaterThan(20);
+  });
+});
+
+/* =========================================================================
  * Housekeeping
  * ====================================================================== */
 
@@ -732,17 +1114,19 @@ describe("empyrean vehicles — the system contract", () => {
     const v = build();
     expect(v.name).toBe("vehicles");
     expect(v.group).toBeInstanceOf(THREE.Object3D);
-    // Three craft, and one merged mesh per pad program.
-    expect(v.group.children.length).toBe(6);
+    /* Three one-off craft (a group each), the flyer fleet (three instanced
+     * meshes for all seven of them) and one merged mesh per pad program. */
+    expect(v.group.children.length).toBe(9);
 
-    /* Three vehicles and three pads, merged: a handful of meshes, not thirty.
-     * `empyreanBudget.test.ts` holds the real ceiling at twenty draws; this is
-     * the same rule stated where somebody editing the geometry will see it. */
+    /* Four kinds of vehicle and ten pads, merged: a handful of meshes, not
+     * forty. `empyreanBudget.test.ts` holds the real ceiling at twenty draws;
+     * this is the same rule stated where somebody editing the geometry will
+     * see it. */
     let draws = 0;
     v.group.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) draws += 1;
     });
-    expect(draws).toBeLessThanOrEqual(14);
+    expect(draws).toBeLessThanOrEqual(15);
 
     const geos = new Set<THREE.BufferGeometry>();
     v.group.traverse((o) => {

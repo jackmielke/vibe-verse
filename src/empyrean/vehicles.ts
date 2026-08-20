@@ -1,5 +1,5 @@
 /**
- * Three things you can get into.
+ * Four things you can get into.
  *
  * The Empyrean's default verb is the jetpack, and the jetpack is *very* good:
  * fifty metres a second squared of thrust, instant response, no commitment.
@@ -29,6 +29,16 @@
  * hover, with the vertical authority to put a load on a roof. It is the one
  * you take when you want to stop somewhere precise.
  *
+ * **The flyer** is the one for somebody who has never flown anything. There
+ * are seven of them, parked on pads on rooftops around the city, and the
+ * whole design brief was that a person can walk up to one, get in, and be
+ * flying between the towers inside ten seconds with nobody having explained
+ * anything. So it cannot stall, it cannot spin, it cannot run out of
+ * anything, and it cannot fall out of the sky: bank and climb are *commands*
+ * rather than forces, the throttle sets a speed and holds it, and below a
+ * soft floor the nose comes up on its own rather than arriving in the snow at
+ * sixty metres a second. See `FLYER` for the whole model in one block.
+ *
  * ## Rules this file lives under
  *
  * - **It is a system.** It imports `types.ts`, `config.ts`, `cityplan.ts`,
@@ -54,10 +64,12 @@
  * | skiff `Ember` | the Launch Terrace, on the pavement beside the start circles | every race starts here; it is the one place on the island that already means "things take off from here" |
  * | glider `Vesper` | promenade deck 1 at the foot of the south-west avenue stairs | the rail points off the rim, and at the world's default sunset that face of the rock is the lit one |
  * | lifter `Derrick` | the Halo, south-east of the Beacon | the plaza is where a service lift for the Beacon would live, and it is the first thing you walk past on arrival |
+ * | flyer `Wren` | the Halo apron, beside the avenue you arrive on | one flyer has to be reachable on foot; the jetpack is how you get to the other six and not everybody has found it yet |
+ * | flyers ×6 | mid-rise rooftops, one per sixth of the compass | see `roofSpots` — chosen by a rule over `cityPlan().lots`, never by pasted coordinates |
  *
- * Each pad is a painted ring, three pylons and a forty-metre column of soft
- * light, so all three read as "you can get in this" from well past thirty
- * metres and from the air, which is where most people will first see them.
+ * Each pad is a painted ring, pylons and a column of soft light, so all of
+ * them read as "you can get in this" from well past thirty metres and from
+ * the air, which is where most people will first see them.
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -74,7 +86,7 @@ import {
   PLATEAU_R,
   WATER_Y,
 } from "./config";
-import { LANDMARKS, RIM_R, surfaceAt } from "./cityplan";
+import { cityPlan, HALO_R, LANDMARKS, RIM_R, surfaceAt, type Lot, type Vec2 } from "./cityplan";
 
 /* =========================================================================
  * The API
@@ -102,6 +114,20 @@ export interface RideState {
   label: string;
   /** Extra HUD lines, e.g. glide ratio or a landing score. */
   lines: string[];
+  /**
+   * World velocity of the craft, m/s.
+   *
+   * Here so the engine can hand it to the body while somebody is riding.
+   * `world.ts` currently zeroes `flyer.velocity` aboard a vehicle, which is
+   * true of the *legs* and wrong for everything that reads it: the camera rig
+   * takes its field of view from that vector, so the one thing in the toolbox
+   * that conveys speed is switched off in the only situations where this
+   * world goes fast. Copying these three numbers into it instead is the whole
+   * fix, and it also puts a real number back on the HUD's speed readout.
+   */
+  vx: number;
+  vy: number;
+  vz: number;
 }
 
 export interface VehiclesHandle extends System {
@@ -123,13 +149,21 @@ export interface VehiclesHandle extends System {
   ridingKind(): VehicleKind | null;
   /** Every vehicle's pad, for a map pin or a test. */
   readonly pads: readonly VehiclePad[];
-  /** Live position of one vehicle, for a map pin. Mutates `out`. */
+  /**
+   * Live position of one vehicle, for a map pin. Mutates `out`.
+   *
+   * By kind, which means the first of its kind: there are seven flyers and
+   * one of everything else. Use `positionOfPad` when you mean a particular
+   * one.
+   */
   positionOf(kind: VehicleKind, out: THREE.Vector3): THREE.Vector3;
+  /** Live position of the craft belonging to `pads[i]`. Mutates `out`. */
+  positionOfPad(index: number, out: THREE.Vector3): THREE.Vector3;
   /** The last landing the glider made, or null. Kept until the next launch. */
   lastLanding(): LandingReport | null;
 }
 
-export type VehicleKind = "skiff" | "glider" | "lifter";
+export type VehicleKind = "skiff" | "glider" | "lifter" | "flyer";
 
 export interface VehiclePad {
   kind: VehicleKind;
@@ -138,6 +172,15 @@ export interface VehiclePad {
   y: number;
   z: number;
   yaw: number;
+  /**
+   * The lot whose roof this pad stands on, when it stands on one.
+   *
+   * Absent for the four pads on the ground. Present ones are the contract
+   * with `buildings.ts`: `y` is that lot's `y + height`, which is where its
+   * roof deck is, and a test checks that the deck the collision world reports
+   * agrees.
+   */
+  roofLot?: string;
 }
 
 export interface LandingReport {
@@ -236,6 +279,93 @@ const LIFTER = {
   skidH: 0.5,
   seat: { x: 0, y: 0.78, z: 0.75 },
   ceiling: ISLAND_Y + 340,
+} as const;
+
+/**
+ * The flyer: the aircraft for somebody who has never flown one.
+ *
+ * Every number here exists to remove a way of getting it wrong, and the model
+ * is four rules:
+ *
+ * 1. **The throttle is a speed, not a thrust.** `W` and `S` move a throttle
+ *    setting between 0 and 1 at `throttleRate` a second and it *stays* where
+ *    you left it; the craft eases to `throttle × vCruise` and holds it. There
+ *    is no airspeed to manage, nothing to keep above, and letting go of every
+ *    key leaves you flying straight and level at whatever you had.
+ * 2. **Bank is a command.** `A`/`D` roll the craft to at most `bankMax` and it
+ *    rolls back to level the moment you let go. The turn rate is derived from
+ *    the bank the way a real coordinated turn is — `g·tan(φ)/v` — so the
+ *    aircraft always looks like it is doing what it is doing, but with a
+ *    `vTurnRef` floor under the speed and a hard cap on the rate, because the
+ *    honest formula turns a slow aircraft on the spot and that reads as a
+ *    twitch rather than as agility.
+ * 3. **It cannot be flown into the ground.** Above `floorSpeed` a soft floor
+ *    holds `floor` metres of clearance over whatever is coming, sampled ahead
+ *    in proportion to speed: fly at the snow at full throttle and the nose
+ *    comes up on its own. Below `floorSpeed` the floor lets go, because
+ *    otherwise you could never land.
+ * 4. **Down is the throttle, and landing is the same action as stopping.**
+ *    Close the throttle and it settles at `vSettle`, cushioned to nothing as
+ *    the skids arrive; hold `S` with the throttle already shut and it comes
+ *    down at `vDive`, which is the way back from nine hundred metres. Open
+ *    the throttle on the ground and it lifts itself off at `vHop` rather than
+ *    asking you to know that `Space` exists.
+ *
+ * There is deliberately no stall, no spin, no fuel and no damage. The worst
+ * thing that can happen is that you stop against a wall, which costs you your
+ * throttle setting and nothing else.
+ */
+const FLYER = {
+  /** Cruise and boost. The skiff's are 31 and 47; this is the fast one. */
+  vCruise: 58,
+  vBoost: 84,
+  /** Spool up, and the rather firmer rate it sheds speed at. */
+  tauSpeed: 1.7,
+  tauBrake: 1.1,
+  /** How fast W and S move the throttle setting, per second. */
+  throttleRate: 0.62,
+  /** At or below this the throttle counts as shut. */
+  idleThrottle: 0.02,
+  /** Roll authority and how long it takes to get there. Not twitchy. */
+  bankMax: 0.62,
+  tauBank: 0.55,
+  /** Turn rate is `tan(bank)·g·turnGain / max(vTurnRef, v)`, capped. */
+  turnGain: 2.8,
+  vTurnRef: 26,
+  yawRateMax: 1.0,
+  /** Climb on the lift key, and the two ways down. */
+  vRise: 16,
+  vDive: 18,
+  vSettle: 3.4,
+  tauVert: 0.8,
+  /** Metres of clearance over which the settle is throttled back to nothing. */
+  cushion: 4.2,
+  /** Below this much clearance, opening the throttle lifts it off. */
+  hop: 5.0,
+  vHop: 5.2,
+  /**
+   * The soft floor: metres of clearance held whenever the throttle is open.
+   *
+   * Twenty-four is chosen against the city rather than against the snow: it
+   * clears every shop and every awning on the deck, so opening the throttle
+   * anywhere on the island lifts you into clean air. It is not high enough to
+   * clear a mid-rise, and it is not meant to be — the same rule looks ahead
+   * and climbs over whatever is coming.
+   */
+  floor: 24,
+  /** Minimum look-ahead, m. Below this speed the floor still sees the ground. */
+  floorSpeed: 12,
+  /** Seconds of travel to look ahead when asking what the ground is doing. */
+  floorLook: 1.9,
+  /** Hull half-extent against `blockedAt`. The span is 7 m. */
+  hullR: 3.6,
+  skidH: 0.55,
+  seat: { x: 0, y: 0.66, z: 0.15 },
+  ceiling: ISLAND_Y + 480,
+  /** Outer radius of the pad, how thick its deck is, and the light over it. */
+  padR: 4.6,
+  padDeck: 0.16,
+  columnH: 26,
 } as const;
 
 /**
@@ -545,6 +675,227 @@ const PADS: VehiclePad[] = [
   padAt("lifter", "Derrick", -Math.PI * 0.25, 42, false),
 ];
 
+/* -------------------------------------------------------------------------
+ * The rooftop pads
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Names for the fleet, in the order the pads come out of the rule.
+ *
+ * The first is the one on the ground; a flyer nobody can reach without the
+ * jetpack is a flyer half the visitors never find, and "work out the jetpack"
+ * is not a reasonable price of entry for the thing this world is *for*.
+ */
+const FLYER_NAMES = ["Wren", "Kestrel", "Swift", "Martin", "Tern", "Pipit", "Lark"] as const;
+
+/** How many rooftop pads, and therefore how many sixths of the compass. */
+const ROOF_PADS = 6;
+
+/**
+ * No district may hold more than this many rooftop pads until every sixth of
+ * the compass has one. `block` lots exist in exactly two districts, and the
+ * Bazaar's are the taller of the two, so without this the whole fleet parks
+ * in the Bazaar and "spread across the city" quietly means "spread across
+ * half of it".
+ */
+const ROOF_PER_DISTRICT = 3;
+
+/**
+ * How much clear roof a pad needs around its centre, in metres.
+ *
+ * `FLYER.padR` of paint plus a margin, and comfortably more than the 3.5 m
+ * half-span of the aircraft. Measured to the lot's own polygon and then
+ * discounted by `ROOF_EDGE`, which is what `buildings.ts` takes off the lot
+ * before it builds: `LOT_INSET` of 1.2 and another 0.35 for the parapet it
+ * stands a wall on. Neither number is importable from here — that is the
+ * system rule — so they are written down, and `empyreanVehicles.test.ts`
+ * checks the answer against the collision world the engine really hands over
+ * rather than against this arithmetic.
+ */
+const ROOF_CLEAR = FLYER.padR + 1.2;
+const ROOF_EDGE = 1.55;
+
+/**
+ * How far off the middle of the roof the pad sits.
+ *
+ * Every `block` roof has a head-house on it — `buildings.ts` puts a 3.6 × 2.8
+ * box at the centroid of every parapet it closes — so the middle of a roof is
+ * the one place a pad may not go. Six metres out clears its corner with the
+ * aircraft's tail, and the nose is pointed *away* from it, so the take-off
+ * run is over the parapet rather than through the stair hut.
+ */
+const ROOF_OFFSETS = [5.5, 6.5] as const;
+
+/** A candidate rooftop, ranked. */
+interface RoofSpot {
+  lot: string;
+  district: string;
+  x: number;
+  z: number;
+  y: number;
+  yaw: number;
+  /** Clear roof around the pad centre, m. Bigger is better. */
+  clear: number;
+  /** Height of the roof above the deck it stands on. */
+  rise: number;
+}
+
+/** Shortest distance from a point to a polygon's edges. */
+function polyClearance(poly: Vec2[], px: number, pz: number): number {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const dx = q.x - p.x;
+    const dz = q.z - p.z;
+    const len2 = dx * dx + dz * dz;
+    let t = len2 > 1e-9 ? ((px - p.x) * dx + (pz - p.z) * dz) / len2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const d = Math.hypot(px - (p.x + dx * t), pz - (p.z + dz * t));
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/**
+ * The best pad spot on one lot's roof, or null if it has not got one.
+ *
+ * Sixteen bearings by two offsets, and the one with the most clear roof round
+ * it wins. A scan rather than a formula because the lots are trapezoids of
+ * every proportion the plan felt like — the widest direction on a Bazaar
+ * block is not the widest direction on a Terraces one, and a rule that
+ * assumed either would put half the fleet through a parapet.
+ */
+function bestRoofSpot(lot: Lot): RoofSpot | null {
+  const c = lot.centroid;
+  let best: RoofSpot | null = null;
+  for (let k = 0; k < 16; k++) {
+    const th = (k / 16) * Math.PI * 2;
+    const dx = Math.cos(th);
+    const dz = Math.sin(th);
+    for (const off of ROOF_OFFSETS) {
+      const px = c.x + dx * off;
+      const pz = c.z + dz * off;
+      const clear = polyClearance(lot.poly, px, pz) - ROOF_EDGE;
+      if (best && clear <= best.clear) continue;
+      best = {
+        lot: lot.id,
+        district: lot.district,
+        x: px,
+        z: pz,
+        y: lot.y + lot.height,
+        // Nose away from the head-house, so the run is out over the parapet.
+        yaw: yawTowards(dx, dz),
+        clear,
+        rise: lot.height,
+      };
+    }
+  }
+  return best && best.clear >= ROOF_CLEAR ? best : null;
+}
+
+/**
+ * Which sixth of the compass a point is in.
+ *
+ * Sectors rather than "every nth lot" because the plan is radial and the
+ * thing a player notices is whether there is a pad on *their* side of the
+ * island, not whether the list is evenly indexed.
+ */
+function sectorOf(x: number, z: number): number {
+  const a = Math.atan2(z, x);
+  const t = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  return Math.min(ROOF_PADS - 1, Math.floor((t / (Math.PI * 2)) * ROOF_PADS));
+}
+
+/**
+ * Where the rooftop pads go, and the fallbacks if the built world disagrees.
+ *
+ * **The rule, in one sentence:** one pad per sixth of the compass, on the
+ * tallest `block` lot in that sixth whose roof has `ROOF_CLEAR` metres of
+ * space somewhere on it — with no district taking more than half of them
+ * until every sixth has been served.
+ *
+ * `use === "block"` is the whole reason this is safe to write against the
+ * plan rather than against the geometry: those lots and only those get a flat
+ * roof deck registered at exactly `lot.y + lot.height`, which is a contract
+ * `buildings.ts` states and does not drift. Towers taper and their crowns are
+ * built at whatever the taper arrived at; shops are three storeys of nothing
+ * much; gardens have no roof at all.
+ *
+ * Each bucket is a *ranked list*, not a point. The plan knows where the lots
+ * are and nothing about what was built on them, and blockers are the bounding
+ * boxes of polygons, so a tall neighbour on a diagonal can cover a roof that
+ * the plan says is open. `resolvePads` walks the list against the real
+ * collision world and takes the first that holds an aircraft.
+ */
+let _roofSpots: RoofSpot[][] | null = null;
+
+function roofSpots(): RoofSpot[][] {
+  if (_roofSpots) return _roofSpots;
+
+  const cands: RoofSpot[] = [];
+  for (const lot of cityPlan().lots) {
+    if (lot.use !== "block" || lot.height < 18) continue;
+    const spot = bestRoofSpot(lot);
+    if (spot) cands.push(spot);
+  }
+  // Tallest first, ties broken by id so the fleet is the same every boot.
+  cands.sort((a, b) => b.rise - a.rise || (a.lot < b.lot ? -1 : 1));
+
+  const buckets: RoofSpot[][] = Array.from({ length: ROOF_PADS }, () => []);
+  const taken = new Array<boolean>(ROOF_PADS).fill(false);
+  const perDistrict = new Map<string, number>();
+
+  /* Two passes. The first honours the district cap, which is what spreads the
+   * fleet over both districts that have `block` lots; the second fills any
+   * sixth the cap starved, because an empty sixth is a worse outcome than an
+   * uneven split. */
+  for (const capped of [true, false]) {
+    for (const s of cands) {
+      const sec = sectorOf(s.x, s.z);
+      if (taken[sec]) continue;
+      const n = perDistrict.get(s.district) ?? 0;
+      if (capped && n >= ROOF_PER_DISTRICT) continue;
+      taken[sec] = true;
+      perDistrict.set(s.district, n + 1);
+      buckets[sec].push(s);
+    }
+  }
+  // Everything else in the sixth, in rank order, as the fallback list.
+  for (const s of cands) {
+    const sec = sectorOf(s.x, s.z);
+    if (buckets[sec][0] !== s) buckets[sec].push(s);
+  }
+
+  _roofSpots = buckets.filter((b) => b.length > 0);
+  return _roofSpots;
+}
+
+/**
+ * The pad you can walk to.
+ *
+ * On the Halo apron beside the avenue you arrive on, about thirty-five metres
+ * from the spawn point. Reaching a roof is the player's problem and the
+ * jetpack is the answer, but "find the jetpack" cannot be the price of the
+ * first flight — somebody who has just arrived should be able to walk to an
+ * aircraft, and this is it. `resolvePads` settles it onto whatever is really
+ * there, exactly as it does for the other three on the ground.
+ */
+const APRON_A = Math.PI * 0.5 + 0.15;
+const APRON_R = HALO_R + 16;
+
+/**
+ * And it is pointed up the avenue, not straight out from the middle.
+ *
+ * Those are not the same bearing and the difference is a tower. The pad sits
+ * ten metres to one side of the south avenue's centreline, so a nose aimed
+ * radially outward diverges from the avenue at ten metres per sixty-five of
+ * range and is into the lots inside a hundred — which, on the first flight
+ * anybody takes in this world, is a spire at twenty metres. Parallel to the
+ * avenue keeps that ten-metre offset for the whole length of it.
+ */
+const APRON_YAW = yawTowards(Math.cos(Math.PI * 0.5), Math.sin(Math.PI * 0.5));
+
 /* =========================================================================
  * State
  * ====================================================================== */
@@ -554,7 +905,17 @@ type Phase = "parked" | "railed" | "flying" | "landed";
 interface Craft {
   kind: VehicleKind;
   pad: VehiclePad;
-  group: THREE.Group;
+  /**
+   * The object this craft is drawn as, or null when it is an instance.
+   *
+   * The three one-offs each get a group of three merged meshes. The flyers do
+   * not: seven of them would be twenty-one more draw calls for a system whose
+   * whole budget is twenty, so the fleet is three `InstancedMesh`es and a
+   * craft carries the index of its own instance instead.
+   */
+  group: THREE.Group | null;
+  /** Index into the flyer instance buffers, or -1. */
+  inst: number;
   /** Hull origin: the underside of the skids sits `skidH` below it. */
   pos: THREE.Vector3;
   /** World velocity, m/s. The glider derives it; the others own it. */
@@ -577,6 +938,17 @@ interface Craft {
   clearance: number;
   /** Fades a beacon out once you have used the thing. */
   idleGlow: number;
+  /** Seconds of "climb out of whatever this is" the flyer owes itself. */
+  stuck: number;
+  /* ---- flyer ---- */
+  /** 0..1. Where the player left the throttle. It stays there. */
+  throttle: number;
+  /** Forward speed the throttle is holding, m/s. */
+  speedHold: number;
+  /** The rooftops this one may stand on, best first. Null for the ground pads. */
+  spots: RoofSpot[] | null;
+  /** HUD label, built once rather than per readout. */
+  label: string;
 }
 
 /* ---- scratch. Made once, mutated for ever. ---- */
@@ -585,6 +957,11 @@ const _right = new THREE.Vector3();
 const _seat = new THREE.Vector3();
 const _sun = new THREE.Vector3(0, 0, -1);
 const _seatEuler = new THREE.Euler(0, 0, 0, "YXZ");
+/* ---- and the ones the instanced fleet is placed with ---- */
+const _instM = new THREE.Matrix4();
+const _instQ = new THREE.Quaternion();
+const _instE = new THREE.Euler(0, 0, 0, "YXZ");
+const _instOne = new THREE.Vector3(1, 1, 1);
 
 /* =========================================================================
  * Build
@@ -598,7 +975,23 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
   /* A copy per world, because `setWorld` settles each pad onto whatever is
    * really under it and a module-level constant that two worlds both write to
    * is a bug waiting for the second tab. */
-  const pads: VehiclePad[] = PADS.map((p) => ({ ...p }));
+  /* The four on the ground, then one per rooftop bucket. The rooftop pads are
+   * nominal here — `resolvePads` walks each bucket against the real collision
+   * world and may take a different roof entirely. */
+  const spotLists = roofSpots();
+  const pads: VehiclePad[] = [
+    ...PADS.map((p) => ({ ...p })),
+    { ...padAt("flyer", FLYER_NAMES[0], APRON_A, APRON_R, true), yaw: APRON_YAW },
+    ...spotLists.map((list, i) => ({
+      kind: "flyer" as const,
+      name: FLYER_NAMES[(i + 1) % FLYER_NAMES.length],
+      x: list[0].x,
+      y: list[0].y,
+      z: list[0].z,
+      yaw: list[0].yaw,
+      roofLot: list[0].lot,
+    })),
+  ];
 
   const disposables: Array<{ dispose(): void }> = [];
   const keep = <T extends { dispose(): void }>(d: T): T => {
@@ -655,27 +1048,36 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
   const crafts: Craft[] = [];
   const byKind = new Map<VehicleKind, Craft>();
 
+  const flyerCount = pads.reduce((n, p) => n + (p.kind === "flyer" ? 1 : 0), 0);
+  let flyerIndex = 0;
+
   for (const pad of pads) {
-    const g = new THREE.Group();
-    g.name = `empyrean-${pad.kind}`;
-    g.rotation.order = "YXZ";
+    const flyer = pad.kind === "flyer";
+    let g: THREE.Group | null = null;
 
-    const bin: CraftParts = { body: [], glass: [], glow: [] };
-    const accent = ACCENT[pad.kind];
-    if (pad.kind === "skiff") skiffParts(bin, accent);
-    else if (pad.kind === "glider") gliderParts(bin, accent);
-    else lifterParts(bin, accent);
+    if (!flyer) {
+      g = new THREE.Group();
+      g.name = `empyrean-${pad.kind}`;
+      g.rotation.order = "YXZ";
 
-    flush(g, bin.body, matBody, `empyrean-${pad.kind}-body`, !low, keep);
-    flush(g, bin.glass, matGlass, `empyrean-${pad.kind}-glass`, false, keep);
-    flush(g, bin.glow, matGlow, `empyrean-${pad.kind}-glow`, false, keep);
-    group.add(g);
+      const bin: CraftParts = { body: [], glass: [], glow: [] };
+      const accent = ACCENT[pad.kind];
+      if (pad.kind === "skiff") skiffParts(bin, accent);
+      else if (pad.kind === "glider") gliderParts(bin, accent);
+      else lifterParts(bin, accent);
+
+      flush(g, bin.body, matBody, `empyrean-${pad.kind}-body`, !low, keep);
+      flush(g, bin.glass, matGlass, `empyrean-${pad.kind}-glass`, false, keep);
+      flush(g, bin.glow, matGlow, `empyrean-${pad.kind}-glow`, false, keep);
+      group.add(g);
+    }
 
     const c: Craft = {
       kind: pad.kind,
       pad,
       group: g,
-      pos: new THREE.Vector3(pad.x, pad.y + skidOf(pad.kind), pad.z),
+      inst: flyer ? flyerIndex++ : -1,
+      pos: new THREE.Vector3(pad.x, pad.y + liftOf(pad.kind) + skidOf(pad.kind), pad.z),
       vel: new THREE.Vector3(),
       yaw: pad.yaw,
       pitch: 0,
@@ -690,11 +1092,61 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
       air: 0,
       clearance: 0,
       idleGlow: 1,
+      stuck: 0,
+      throttle: 0,
+      speedHold: 0,
+      spots: null,
+      label: flyer ? `Skyflyer · ${pad.name}` : LABEL[pad.kind],
     };
     crafts.push(c);
-    byKind.set(pad.kind, c);
-
+    if (!byKind.has(pad.kind)) byKind.set(pad.kind, c);
   }
+
+  /* Hand each rooftop flyer its bucket of candidate roofs. The apron one — the
+   * first flyer in the list — has none and is settled by the arc walk that
+   * places the other three ground pads. */
+  {
+    let i = 0;
+    for (const c of crafts) {
+      if (c.kind !== "flyer" || !c.pad.roofLot) continue;
+      c.spots = spotLists[i++] ?? null;
+    }
+  }
+
+  /* ---- the fleet, as three draws --------------------------------------
+   *
+   * One merged geometry per program, `flyerCount` instances of each. This is
+   * the shape the permanent test in this repo exists to enforce: a population
+   * that is not an `InstancedMesh` is a population that updated its state
+   * perfectly and left all its geometry at the origin, which is exactly what
+   * happened to the ring tram. Frustum culling is off because the instance
+   * bounding sphere three caches is computed once and these move. */
+  let flyerBody: THREE.InstancedMesh | null = null;
+  let flyerGlass: THREE.InstancedMesh | null = null;
+  let flyerGlow: THREE.InstancedMesh | null = null;
+  if (flyerCount > 0) {
+    const bin: CraftParts = { body: [], glass: [], glow: [] };
+    flyerParts(bin, ACCENT.flyer);
+    flyerBody = fleet(group, bin.body, matBody, "empyrean-flyer-body", !low, keep, flyerCount);
+    flyerGlass = fleet(group, bin.glass, matGlass, "empyrean-flyer-glass", false, keep, flyerCount);
+    flyerGlow = fleet(group, bin.glow, matGlow, "empyrean-flyer-glow", false, keep, flyerCount);
+  }
+
+  /** Write one flyer's transform into every instance buffer it appears in. */
+  function placeFlyer(c: Craft): void {
+    if (c.inst < 0) return;
+    _instE.set(c.pitch, c.yaw, c.roll, "YXZ");
+    _instQ.setFromEuler(_instE);
+    _instM.compose(c.pos, _instQ, _instOne);
+    flyerBody?.setMatrixAt(c.inst, _instM);
+    flyerGlass?.setMatrixAt(c.inst, _instM);
+    flyerGlow?.setMatrixAt(c.inst, _instM);
+  }
+
+  // Placed once at build as well as every frame: an instance buffer nobody
+  // has written to is a fleet of identity matrices sitting at the origin,
+  // which is exactly the failure the permanent test in this repo is for.
+  for (const c of crafts) placeFlyer(c);
 
   /**
    * The pads, merged in world space — once, and not until somebody has told
@@ -718,6 +1170,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     for (const pad of pads) {
       const accent = ACCENT[pad.kind];
       if (pad.kind === "glider") railParts(pad, accent, paint, post, column);
+      else if (pad.kind === "flyer") flyerPadParts(pad, accent, paint, post, column);
       else padParts(pad, accent, paint, post, column);
     }
     flush(group, post, matBody, "empyrean-pad-posts", false, keep);
@@ -754,6 +1207,9 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     altitude: 0,
     label: "",
     lines: [],
+    vx: 0,
+    vy: 0,
+    vz: 0,
   };
 
   /* =======================================================================
@@ -825,11 +1281,29 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
 
   /** Hull half-extent used against `blockedAt`, by kind. */
   function hullOf(kind: VehicleKind): number {
-    return kind === "skiff" ? SKIFF.hullR : kind === "glider" ? GLIDER.hullR : LIFTER.hullR;
+    if (kind === "skiff") return SKIFF.hullR;
+    if (kind === "glider") return GLIDER.hullR;
+    if (kind === "flyer") return FLYER.hullR;
+    return LIFTER.hullR;
   }
 
   function skidOf(kind: VehicleKind): number {
-    return kind === "skiff" ? SKIFF.skidH : kind === "glider" ? GLIDER.skidH : LIFTER.skidH;
+    if (kind === "skiff") return SKIFF.skidH;
+    if (kind === "glider") return GLIDER.skidH;
+    if (kind === "flyer") return FLYER.skidH;
+    return LIFTER.skidH;
+  }
+
+  /**
+   * How far above `pad.y` a parked craft of this kind stands.
+   *
+   * Only the flyer has any: its pad is a low deck rather than paint, because
+   * paint is invisible on the planted roofs — see `flyerPadParts`. Without
+   * this the aircraft is parked on the roof *beside* its own pad, hovering
+   * sixteen centimetres inside it.
+   */
+  function liftOf(kind: VehicleKind): number {
+    return kind === "flyer" ? FLYER.padDeck : 0;
   }
 
   /**
@@ -867,9 +1341,59 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
    * first keeps a pad on the pavement it was meant to be on rather than
    * marching it into the road.
    */
+  /**
+   * Is this rooftop really a rooftop?
+   *
+   * Stricter than `padFits` in the one way that matters up here: the deck the
+   * collision world reports has to be *this* roof, not a neighbour's. Blockers
+   * and decks are the bounding boxes of polygons and the lots are trapezoids
+   * on a radial grid, so a taller building two doors down can have a box that
+   * covers a roof the plan says is open — and a pad painted onto a deck whose
+   * polygon does not reach it is paint hanging in the air.
+   */
+  function roofFits(spot: RoofSpot, hull: number): boolean {
+    const sup = world.supportAt(spot.x, spot.z, spot.y + 2);
+    if (!Number.isFinite(sup) || Math.abs(sup - spot.y) > 0.6) return false;
+    if (world.blockedAt(spot.x, spot.z, sup + 1.2)) return false;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const px = spot.x + Math.cos(a) * hull;
+      const pz = spot.z + Math.sin(a) * hull;
+      if (world.blockedAt(px, pz, sup + 1.2)) return false;
+      // And the roof carries on under the wing tip, rather than stopping.
+      const s2 = world.supportAt(px, pz, spot.y + 2);
+      if (!Number.isFinite(s2) || Math.abs(s2 - spot.y) > 0.6) return false;
+    }
+    return true;
+  }
+
   function resolvePads(): void {
     for (const c of crafts) {
       const pad = c.pad;
+
+      /* ---- a rooftop pad ----
+       * Not the arc walk below: walking round the island at this radius from a
+       * roof lands on the neighbouring block, or on the street between them,
+       * six hundred metres from anything. The bucket is the fallback instead —
+       * every qualifying roof in this sixth of the compass, best first. */
+      if (c.spots) {
+        const hull = hullOf(c.kind);
+        for (const spot of c.spots) {
+          if (!roofFits(spot, hull)) continue;
+          pad.x = spot.x;
+          pad.z = spot.z;
+          pad.y = spot.y;
+          pad.yaw = spot.yaw;
+          pad.roofLot = spot.lot;
+          break;
+        }
+        if (c.phase === "parked") {
+          c.pos.set(pad.x, pad.y + liftOf(c.kind) + skidOf(c.kind), pad.z);
+          c.yaw = pad.yaw;
+        }
+        continue;
+      }
+
       const hull = hullOf(c.kind);
       const r0 = Math.max(1, Math.hypot(pad.x, pad.z));
       const a0 = Math.atan2(pad.z, pad.x);
@@ -896,7 +1420,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
       // A craft still on its pad comes with it. One somebody has already
       // parked on a roof stays where they left it.
       if (c.phase === "parked") {
-        c.pos.set(pad.x, pad.y + skidOf(c.kind), pad.z);
+        c.pos.set(pad.x, pad.y + liftOf(c.kind) + skidOf(c.kind), pad.z);
         c.yaw = pad.yaw;
       }
     }
@@ -1006,6 +1530,237 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     }
     c.roll += (0 - c.roll) * ease(dt, 0.5);
     c.pitch += (0 - c.pitch) * ease(dt, 0.5);
+  }
+
+  /* =======================================================================
+   * The flyer
+   * ==================================================================== */
+
+  /**
+   * How far along the way ahead is clear, as a fraction of `look`.
+   *
+   * Four samples down the centre line at two heights, plus the rock. It is
+   * the centre line and not the whole seven-metre span on purpose: a glancing
+   * blow on a wingtip is already handled by `integrate`, which stops the
+   * craft and costs it its throttle, and doubling the sample count to catch
+   * that as well would be paying for the case that already works.
+   *
+   * `_fwd` must already hold this craft's heading.
+   */
+  function wayAhead(c: Craft, look: number): number {
+    for (let i = 1; i <= 4; i++) {
+      const f = i / 4;
+      const px = c.pos.x + _fwd.x * look * f;
+      const pz = c.pos.z + _fwd.z * look * f;
+      if (
+        world.blockedAt(px, pz, c.pos.y) ||
+        world.blockedAt(px, pz, c.pos.y + 1.6) ||
+        insideIsland(px, pz, c.pos.y + 0.3)
+      ) {
+        return f;
+      }
+    }
+    return 1;
+  }
+
+  /**
+   * One step of the aircraft anybody can fly.
+   *
+   * Read `FLYER` for why each rule is there. In order: the throttle, which is
+   * a speed and stays where it is put; the bank, which is a command and rolls
+   * back to level; the turn, which falls out of the bank; the vertical, which
+   * is altitude-hold by default and has two separate ways down; the soft
+   * floor, which is the reason you cannot fly this into the snow; and the
+   * fence at the shore, which turns the nose home rather than pushing.
+   *
+   * Nothing in here can produce a state the aircraft cannot fly out of. There
+   * is no stall to fall out of, no spin to enter, and the only thing a
+   * collision costs is the throttle setting.
+   */
+  function stepFlyer(c: Craft, input: VehicleInput, dt: number): void {
+    /* ---- cornered, which must never be permanent -----------------------
+     *
+     * `integrate` reverts a move that would end inside something, which
+     * guarantees the hull *centre* is never in a wall and guarantees nothing
+     * about the wingtips: the beam samples are three and a half metres out,
+     * and a craft sliding along a facade at a shallow angle walks itself into
+     * a corner where a sideways sample is inside a box at the old position as
+     * well as at the new one. Every branch then reverts, including the
+     * vertical, and the aircraft is stuck for ever with the throttle open and
+     * the stick doing nothing. That is not a hypothetical: it happened on the
+     * second flight, against the Beacon's skirt, forty metres over the Halo,
+     * and it took a fifteen-minute session with a print statement in
+     * `hullBlocked` to see it, because from outside it looks exactly like an
+     * aircraft that will not accelerate.
+     *
+     * The way out is up, unconditionally. It is the one direction with a
+     * guaranteed end — every blocker in this world has a finite top and
+     * `blockedAt` reports the air above a roof as clear — so a cornered flyer
+     * rises out of whatever it is in and carries on over the roof of it. It
+     * is also exactly what the craft does when it meets a wall head-on, so
+     * this is one behaviour and not two.
+     *
+     * Triggered by `integrate` rather than tested for here, because the state
+     * that traps the aircraft is "no move on any axis was accepted" and not
+     * "the hull is inside a box": the two differ by a floating-point hair at
+     * exactly the edge of a blocker, which is precisely where a craft that
+     * has slid along one comes to rest. */
+    if (c.stuck > 0) {
+      c.stuck -= dt;
+      c.pos.y += FLYER.vRise * dt;
+      c.vel.set(0, 0, 0);
+      c.speedHold = 0;
+      c.phase = "flying";
+      c.clearance = Math.max(0, c.pos.y - FLYER.skidH - groundBelow(c.pos.x, c.pos.z, c.pos.y + 0.4));
+      c.pitch += (0 - c.pitch) * ease(dt, 0.5);
+      c.roll += (0 - c.roll) * ease(dt, 0.5);
+      return;
+    }
+
+    /* ---- throttle: a speed, held ---- */
+    const thr = clamp(input.forward, -1, 1);
+    c.throttle = clamp(c.throttle + thr * FLYER.throttleRate * dt, 0, 1);
+    const idle = c.throttle <= FLYER.idleThrottle;
+    const vMax = input.boost ? FLYER.vBoost : FLYER.vCruise;
+    const want = c.throttle * vMax;
+    const tau = want > c.speedHold ? FLYER.tauSpeed : FLYER.tauBrake;
+    c.speedHold += (want - c.speedHold) * ease(dt, tau);
+    if (c.phase === "landed") c.speedHold *= Math.exp(-dt / 0.5);
+    if (c.speedHold < 0.05) c.speedHold = 0;
+
+    /* ---- bank, and the turn that falls out of it ----
+     * A command, not a force: the roll goes where the stick says and comes
+     * back to level on its own the moment the stick is centred, which is the
+     * single rule that makes this flyable by somebody who has never flown. */
+    const bankCmd = -clamp(input.strafe, -1, 1) * FLYER.bankMax;
+    c.roll += (bankCmd - c.roll) * ease(dt, FLYER.tauBank);
+    const vTurn = Math.max(FLYER.vTurnRef, c.speedHold);
+    const rate = clamp(
+      (Math.tan(c.roll) * GRAVITY * FLYER.turnGain) / vTurn,
+      -FLYER.yawRateMax,
+      FLYER.yawRateMax,
+    );
+    // Airborne only. A parked aircraft that spins on its skids reads as broken.
+    if (c.phase !== "landed" || c.speedHold > 1) c.yaw += rate * dt;
+    c.yawRate = rate;
+
+    /* ---- the fence at the shore ----
+     * The powered craft use `tether`, which edits the velocity; this one
+     * derives its velocity from the throttle every step, so an edit to it
+     * would be erased before it did anything. The glider's answer works here:
+     * turn the nose home and ease the throttle off, so what the player feels
+     * is weather rather than a wall. */
+    const rr = Math.hypot(c.pos.x, c.pos.z);
+    if (rr > LAKE_R * 0.82) {
+      const t = Math.min(1, (rr - LAKE_R * 0.82) / (LAKE_R * 0.18));
+      const home = Math.atan2(c.pos.x, c.pos.z);
+      c.yaw += shortestAngle(home - c.yaw) * ease(dt, 4.0 - 3.4 * t);
+      c.throttle = Math.min(c.throttle, 1 - 0.55 * t);
+    }
+
+    // The heading, after everything that could have turned it.
+    _fwd.set(-Math.sin(c.yaw), 0, -Math.cos(c.yaw));
+
+    /* ---- the way ahead ----
+     * The city is three hundred metres tall in places and the ground is not
+     * the only thing you can fly into, so the soft floor below is only half
+     * the answer. This is the other half, and it does two things at once:
+     * it will not let the aircraft carry more speed than it can shed before
+     * whatever is in front of it, and above a walking pace it climbs.
+     *
+     * Fly a flyer at a tower, then, and the aircraft slows and goes *up* the
+     * face of it until it is over the roof and away. That is the behaviour
+     * this whole craft exists for: the worst outcome of pointing it at
+     * something solid and holding the throttle open is that you arrive on top
+     * of the something.
+     *
+     * The climb is gated on the throttle rather than on the speed, and that
+     * matters: the brake will bring the aircraft to a complete stop in front
+     * of a wall, and a rule that only climbed while moving would then leave
+     * it hanging there with the throttle open and the stick doing nothing.
+     * A parked one with the throttle shut stays parked. */
+    let climbOver = false;
+    if (!idle || c.speedHold > 1) {
+      const look = Math.max(20, c.speedHold * 1.7);
+      const ahead = wayAhead(c, look);
+      if (ahead < 1) {
+        // `v² = 2·a·s`, minus a few metres so it stops short rather than on it.
+        const room = Math.max(0, ahead * look - 9);
+        const cap = Math.sqrt(2 * 22 * room);
+        if (c.speedHold > cap) c.speedHold = cap;
+        climbOver = !idle;
+      }
+    }
+
+    c.vel.x = _fwd.x * c.speedHold;
+    c.vel.z = _fwd.z * c.speedHold;
+
+    /* ---- vertical ---- */
+    const ground = groundBelow(c.pos.x, c.pos.z, c.pos.y + 0.4);
+    c.clearance = Math.max(0, c.pos.y - FLYER.skidH - ground);
+    const lift = clamp(input.lift, 0, 1);
+
+    let target: number;
+    if (lift > 0.02) {
+      target = FLYER.vRise * lift;
+    } else if (idle && thr < -0.15) {
+      // Throttle already shut and still asking for less: that is "down".
+      target = FLYER.vDive * thr;
+    } else if (idle) {
+      // Settle, cushioned to nothing as the skids arrive. This is the landing.
+      target = -FLYER.vSettle * Math.min(1, Math.max(0.05, c.clearance / FLYER.cushion));
+    } else {
+      // Hold what you have. No key held is level flight, on purpose.
+      target = 0;
+    }
+
+    /* Lift-off without having to know that Space exists: open the throttle on
+     * the ground and it picks itself up. */
+    if (!idle && c.clearance < FLYER.hop && target < FLYER.vHop) target = FLYER.vHop;
+
+    /* ---- the soft floor ----
+     * Sampled ahead in proportion to speed, so it is the ground you are about
+     * to be over that lifts the nose rather than the ground you are already
+     * past — and `supportAt` counts roofs, so this is what carries the
+     * aircraft over the city rather than into the side of it.
+     *
+     * It is gated on the throttle rather than on the speed, and that is the
+     * whole of the vertical design: with the throttle open you are going
+     * somewhere and the floor holds you clear of everything; with the
+     * throttle shut you are landing and it lets go entirely. A floor that
+     * never lets go is an aircraft that can never be put down. */
+    if (!idle && target < FLYER.vRise) {
+      const look = Math.max(FLYER.floorSpeed, FLYER.floorLook * c.speedHold);
+      const ahead = groundBelow(
+        c.pos.x + _fwd.x * look,
+        c.pos.z + _fwd.z * look,
+        c.pos.y + 0.4,
+      );
+      const clearAhead = Math.min(c.clearance, c.pos.y - FLYER.skidH - ahead);
+      if (clearAhead < FLYER.floor) {
+        const urgency = Math.min(1, (FLYER.floor - clearAhead) / FLYER.floor);
+        target = Math.max(target, urgency * FLYER.vRise);
+      }
+    }
+
+    if (climbOver) target = Math.max(target, FLYER.vRise * 0.9);
+
+    if (c.pos.y > FLYER.ceiling && target > 0) target = 0;
+    c.vel.y += (target - c.vel.y) * ease(dt, FLYER.tauVert);
+
+    integrate(c, dt, FLYER.skidH);
+
+    /* ---- attitude ----
+     * Pitch is the flight path and nothing else: nose up when it is going up,
+     * nose down when it is going down, level when it is level. Honest, and it
+     * self-levels for free because the flight path does. */
+    const wantPitch = clamp(
+      Math.atan2(c.vel.y, Math.max(10, c.speedHold)) * 0.85,
+      -0.34,
+      0.34,
+    );
+    c.pitch += (wantPitch - c.pitch) * ease(dt, 0.5);
+    if (c.phase === "landed") c.pitch += (0 - c.pitch) * ease(dt, 0.4);
   }
 
   /**
@@ -1239,6 +1994,37 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
   function bleed(c: Craft, kx: number, kz: number): void {
     if (kx) c.vel.x *= 0.25;
     if (kz) c.vel.z *= 0.25;
+    if (c.kind === "flyer") {
+      /* Stopping against a wall is the worst thing that can happen to a
+       * flyer, and it costs the throttle setting and nothing else: no damage,
+       * no spin, no falling. Push forward again and you are flying again.
+       *
+       * **Only when both axes are lost.** The first version shut the throttle
+       * on any bleed at all, including the one-axis slide that is how every
+       * craft in this file gets along a facade instead of stopping dead on
+       * it — so a flyer that so much as brushed a wall had its throttle
+       * driven to zero on every frame it stayed near one, and what the player
+       * saw was an aircraft that would not accelerate, anywhere near a
+       * building, for no stated reason. */
+      if (kx && kz) {
+        c.speedHold *= 0.2;
+        c.throttle *= 0.35;
+      } else {
+        c.speedHold *= 0.55;
+      }
+      /* Any contact at all buys a little unconditional climb — see the escape
+       * at the top of `stepFlyer`.
+       *
+       * Deliberately *any*, not only the both-axes case. Sliding along a
+       * facade is the right answer for the skiff and a trap for this one:
+       * the one-axis branch keeps succeeding, so the craft is never "stuck"
+       * by any test you could write, and what it does instead is creep along
+       * the wall at half a metre a second with the throttle wide open for as
+       * long as the player is willing to hold W. Rising over the thing is
+       * both the fix and the behaviour this aircraft already has when it
+       * meets a wall head-on. */
+      c.stuck = Math.max(c.stuck, 0.5);
+    }
     if (c.kind === "glider") {
       /* A glider that hit a tower is a glider that has finished flying. */
       c.airspeed *= 0.35;
@@ -1335,7 +2121,10 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
    * ==================================================================== */
 
   function seatOf(c: Craft): { x: number; y: number; z: number } {
-    return c.kind === "skiff" ? SKIFF.seat : c.kind === "glider" ? GLIDER.seat : LIFTER.seat;
+    if (c.kind === "skiff") return SKIFF.seat;
+    if (c.kind === "glider") return GLIDER.seat;
+    if (c.kind === "flyer") return FLYER.seat;
+    return LIFTER.seat;
   }
 
   function board(c: Craft): void {
@@ -1354,6 +2143,13 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
       landing = null;
     } else if (c.phase === "parked") {
       c.phase = "landed";
+    }
+    if (c.kind === "flyer") {
+      /* Get in and the throttle is shut, whatever the last pilot left it at.
+       * An aircraft that takes off the instant somebody sits in it is a
+       * surprise, and the one thing this craft is not allowed to be. */
+      c.throttle = 0;
+      c.speedHold = 0;
     }
     writeRideState(true);
   }
@@ -1411,7 +2207,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
 
   /** Put a craft back on its pad, still and level. */
   function sendHome(c: Craft): void {
-    c.pos.set(c.pad.x, c.pad.y + skidOf(c.kind), c.pad.z);
+    c.pos.set(c.pad.x, c.pad.y + liftOf(c.kind) + skidOf(c.kind), c.pad.z);
     c.yaw = c.pad.yaw;
     c.vel.set(0, 0, 0);
     c.airspeed = 0;
@@ -1421,6 +2217,9 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     c.yawRate = 0;
     c.pitch = 0;
     c.roll = 0;
+    c.throttle = 0;
+    c.speedHold = 0;
+    c.phase = "parked";
   }
 
   /**
@@ -1438,7 +2237,37 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     const c = ride;
     const e = exitPoint(c);
     const out = { x: e.x, y: e.y, z: e.z };
-    if (!e.found) sendHome(c);
+    if (!e.found) {
+      /* Nothing to stand on. For the three that came before, that means the
+       * winch: the craft goes home and so do you, because being put down on a
+       * surface `surfaceAt` calls the void is a six-hundred-metre fall.
+       *
+       * The flyer is different, and deliberately. You are wearing a jetpack —
+       * the one this world's default verb is built on — so stepping out of an
+       * aircraft at nine hundred metres hands you back to it rather than
+       * teleporting you across the island mid-flight, which would be a much
+       * stranger thing to have happen. The craft still winches itself home;
+       * you keep the view. */
+      if (
+        c.kind === "flyer" &&
+        // Airborne, and not merely standing on something `supportAt` has not
+        // been told about: a craft that is down is a craft you step off.
+        c.phase === "flying" &&
+        c.pos.y > groundBelow(c.pos.x, c.pos.z, c.pos.y) + 12
+      ) {
+        const R = hullOf(c.kind) + 1.6;
+        out.x = c.pos.x + Math.cos(c.yaw) * R;
+        out.y = c.pos.y + 0.8;
+        out.z = c.pos.z - Math.sin(c.yaw) * R;
+        // Never into a wall — if the beam is blocked, step out of the roof.
+        if (world.blockedAt(out.x, out.z, out.y)) {
+          out.x = c.pos.x;
+          out.z = c.pos.z;
+          out.y = c.pos.y + 2.2;
+        }
+      }
+      sendHome(c);
+    }
     c.phase = "parked";
     c.yawRate = 0;
     c.vel.set(0, 0, 0);
@@ -1472,10 +2301,13 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     rideState.speed =
       c.kind === "glider" && c.phase === "flying" ? c.airspeed : Math.hypot(c.vel.x, c.vel.z);
     rideState.altitude = c.clearance;
+    rideState.vx = c.vel.x;
+    rideState.vy = c.vel.y;
+    rideState.vz = c.vel.z;
 
     if (!force && hudTimer > 0) return;
     hudTimer = 0.1;
-    rideState.label = LABEL[c.kind];
+    rideState.label = c.label;
     const lines = rideState.lines;
     lines.length = 0;
     if (c.kind === "glider") {
@@ -1504,6 +2336,24 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
         else if (c.air > 1.2) lines.push("Lift. Turn into it.");
         if (Math.hypot(c.pos.x, c.pos.z) > LAKE_R * 0.9) lines.push("Sinking air — turn back");
       }
+    } else if (c.kind === "flyer") {
+      /* Three lines, and the second is the tutorial. There is no other
+       * tutorial: somebody who has never flown anything has to be able to
+       * read this once and go, so it names the keys rather than describing
+       * the aeroplane. */
+      lines.push(
+        `${c.speedHold.toFixed(0)} m/s · throttle ${(c.throttle * 100).toFixed(0)}%`,
+      );
+      if (c.phase === "landed") {
+        lines.push("W lifts off · A D turn · S slows and lands");
+      } else {
+        lines.push("W/S throttle · A D bank · Space up · S down · Shift faster");
+      }
+      lines.push(
+        c.clearance > 900
+          ? "Nothing below for a while"
+          : `${c.clearance.toFixed(0)} m clear below`,
+      );
     } else if (c.kind === "skiff") {
       const speed = Math.hypot(c.vel.x, c.vel.z);
       lines.push(`${speed.toFixed(0)} m/s · bank ${((c.roll * 180) / Math.PI).toFixed(0)}°`);
@@ -1514,26 +2364,24 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
     }
   }
 
-  const LABEL: Record<VehicleKind, string> = {
-    skiff: "Sky skiff · Ember",
-    glider: "Glider · Vesper",
-    lifter: "Cargo lifter · Derrick",
-  };
-
   /* =======================================================================
    * Interactables
    * ==================================================================== */
 
   /* The prompt follows the craft rather than its pad: park the skiff on a
    * roof and the way back into it has to be on the roof too. */
+  let flyerOffer = 0;
   const boardOffers: Interactable[] = crafts.map((c) => ({
-    id: `vehicle-${c.kind}`,
+    // Seven of them share a kind, so the id carries the index. The three
+    // one-offs keep the ids they have always had; something outside this file
+    // may well be matching on them.
+    id: c.kind === "flyer" ? `vehicle-flyer-${flyerOffer++}` : `vehicle-${c.kind}`,
     x: c.pos.x,
     y: c.pos.y,
     z: c.pos.z,
     radius: 7,
-    label: BOARD_LABEL[c.kind],
-    detail: BOARD_DETAIL[c.kind],
+    label: c.kind === "flyer" ? `Fly the ${c.pad.name}` : BOARD_LABEL[c.kind],
+    detail: c.kind === "flyer" ? BOARD_DETAIL.flyer : BOARD_DETAIL[c.kind],
     enabled: () => ride === null,
     activate: () => board(c),
   }));
@@ -1578,10 +2426,19 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
         exitOffer.x = rideState.x;
         exitOffer.y = rideState.y;
         exitOffer.z = rideState.z;
-        exitOffer.detail = ride.phase === "landed" || ride.phase === "railed"
+        const down = ride.phase === "landed" || ride.phase === "railed";
+        /* The flyer is the one you may leave in the air. Everybody in this
+         * world is wearing a jetpack, so stepping off at altitude is a
+         * transfer between two ways of flying rather than a fall — and being
+         * unable to get out of an aircraft until it is on the ground is the
+         * kind of rule that traps somebody who cannot yet land. */
+        const canStep = down || ride.kind === "flyer";
+        exitOffer.detail = down
           ? "Back on your feet"
-          : "Not while you are up here";
-        if (ride.phase === "landed" || ride.phase === "railed") offers.push(exitOffer);
+          : ride.kind === "flyer"
+            ? "Your jetpack has you"
+            : "Not while you are up here";
+        if (canStep) offers.push(exitOffer);
       } else {
         for (let i = 0; i < boardOffers.length; i++) {
           const o = boardOffers[i];
@@ -1634,6 +2491,11 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
       return c ? out.copy(c.pos) : out.set(0, ISLAND_Y, 0);
     },
 
+    positionOfPad(index, out) {
+      const c = crafts[index];
+      return c ? out.copy(c.pos) : out.set(0, ISLAND_Y, 0);
+    },
+
     lastLanding() {
       return landing;
     },
@@ -1650,9 +2512,20 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
       for (let i = 0; i < crafts.length; i++) {
         const c = crafts[i];
         if (c !== ride) idle(c, frame.dt);
-        c.group.position.copy(c.pos);
-        c.group.rotation.set(c.pitch, c.yaw, c.roll);
+        if (c.group) {
+          c.group.position.copy(c.pos);
+          c.group.rotation.set(c.pitch, c.yaw, c.roll);
+        } else {
+          placeFlyer(c);
+        }
       }
+      /* The whole fleet is written every frame rather than only when one of
+       * them moves. Seven matrices is nothing, and the alternative — a dirty
+       * flag — is how a population comes to update its state perfectly and
+       * leave its geometry at the origin. */
+      if (flyerBody) flyerBody.instanceMatrix.needsUpdate = true;
+      if (flyerGlass) flyerGlass.instanceMatrix.needsUpdate = true;
+      if (flyerGlow) flyerGlow.instanceMatrix.needsUpdate = true;
 
       /* The pad columns breathe, and come up at dusk like everything else. */
       matColumn.uniforms.uTime.value = frame.time;
@@ -1669,6 +2542,7 @@ export function buildVehicles(ctx: BuildContext): VehiclesHandle {
   function stepOne(c: Craft, input: VehicleInput, dt: number): void {
     if (c.kind === "skiff") stepSkiff(c, input, dt);
     else if (c.kind === "lifter") stepLifter(c, input, dt);
+    else if (c.kind === "flyer") stepFlyer(c, input, dt);
     else stepGlider(c, input, dt);
   }
 
@@ -1763,6 +2637,21 @@ const ACCENT: Record<VehicleKind, number> = {
   skiff: 0xffb35c,
   glider: 0x9ce8a8,
   lifter: 0xc8a2ff,
+  flyer: 0x5ce0ff,
+};
+
+/**
+ * The HUD's name for each craft.
+ *
+ * The flyers do not use it — there are seven of them and they have names of
+ * their own — but a `Record` over the union is the thing that fails to
+ * compile when somebody adds a fifth kind, which is the point.
+ */
+const LABEL: Record<VehicleKind, string> = {
+  skiff: "Sky skiff · Ember",
+  glider: "Glider · Vesper",
+  lifter: "Cargo lifter · Derrick",
+  flyer: "Skyflyer",
 };
 
 /** Body palette. Named rather than inlined so a craft can be re-liveried. */
@@ -1873,6 +2762,109 @@ function flush(
   mesh.receiveShadow = false;
   parent.add(mesh);
   bin.length = 0;
+}
+
+/**
+ * Merge a bin and hand it back as an `InstancedMesh` of `count` copies.
+ *
+ * `flush`'s sibling, for the thing there are several of. Seven flyers built
+ * the way the three one-offs are built would be twenty-one draw calls on top
+ * of the twelve this system already spends; as three instanced meshes the
+ * whole fleet costs three, and would cost three if there were fifty.
+ *
+ * Frustum culling is off on purpose. Three caches an `InstancedMesh`'s
+ * bounding sphere the first time it is asked for and these aircraft move
+ * hundreds of metres, so the cached sphere goes stale and the fleet
+ * disappears — silently, the way a stale bounding volume always does.
+ */
+function fleet(
+  parent: THREE.Object3D,
+  bin: THREE.BufferGeometry[],
+  mat: THREE.Material,
+  name: string,
+  castShadow: boolean,
+  keep: Keep,
+  count: number,
+): THREE.InstancedMesh | null {
+  if (bin.length === 0 || count <= 0) return null;
+  const merged = bin.length === 1 ? bin[0] : mergeGeometries(bin, false);
+  if (!merged) return null;
+  if (bin.length > 1) for (const g of bin) g.dispose();
+  merged.computeBoundingSphere();
+  keep(merged);
+  const mesh = new THREE.InstancedMesh(merged, mat, count);
+  mesh.name = name;
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = false;
+  mesh.frustumCulled = false;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  keep(mesh);
+  parent.add(mesh);
+  bin.length = 0;
+  return mesh;
+}
+
+/**
+ * The flyer.
+ *
+ * Seven metres of span on a four-metre pod, a bubble canopy you can see the
+ * pilot through, two little ducted fans under the wing and a V-tail. Small on
+ * purpose, and small in a specific way: it has to sit on a nine-metre roof
+ * with room round it, and it has to read as *personal* from the street —
+ * something one person gets into and takes away, next to the skiff's freight
+ * proportions and the lifter's crane.
+ *
+ * The whole model is one merged geometry per program and it is instanced
+ * seven times, so every part added here costs seven times its triangles and
+ * nothing at all in draw calls.
+ */
+function flyerParts(p: CraftParts, accent: number): void {
+  const H = Math.PI / 2;
+
+  /* ---- pod ---- */
+  part(p.body, new THREE.CapsuleGeometry(0.4, 2.2, 4, 10), HULL, 0, 0.86, 0.05, H);
+  part(p.body, new THREE.ConeGeometry(0.4, 1.05, 10), HULL, 0, 0.86, -1.62, -H);
+  part(p.body, new THREE.CylinderGeometry(0.17, 0.08, 1.7, 6), HULL, 0, 0.92, 1.95, H);
+
+  // The canopy. A bubble, low and forward: the invitation is seeing the seat.
+  part(
+    p.glass,
+    new THREE.SphereGeometry(0.44, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    0x9fd8ff,
+    0, 1.02, -0.42, 0, 0, 0, 1, 0.9, 1.7,
+  );
+  part(p.body, new THREE.BoxGeometry(0.62, 0.34, 0.16), TRIM, 0, 0.96, 0.5);
+
+  for (const side of [-1, 1]) {
+    /* Wing: swept back a little, three degrees of dihedral, and a winglet.
+     * The winglets are what make a seven-metre span read as an aircraft
+     * rather than as a plank with a nose on it. */
+    part(
+      p.body, new THREE.BoxGeometry(3.1, 0.09, 1.1), HULL,
+      side * 1.82, 0.74, 0.18, 0, side * -0.1, side * 0.055,
+    );
+    part(p.body, new THREE.BoxGeometry(0.08, 0.6, 0.72), HULL, side * 3.35, 0.96, 0.42, 0, 0, side * 0.055);
+    lit(p.glow, new THREE.SphereGeometry(0.1, 6, 5), accent, side * 3.35, 1.2, 0.42);
+
+    // Ducted fan under each wing, with the throat lit: the "it is on" cue.
+    part(p.body, new THREE.CylinderGeometry(0.29, 0.33, 0.9, 8, 1, true), WARM, side * 1.7, 0.5, 0.42, H);
+    lit(p.glow, new THREE.CircleGeometry(0.24, 8), accent, side * 1.7, 0.5, 0.88);
+    part(p.body, new THREE.BoxGeometry(0.5, 0.14, 0.3), TRIM, side * 1.7, 0.68, 0.42);
+
+    // V-tail.
+    part(p.body, new THREE.BoxGeometry(1.05, 0.07, 0.6), HULL, side * 0.38, 1.24, 2.52, 0, 0, side * 0.68);
+
+    // Skids: a runner and two struts. The underside sits at -FLYER.skidH.
+    part(p.body, new THREE.BoxGeometry(0.11, 0.1, 2.0), TRIM, side * 0.66, -0.5, 0.15);
+    for (const zz of [-0.6, 0.9]) {
+      // Up to 0.53, which is inside the pod: a strut that stops at y=0 leaves
+      // half a metre of daylight between the leg and the aeroplane.
+      part(p.body, new THREE.BoxGeometry(0.09, 1.1, 0.09), TRIM, side * 0.66, -0.02, zz);
+    }
+  }
+
+  // A strip along the belly, so it is findable at dusk from underneath.
+  lit(p.glow, new THREE.BoxGeometry(0.1, 0.05, 2.4), accent, 0, 0.44, 0.1);
 }
 
 /**
@@ -2034,6 +3026,102 @@ function padParts(
 }
 
 /**
+ * A flyer's pad.
+ *
+ * Smaller than the skiff's, because it has to fit on a roof: a `block` lot in
+ * this plan is about twenty-four metres by twenty-seven, and once the
+ * building's inset and its parapet are taken off there is room for four and a
+ * half metres of paint and no more.
+ *
+ * The parts, and what each one is for:
+ *
+ * - **A low deck**, sixteen centimetres of it, rather than paint on the roof.
+ *   Paint was the first version and it is invisible: two roofs in five in
+ *   this city are planted, `buildings.ts` lays that turf at twelve
+ *   centimetres above the roof slab, and a decal at three is *under* it.
+ *   Photographed from the roof, the Kestrel was standing on a bare green
+ *   lawn with four lights round it and no pad at all. A deck also reads
+ *   better than a decal from the air, which is where it is found.
+ * - **A ring and a bar across it**, on top of the deck, so it reads as a mark
+ *   rather than as a puddle of light. From directly above — which is how you
+ *   arrive at a roof — the bar is the only thing that says which way round it
+ *   is.
+ * - **An arrowhead** at the nose end, pointing the way the aircraft is
+ *   facing, which on a roof is off the parapet. It is the whole explanation
+ *   of what happens when you open the throttle.
+ * - **Four low lights** on the ring, at the corners of the square the wings
+ *   and the tail sit inside.
+ * - **A column of soft light**, shorter than the ground pads' — twenty-six
+ *   metres rather than thirty-four, because these already start forty metres
+ *   up and a full-height one from every roof would fence the city in.
+ *
+ * All of it is emitted in world space and merged with every other pad, so the
+ * seven flyers' pads and the three original ones together are still three
+ * draws.
+ */
+function flyerPadParts(
+  pad: VehiclePad,
+  accent: number,
+  paint: THREE.BufferGeometry[],
+  post: THREE.BufferGeometry[],
+  column: THREE.BufferGeometry[],
+): void {
+  const px = pad.x;
+  const pz = pad.z;
+  const R = FLYER.padR;
+  /** Thickness of the deck, and therefore where its markings sit. */
+  const DECK = FLYER.padDeck;
+  const py = pad.y + DECK + 0.02;
+  const c = Math.cos(pad.yaw);
+  const sn = Math.sin(pad.yaw);
+  /** Pad-local (x, z) to world, through the pad's own yaw. Nose is -z. */
+  const wx = (lx: number, lz: number) => px + lx * c + lz * sn;
+  const wz = (lx: number, lz: number) => pz - lx * sn + lz * c;
+
+  part(
+    post, new THREE.CylinderGeometry(R, R, DECK, 28), 0x39414f,
+    px, pad.y + DECK / 2, pz,
+  );
+  lit(paint, new THREE.RingGeometry(R - 0.55, R, 32), accent, px, py, pz, -Math.PI / 2);
+  // The cross-bar. Rotated into the pad's own frame so it reads as an axis.
+  lit(
+    paint, new THREE.PlaneGeometry(R * 1.5, 0.4), accent,
+    px, py, pz,
+    -Math.PI / 2, pad.yaw, 0, 1, 1, 1, "YXZ",
+  );
+  // The arrowhead: which way it is pointing, and therefore which way it goes.
+  lit(
+    paint, new THREE.CircleGeometry(0.95, 3), accent,
+    wx(0, -R * 0.62), py, wz(0, -R * 0.62),
+    -Math.PI / 2, pad.yaw + Math.PI / 2, 0, 1, 1, 1, "YXZ",
+  );
+
+  for (const lx of [-1, 1]) {
+    for (const lz of [-1, 1]) {
+      // 0.6 in each axis, so the corner is 0.85 R out and stands *on* the
+      // deck. At 0.72 the diagonal is 1.02 R and all four posts hang off the
+      // edge of the pad they are marking, on nothing.
+      const ox = lx * R * 0.6;
+      const oz = lz * R * 0.6;
+      part(
+        post, new THREE.CylinderGeometry(0.09, 0.13, 0.7, 6), 0x333a46,
+        wx(ox, oz), py + 0.35, wz(ox, oz),
+      );
+      lit(paint, new THREE.SphereGeometry(0.16, 8, 6), accent, wx(ox, oz), py + 0.82, wz(ox, oz));
+    }
+  }
+
+  /* Three metres up, not off the deck. The ground pads learned this the hard
+   * way: a column standing *on* the pad is perfect from the far side of the
+   * island and, from ten metres, a wall of haze with the aircraft somewhere
+   * inside it. */
+  lit(
+    column, new THREE.CylinderGeometry(1.5, 0.55, FLYER.columnH, 9, 1, true), accent,
+    px, py + 3 + FLYER.columnH / 2, pz,
+  );
+}
+
+/**
  * The glider's launch rail.
  *
  * Not a circle, because there is nowhere to put one: the promenade rings are
@@ -2142,10 +3230,13 @@ const BOARD_LABEL: Record<VehicleKind, string> = {
   skiff: "Take the skiff",
   glider: "Take the glider",
   lifter: "Take the lifter",
+  // Unused: the flyers are named individually, because there are seven.
+  flyer: "Fly the flyer",
 };
 
 const BOARD_DETAIL: Record<VehicleKind, string> = {
   skiff: "Ember · fast, heavy, and it slides",
   glider: "Vesper · no engine. Find the lift.",
   lifter: "Derrick · slow, steady, goes straight up",
+  flyer: "W to go, A D to turn. It cannot fall.",
 };
