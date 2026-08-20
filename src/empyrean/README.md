@@ -168,6 +168,23 @@ Kept because each one cost a rebuild and would cost another.
   inside of every solid building, and a raycast against three hundred thousand
   triangles with no BVH is not a unit test. Emit the boxes from the same
   polygons the geometry is lofted from, and if you cannot, look at it.
+- **Skybridges were tried and are not here, and the reason is not written
+  down anywhere else.** Glass tubes between the tower crowns, chosen off the
+  built lots — nine of them, 59 to 80 m long, at 730 to 900 m. Rendered, the
+  city grew one screen-filling near-black rectangle that occluded everything
+  in a forty-degree cone. It survived a complete rewrite of the geometry
+  (`boxAt` on the glass bucket, then `prism` with `pen.baseY`, `pen.span` and
+  `pen.seed` set the way `buildLot` sets them), which is the interesting part:
+  the artefact did not change at all when the geometry it supposedly came
+  from changed entirely. What was ruled out, so the next attempt does not
+  re-run it: no NaN in any attribute of any bucket; no triangle with an edge
+  over 197 m (which is a legitimate tall wall panel); every mesh's world
+  bounding box unchanged and sane; draw-call count unchanged, so no extra
+  chunk; and `hide("buildings")` makes it vanish, so it is in that group and
+  not in the mirror, the terrain or a postfx pass. Something about adding
+  geometry to those buckets *after* the lot loop is wrong in a way that is
+  not in the vertex data. Start there.
+
 - **Test the world, not just the modules.** `src/test/empyreanWorld.test.ts`
   builds every system, steps it, and looks for the failures whose symptom is a
   black screen rather than an exception: a NaN in a position buffer (one
