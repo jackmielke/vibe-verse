@@ -60,6 +60,12 @@ export class CameraRig {
   dist = 8.5;
   mode: CameraMode = "third";
 
+  /** Coasting look velocity, rad/s, from a flick. Decays to nothing. */
+  private spin = 0;
+  private tilt = 0;
+  /** Target yaw while the camera is swinging back behind the body. */
+  private recentring: number | null = null;
+
   /** How far the camera is allowed to sit right of the boom, metres. */
   private shoulder = 0;
   private shoulderTarget = 0;
@@ -80,13 +86,51 @@ export class CameraRig {
     this.pitch = 0.14;
     this.dist = 8.5;
     this.placed = false;
+    this.spin = 0;
+    this.tilt = 0;
+    this.recentring = null;
   }
 
-  /** Mouse or touch drag. Sensitivity is per CSS pixel, so it is frame-rate
-   *  independent and independent of device pixel ratio. */
+  /**
+   * Mouse or touch drag. Per CSS pixel, so it is independent of frame rate and
+   * of device pixel ratio.
+   *
+   * 0.0085 rad/px, not 0.0042. Half of that is the rate you want for *aiming*
+   * and the wrong one for *looking around*: a comfortable drag on a trackpad
+   * is three or four hundred pixels, and at the old figure that was ninety
+   * degrees — you could not turn round without letting go, sliding back and
+   * dragging again, three times. Doubling it puts a full turn inside two
+   * comfortable drags and a look-behind inside one. Pitch stays slower than
+   * yaw: there is only 130 degrees of it, and sitting on the clamp feels like
+   * the camera has jammed.
+   */
   look(dx: number, dy: number) {
-    this.yaw -= dx * 0.0042;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.0042, -1.05, 1.25);
+    this.yaw -= dx * 0.0085;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.0062, -1.05, 1.25);
+    this.spin = 0;
+    this.tilt = 0;
+    this.recentring = null;
+  }
+
+  /**
+   * Let go mid-sweep and the view keeps going, then settles.
+   *
+   * The difference between a camera you drag and a camera you *throw*, and
+   * most of why one feels like a window and the other like a handle. Radians
+   * per second, decaying about 88% per second, so a flick coasts for roughly
+   * a second and a slow drag — which ends with almost no velocity — does not
+   * coast at all.
+   */
+  fling(vx: number, vy: number) {
+    this.spin = THREE.MathUtils.clamp(-vx * 0.0085, -3.2, 3.2);
+    this.tilt = THREE.MathUtils.clamp(vy * 0.0062, -2.2, 2.2);
+  }
+
+  /** Swing back behind the body over about a third of a second. */
+  recentre(yaw: number) {
+    this.recentring = yaw;
+    this.spin = 0;
+    this.tilt = 0;
   }
 
   zoom(deltaY: number) {
@@ -102,6 +146,36 @@ export class CameraRig {
     world: CameraWorld,
     dt: number,
   ) {
+    /* ---- coast, and swing back ----
+     * Before anything reads the yaw, so a frame never renders one angle and
+     * reports another. */
+    if (this.spin !== 0 || this.tilt !== 0) {
+      this.yaw += this.spin * dt;
+      this.pitch = THREE.MathUtils.clamp(this.pitch + this.tilt * dt, -1.05, 1.25);
+      const decay = Math.pow(0.12, dt);
+      this.spin *= decay;
+      this.tilt *= decay;
+      /* Stop at a fiftieth of a radian a second. That is a degree every two
+         seconds — under the noise floor of anything you can see — and it is
+         what keeps the tail of the decay from being an hour of arithmetic
+         nobody will ever look at. */
+      if (Math.abs(this.spin) < 0.02) this.spin = 0;
+      if (Math.abs(this.tilt) < 0.02) this.tilt = 0;
+    }
+    if (this.recentring !== null) {
+      // Shortest way round, so it never takes the long way past the far side.
+      let d = (this.recentring - this.yaw) % (Math.PI * 2);
+      if (d > Math.PI) d -= Math.PI * 2;
+      if (d < -Math.PI) d += Math.PI * 2;
+      const k = Math.min(1, dt * 9);
+      this.yaw += d * k;
+      this.pitch += (0.14 - this.pitch) * k;
+      if (Math.abs(d) < 0.01) {
+        this.yaw = this.recentring;
+        this.recentring = null;
+      }
+    }
+
     /* ---- where we are looking ----
      * Two and a half metres over the character's feet: the horizon lands where
      * a person standing there would find it, and the body sits in the lower

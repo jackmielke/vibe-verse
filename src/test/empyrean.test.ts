@@ -21,7 +21,9 @@ import {
   RUN_SPEED,
   WALK_SPEED,
 } from "@/lib/worldPhysics";
+import * as THREE from "three";
 import { makeFlyer, stepFlyer, jump, THRUST, type FlyerWorld } from "@/empyrean/flight";
+import { CameraRig } from "@/empyrean/camera";
 import { groundHeight } from "@/empyrean/terrain";
 import { GROUND_Y, ISLAND_Y, LAKE_R, PLATEAU_R, SPAWN } from "@/empyrean/config";
 
@@ -177,5 +179,86 @@ describe("falling out of the world", () => {
     stepFlyer(s, { forward: 0, strafe: 0, run: false, jet: false, camYaw: 0 }, void_, 1 / 60);
     expect(s.position.y).toBe(SPAWN.y);
     expect(s.velocity.length()).toBe(0);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The look controls
+ * ---------------------------------------------------------------------- */
+
+/**
+ * A camera you drag is the only way to see anything here, and when it fails
+ * it fails silently: the world simply does not turn, which reads as "this is
+ * broken" rather than as "a listener is on the wrong element". So the rig's
+ * half of it is pinned — the binding half lives in `world.ts` and can only be
+ * checked in a browser.
+ */
+describe("drag to look", () => {
+  const world = {
+    blockedAt: () => false,
+    supportAt: () => ISLAND_Y,
+  };
+  const target = () => ({
+    position: new THREE.Vector3(0, ISLAND_Y, 0),
+    velocity: new THREE.Vector3(),
+    yaw: 0,
+    grounded: true,
+    burn: 0,
+  });
+
+  it("turns far enough that one comfortable drag is most of a turn", () => {
+    /* 350 px is about as far as a hand travels on a trackpad without
+       repositioning. It has to be worth well over a right angle, or turning
+       round means letting go and dragging again three times — which is what
+       0.0042 rad/px cost, and it read as the camera being stuck. */
+    const rig = new CameraRig(0);
+    rig.look(350, 0);
+    expect(Math.abs(rig.yaw)).toBeGreaterThan(Math.PI * 0.55);
+  });
+
+  it("keeps the pitch inside the clamp however hard you pull", () => {
+    const rig = new CameraRig(0);
+    rig.look(0, 100000);
+    expect(rig.pitch).toBeLessThanOrEqual(1.25);
+    rig.look(0, -100000);
+    expect(rig.pitch).toBeGreaterThanOrEqual(-1.05);
+  });
+
+  it("coasts after a flick and comes to rest", () => {
+    const rig = new CameraRig(0);
+    const cam = new THREE.PerspectiveCamera();
+    rig.fling(900, 0);
+    rig.update(cam, target(), world, 1 / 60);
+    const moved = rig.yaw;
+    expect(Math.abs(moved)).toBeGreaterThan(0);
+    // Four seconds of decay leaves it still, not drifting for ever.
+    for (let i = 0; i < 240; i++) rig.update(cam, target(), world, 1 / 60);
+    const settled = rig.yaw;
+    for (let i = 0; i < 60; i++) rig.update(cam, target(), world, 1 / 60);
+    expect(Math.abs(rig.yaw - settled)).toBeLessThan(1e-9);
+  });
+
+  it("stops coasting the moment you grab it again", () => {
+    const rig = new CameraRig(0);
+    const cam = new THREE.PerspectiveCamera();
+    rig.fling(900, 0);
+    rig.look(0, 0);
+    const before = rig.yaw;
+    rig.update(cam, target(), world, 1 / 60);
+    expect(rig.yaw).toBe(before);
+  });
+
+  it("swings back behind the body, the short way round", () => {
+    /* From just past a half turn the shortest way home is *forwards* through
+       pi, not backwards through zero. Getting this wrong is a camera that
+       whips through the whole city to travel ten degrees. */
+    const rig = new CameraRig(Math.PI * 0.9);
+    const cam = new THREE.PerspectiveCamera();
+    rig.recentre(-Math.PI * 0.9);
+    rig.update(cam, target(), world, 1 / 60);
+    expect(rig.yaw).toBeGreaterThan(Math.PI * 0.9);
+    for (let i = 0; i < 120; i++) rig.update(cam, target(), world, 1 / 60);
+    const wrapped = Math.atan2(Math.sin(rig.yaw), Math.cos(rig.yaw));
+    expect(wrapped).toBeCloseTo(-Math.PI * 0.9, 2);
   });
 });

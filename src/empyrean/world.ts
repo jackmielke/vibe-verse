@@ -398,36 +398,115 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", onBlur);
 
-  // Drag to look. Deliberately not pointer lock: the HUD has buttons you want
-  // to be able to click, this opens on a phone as often as not, and the
-  // capture harness cannot spend a gesture on acquiring a lock.
-  let dragId = -1;
+  /* Drag to look. Deliberately not pointer lock: the HUD has buttons you want
+   * to be able to click, this opens on a phone as often as not, and the
+   * capture harness cannot spend a gesture on acquiring a lock.
+   *
+   * ## Why this is bound the paranoid way
+   *
+   * The first version put `pointerdown`, `pointermove` and `pointerup` all on
+   * the canvas and leaned on `setPointerCapture` to keep the moves coming.
+   * That is the textbook shape and it has three ways to fail silently, all of
+   * which look identical from the sofa — the world simply does not turn:
+   *
+   *  - the capture is lost (a re-render, a devtools overlay, an extension
+   *    that reparents the canvas) and the moves go to whatever is on top;
+   *  - the browser starts a native drag or a selection on the press, and the
+   *    pointer stream stops after the first move;
+   *  - `pointermove` never arrives at all, because something upstream called
+   *    `preventDefault()` on the `pointerdown`.
+   *
+   * So: press on the canvas, but track the *movement* on `window`, where
+   * nothing can get above it, and take mouse events as well as pointer ones
+   * for the case where only the legacy stream survives. `seenPointer` stops
+   * the two paths both turning the camera on a browser that sends both.
+   *
+   * `cursor: grab` is set here, on the way in, not on the first pointer-up.
+   * It used to be the latter, so the one moment the affordance mattered — the
+   * first second, before you know dragging does anything — was the one moment
+   * it was missing.
+   */
+  canvas.style.cursor = "grab";
+  canvas.style.touchAction = "none";
+  let dragging = false;
+  let seenPointer = false;
   let lastX = 0;
   let lastY = 0;
-  const onPointerDown = (e: PointerEvent) => {
-    if (dragId !== -1) return;
-    dragId = e.pointerId;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    canvas.setPointerCapture?.(e.pointerId);
+  let lastMoveAt = 0;
+  let velX = 0;
+  let velY = 0;
+  let dragDist = 0;
+  let downAt = 0;
+
+  const beginDrag = (x: number, y: number, t: number) => {
+    dragging = true;
+    lastX = x;
+    lastY = y;
+    lastMoveAt = t;
+    downAt = t;
+    velX = 0;
+    velY = 0;
+    dragDist = 0;
     canvas.style.cursor = "grabbing";
     audio?.resume();
   };
-  const onPointerMove = (e: PointerEvent) => {
-    if (e.pointerId !== dragId) return;
-    rigCam.look(e.clientX - lastX, e.clientY - lastY);
-    lastX = e.clientX;
-    lastY = e.clientY;
+  const moveDrag = (x: number, y: number, t: number) => {
+    if (!dragging) return;
+    const dx = x - lastX;
+    const dy = y - lastY;
+    rigCam.look(dx, dy);
+    /* Pixels per second, smoothed over about three frames. One frame's delta
+       is far too noisy to throw a camera with: a single hiccup at the moment
+       you let go and the view spins off across the island. */
+    const dtMs = Math.max(1, t - lastMoveAt);
+    const k = Math.min(1, dtMs / 48);
+    velX += ((dx * 1000) / dtMs - velX) * k;
+    velY += ((dy * 1000) / dtMs - velY) * k;
+    dragDist += Math.abs(dx) + Math.abs(dy);
+    lastX = x;
+    lastY = y;
+    lastMoveAt = t;
   };
-  const onPointerUp = (e: PointerEvent) => {
-    if (e.pointerId !== dragId) return;
-    dragId = -1;
+  const endDrag = (t: number) => {
+    if (!dragging) return;
+    dragging = false;
     canvas.style.cursor = "grab";
+    /* Only a *flick* coasts. Letting go after resting on a spot has to leave
+       the camera exactly where you put it — a view that drifts once you have
+       finished aiming is worse than one that never coasts at all. */
+    if (t - lastMoveAt < 90 && dragDist > 12) rigCam.fling(velX, velY);
+    /* A press that never moved is a click, and a click on the world means
+       "put the camera back behind me". It needs no key, and it is what
+       everybody reaches for after turning round twice and getting lost. */
+    if (dragDist < 5 && t - downAt < 350) rigCam.recentre(flyer.yaw);
+  };
+
+  const onPointerDown = (e: PointerEvent) => {
+    seenPointer = true;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    beginDrag(e.clientX, e.clientY, e.timeStamp);
+  };
+  const onPointerMove = (e: PointerEvent) => moveDrag(e.clientX, e.clientY, e.timeStamp);
+  const onPointerUp = (e: PointerEvent) => endDrag(e.timeStamp);
+  const onMouseDown = (e: MouseEvent) => {
+    if (seenPointer || e.button !== 0) return;
+    beginDrag(e.clientX, e.clientY, e.timeStamp);
+  };
+  const onMouseMove = (e: MouseEvent) => {
+    if (seenPointer) return;
+    moveDrag(e.clientX, e.clientY, e.timeStamp);
+  };
+  const onMouseUp = (e: MouseEvent) => {
+    if (seenPointer) return;
+    endDrag(e.timeStamp);
   };
   canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointercancel", onPointerUp);
+  canvas.addEventListener("mousedown", onMouseDown);
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("pointercancel", onPointerUp);
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("mouseup", onMouseUp);
 
   const onWheel = (e: WheelEvent) => {
     rigCam.zoom(e.deltaY);
@@ -841,6 +920,9 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       place: placeOf(flyer.position).name,
       prompt: nearest?.label ?? null,
       dayPhase: ctx.dayPhase,
+      /* The rig, so a harness can tell "the drag did nothing" from "the drag
+         worked and the picture happens to look similar". */
+      cam: { yaw: rigCam.yaw, pitch: rigCam.pitch, dist: rigCam.dist, mode: rigCam.mode },
     }),
     toast: (t: string) => pushToast(t),
   };
@@ -868,9 +950,12 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("resize", onResize);
       canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerup", onPointerUp);
-      canvas.removeEventListener("pointercancel", onPointerUp);
+      canvas.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("wheel", onWheel);
       audio?.dispose();
       audio = null;
