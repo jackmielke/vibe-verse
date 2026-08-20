@@ -170,49 +170,63 @@ export default function Empyrean() {
 
       {/* ---- Title card -------------------------------------------------- */}
       {!started && !shotMode && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center px-6 text-center">
-          {/* A painted stand-in for the thing behind it — the same five stops
-              the sky shader uses, so the cut to the live world is a reveal
-              rather than a jump. */}
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center overflow-y-auto px-6 py-10 text-center">
+          {/* The painting this world was made from, with the old five-stop
+              gradient beneath it as the fallback while it loads. */}
           <div
-            className="absolute inset-0 -z-10"
+            className="fixed inset-0 -z-10"
             style={{
               background:
                 "linear-gradient(180deg, #0b1342 0%, #1d3a72 24%, #2f8f9a 42%, #e8b45c 62%, #f2793f 76%, #e9628f 100%)",
             }}
           />
+          <img
+            src={empyreanArt.url}
+            alt="A floating city of glass towers above a frozen lake at sunset"
+            className="fixed inset-0 -z-10 h-full w-full object-cover"
+          />
           <div
-            className="absolute inset-0 -z-10 opacity-70"
+            className="fixed inset-0 -z-10"
             style={{
               background:
-                "radial-gradient(75% 55% at 22% 88%, rgba(255,196,120,.85) 0%, rgba(255,140,110,0) 62%)",
+                "radial-gradient(90% 60% at 50% 40%, rgba(6,10,34,.18) 0%, rgba(6,10,34,.62) 100%)",
             }}
           />
-          <p className="mb-3 text-[11px] uppercase tracking-[0.42em] text-cyan-100/80">
-            The vibeverse
-          </p>
-          <h1 className="font-heading text-4xl tracking-tight text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.45)] sm:text-6xl">
-            The Empyrean
-          </h1>
-          <p className="mt-4 max-w-lg text-sm leading-relaxed text-white/90 drop-shadow-[0_1px_12px_rgba(0,0,0,0.5)]">
-            Eight avenues, three ring roads and a city of glass, six hundred
-            metres over a frozen lake that shows you all of it upside down.
-            Walk the Bazaar, ride the tram, race the rings, or just put the
-            pack on and go and look at the edge.
-          </p>
-          <button
-            onClick={start}
-            disabled={booting}
-            className="mt-8 rounded-full border border-white/50 bg-white/15 px-8 py-3 text-sm font-semibold text-white shadow-[0_0_50px_rgba(255,190,120,0.55)] backdrop-blur-sm transition-colors hover:bg-white/25 disabled:opacity-60"
-          >
-            {booting ? "Raising the island…" : "Arrive"}
-          </button>
-          <p className="mt-5 text-[11px] text-white/80">
-            {isTouch
-              ? "Stick to move · hold the rocket to fly · drag to look · tap the clock for the hour"
-              : "WASD · Space jetpack · Shift boost · E interact · drag to look · the clock sets the hour and the weather · H hides this"}
-          </p>
+
+          {/* Everything readable lives on one pane of glass. */}
+          <div className="w-full max-w-xl rounded-[2rem] border border-white/25 bg-white/10 px-6 py-8 shadow-[0_30px_120px_rgba(6,10,40,0.55)] backdrop-blur-2xl">
+            <p className="mb-3 text-[11px] uppercase tracking-[0.42em] text-cyan-100/85">
+              The vibeverse
+            </p>
+            <h1 className="font-heading text-4xl tracking-tight text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.45)] sm:text-6xl">
+              The Empyrean
+            </h1>
+            <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-white/90">
+              Eight avenues, three ring roads and a city of glass, six hundred
+              metres over a frozen lake that shows you all of it upside down.
+              Walk the Bazaar, ride the tram, race the rings, or just put the
+              pack on and go and look at the edge.
+            </p>
+            <button
+              onClick={start}
+              disabled={booting}
+              className="mt-7 rounded-full border border-white/50 bg-white/20 px-8 py-3 text-sm font-semibold text-white shadow-[0_0_50px_rgba(255,190,120,0.55)] backdrop-blur-sm transition-colors hover:bg-white/30 disabled:opacity-60"
+            >
+              {booting ? "Raising the island…" : "Arrive"}
+            </button>
+            <p className="mt-5 text-[11px] text-white/80">
+              {isTouch
+                ? "Stick to move · hold the rocket to fly · drag to look · tap the clock for the hour"
+                : "WASD · Space jetpack · Shift boost · E interact · drag to look · the clock sets the hour and the weather · H hides this"}
+            </p>
+          </div>
+
+          <div className="mt-5 flex w-full justify-center">
+            <Guestbook />
+          </div>
+
           <Link
+
             to="/"
             className="mt-8 text-xs text-white/70 underline-offset-4 hover:text-white hover:underline"
           >
