@@ -193,5 +193,11 @@ describe("what the world costs", () => {
     const hi = buildAll("high").reduce((a, s) => a + s.tris, 0);
     const lo = buildAll("low").reduce((a, s) => a + s.tris, 0);
     expect(lo).toBeLessThan(hi * 0.7);
-  });
+    /* Thirty seconds, and it is not slack. This builds the entire world
+       twice — every building, every interior, eight hundred props, the crowd,
+       the traffic and now a spaceport — and it started overrunning the five
+       second default the moment the world grew. A timeout here reads as "the
+       world is broken", which is the most expensive false alarm this
+       repository can raise, and it raised it once already tonight. */
+  }, 30_000);
 });

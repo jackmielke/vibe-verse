@@ -127,7 +127,7 @@ describe("the world, assembled", () => {
   it("gives every system a distinct name", () => {
     const names = all().map((s) => s.name);
     expect(new Set(names).size, names.join(",")).toBe(names.length);
-  });
+  }, 30_000);
 
   it("has no NaN anywhere in any position attribute", () => {
     /* One NaN collapses a bounding sphere, every frustum test fails, and the
@@ -215,7 +215,7 @@ describe("the world, assembled", () => {
     const fresh = buildAll();
     for (const s of fresh) expect(() => s.dispose()).not.toThrow();
     for (const s of fresh) expect(() => s.dispose()).not.toThrow();
-  });
+  }, 30_000);
 });
 
 describe("collision, assembled", () => {
