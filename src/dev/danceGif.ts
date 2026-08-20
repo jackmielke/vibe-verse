@@ -213,7 +213,7 @@ async function record(opts: DanceGifOptions) {
     for (let n = 0; n < want && n < frames.length; n++) {
       // Consecutive frames, not spread across the clip: the thing being read
       // here is what changes between one frame and the next.
-      tctx.putImageData(new ImageData(frames[n], width, height), 0, 0);
+      tctx.putImageData(new ImageData(frames[n] as unknown as ImageDataArray, width, height), 0, 0);
       const cx = (n % cols) * width;
       const cy = Math.floor(n / cols) * height;
       ctx.drawImage(tmp, cx, cy);
