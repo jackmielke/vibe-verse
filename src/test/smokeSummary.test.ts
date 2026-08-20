@@ -131,3 +131,49 @@ describe("a route that threw", () => {
     expect(s.detail[0]).toContain("/x");
   });
 });
+
+/**
+ * A route the harness never ran.
+ *
+ * The distinction this guards is not cosmetic. A browser that dies partway
+ * through a hundred-route run used to take the whole process down with it,
+ * and the routes either side came back labelled `threw:crash:render` — ten
+ * of them at once, on worlds that open perfectly when run on their own. A day
+ * went into looking for a bug in those worlds. An unrun route has to read as
+ * an unrun route, in the headline and not only in the small print, or the next
+ * person spends the day too.
+ */
+describe("a route the browser never got to", () => {
+  it("is a failure — an unrun route is not a passing route", () => {
+    expect(isFailure("harness:browser is not connected")).toBe(true);
+  });
+
+  it("says so in the headline, so it does not read as a broken world", () => {
+    const s = summarise([
+      { route: "/a", verdict: "canvas", errors: [] },
+      { route: "/b", verdict: "harness:browser is not connected", errors: [] },
+      { route: "/c", verdict: "harness:browser is not connected", errors: [] },
+    ]);
+    expect(s.exitCode).toBe(1);
+    expect(s.rendered).toBe(1);
+    expect(s.headline).toContain("2 never ran");
+    expect(s.headline).toContain("unknown, not broken");
+  });
+
+  it("is told apart from a world that crashed", () => {
+    const s = summarise([
+      { route: "/dead", verdict: "harness:browser is not connected", errors: [] },
+      { route: "/broken", verdict: "crash:render", errors: [] },
+    ]);
+    expect(s.detail.find((d) => d.includes("/dead"))).toContain("NOT RUN");
+    expect(s.detail.find((d) => d.includes("/broken"))).toContain("CRASHED");
+  });
+
+  it("leaves the headline alone when every route actually ran", () => {
+    const s = summarise([
+      { route: "/a", verdict: "canvas", errors: [] },
+      { route: "/b", verdict: "blank", errors: [] },
+    ]);
+    expect(s.headline).not.toContain("never ran");
+  });
+});

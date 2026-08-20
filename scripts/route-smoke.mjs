@@ -41,6 +41,20 @@
  *
  * It runs against the dev server on SF_PORT (5177), starting one if there is
  * not already one up — the same convention as `route-shot.mjs`.
+ *
+ * ## Do not run it against a tree somebody is editing
+ *
+ * Reusing an existing server is a convenience that turns into a liar the
+ * moment another process is writing to `src/`. Vite invalidates modules under
+ * the running page, and a route that navigates while its own chunks are being
+ * swapped can come back with an "Invalid hook call" from React and render the
+ * crash screen — a perfect, reproducible-looking failure in a world that is
+ * completely fine. That has happened here, to ten routes at once, and the
+ * evidence looked exactly like a real regression.
+ *
+ * So: run this on a quiet tree, or on `git stash`ed state, or in a worktree of
+ * its own with its own port. If a verdict surprises you, re-run that route on
+ * its own before you believe it — `npm run smoke -- /city` takes seconds.
  */
 import { chromium } from "playwright";
 import { summarise } from "./lib/smokeSummary.mjs";
@@ -100,21 +114,77 @@ if (server && !(await up(BASE, 180000))) {
 }
 
 const exe = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-const browser = await chromium.launch({
-  ...(existsSync(exe) ? { executablePath: exe } : {}),
-  args: [
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--ignore-gpu-blocklist",
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-  ],
-});
+const launch = () =>
+  chromium.launch({
+    ...(existsSync(exe) ? { executablePath: exe } : {}),
+    args: [
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
+      "--enable-unsafe-swiftshader",
+      "--ignore-gpu-blocklist",
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+    ],
+  });
+
+let browser = await launch();
+let revivals = 0;
+
+/**
+ * A page, from a browser that is still alive.
+ *
+ * One process opens a hundred routes and about eighty of them raise a WebGL
+ * context under a software rasteriser, so sooner or later it dies. When it
+ * did, `newPage()` rejected with "Target page, context or browser has been
+ * closed" from *outside* the per-route try — node printed a raw stack, exited
+ * 1, and printed no summary and no list of the routes it never reached.
+ *
+ * The cost of that is not the missing tally. It is that the routes either
+ * side of the death report as broken worlds: a run that died partway through
+ * came back with ten `threw:crash:render` verdicts on ten routes that open
+ * perfectly when you run them on their own, and a day went into looking for a
+ * bug in them. A dead browser is a fact about the harness and has to read as
+ * one.
+ *
+ * So: relaunch and carry on. The routes already measured stand — they were
+ * measured before the process died — and the run finishes with a verdict for
+ * every route rather than an exception on one.
+ */
+async function freshPage() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (!browser.isConnected()) throw new Error("browser is not connected");
+      return await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    } catch (e) {
+      if (attempt === 1) throw e;
+      revivals++;
+      console.log(`   … browser died, relaunching (${String(e.message).split("\n")[0]})`);
+      try {
+        await browser.close();
+      } catch {
+        /* Already gone, which is the case we are here for. */
+      }
+      browser = await launch();
+    }
+  }
+  throw new Error("unreachable");
+}
 
 const results = [];
 for (const route of routes) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  let page;
+  try {
+    page = await freshPage();
+  } catch (e) {
+    /* Two launches failed. Nothing is going to get better on its own, so
+       record the rest as unrun rather than pretending they were tested. */
+    const why = String(e.message).split("\n")[0];
+    for (const r of routes.slice(routes.indexOf(route))) {
+      results.push({ route: r, verdict: `harness:${why}`, errors: [] });
+      console.log(`FAIL ${r.padEnd(26)} harness:${why}`);
+    }
+    break;
+  }
   const errors = [];
   /* Kept apart from the console noise, because they are a different kind of
      thing and only one of them is a verdict.
@@ -217,11 +287,21 @@ for (const route of routes) {
   await page.close();
 }
 
-await browser.close();
+try {
+  await browser.close();
+} catch {
+  /* It may already be dead; that is what `revivals` is counting. */
+}
 if (server) server.kill();
 
 const summary = summarise(results);
 console.log(`\n${summary.headline}`);
+if (revivals) {
+  console.log(
+    `   the browser died and was relaunched ${revivals}\u00d7 during this run — verdicts either ` +
+      `side of a death are worth re-running on their own before believing them`,
+  );
+}
 for (const line of summary.detail) console.log(`   ${line}`);
 for (const r of results.filter((x) => x.errors.length)) {
   console.log(`\n${r.route} [${r.verdict}]`);

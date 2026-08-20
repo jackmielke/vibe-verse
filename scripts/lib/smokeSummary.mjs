@@ -40,11 +40,30 @@
  * throw away which one you have.
  */
 
+/**
+ * A third one, and the reason `harness:` exists.
+ *
+ * A hundred routes share one browser process, and about eighty of them raise
+ * a WebGL context under a software rasteriser. Sooner or later that process
+ * dies, and when it does `browser.newPage()` rejects with "Target page,
+ * context or browser has been closed" — outside the per-route try, so node
+ * printed a raw stack and exited 1 with no summary, no tally, and no list of
+ * the routes it never got to. That is indistinguishable from a route failing,
+ * and it cost this project an afternoon of chasing ten "crashes" in worlds
+ * that open perfectly on their own.
+ *
+ * So a route the harness could not run says so. It counts as a failure —
+ * an unrun route is not a passing route — but it is labelled as the harness's
+ * problem rather than the world's, because those want completely different
+ * things done about them.
+ */
+
 /** Verdicts that mean the route did not come up. */
 export const isFailure = (verdict) =>
   verdict === "blank" ||
   String(verdict).startsWith("crash") ||
-  String(verdict).startsWith("threw");
+  String(verdict).startsWith("threw") ||
+  String(verdict).startsWith("harness");
 
 /**
  * Fold a run into what should be printed and what should be exited with.
@@ -58,7 +77,16 @@ export function summarise(results) {
   const total = results.length;
   const rendered = total - failures.length;
 
-  const headline = `${rendered}/${total} routes came up.`;
+  /* Say it in the headline, not only in the list.
+   *
+   * A run that could not open half the routes has not told you anything about
+   * those routes, and a bare "48/100 came up" reads as fifty-two broken
+   * worlds. It is the opposite: it is one broken browser and fifty-two
+   * unknowns. */
+  const unrun = failures.filter((f) => String(f.verdict).startsWith("harness")).length;
+  const headline =
+    `${rendered}/${total} routes came up.` +
+    (unrun ? `  ${unrun} never ran — the browser died, so those are unknown, not broken.` : "");
 
   /* Name them. A count tells you something is wrong; the whole reason to run
      this over fifty routes is to be told WHICH one, without scrolling back
@@ -70,6 +98,9 @@ export function summarise(results) {
     if (f.verdict.startsWith("threw")) {
       const first = f.errors?.[0] ?? "no message";
       return `THREW    ${f.route} — ${first}`;
+    }
+    if (f.verdict.startsWith("harness")) {
+      return `NOT RUN  ${f.route} — ${f.verdict.slice("harness:".length) || "harness failure"}`;
     }
     return `BLANK    ${f.route}`;
   });
