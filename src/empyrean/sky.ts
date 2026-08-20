@@ -321,6 +321,15 @@ vec3 stars(vec3 rd) {
   return acc * up * uStars;
 }
 
+/* Angular radius of the moon, radians.
+ *
+ * Half a degree is the real figure and it renders as a ten-pixel pinprick at
+ * a game's field of view — technically right and dramatically nothing. 1.5
+ * degrees is the cheat every film uses: two and a half times life size, big
+ * enough that the maria read, small enough that the sky is still sky. The
+ * first attempt was four degrees and looked like a searchlight. */
+const float R_MOON = 0.0131;
+
 /* ---- the moon ---------------------------------------------------------
  *
  * A night sky without one is a night sky with no subject in it: stars are
@@ -336,34 +345,47 @@ vec3 stars(vec3 rd) {
  */
 vec3 moon(vec3 rd, vec3 md) {
   if (uMoon <= 0.01) return vec3(0.0);
-  float d = dot(rd, md);
-  if (d <= 0.0) return vec3(0.0);
+  if (dot(rd, md) <= 0.0) return vec3(0.0);
 
-  /* The disc, with a limb that is *nearly* hard. A perfectly hard edge
-     aliases into a flickering pentagon at this size; a soft one is a smudge.
-     0.9993 to 0.99975 is about the width of one pixel at a sane field of
-     view, which is the correct answer to both. */
-  float disc = smoothstep(0.99930, 0.99975, d);
+  /* Angle from the moon's centre, as a chord length.
+   *
+   * Not acos(dot), and not a smoothstep on the dot product either: both lose
+   * their precision exactly where all the detail is, because cos is flat at
+   * zero and every number that matters here is within one part in a hundred
+   * thousand of 1.0. The chord between two unit vectors *is* the angle to
+   * four decimal places at this size, and it is well conditioned. The first
+   * version thresholded the dot product and came out four degrees across —
+   * eight moons wide — which does not read as a moon at any distance. */
+  float ang = length(rd - md);
+  if (ang > R_MOON * 22.0) return vec3(0.0);
 
-  /* Maria. Sampled in the plane of the disc so they do not swim as the head
-     turns — project the ray onto two axes fixed to the moon rather than to
-     the world. */
+  float r = ang / R_MOON;
+  float disc = smoothstep(1.03, 0.97, r);
+
+  /* Maria, sampled in the plane of the disc so they do not swim as the head
+     turns — two axes fixed to the moon rather than to the world. */
   vec3 up = abs(md.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
   vec3 mx = normalize(cross(up, md));
   vec3 my = cross(md, mx);
-  vec2 uv = vec2(dot(rd, mx), dot(rd, my)) * 320.0;
-  float n = fbm(uv * 1.7 + 4.0);
+  vec2 uv = vec2(dot(rd, mx), dot(rd, my)) / R_MOON;
+  float n = fbm(uv * 1.15 + 4.0);
   float mare = smoothstep(0.44, 0.62, n);
-  vec3 rock = mix(vec3(1.0, 0.98, 0.94), vec3(0.62, 0.65, 0.76), mare * 0.85);
-  /* Limb darkening, so it is a sphere and not a sticker. */
-  float r = clamp(1.0 - (1.0 - d) / 0.0007, 0.0, 1.0);
-  rock *= 0.80 + 0.20 * sqrt(max(r, 0.0));
+  vec3 rock = mix(vec3(1.00, 0.98, 0.94), vec3(0.66, 0.69, 0.80), mare * 0.8);
+  // Limb darkening, so it is a sphere and not a sticker.
+  rock *= 0.78 + 0.22 * sqrt(max(1.0 - r * r, 0.0));
 
-  vec3 col = rock * disc * 2.6;
-  /* The tight glow the bloom pass catches, and the wide one that lifts the
-     whole quadrant the way a real moon lifts a whole night sky. */
-  col += vec3(0.78, 0.84, 1.00) * pow(max(d, 0.0), 2200.0) * 1.4;
-  col += vec3(0.42, 0.52, 0.86) * pow(max(d, 0.0), 26.0) * 0.10;
+  /* 1.15, not 1.7. The grade is filmic and the bloom pass is generous, so
+     anything much over 1 arrives as flat white and the maria — the entire
+     reason for drawing a texture on it — are gone. Bright enough to bloom,
+     dim enough to still be a rock. */
+  vec3 col = rock * disc * 1.15;
+  /* Two exponential haloes, in units of the moon's own radius: a tight one
+     for the bloom pass to catch, and a wide faint one that lifts the whole
+     quadrant the way a real moon lifts a whole night sky. Exponentials, not
+     powers of the dot product — a pow(d, 26.0) lobe is fifteen degrees wide
+     and turned the first moon into a searchlight. */
+  col += vec3(0.80, 0.86, 1.00) * exp(-r * 1.6) * 0.42;
+  col += vec3(0.40, 0.52, 0.88) * exp(-r * 0.16) * 0.055;
   return col * uMoon;
 }
 
