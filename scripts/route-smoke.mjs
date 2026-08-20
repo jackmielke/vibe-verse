@@ -116,7 +116,19 @@ const results = [];
 for (const route of routes) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
-  page.on("pageerror", (e) => errors.push(String(e.message).split("\n")[0]));
+  /* Kept apart from the console noise, because they are a different kind of
+     thing and only one of them is a verdict.
+     
+     A `pageerror` is an uncaught exception: some module threw and whatever it
+     was building does not exist. A console error is usually a request that
+     did not come back, which in this container is the outbound proxy refusing
+     Supabase and is not a fault in the world. */
+  const thrown = [];
+  page.on("pageerror", (e) => {
+    const line = String(e.message).split("\n")[0];
+    thrown.push(line);
+    errors.push(line);
+  });
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text().split("\n")[0]);
   });
@@ -180,8 +192,23 @@ for (const route of routes) {
     errors.push(`navigation: ${String(e.message).split("\n")[0]}`);
   }
 
+  /* An uncaught exception is a failure even when a canvas got raised.
+   *
+   * This is here because of a real one. A half-written module was committed
+   * and pushed to a branch that deploys; `/empyrean` threw
+   * `flyerParts is not defined` out of its vehicle builder before the world
+   * finished booting — and smoke reported `ok /empyrean canvas`, because the
+   * renderer had already appended its canvas by the time the throw happened.
+   * A canvas is evidence that something started, not that anything works.
+   *
+   * The verdict keeps the render result as well, because "threw, and also
+   * never drew" and "threw, but drew" are different bugs. */
+  if (thrown.length) verdict = `threw:${verdict}`;
   results.push({ route, verdict, errors: [...new Set(errors)] });
-  const mark = verdict === "blank" || verdict.startsWith("crash") ? "FAIL" : "ok  ";
+  const mark =
+    verdict === "blank" || verdict.startsWith("crash") || verdict.startsWith("threw")
+      ? "FAIL"
+      : "ok  ";
   console.log(
     `${mark} ${route.padEnd(26)} ${verdict}${
       results.at(-1).errors.length ? `  (${results.at(-1).errors.length} console errors)` : ""

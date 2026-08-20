@@ -87,3 +87,47 @@ describe("the summary", () => {
     expect(s.headline).toBe("0/0 routes came up.");
   });
 });
+
+/* -------------------------------------------------------------------------
+ * A route that threw
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The second time this file's arithmetic scored a broken world as a pass.
+ *
+ * A half-written module went to a branch that deploys; `/empyrean` threw
+ * `flyerParts is not defined` partway through booting, and the run printed
+ * `ok /empyrean canvas` and exited 0 — because the renderer had appended its
+ * canvas before the throw. A canvas is evidence that something started.
+ */
+describe("a route that threw", () => {
+  it("is a failure even though it drew", () => {
+    expect(isFailure("threw:canvas")).toBe(true);
+    expect(isFailure("threw:text")).toBe(true);
+    expect(isFailure("threw:blank")).toBe(true);
+  });
+
+  it("counts against the tally and exits non-zero", () => {
+    const s = summarise([
+      { route: "/a", verdict: "canvas", errors: [] },
+      { route: "/b", verdict: "threw:canvas", errors: ["flyerParts is not defined"] },
+    ]);
+    expect(s.rendered).toBe(1);
+    expect(s.total).toBe(2);
+    expect(s.exitCode).toBe(1);
+  });
+
+  it("names the route and quotes what was thrown", () => {
+    const s = summarise([
+      { route: "/empyrean", verdict: "threw:canvas", errors: ["flyerParts is not defined"] },
+    ]);
+    expect(s.detail[0]).toContain("/empyrean");
+    expect(s.detail[0]).toContain("flyerParts is not defined");
+  });
+
+  it("survives a thrown route with no message to quote", () => {
+    const s = summarise([{ route: "/x", verdict: "threw:blank" }]);
+    expect(s.exitCode).toBe(1);
+    expect(s.detail[0]).toContain("/x");
+  });
+});
