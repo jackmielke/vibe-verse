@@ -2287,7 +2287,7 @@ function bannerRun(
   ]) {
     parts.push(tag(put(cyl(0.08, 0.13, top - y, 6), p.x, (top + y) / 2, p.z), C.ironDark));
   }
-  const cable = box(0.05, 0.05, len);
+  const cable = box(0.07, 0.07, len);
   put(cable, (ax + bx) / 2, top - 0.3, (az + bz) / 2, Math.atan2(dx, dz));
   parts.push(tag(cable, C.ironDark));
 
@@ -2304,7 +2304,13 @@ function bannerRun(
     const bh = rng.range(2.6, 3.8);
     const ux = dx / len;
     const uz = dz / len;
-    const col = i % 2 === 0 ? rng.pick(stripes) : accent.clone().lerp(C.cream, 0.3);
+    /* Keep the accent. Thirty per cent of the way to cream turns the Spires'
+       #8fd6ff into something within a few points of white, and a two-metre
+       near-white rectangle hanging on a five-centimetre cable against a navy
+       sky reads as a blank quad floating in the middle of the avenue — the
+       comment below already says that is the thing to avoid, and the colour
+       was doing it anyway. */
+    const col = i % 2 === 0 ? rng.pick(stripes) : accent.clone().lerp(C.cream, 0.12);
     A.set(cx - ux * bw * 0.5, top - 0.35, cz - uz * bw * 0.5);
     B.set(cx + ux * bw * 0.5, top - 0.35, cz + uz * bw * 0.5);
     Cv.set(B.x, top - 0.35 - bh, B.z);
@@ -2312,8 +2318,10 @@ function bannerRun(
     parts.push(
       tag(twoSided(quad(A, B, Cv, D)), col, 0, (yy: number) => (top - 0.35 - yy) * 0.035),
     );
-    // A stiffening pole at the top, so it does not read as a floating rectangle.
-    const pole = box(0.05, 0.05, bw);
+    // A stiffening pole at the top, so it does not read as a floating
+    // rectangle. It has to be thick enough to survive being three pixels
+    // wide, which five centimetres at twenty metres is not.
+    const pole = box(0.09, 0.09, bw * 1.08);
     put(pole, cx, top - 0.35, cz, Math.atan2(ux, uz));
     parts.push(tag(pole, C.brass));
   }
@@ -2355,7 +2363,10 @@ function beaconMast(
   const h = 24;
   const parts: Geo[] = [
     tag(put(cyl(0.55, 0.85, 0.7, 10), x, y + 0.35, z), C.stone),
-    tag(put(cyl(0.16, 0.3, h, 8), x, y + h / 2, z), C.ironDark),
+    /* Pale metal, and thicker than a lamp post: a dark 30 cm mast against a
+       dark sky is invisible from thirty metres, and a fifteen-metre banner
+       needs something visibly holding it up. */
+    tag(put(cyl(0.22, 0.4, h, 8), x, y + h / 2, z), C.steel),
     tag(put(blob(0.28, 6, 4), x, y + h + 0.3, z), C.lampGlass, 3.2),
   ];
   const tx = -Math.sin(a);
@@ -2368,7 +2379,7 @@ function beaconMast(
   const Cv = new THREE.Vector3(x + tx * w, top - bh, z + tz * w);
   const D = new THREE.Vector3(x, top - bh, z);
   parts.push(
-    tag(twoSided(quad(A, B, Cv, D)), accent.clone().lerp(C.cream, 0.2), 0.35, (yy: number) => (top - yy) * 0.02),
+    tag(twoSided(quad(A, B, Cv, D)), accent.clone().lerp(C.cream, 0.06), 0.35, (yy: number) => (top - yy) * 0.02),
   );
   const bar = box(0.07, 0.07, w);
   put(bar, x + tx * w * 0.5, top, z + tz * w * 0.5, Math.atan2(tx, tz));
