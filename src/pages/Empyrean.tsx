@@ -20,6 +20,10 @@ import { Link } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import type { EmpyreanState } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
+import EmpyreanSkyPanel, { readSkyChoice } from "@/components/EmpyreanSkyPanel";
+// Type-only, so naming the five conditions here costs nothing at runtime and
+// the panel's string ids are checked against the engine's own union.
+import type { Condition } from "@/empyrean/weather";
 
 const EMPTY: EmpyreanState = {
   altitude: 0,
@@ -30,6 +34,10 @@ const EMPTY: EmpyreanState = {
   place: "The Halo",
   placeAccent: "#ffd28a",
   clock: "18:40",
+  dayPhase: 0.75,
+  dayPinned: false,
+  weather: "clear",
+  weatherPinned: false,
   prompt: null,
   activity: null,
   toasts: [],
@@ -74,6 +82,13 @@ export default function Empyrean() {
       muted,
       shot: shotMode,
     });
+    /* Whatever hour and weather were chosen last time, applied before the
+       first frame anybody sees. Restoring it a second later would mean the
+       world opens at its own sunset and then visibly lurches to midnight,
+       which reads as a bug rather than as a preference. */
+    const saved = readSkyChoice();
+    if (saved.phase !== null) worldRef.current.setDayPhase(saved.phase);
+    if (saved.weather !== null) worldRef.current.setWeather(saved.weather as Condition);
     setBooting(false);
     setStarted(true);
     window.setTimeout(() => setHint(false), 14000);
@@ -194,8 +209,8 @@ export default function Empyrean() {
           </button>
           <p className="mt-5 text-[11px] text-white/80">
             {isTouch
-              ? "Stick to move · hold the rocket to fly · drag to look · tap ✦ to interact"
-              : "WASD · Space jetpack · Shift boost · E interact · drag to look · H hides this"}
+              ? "Stick to move · hold the rocket to fly · drag to look · tap the clock for the hour"
+              : "WASD · Space jetpack · Shift boost · E interact · drag to look · the clock sets the hour and the weather · H hides this"}
           </p>
           <Link
             to="/"
@@ -274,6 +289,11 @@ export default function Empyrean() {
                 {state.who}
               </span>
             )}
+            <EmpyreanSkyPanel
+              state={state}
+              onHour={(p) => worldRef.current?.setDayPhase(p)}
+              onWeather={(c) => worldRef.current?.setWeather(c as Condition | null)}
+            />
             <button
               onClick={toggleMute}
               className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/90 backdrop-blur-md transition-colors hover:bg-black/60"

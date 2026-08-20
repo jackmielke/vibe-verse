@@ -203,6 +203,20 @@ export interface EmpyreanState {
   placeAccent: string;
   /** Local time of day as "18:42". */
   clock: string;
+  /** 0..1 through the day, for a control that wants to draw the sun's place. */
+  dayPhase: number;
+  /** True when the player has pinned the hour rather than letting it run. */
+  dayPinned: boolean;
+  /**
+   * What the weather is doing right now, and whether the player chose it.
+   *
+   * The condition is what the *cycle* has arrived at, so a control can show
+   * the truth rather than the last button pressed — they differ for the half
+   * minute a change takes, and a chip that lights up before the snow starts is
+   * a chip nobody trusts again.
+   */
+  weather: string;
+  weatherPinned: boolean;
   /** The nearest thing you could press a key on, if any. */
   prompt: { label: string; detail?: string } | null;
   /** Live activity readout: race timer, delivery target, etc. */

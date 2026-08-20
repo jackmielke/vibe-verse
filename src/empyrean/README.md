@@ -84,6 +84,31 @@ unplaceably wrong, and invisible until somebody looks at the lake.
 | `minimap.ts` | the plan, drawn in 2D canvas rather than by a second camera |
 | `audio.ts` | wind, jets, the city, and a pad that never resolves |
 
+## The hour and the weather are the player's
+
+The world has had a full day cycle and five weather conditions since it was
+built, and for a long time the only thing that could reach either was a debug
+hook meant for a screenshot script. `EmpyreanSkyPanel` is the control: six
+hours plus a slider, five conditions, and **Live** for each — which is a
+first-class choice and not the absence of one, because the world's own clock
+dwells near the sunset it was painted at and that is the best thing it does
+unattended.
+
+- **Picking an hour sweeps, it does not cut.** `DAY_SWEEP_RATE` is a constant
+  0.17 of phase a second, so a nudge is instant and noon-to-midnight is a
+  three-second time-lapse with the shadows swinging and the lamps coming on
+  inside it. An ease-to-target was tried and crawls at the end, which on a sky
+  reads as the renderer struggling.
+- **It takes the short way round the clock.** Pick dawn from the small hours
+  and the naive version runs forwards through the entire day.
+- **The chips read the world, not the last button pressed.** Weather takes
+  half a second to arrive and the hour takes seconds; the panel highlights
+  what `EmpyreanState` says is true now. During a sweep no hour is lit, which
+  is correct — the world is between them.
+- The choice is in `localStorage` under `empyrean.sky` and is applied *before*
+  the first frame, so the world does not open at its own sunset and then
+  visibly lurch to midnight.
+
 ## The physics is not "like" Vibe City's, it is Vibe City's
 
 `flight.ts` imports every constant from `@/lib/worldPhysics` — gravity 24, walk

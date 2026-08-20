@@ -88,8 +88,16 @@ export interface EmpyreanWorld {
   recall(): void;
   /** The interact key, from the HUD's touch button. */
   interact(): void;
-  /** 0..1 through the day. */
-  setDayPhase(p: number): void;
+  /**
+   * Pin the hour, or hand it back to the clock.
+   *
+   * `null` means live — the world's own slow cycle, which dwells near the
+   * sunset it was painted at. A number pins it there and the world *sweeps*
+   * to it rather than cutting: see `DAY_SWEEP_RATE`.
+   */
+  setDayPhase(p: number | null): void;
+  /** Pin the weather, or `null` to hand it back to the cycle. */
+  setWeather(c: Condition | null): void;
   dispose(): void;
 }
 
@@ -131,6 +139,19 @@ function pickQuality(): QualityTier {
  * place was designed at.
  */
 const DAY_SECONDS = 2400;
+
+/**
+ * How fast the sky travels when somebody picks an hour, in phase per second.
+ *
+ * Not a cut, and not an ease. A cut is cheap and throws away the best thing
+ * about having a day cycle at all: watching the light move across four hundred
+ * metres of glass. An ease-to-target crawls at the end, which on a *sky* reads
+ * as the renderer struggling. A constant rate means a nudge is instant and a
+ * jump from noon to midnight is a three-second time-lapse — the shadows swing,
+ * the lamps come on in it, and it is the single most satisfying thing in the
+ * whole control.
+ */
+const DAY_SWEEP_RATE = 0.17;
 
 /**
  * How fast time passes at a given hour, 0..1 of full rate.
@@ -350,6 +371,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     .catch(() => {
       /* A missing model costs you a body, not the world. */
     });
+
+  /* What the player has pinned, if anything. `null` on both means the world
+     runs itself, which is what it does until somebody touches the control. */
+  let pinnedPhase: number | null = null;
+  let pinnedWeather: Condition | null = null;
 
   const flyer: FlyerState = makeFlyer(SPAWN);
   const rigCam = new CameraRig(SPAWN.yaw);
@@ -587,7 +613,20 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     /* ---- clock ---- */
     ctx.time = time;
     ctx.dt = dt;
-    if (!shotMode) ctx.dayPhase = (ctx.dayPhase + (dt / DAY_SECONDS) * dwell(ctx.dayPhase)) % 1;
+    if (!shotMode) {
+      if (pinnedPhase === null) {
+        ctx.dayPhase = (ctx.dayPhase + (dt / DAY_SECONDS) * dwell(ctx.dayPhase)) % 1;
+      } else {
+        /* The shorter way round the clock. Without this, picking dawn while
+           standing in the small hours takes the sky the long way through the
+           entire day — twenty-three hours of time-lapse to travel one. */
+        let d = (((pinnedPhase - ctx.dayPhase) % 1) + 1) % 1;
+        if (d > 0.5) d -= 1;
+        const step = DAY_SWEEP_RATE * dt;
+        ctx.dayPhase =
+          Math.abs(d) <= step ? pinnedPhase : (ctx.dayPhase + Math.sign(d) * step + 1) % 1;
+      }
+    }
     const pal = skyPalette(ctx.dayPhase);
     ctx.daylight = pal.daylight;
     ctx.gradeDaylight = lighting.look.gradeDaylight;
@@ -815,6 +854,10 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
         place: place.name,
         placeAccent: place.accent,
         clock: clockString(ctx.dayPhase),
+        dayPhase: ctx.dayPhase,
+        dayPinned: pinnedPhase !== null,
+        weather: weather.condition,
+        weatherPinned: pinnedWeather !== null,
         prompt: nearest ? { label: nearest.label, detail: nearest.detail } : null,
         activity: (() => {
           const r = vehicles.riding();
@@ -939,7 +982,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       audio?.resume();
     },
     setDayPhase(p) {
-      ctx.dayPhase = ((p % 1) + 1) % 1;
+      pinnedPhase = p === null ? null : ((p % 1) + 1) % 1;
+    },
+    setWeather(c) {
+      pinnedWeather = c;
+      weather.force(c);
     },
     dispose() {
       if (disposed) return;

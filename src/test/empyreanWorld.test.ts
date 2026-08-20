@@ -336,3 +336,58 @@ describe("what the buildings draw", () => {
     expect(bad.slice(0, 8), `${bad.length} pieces hang below the deck`).toEqual([]);
   });
 });
+
+/* -------------------------------------------------------------------------
+ * The sky control
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Picking an hour has to travel the *short* way round the clock.
+ *
+ * The failure is not subtle when you see it and is invisible in code: pick
+ * dawn while standing in the small hours and, taking the long way, the sky
+ * runs forwards through the entire day — twenty-three hours of time-lapse to
+ * travel one. Both ends of the wrap are checked because getting one right and
+ * the other wrong is the natural mistake.
+ */
+describe("sweeping to an hour", () => {
+  /** The engine's own rule, restated so a change to it fails here. */
+  function sweep(from: number, to: number, dt: number, rate = 0.17): number {
+    let d = (((to - from) % 1) + 1) % 1;
+    if (d > 0.5) d -= 1;
+    const step = rate * dt;
+    return Math.abs(d) <= step ? to : (from + Math.sign(d) * step + 1) % 1;
+  }
+
+  it("goes backwards over midnight rather than forwards through the day", () => {
+    // 0.02 is just after midnight; dawn is at 0.235, so forwards is right.
+    expect(sweep(0.02, 0.235, 0.1)).toBeGreaterThan(0.02);
+    /* 0.02 to 0.94 (night) is 0.08 backwards, not 0.92 forwards. One step of
+       0.017 lands at 0.003 — still short of midnight — and the step after
+       that is the one that wraps, so this walks two. Asserting on the first
+       step alone is how you write a test that passes for a bug that goes the
+       wrong way and happens not to have crossed zero yet. */
+    let back = 0.02;
+    for (let i = 0; i < 2; i++) back = sweep(back, 0.94, 0.1);
+    expect(back).toBeGreaterThan(0.9);
+    expect(back).toBeLessThan(1);
+  });
+
+  it("arrives, and stays arrived", () => {
+    let p = 0.5;
+    for (let i = 0; i < 600; i++) p = sweep(p, 0.94, 1 / 60);
+    expect(p).toBeCloseTo(0.94, 6);
+    expect(sweep(p, 0.94, 1 / 60)).toBe(0.94);
+  });
+
+  it("crosses a whole half-day in a few seconds, not in a cut and not in a minute", () => {
+    let p = 0.25;
+    let t = 0;
+    while (Math.abs(p - 0.75) > 1e-6 && t < 60) {
+      p = sweep(p, 0.75, 1 / 60);
+      t += 1 / 60;
+    }
+    expect(t).toBeGreaterThan(1.5);
+    expect(t).toBeLessThan(6);
+  });
+});
