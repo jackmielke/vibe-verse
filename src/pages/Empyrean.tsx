@@ -20,6 +20,8 @@ import { Link } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import type { EmpyreanState } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
+import empyreanArt from "@/assets/empyrean-inspiration.png.asset.json";
+
 
 const EMPTY: EmpyreanState = {
   altitude: 0,
@@ -156,9 +158,8 @@ export default function Empyrean() {
       {/* ---- Title card -------------------------------------------------- */}
       {!started && !shotMode && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center px-6 text-center">
-          {/* A painted stand-in for the thing behind it — the same five stops
-              the sky shader uses, so the cut to the live world is a reveal
-              rather than a jump. */}
+          {/* The painting this world is inspired by, as the title backdrop —
+              the gradient stays underneath as a fallback while it loads. */}
           <div
             className="absolute inset-0 -z-10"
             style={{
@@ -166,13 +167,19 @@ export default function Empyrean() {
                 "linear-gradient(180deg, #0b1342 0%, #1d3a72 24%, #2f8f9a 42%, #e8b45c 62%, #f2793f 76%, #e9628f 100%)",
             }}
           />
+          <img
+            src={empyreanArt.url}
+            alt="A floating city of glass towers above a frozen lake at sunset"
+            className="absolute inset-0 -z-10 h-full w-full object-cover"
+          />
           <div
-            className="absolute inset-0 -z-10 opacity-70"
+            className="absolute inset-0 -z-10"
             style={{
               background:
-                "radial-gradient(75% 55% at 22% 88%, rgba(255,196,120,.85) 0%, rgba(255,140,110,0) 62%)",
+                "linear-gradient(180deg, rgba(6,10,34,.35) 0%, rgba(6,10,34,.15) 40%, rgba(6,10,34,.55) 100%)",
             }}
           />
+
           <p className="mb-3 text-[11px] uppercase tracking-[0.42em] text-cyan-100/80">
             The vibeverse
           </p>
