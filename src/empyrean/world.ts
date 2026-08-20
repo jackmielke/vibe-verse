@@ -860,6 +860,12 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
      * both more accurate and better theatre: you get the count, you look, and
      * the noise turns up late — which is the single most convincing thing
      * about watching a launch from two kilometres away. */
+    /* The warning comes first, and it is the more useful of the two: a rocket
+       you are told about after it has lit is a rocket you missed. Twenty
+       seconds is long enough to stop what you are doing and turn round. */
+    if (launch.phase === "prep" && prevLaunchPhase !== "prep") {
+      pushToast("Kestrel Field is counting down — look south-west", "info");
+    }
     if (launch.phase === "ignition" && prevLaunchPhase !== "ignition") {
       const delay = launch.soundDelayFrom(
         flyer.position.x, flyer.position.y, flyer.position.z,

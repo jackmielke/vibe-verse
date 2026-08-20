@@ -42,7 +42,7 @@ scene
 │        └── clone(true) of ▼
 ├── REFLECTED   ← keel.ts, buildings.ts      the island's silhouette
 ├── DETAIL      ← streets, props, interiors, crowd, traffic, vehicles,
-│                 activities, weather
+│                 activities, weather, launchsite
 └── body + plume
 ```
 
@@ -72,7 +72,8 @@ unplaceably wrong, and invisible until somebody looks at the lake.
 | `props.ts` | lamps, benches, trees, stalls, awnings, banners, fountains |
 | `crowd.ts` | pedestrians on the nav graph |
 | `traffic.ts` | skycars on their lanes and the ring tram |
-| `vehicles.ts` | the sky skiff and the glider you can get into |
+| `vehicles.ts` | the skiff, the glider, the lifter, and seven flyers |
+| `launchsite.ts` | the spaceport on the snow, and the rocket that leaves it |
 | `interiors.ts` | the rooms you can walk into |
 | `activities/` | races, courier runs, the photo hunt, the collectibles |
 | `weather.ts` | the weather cycle, snow, cloud banks, birds, the aurora |
@@ -83,6 +84,41 @@ unplaceably wrong, and invisible until somebody looks at the lake.
 | `collide.ts` | every system's boxes and decks, in one grid |
 | `minimap.ts` | the plan, drawn in 2D canvas rather than by a second camera |
 | `audio.ts` | wind, jets, the city, and a pad that never resolves |
+
+## The two things that are not on the island
+
+**The flyers.** Seven small aircraft, six on rooftop pads and one on the Halo
+apron. The apron one exists because "work out the jetpack first" cannot be
+the price of a first flight. They cannot be flown badly, and that is a design
+constraint rather than a nicety: throttle is a setting that stays where you
+leave it, roll self-levels, altitude holds, and two look-aheads mean that
+pointing one at a tower and holding W ends with you on the roof. No stall, no
+fuel, no damage, no landing score. The pads are chosen by a rule over the
+plan — the tallest `block` lots, scored by clear roof, one per sixth of the
+compass — so they survive the plan changing and do not all end up in one
+district.
+
+**The launch site**, 1.87 km out on the snow at bearing 244°. It was built at
+2.2 km first and moved *in* after somebody looked at it: the snow is only
+flat to about 1900 m, so further out a 180 m apron needs forty metres of
+earthwork and reads from the deck as a second floating slab — in a world
+whose entire subject is a floating slab. Distance was the wrong thing to
+spend the picture on. At 1.87 km the apron lies flat, a dark oval on white
+snow, which is the most legible thing there at that range; and 244° is 45°
+off the sunset, so the stack is three-quarter backlit.
+
+The cycle is a pure function of time, the way `weather.ts`'s is, so a test
+can look an hour ahead without simulating anything. Fifty-five per cent of it
+is a complete stack sitting still, which is what makes it worth watching for.
+The flight path is monotone-interpolated because Catmull-Rom overshot the
+catch and swung seventy metres of booster through the launch mount twice a
+cycle.
+
+`launchsite.ts` re-derives `terrain.ts`'s ground height rather than importing
+it — a system may not import another system — and `empyreanLaunch.test.ts`
+imports both and asserts they agree over a four-kilometre grid. That test is
+the only thing standing between a retune of the ranges and a pad hanging in
+the air.
 
 ## The hour and the weather are the player's
 
