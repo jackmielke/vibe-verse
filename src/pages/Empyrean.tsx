@@ -174,7 +174,7 @@ export default function Empyrean() {
 
       {/* ---- Title card -------------------------------------------------- */}
       {!started && !shotMode && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-start overflow-y-auto px-4 py-8 text-center [padding-bottom:calc(2rem+env(safe-area-inset-bottom))] [padding-top:calc(2rem+env(safe-area-inset-top))] sm:justify-center sm:px-6 sm:py-10">
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-start overflow-y-auto px-4 py-8 text-center [padding-bottom:calc(2rem+env(safe-area-inset-bottom))] [padding-top:calc(4.5rem+env(safe-area-inset-top))] sm:[padding-top:calc(2.5rem+env(safe-area-inset-top))] sm:justify-center sm:px-6 sm:py-10">
           {/* The painting this world was made from, with the old five-stop
               gradient beneath it as the fallback while it loads. */}
           <div
