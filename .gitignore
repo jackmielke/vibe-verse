@@ -75,8 +75,17 @@ __zz_compile.mjs
 # morning after a scratch file was found in a commit. `.scratch/` is the
 # fifth, and it is the general case: any directory by that name, anywhere,
 # rather than another prefix to guess at.
+#
+# `__scratch_*` is the sixth, and it is the one that matters most, because it
+# is the only one that lands *inside* a source directory. A throwaway
+# `src/empyrean/__scratch_cost.ts` is on the typecheck path and one careless
+# `git add -A` puts it on a live `main`. That has happened here: three of an
+# agent's scratch tests and half a rewritten module went out in a commit about
+# the sky, and `/empyrean` threw `flyerParts is not defined` for twenty-five
+# minutes. Ignoring the pattern is cheaper than remembering the rule.
 .tmp-*
 __zz_*
+__scratch_*
 .tmp/
 .scratch/
 **/.scratch/
