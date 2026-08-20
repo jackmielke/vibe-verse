@@ -48,6 +48,17 @@ export interface RigTarget {
   yaw: number;
   grounded: boolean;
   burn: number;
+  /**
+   * True while the body is standing on something that is carrying it.
+   *
+   * Set by the tram, and by anything else that becomes a moving floor. The
+   * rig needs it because the boom is *outside* — a passenger in a tram at the
+   * default eight and a half metres has the lens hanging in open air beside
+   * the car, watching themselves go past through the window band. Nothing is
+   * broken when that happens, which is what makes it so bad: it looks like
+   * the world forgot to draw the tram.
+   */
+  carried?: boolean;
 }
 
 const MIN_DIST = 2.2;
@@ -177,6 +188,25 @@ export class CameraRig {
       }
     }
 
+    /* ---- inside a moving thing, the boom comes in ----
+     *
+     * `this.dist` is left alone: it is the player's choice and they get it
+     * straight back the moment they step off. This is the effective length
+     * for this frame only. Riding is the one case a third-person camera
+     * cannot serve at all — the lens would have to be outside the vehicle you
+     * are inside, and the interior is the whole reason to ride.
+     *
+     * **This has to happen before anything reads `this.mode`**, and the first
+     * version of it did not. `mode` was assigned further down, past the
+     * `if (mode === "first") { ... return; }` early exit — so the first frame
+     * aboard set it to "first", and every frame after that took the early
+     * return and never reached the assignment again. Stepping off left the
+     * camera in first person for the rest of the session, and the only way
+     * out was to scroll. A value that decides whether a function returns
+     * early cannot be computed after the return. */
+    const dist = p.carried ? Math.min(this.dist, MIN_DIST) : this.dist;
+    this.mode = dist <= MIN_DIST + 0.01 ? "first" : "third";
+
     /* ---- where we are looking ----
      * Two and a half metres over the character's feet: the horizon lands where
      * a person standing there would find it, and the body sits in the lower
@@ -215,7 +245,7 @@ export class CameraRig {
          was the only allocation left in the rig — sixty frames a second times
          two is seven thousand vectors a minute for a number that is thrown
          away immediately. */
-      this.probeArm.set(bx * this.dist * 0.6, by * this.dist * 0.6, bz * this.dist * 0.6);
+      this.probeArm.set(bx * dist * 0.6, by * dist * 0.6, bz * dist * 0.6);
       this.probe
         .copy(this.target)
         .addScaledVector(this.right, sign * 1.1)
@@ -226,9 +256,9 @@ export class CameraRig {
     this.shoulder += (this.shoulderTarget * 1.1 - this.shoulder) * Math.min(1, dt * 4);
 
     this.want.set(
-      this.target.x + bx * this.dist + this.right.x * this.shoulder,
-      this.target.y + by * this.dist,
-      this.target.z + bz * this.dist + this.right.z * this.shoulder,
+      this.target.x + bx * dist + this.right.x * this.shoulder,
+      this.target.y + by * dist,
+      this.target.z + bz * dist + this.right.z * this.shoulder,
     );
 
     /* ---- do not stand in the floor ---- */

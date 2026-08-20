@@ -371,11 +371,13 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     ...lakeside.blockers,
   ];
   const decks: Deck[] = [...buildings.decks, ...interiors.decks, ...lakeside.decks];
-  const collision = buildCollision(blockers, decks);
+  const collision = buildCollision(blockers, decks, traffic.frames);
 
   // Interiors raise toasts of their own — a departure board, a guest book.
   interiors.onToast = (text, tone) => pushToast(text, tone ?? "info");
   lakeside.onToast = (text, tone) => pushToast(text, tone ?? "info");
+  // The tram calls its stops, and only to somebody who is riding it.
+  traffic.onToast = (text, tone) => pushToast(text, tone ?? "info");
   // Vehicles collide against the same world the body does.
   vehicles.setWorld({
     blockedAt: (x, z, y) => collision.blockedAt(x, z, y),
@@ -668,6 +670,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     interiors.interactables(),
     vehicles.interactables(),
     lakeside.interactables(),
+    traffic.interactables(),
   ];
   const marks: MapMark[] = [];
   const packPos = new THREE.Vector3();
@@ -808,6 +811,20 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
         {
           supportAt: collision.supportAt,
           blockedAt: (x, z, y) => collision.blockedAt(x, z, y),
+          /* The two halves of a deck that moves. `carryAt` reports the rigid
+             motion of whatever the body is standing on, so a tram floor takes
+             its passenger with it; `blockedStaticAt` is the same question as
+             `blockedAt` with the moving frames left out, which is the only
+             test a rigid carry can honestly be refused by. */
+          carryAt: collision.carryAt,
+          blockedStaticAt: collision.blockedStaticAt,
+          /* And the way out of one. A moving frame can close around a body —
+             a door shutting, a tram pulling in beside somebody on the platform
+             edge — and a body already inside an exclusion band cannot step out
+             of it, because every step it could take is still inside. Only
+             something that moves can put you there, so only moving frames
+             answer this. */
+          pushOutAt: collision.pushOutAt,
           killY: KILL_Y,
           spawn: SPAWN,
         },

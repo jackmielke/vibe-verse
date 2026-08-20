@@ -56,6 +56,22 @@ export const CLIMB = 0.62;
 /** Vertical speed above which the step-up reach is withdrawn. */
 const CLIMB_MAX_RISE = 1.5;
 
+/**
+ * What `carryAt` fills in: the rigid motion of the deck under the body.
+ *
+ * `x`/`y`/`z` are the deck's own velocity, `w` its yaw rate, and `px`/`pz`
+ * the point that rotation is about. A plain velocity is not enough for
+ * anything that turns — see the carry in `stepFlyer`.
+ */
+export interface CarryVec {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  px: number;
+  pz: number;
+}
+
 export interface FlyerInput {
   /** -1..1, forward positive. */
   forward: number;
@@ -92,6 +108,14 @@ export interface FlyerState {
   stepped: number;
   /** Metres of clear air directly below. Infinity over the void. */
   drop: number;
+  /**
+   * True while the body is standing on a deck that is moving under it.
+   *
+   * Set by the carry below. Nothing in here reads it; it is for the HUD, the
+   * audio and anything that wants to know the player is aboard something
+   * without having to ask the thing they are aboard.
+   */
+  carried: boolean;
 }
 
 export interface FlyerWorld {
@@ -105,6 +129,29 @@ export interface FlyerWorld {
   supportAt(x: number, z: number, fromY: number): number;
   /** True if a body at (x, z, y) would be inside a building. */
   blockedAt(x: number, z: number, y: number): boolean;
+  /**
+   * The lateral motion of the surface the body is standing on, if that
+   * surface is a moving deck — a tram floor, a barge, a gondola.
+   *
+   * Optional, because most worlds have nothing that moves under your feet and
+   * a test world should not have to say so. `y` is the very number
+   * `supportAt` just returned, which is what lets the implementation answer
+   * for the *supporting* deck and for nothing else.
+   */
+  carryAt?(x: number, z: number, y: number, out: CarryVec): boolean;
+  /**
+   * `blockedAt` against the static world only. See the carry below for why
+   * the moving frames have to be left out of that one test.
+   */
+  blockedStaticAt?(x: number, z: number, y: number): boolean;
+  /**
+   * If the body is *inside* a moving thing's box, the shortest way out of it.
+   *
+   * Optional, and only moving frames answer. `blockedAt` refuses a move; it
+   * cannot resolve a body that something has closed around, and only a thing
+   * that moves can do that.
+   */
+  pushOutAt?(x: number, z: number, y: number, pad: number, out: CarryVec): boolean;
   /** Below this, you have left the world. */
   killY: number;
   /** Where you come back. */
@@ -124,10 +171,24 @@ export function makeFlyer(spawn: FlyerWorld["spawn"]): FlyerState {
     impact: 0,
     stepped: 0,
     drop: 0,
+    carried: false,
   };
 }
 
 const _intent = new THREE.Vector3();
+/** Scratch for the carry. Module scope, because `stepFlyer` may not allocate. */
+const _carry: CarryVec = { x: 0, y: 0, z: 0, w: 0, px: 0, pz: 0 };
+/** Scratch for the shove out of a closing door. Module scope, same reason. */
+const _push: CarryVec = { x: 0, y: 0, z: 0, w: 0, px: 0, pz: 0 };
+
+/**
+ * How fast a moving thing shoves a body out of itself, m/s.
+ *
+ * Brisk enough to clear a 0.74 m exclusion band inside two frames at any
+ * frame rate the engine will produce, slow enough to read as being swept by a
+ * door rather than teleported by one.
+ */
+const PUSH_SPEED = 9;
 
 /**
  * One step. `dt` is expected clamped by the caller; it is clamped again here
@@ -166,6 +227,28 @@ export function stepFlyer(
   s.burn += ((thrusting ? 1 : 0) - s.burn) * (1 - Math.pow(thrusting ? 0.002 : 0.02, dt));
 
   const wasGrounded = s.grounded;
+
+  /* ---- shoved out of something that closed on you ----------------------
+   *
+   * Before anything else, because a body inside a box cannot walk and cannot
+   * fall out: every direction it could step is still inside, all three of the
+   * slide tests below fail, and it sits there frozen. Static geometry never
+   * puts a body in that state — you can only ever be outside a building — but
+   * a tram pulls up beside you and a door shuts on you, and the body's 0.6 m
+   * radius turns a 14 cm door into a metre and a half of exclusion.
+   *
+   * It only ever pushes along the shortest way out of the box that closed,
+   * which is out of a doorway into the car, or back from the platform edge
+   * onto the platform. Both are places the body was standing a moment ago.
+   */
+  if (world.pushOutAt && world.pushOutAt(s.position.x, s.position.z, s.position.y, BODY_R, _push)) {
+    const d = Math.hypot(_push.x, _push.z);
+    const step = Math.min(d, PUSH_SPEED * dt);
+    if (d > 1e-6) {
+      s.position.x += (_push.x / d) * step;
+      s.position.z += (_push.z / d) * step;
+    }
+  }
 
   /* ---- horizontal ------------------------------------------------------
    * Exponential easing toward a target velocity, with the ground far firmer
@@ -233,6 +316,90 @@ export function stepFlyer(
   } else if (s.position.y > support + SNAP) {
     s.grounded = false;
   }
+  /* ---- carried by a moving deck ----------------------------------------
+   *
+   * A rising floor needs nothing from here: support is looked up from
+   * `prevY + CLIMB`, so a deck that has come up under the body catches it,
+   * and that is the whole of how the spire's lift works. A deck that moves in
+   * **XZ** has no such luck, because support is looked up *by* XZ — the floor
+   * simply leaves, and the body is left standing in the air where the tram
+   * used to be. So the world is asked, once, whether the surface it just
+   * reported is moving, and if it is, the body is moved with it.
+   *
+   * Four things about this, each of which is the difference between a tram
+   * and a catapult:
+   *
+   * - **It is added to the position, never to the velocity.** A tram doing
+   *   30 m/s that dumped its speed into the passenger would fire them across
+   *   the city the instant they stepped off. Position carry leaves the body's
+   *   own velocity meaning what it has always meant: how fast *you* are
+   *   walking. Step off and you are walking, at walking pace.
+   * - **The condition is "standing on it", not "near it".** `carryAt` is
+   *   given the very height `supportAt` returned, so it can only answer for
+   *   the deck that is actually holding the body up; and this only runs when
+   *   the body settled onto that deck this step. A body on the platform
+   *   beside a tram, on the road under it, or in the air over it, is not
+   *   carried. Getting that wrong towards "carries more" is what drags a
+   *   passenger through a wall.
+   * - **Mid-air is not carried, and that is not a bug.** Jump on a moving
+   *   tram and you land where physics puts you, which is further back than
+   *   you left. That is what a real tram feels like.
+   * - **Walk input and carry simply add.** The walk is integrated above in
+   *   the world frame; this is another world-frame displacement on top. There
+   *   is no "aboard" mode and nothing switches.
+   *
+   * The static-only block test is the one guard: a rigid translation cannot
+   * push a body into the carrier's own walls (they moved too), but it could
+   * in principle sweep one through a building, and that is the failure worth
+   * refusing. Refusing it costs the passenger one frame of carry — they slide
+   * a little way down the car — which is the cheap direction to be wrong in.
+   */
+  s.carried = false;
+  if (
+    s.grounded &&
+    world.carryAt &&
+    s.position.y <= support + 0.02 &&
+    world.carryAt(s.position.x, s.position.z, support, _carry)
+  ) {
+    s.carried = true;
+    if (_carry.x !== 0 || _carry.z !== 0 || _carry.w !== 0) {
+      /* A rigid motion, not a translation: rotate the body about the deck's
+       * own pivot and then slide it. Leaving the rotation out looks fine for
+       * ten seconds and walks a passenger standing a metre off the centre
+       * line straight out through the side of the tram over a lap, because a
+       * ring is a turn and a turn moves the far side of a car further than
+       * the near one. */
+      const a = _carry.w * dt;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      /* The step the deck is about to take, from the step it has just taken.
+       *
+       * The offset and the translation are rotated *together*, and that is
+       * the whole of it: a deck on an arc turns its own displacement vector
+       * by the same angle it turns itself, so a carry that rotates the body
+       * about the pivot but adds last step's chord unrotated is short by
+       * v·dt·dtheta every frame. That is 1.1 mm at 30 m/s on a 218 m ring,
+       * which is nothing, and it is also seven centimetres a second, which
+       * walks a passenger out of the side of a tram inside a minute. It was
+       * measured doing exactly that.
+       */
+      const rx = s.position.x - _carry.px + _carry.x * dt;
+      const rz = s.position.z - _carry.pz + _carry.z * dt;
+      const cx = _carry.px + rx * ca + rz * sa;
+      const cz = _carry.pz - rx * sa + rz * ca;
+      if (!world.blockedStaticAt || !world.blockedStaticAt(cx, cz, s.position.y)) {
+        s.position.x = cx;
+        s.position.z = cz;
+        /* And turn with it. A passenger keeps facing the same way *in the
+         * carriage*, which is what a person does; the alternative is standing
+         * in a tram slowly rotating on the spot. The facing easing above only
+         * runs when the body is actually moving under its own steam, so this
+         * is not fighting it. */
+        s.yaw += a;
+      }
+    }
+  }
+
   s.drop = Math.max(0, s.position.y - support);
   if (!Number.isFinite(support)) s.drop = Infinity;
 
