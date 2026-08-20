@@ -20,6 +20,8 @@ import { Link } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import type { EmpyreanState } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
+import empyreanArt from "@/assets/empyrean-inspiration.png.asset.json";
+
 
 const EMPTY: EmpyreanState = {
   altitude: 0,
