@@ -478,7 +478,7 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🪐",
     kind: "world",
     blurb:
-      "A city of glass on a rock that never landed, six hundred metres over a frozen lake that shows you all of it upside down. Eight avenues, three ring roads, a bazaar, a tram and a rim you can stand on the edge of — walked on foot or flown with Vibe City's jetpack, as whoever you already are.",
+      "A city of glass on a rock that never landed, six hundred metres over a frozen lake that shows you all of it upside down. Ride the ring tram, walk into somebody's kitchen, take the lift to the sky deck, fly down to the camp on the ice — and after dark the lanterns go up. Walked on foot or flown with Vibe City's jetpack, as whoever you already are.",
     status: "Playable — a city, a jetpack, and things to do in both",
     accent: "#ff9a5a",
     featured: true,

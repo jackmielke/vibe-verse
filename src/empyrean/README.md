@@ -199,6 +199,117 @@ unattended.
   the first frame, so the world does not open at its own sunset and then
   visibly lurch to midnight.
 
+## The other thing you can ride, and why it was harder than the lift
+
+The ring tram calls at four platforms and you can get on it. Walk onto the
+platform, wait, and step aboard while the doors are open.
+
+The lift works for free because **a rising deck carries a body without being
+asked** — `flight.ts` looks support up from `prevY + CLIMB`, so a floor that
+came up under you picks you up. That does not generalise sideways. Support is
+looked up by XZ, so a floor that moves in XZ simply *leaves*, and the
+passenger is standing in the air where the tram used to be.
+
+So `collide.ts` has **`MovingFrame`**: a pose, a velocity, a yaw rate, a cull
+radius, and blockers and decks written in the frame's own coordinates.
+Queries transform the point into the frame and test axis-aligned boxes there,
+which is exact at any angle and costs one squared distance to reject. Nothing
+in it mentions a tram — a translating lift, a barge or a gondola want the same
+shape, and the four platforms already use one with zero velocity, because two
+of them sit at 45° and an oblique *deck* indexed by its bounding box is a body
+standing on thin air beside a tram stop.
+
+Four things about it are load-bearing:
+
+- **The carry goes into the position, never the velocity.** Add it to velocity
+  and stepping off at 12 m/s fires you across the city.
+- **Mid-air is not carried.** Jump on a moving tram and you land near the
+  back. That is correct and is not a bug to fix.
+- **The platform deck is 0.56 m above the road and 0.52 m below the car
+  floor** — both under `CLIMB`, which is the whole of why boarding is a walk
+  rather than a mode.
+- **`blockedAt` refuses a move; it cannot resolve a body already inside
+  something.** Static geometry never put a body in that state because a
+  building does not arrive — but a tram pulls up *next to you*. Stand at the
+  platform edge as one comes in and every direction you can step is still
+  inside its exclusion band: all three slide tests fail and you are frozen
+  until it leaves. `pushOutAt` reports the shortest way out of a moving
+  frame's box, and only a moving frame's, because only something that moves
+  can put you there.
+
+**The camera has to come in while you are carried**, or the lens hangs in
+open air beside the car and you watch yourself through the window band. That
+clamp has to be computed *before* `CameraRig.update`'s
+`if (mode === "first") return;`, not after — see the wrong-already list.
+
+## Mirrorfoot, on the ice
+
+Six hundred metres straight down from the rim there is a camp: habs with warm
+windows, a mess dome, a skate loop, a supply tether with a pod that climbs to
+the promenade, and the **Long Look**, a viewing deck with a rail and a
+telescope aimed back up at the island. At night it reads from the rim, 1.2 km
+up, as a ring of lanterns and lit windows — which was the test, because a camp
+nobody can see from the city is a camp nobody visits.
+
+880 m out on bearing 27°, and that is not a number somebody liked: the
+photograph was taken four times. Dead anti-solar washes the island to a flat
+lilac ghost under the sun's own disc; 45° off is the shot, gold sky one side,
+deep blue the other, the keel a hard dark spike between them.
+
+**One deck is the whole feature.** `surfaceAt` returns `void` off the island,
+so `supportAt` answered `-Infinity` across the entire lake and *every* descent
+to the ice fell through it to `KILL_Y` and respawned on the Halo. Nobody had
+noticed, because until there was something down there nobody went.
+
+Still true and worth knowing: **the snowfield beyond `LAKE_R` is still void.**
+A deck is flat and the snow is a height field, so a disc out to `WORLD_R`
+would stand you inside a 400 m peak. Walk off the ice onto the snow and you
+still fall. The fix is a ground hook on `CollisionWorld` that `terrain.ts` can
+answer.
+
+## The Long Night
+
+The hour has been the player's since the sky panel shipped, which meant
+somebody could choose to be here at two in the morning — and what they found
+was the same city with the lights off. Every reason to be in this world
+happened in daylight. So after dark the city sends up lanterns and bursts
+shells over the Beacon.
+
+**There is no simulation in `festival.ts` at all.** Every lantern and every
+spark is a closed form in the vertex shader; `update` writes four uniforms and
+returns; the group switches itself off from the sun's own altitude, so it
+costs nothing for two thirds of the day. That is not cleverness — it falls out
+of the day cycle being scrubbable. `DAY_SWEEP_RATE` puts noon and midnight
+three seconds apart, and a simulated firework would have to be warmed up for
+those three seconds or pop into existence half-formed, where a closed-form one
+is simply correct at a time it has never been asked about.
+
+**Night is decided from `ctx.sunDir.y`, not from `daylight`.** `daylight` is
+the lamp switch and is 0.32 at the sunset this world is painted at; fading a
+festival in against it puts fireworks over a sky that is still orange.
+
+And it was invisible the first time it was built, because the lanterns were
+sized honestly at a metre and a half. At 640 m that is three pixels. What is
+being drawn is not the paper, it is the light coming off it, and a light has
+no size of its own.
+
+## Photo mode
+
+**P**, or the camera button next to the clock. The HUD goes — all of it — the
+lens comes off the body, and you fly it with the same keys. Field of view in
+millimetres, aspect presets with a letterbox that agrees with the crop
+pixel-for-pixel, six looks, the body in or out of shot, and `EmpyreanSkyPanel`
+mounted *inside* the viewfinder so the hour and the weather are reachable
+without losing the framing.
+
+The shutter **draws the frame itself and reads it back in the same
+synchronous task**, so `preserveDrawingBuffer` stays off for the whole
+session. Set it globally instead and you pay for it on every frame of every
+visit; leave it off and read back on the next tick and you get a black PNG
+that passes every test written about it. Grading is applied to the
+photograph, not to the render path, because a filter is a property of the
+picture and `postfx.ts` is the only thing here that tone maps.
+
 ## The physics is not "like" Vibe City's, it is Vibe City's
 
 `flight.ts` imports every constant from `@/lib/worldPhysics` — gravity 24, walk
@@ -317,6 +428,38 @@ Kept because each one cost a rebuild and would cost another.
   around a tube lying at forty degrees to the axes is metres of thin air you
   can stand on beside a wall you can see straight through — which is the
   tapering spire's crown, above, arriving from a different direction.
+- **One NaN fragment becomes a six-hundred-pixel black rectangle.**
+  `normalize(cross(vec3(0,1,0), N))` is the standard way to build a tangent
+  from a normal and is NaN wherever N is parallel to that axis — on a tower,
+  one ring of pixels on a ledge soffit. The NaN goes into the HDR target, the
+  post chain downsamples it, and a blur kernel spreads it across its whole
+  tile. What lands on screen has **none of the properties of its cause**: it
+  does not shrink with distance (a mip tile is a fixed size on screen), its
+  edges do not converge (they are not world-space edges), and its interior is
+  exactly the tone-mapped clear colour, so it reads as *nothing drew here*.
+  It was blamed on the skybridges, which were parked for weeks and rewritten
+  end to end without changing it; then chased through `buildings.ts`, then
+  `interiors.ts`, then `spire.ts`. **What found it was making the fragment
+  shader print a flag colour where its own output was not finite.** Do that
+  first, next time. `empyreanShaderNaN.test.ts` guards the invariant, because
+  no test here executes GLSL and every other check passed the whole time it
+  was shipping.
+- **A value that decides whether a function returns early cannot be computed
+  after the return.** `CameraRig.update` has an
+  `if (mode === "first") { … return; }` in the middle of it. The tram's boom
+  clamp assigned `mode` below that line, so the first frame aboard set it and
+  every frame after took the early exit and never reached the assignment
+  again — stepping off left the camera in first person for the rest of the
+  session, and only scrolling the wheel got you out.
+- **The frame rate here is about 0.5 fps and `dt` is clamped to 0.05, so world
+  time runs at a fiftieth of the wall clock.** A seven-second tram dwell is
+  five real minutes. That is how "the tram never departs once you board it"
+  got reported, twice, on a tram that departs perfectly: the observation
+  stopped twenty seconds short. Anything with a timetable needs a way to read
+  its own clock from outside — `TramState.dwell` and `window.__empyreanTram`
+  exist so a standing tram and a broken tram are never again the same picture
+  — and any test with a frame time in it should run at **0.05 as well as
+  1/60**, because 1/60 is a frame time this container has never achieved.
 - **Test the world, not just the modules.** `src/test/empyreanWorld.test.ts`
   builds every system, steps it, and looks for the failures whose symptom is a
   black screen rather than an exception: a NaN in a position buffer (one

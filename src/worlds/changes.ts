@@ -124,12 +124,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "c02b5ca", iso: "2026-06-17T20:19:43+00:00", subject: "Changes" },
   ],
   "empyrean": [
+    { sha: "613a2ed", iso: "2026-08-20T21:28:28+00:00", subject: "You can ride the ring tram, and a moving floor is now a primitive" },
+    { sha: "9ecb358", iso: "2026-08-20T20:20:20+00:00", subject: "The camera rig allocated two vectors a frame" },
+    { sha: "52c5fd2", iso: "2026-08-20T20:15:20+00:00", subject: "The black rectangle was one NaN, and four rooms somebody lives in" },
+    { sha: "10eb3a5", iso: "2026-08-20T18:50:36+00:00", subject: "A camp on the ice, a festival after dark, a camera, and the bridges back" },
     { sha: "6345a15", iso: "2026-08-20T11:51:45+00:00", subject: "Twice as many people, and 334 benches that finally have somebody on them" },
     { sha: "8def08e", iso: "2026-08-20T09:43:36+00:00", subject: "The Meridian: a tower you walk into, ride up, and stand on top of" },
-    { sha: "dc4d236", iso: "2026-08-20T09:40:45+00:00", subject: "Families, children, dogs and robots — and benches that know which way they face" },
-    { sha: "fb5e928", iso: "2026-08-20T09:34:38+00:00", subject: "Lead the onboarding with the thing you can see, and photograph the spaceport" },
-    { sha: "754bccf", iso: "2026-08-20T09:20:55+00:00", subject: "Warn before the launch, not after it, and write down the two new systems" },
-    { sha: "d3e99b8", iso: "2026-08-20T09:17:48+00:00", subject: "Aircraft on the roofs, a spaceport on the horizon, and a playground" },
   ],
   "evolve": [
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },

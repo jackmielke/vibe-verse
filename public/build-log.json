@@ -1,7 +1,63 @@
 {
-  "generated_at": "2026-08-20T11:52:58.003Z",
+  "generated_at": "2026-08-20T21:30:46.790Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "613a2edd",
+      "date": "2026-08-20",
+      "subject": "You can ride the ring tram, and a moving floor is now a primitive",
+      "lede": "`traffic.ts` has run a real tram on the middle ring road since the world was built — a lap in ninety seconds, four stops — and its own header said, in as many words, that it deliberately implemented no interaction and whatever owned the player could do the rest. `interiors.ts` even put a bench at Halo Station labelled \"Wait for the tram\". Nobody built the rest.",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "9ecb358d",
+      "date": "2026-08-20",
+      "subject": "The camera rig allocated two vectors a frame",
+      "lede": "`CameraRig.update` runs every frame and the house rule for every per-frame path in this world is that it must not allocate — a dozen systems each handed a fresh object sixty times a second is a garbage-collector pause you can see, and it is why the frame context is one object mutated in place rather than a new one.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "52c5fd20",
+      "date": "2026-08-20",
+      "subject": "The black rectangle was one NaN, and four rooms somebody lives in",
+      "lede": "## The rectangle",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "10eb3a5e",
+      "date": "2026-08-20",
+      "subject": "A camp on the ice, a festival after dark, a camera, and the bridges back",
+      "lede": "Four things landed together. All of it is verified on a clean checkout rather than on the tree it was written in — four agents were writing to that tree at once, and a route that navigates while Vite swaps its own chunks comes back with an \"Invalid hook call\" and the crash screen, which looks exactly like a regression and is not one.",
+      "places": [],
+      "files": 16
+    },
+    {
+      "sha": "b5ff6555",
+      "date": "2026-08-20",
+      "subject": "Ignore __scratch_* too, which is the pattern that lands inside src/",
+      "lede": "Five of these have accumulated, each added the morning after a scratch file turned up in a commit. This one matters more than the others because it is the only one that lands *inside* a source directory: a throwaway `src/empyrean/__scratch_cost.ts` is on the typecheck path, and one careless `git add -A` puts it on a live `main`.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "7937626a",
+      "date": "2026-08-20",
+      "subject": "A dead browser is a fact about the harness, not ten broken worlds",
+      "lede": "`npm run smoke` opens a hundred routes in one Chromium and about eighty of them raise a WebGL context under a software rasteriser, so sooner or later that process dies. When it did, `browser.newPage()` rejected from outside the per-route try: node printed a raw stack, exited 1, and printed no summary, no tally and no list of the routes it never reached.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "d19d70d2",
+      "date": "2026-08-20",
+      "subject": "Stamp the dates and regenerate the build log",
+      "lede": "`npm run stamp` reads each world's `source` to work out when it last changed, and that date is on every card in the hub — so it has to be run after a change to a world's code or every card lies by a day.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "6345a15f",
       "date": "2026-08-20",
@@ -933,62 +989,6 @@
       "lede": "**The physics.** Reported as \"if it's a curved building, I don't land right\", and that was exactly it. Every collider in the city was a prism with the footprint of the building's base, and a great many of the buildings are not prisms:",
       "places": [],
       "files": 10
-    },
-    {
-      "sha": "37398c11",
-      "date": "2026-08-17",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "61049a48",
-      "date": "2026-08-17",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "f7f5ddd8",
-      "date": "2026-08-17",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "3df984e6",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: a minimap, because 3.4 km is too big to hold in your head",
-      "lede": "The symptom was specific and it was not a bug: people fly up, look around, pick a direction, and land somewhere they have already been. Nothing about the world is wrong — they simply have no way to know where they are. One small top-down picture fixes it completely.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "c84ef4af",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: two hundred cars, fifteen boats, and a Ferry Building that fits",
-      "lede": "A city with nothing moving in it reads as a model of a city. You notice immediately and cannot say why — the buildings are right, the streets are right, the hills are right, and the whole thing still looks like something under glass. So: cars on the grid and boats on the bay, two instanced meshes between them.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "5afd6f9a",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: land on a street, and a camera that flies itself",
-      "lede": "Spawns snap to the nearest asphalt. They are stored as the real lat/lon of a real place, which is right, and lands you wherever that place falls relative to a generated street grid — for Fisherman's Wharf that was the middle of a block, in a courtyard between the backs of four buildings with no way out, which reads as a bug in the collision system rather than as a spawn point. A spiral search puts every one of them o",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "1da54ff2",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: a logbook, a hundred and seventy coins, and a race up Market",
-      "lede": "Three reasons to go somewhere, in one new file.",
-      "places": [],
-      "files": 6
     }
   ]
 }
