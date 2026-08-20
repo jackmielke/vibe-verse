@@ -20,6 +20,7 @@ import {
   daylightAt,
   fitShadowCamera,
   makeDayLook,
+  moonDirection,
   setShadowFlags,
   sunDirection,
 } from "@/empyrean/lighting";
@@ -164,12 +165,43 @@ describe("the day cycle", () => {
       const look = dayLook(p, makeDayLook());
       expect(look.keyDir.y).toBeGreaterThan(0.02);
       expect(look.keyDir.length()).toBeCloseTo(1, 6);
-      // And it stays on the sun's side of the world, so the shading and the
-      // sky never disagree about which way is west.
-      const flat = new THREE.Vector2(look.sunDir.x, look.sunDir.z).normalize();
-      const keyFlat = new THREE.Vector2(look.keyDir.x, look.keyDir.z).normalize();
-      expect(flat.dot(keyFlat)).toBeGreaterThan(0.999);
     }
+  });
+
+  /* The key has to agree with whatever is actually in the sky.
+   *
+   * It used to be pinned to the sun's azimuth for the whole twenty-four
+   * hours, on the reasoning that the shading and the sky must never disagree
+   * about which way is west. That reasoning is right and the implementation
+   * was half of it: at two in the morning the sun is nowhere, and lighting the
+   * city from the exact spot where it set nine hours ago is a disagreement
+   * with the sky too — just with the half of the sky that has the moon in it.
+   * So the rule is the same rule, against whichever body is up. */
+  it("lights the city from whatever is actually up", () => {
+    const flat = (v: THREE.Vector3) => new THREE.Vector2(v.x, v.z).normalize();
+    for (let p = 0; p < 1; p += 1 / 96) {
+      const look = dayLook(p, makeDayLook());
+      const key = flat(look.keyDir);
+      const toSun = flat(look.sunDir).dot(key);
+      const toMoon = flat(moonDirection(look.phase)).dot(key);
+      if (look.sunDir.y > 0.05) {
+        // Broad daylight: the sun, and nothing else.
+        expect(toSun, `sun is up at ${p.toFixed(3)}`).toBeGreaterThan(0.999);
+      } else {
+        /* Dusk and night. The key is somewhere on the arc between the two,
+           so it must not be pointing away from *both* of them. */
+        expect(Math.max(toSun, toMoon), `nothing lights ${p.toFixed(3)}`).toBeGreaterThan(0.2);
+      }
+    }
+  });
+
+  it("hands the key over to the moon once the sun has gone", () => {
+    const flat = (v: THREE.Vector3) => new THREE.Vector2(v.x, v.z).normalize();
+    const night = dayLook(0.02, makeDayLook());
+    const key = flat(night.keyDir);
+    expect(flat(moonDirection(night.phase)).dot(key)).toBeGreaterThan(
+      flat(night.sunDir).dot(key),
+    );
   });
 
   it("separates the lamp switch from the grade control", () => {
@@ -338,5 +370,61 @@ describe("shadow flags", () => {
     setShadowFlags(root, false);
     expect(solid.castShadow).toBe(false);
     expect(solid.receiveShadow).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The moon
+ * ---------------------------------------------------------------------- */
+
+/**
+ * A moon that traces the sun's path in reverse is a mistake you can see
+ * without being able to name it: the sky has one axis of symmetry all night,
+ * and every shadow at two in the morning falls exactly opposite where it fell
+ * at two in the afternoon. So the two bodies are on different tilts, and this
+ * is what says so.
+ */
+describe("the moon", () => {
+  it("is up at night and gone by the middle of the day", () => {
+    expect(skyPalette(0.0).moon).toBeGreaterThan(0.9);
+    expect(skyPalette(0.5).moon).toBeLessThan(0.05);
+  });
+
+  it("is not simply the sun turned round", () => {
+    /* The moon *does* pass through opposite the sun — that is a full moon and
+       it should happen. What must not happen is it being opposite the sun at
+       every hour, which is what an inverted copy is. So this looks for the
+       hour where they are furthest from opposite, and requires one to exist:
+       measured, that is a dot product of -0.14, which is nearly a right
+       angle. An inverted copy would sit at -1.000 all day and fail here. */
+    let loosest = -1;
+    for (let p = 0; p < 1; p += 1 / 64) {
+      loosest = Math.max(loosest, sunDirection(p).dot(moonDirection(p)));
+    }
+    expect(loosest).toBeGreaterThan(-0.5);
+  });
+
+  it("keeps its own track, so the two do not sweep the sky together", () => {
+    /* Sampled as a whole day rather than at one hour: two bodies on the same
+       great circle have a constant angle between them, and a constant is
+       exactly what this is looking for. */
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let p = 0; p < 1; p += 1 / 64) {
+      const d = sunDirection(p).dot(moonDirection(p));
+      lo = Math.min(lo, d);
+      hi = Math.max(hi, d);
+    }
+    expect(hi - lo).toBeGreaterThan(0.5);
+  });
+
+  it("is above the horizon for most of the night", () => {
+    let up = 0;
+    let n = 0;
+    for (let p = 0.8; p < 1.2; p += 1 / 96) {
+      if (moonDirection(((p % 1) + 1) % 1).y > 0) up++;
+      n++;
+    }
+    expect(up / n).toBeGreaterThan(0.5);
   });
 });

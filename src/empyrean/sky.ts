@@ -57,6 +57,23 @@ export function sunDirFor(dayPhase: number, out = new THREE.Vector3()): THREE.Ve
   return out.set(Math.cos(azim) * c, elev, Math.sin(azim) * c).normalize();
 }
 
+/**
+ * Where the moon is.
+ *
+ * Not simply opposite the sun. A moon exactly antipodal to the sun is on the
+ * same great circle, so it traces the sun's path in reverse and the sky has
+ * one axis of symmetry all night — which reads as a mistake even to somebody
+ * who could not say what is wrong. This rides a different tilt and a slower
+ * drift, so on most nights the two are nowhere near each other's track.
+ */
+export function moonDirFor(dayPhase: number, out = new THREE.Vector3()): THREE.Vector3 {
+  const a = (dayPhase - 0.25) * Math.PI * 2 + Math.PI * 0.86;
+  const elev = Math.sin(a) * 0.62 + 0.12;
+  const azim = Math.PI * 0.34 + Math.cos(a) * 0.72;
+  const c = Math.cos(Math.asin(THREE.MathUtils.clamp(elev, -1, 1)));
+  return out.set(Math.cos(azim) * c, elev, Math.sin(azim) * c).normalize();
+}
+
 export interface SkyPalette {
   /** The five vertical stops, horizon to zenith. */
   rose: THREE.Color;
@@ -76,6 +93,16 @@ export interface SkyPalette {
   fog: THREE.Color;
   /** 0 at midnight, 1 at noon. Everything that switches on reads this. */
   daylight: number;
+  /**
+   * How much the moon is doing, 0..1.
+   *
+   * Separate from `1 - daylight` because they are not the same shape: the moon
+   * fades in over the last of the dusk and is full strength for the whole
+   * night, whereas daylight is still falling for hours after the moon has
+   * taken over. `lighting.ts` keys its night fill off this, which is the only
+   * reason a city at midnight has a direction to its light at all.
+   */
+  moon: number;
 }
 
 const _pal: SkyPalette = {
@@ -92,7 +119,20 @@ const _pal: SkyPalette = {
   cloudShade: new THREE.Color(),
   fog: new THREE.Color(),
   daylight: 1,
+  moon: 0,
 };
+
+/**
+ * One scratch colour for the whole module.
+ *
+ * `lerpKey` used to build a `new THREE.Color(b[k])` for each of ten stops,
+ * every call — inside a function whose own docstring explains that it returns
+ * a shared mutated object precisely because allocating a palette per frame is
+ * a garbage collector pause you can see. Ten allocations a frame is not a
+ * pause you can see, and it is exactly the kind of thing that is true of forty
+ * other places by the time anybody measures.
+ */
+const _scratch = new THREE.Color();
 
 /** Four keyframes; everything between them is a lerp. */
 const KEYS = [
@@ -101,15 +141,28 @@ const KEYS = [
     at: 0.0,
     rose: 0x1a1230, orange: 0x140f28, gold: 0x0e1030, jade: 0x0a1436,
     blue: 0x060c28, navy: 0x02030f,
-    sun: 0x9fb6ff, sunPower: 0.15, stars: 1, daylight: 0.0,
+    sun: 0x9fb6ff, sunPower: 0.15, stars: 1, daylight: 0.0, moon: 1,
     cloudLit: 0x2a2b52, cloudShade: 0x14152c, fog: 0x1b1836,
+  },
+  {
+    /* The blue hour before dawn.
+     *
+     * Without it the sky lerps midnight straight into dawn over a quarter of
+     * the day and the small hours arrive already pink. This is the hour that
+     * is *only* blue: the stars are still out, the horizon has the first cold
+     * light in it, and there is not a warm colour anywhere. */
+    at: 0.175,
+    rose: 0x3a3564, orange: 0x2e3a6e, gold: 0x3f5891, jade: 0x2c5f88,
+    blue: 0x122f6e, navy: 0x040a24,
+    sun: 0xbcc9ee, sunPower: 1.2, stars: 0.86, daylight: 0.06, moon: 0.72,
+    cloudLit: 0x4a4f7c, cloudShade: 0x1e2140, fog: 0x3a3a63,
   },
   {
     // dawn
     at: 0.25,
     rose: 0xff8fa8, orange: 0xff9d5c, gold: 0xffd39a, jade: 0x62c8c0,
     blue: 0x2a63b8, navy: 0x0b1a4a,
-    sun: 0xfff0d0, sunPower: 12, stars: 0.35, daylight: 0.45,
+    sun: 0xfff0d0, sunPower: 12, stars: 0.35, daylight: 0.45, moon: 0.25,
     cloudLit: 0xffc9b8, cloudShade: 0x6a5a86, fog: 0xf3c8c0,
   },
   {
@@ -117,7 +170,7 @@ const KEYS = [
     at: 0.5,
     rose: 0xbfe4ff, orange: 0xc9e8ff, gold: 0xdff1ff, jade: 0x8fd6f2,
     blue: 0x3f8fe0, navy: 0x1b58c0,
-    sun: 0xffffff, sunPower: 30, stars: 0, daylight: 1.0,
+    sun: 0xffffff, sunPower: 30, stars: 0, daylight: 1.0, moon: 0,
     cloudLit: 0xffffff, cloudShade: 0xa8b6cc, fog: 0xd8ecff,
   },
   {
@@ -125,19 +178,35 @@ const KEYS = [
     at: 0.75,
     rose: 0xff7099, orange: 0xff8f42, gold: 0xffd666, jade: 0x38d1b8,
     blue: 0x124db8, navy: 0x050a2c,
-    sun: 0xffd166, sunPower: 26, stars: 0.55, daylight: 0.32,
+    sun: 0xffd166, sunPower: 26, stars: 0.55, daylight: 0.32, moon: 0.30,
     cloudLit: 0xffb8cc, cloudShade: 0x664d8f, fog: 0xf3bfb2,
+  },
+  {
+    /* Dusk, and the reason it exists.
+     *
+     * Sunset to midnight was one lerp across a quarter of the day, so at half
+     * past ten at night the jade band was still a fifth of the way from its
+     * full sunset value and the horizon had a green cast in it hours after
+     * the sun had gone. A real dusk loses the warm colours *fast* — twenty
+     * minutes — and then spends two hours going from deep blue to black. Two
+     * keyframes, not one. */
+    at: 0.835,
+    rose: 0x4b2f57, orange: 0x3a2a52, gold: 0x2f3160, jade: 0x1c3a63,
+    blue: 0x0a1f56, navy: 0x03061a,
+    sun: 0xffb489, sunPower: 2.2, stars: 0.9, daylight: 0.10, moon: 0.86,
+    cloudLit: 0x554068, cloudShade: 0x231b3c, fog: 0x4a3355,
   },
 ];
 
 function lerpKey(a: (typeof KEYS)[number], b: (typeof KEYS)[number], t: number): SkyPalette {
   const c = (k: "rose" | "orange" | "gold" | "jade" | "blue" | "navy" | "sun" | "cloudLit" | "cloudShade" | "fog") =>
-    _pal[k].setHex(a[k]).lerp(new THREE.Color(b[k]), t);
+    _pal[k].setHex(a[k]).lerp(_scratch.setHex(b[k]), t);
   c("rose"); c("orange"); c("gold"); c("jade"); c("blue"); c("navy");
   c("sun"); c("cloudLit"); c("cloudShade"); c("fog");
   _pal.sunPower = THREE.MathUtils.lerp(a.sunPower, b.sunPower, t);
   _pal.stars = THREE.MathUtils.lerp(a.stars, b.stars, t);
   _pal.daylight = THREE.MathUtils.lerp(a.daylight, b.daylight, t);
+  _pal.moon = THREE.MathUtils.lerp(a.moon, b.moon, t);
   return _pal;
 }
 
@@ -161,7 +230,10 @@ export function skyPalette(dayPhase: number): SkyPalette {
       return lerpKey(a, b, t * t * (3 - 2 * t));
     }
   }
-  return lerpKey(KEYS[3], KEYS[0], 0);
+  /* Unreachable for any finite input — the sequence spans 0..1 inclusive —
+     but the array has changed length twice and indexing it by hand is how
+     that becomes an undefined dereference on the first frame. */
+  return lerpKey(KEYS[KEYS.length - 1], KEYS[0], 0);
 }
 
 /**
@@ -184,10 +256,12 @@ const FRAG = /* glsl */ `
 precision highp float;
 uniform float uTime;
 uniform vec3 uSunDir;
+uniform vec3 uMoonDir;
 uniform vec3 cRose, cOrange, cGold, cJade, cBlue, cNavy;
 uniform vec3 cSun, cCloudLit, cCloudShade, cFog;
 uniform float uSunPower;
 uniform float uStars;
+uniform float uMoon;
 varying vec3 vDir;
 
 /* ---- noise ----------------------------------------------------------- */
@@ -245,6 +319,52 @@ vec3 stars(vec3 rd) {
     }
   }
   return acc * up * uStars;
+}
+
+/* ---- the moon ---------------------------------------------------------
+ *
+ * A night sky without one is a night sky with no subject in it: stars are
+ * texture, and texture is not something you look at. It is also the only
+ * thing that gives the small hours a *direction* — the lighting rig keys its
+ * night fill off the same vector, so the city is lit from somewhere rather
+ * than lit from nowhere.
+ *
+ * Half a degree across, which is smaller than instinct says and is the number
+ * that makes the sky read as sky. The maria are two octaves of the same noise
+ * the clouds use, warped hard so they clump into continents rather than
+ * spreading into static.
+ */
+vec3 moon(vec3 rd, vec3 md) {
+  if (uMoon <= 0.01) return vec3(0.0);
+  float d = dot(rd, md);
+  if (d <= 0.0) return vec3(0.0);
+
+  /* The disc, with a limb that is *nearly* hard. A perfectly hard edge
+     aliases into a flickering pentagon at this size; a soft one is a smudge.
+     0.9993 to 0.99975 is about the width of one pixel at a sane field of
+     view, which is the correct answer to both. */
+  float disc = smoothstep(0.99930, 0.99975, d);
+
+  /* Maria. Sampled in the plane of the disc so they do not swim as the head
+     turns — project the ray onto two axes fixed to the moon rather than to
+     the world. */
+  vec3 up = abs(md.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+  vec3 mx = normalize(cross(up, md));
+  vec3 my = cross(md, mx);
+  vec2 uv = vec2(dot(rd, mx), dot(rd, my)) * 320.0;
+  float n = fbm(uv * 1.7 + 4.0);
+  float mare = smoothstep(0.44, 0.62, n);
+  vec3 rock = mix(vec3(1.0, 0.98, 0.94), vec3(0.62, 0.65, 0.76), mare * 0.85);
+  /* Limb darkening, so it is a sphere and not a sticker. */
+  float r = clamp(1.0 - (1.0 - d) / 0.0007, 0.0, 1.0);
+  rock *= 0.80 + 0.20 * sqrt(max(r, 0.0));
+
+  vec3 col = rock * disc * 2.6;
+  /* The tight glow the bloom pass catches, and the wide one that lifts the
+     whole quadrant the way a real moon lifts a whole night sky. */
+  col += vec3(0.78, 0.84, 1.00) * pow(max(d, 0.0), 2200.0) * 1.4;
+  col += vec3(0.42, 0.52, 0.86) * pow(max(d, 0.0), 26.0) * 0.10;
+  return col * uMoon;
 }
 
 /* ---- clouds -----------------------------------------------------------
@@ -312,7 +432,13 @@ void main() {
   col = mix(col, hiCol, hi.w * 0.72);
   col = mix(col, loCol, lo.w * 0.80);
 
-  col += stars(rd) * (1.0 - smoothstep(0.0, 0.55, sunAmt) * 0.6);
+  /* Stars, then the moon over them. The moon washes out the stars around it
+     for about fifteen degrees, which is the thing your eye actually knows
+     about a moonlit sky even if it has never articulated it. */
+  vec3 md = normalize(uMoonDir);
+  float moonWash = 1.0 - smoothstep(0.86, 0.998, dot(rd, md)) * 0.85 * uMoon;
+  col += stars(rd) * (1.0 - smoothstep(0.0, 0.55, sunAmt) * 0.6) * moonWash;
+  col += moon(rd, md);
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -334,6 +460,7 @@ export function buildSky(): SkyHandle {
     uniforms: {
       uTime: { value: 0 },
       uSunDir: { value: SUN_DIR.clone() },
+      uMoonDir: { value: moonDirFor(DEFAULT_DAY_PHASE) },
       cRose: { value: new THREE.Color() },
       cOrange: { value: new THREE.Color() },
       cGold: { value: new THREE.Color() },
@@ -346,6 +473,7 @@ export function buildSky(): SkyHandle {
       cFog: { value: new THREE.Color() },
       uSunPower: { value: 26 },
       uStars: { value: 0.55 },
+      uMoon: { value: 0.3 },
     },
     side: THREE.BackSide,
     depthWrite: false,
@@ -375,7 +503,9 @@ export function buildSky(): SkyHandle {
     (u.cFog.value as THREE.Color).copy(pal.fog);
     u.uSunPower.value = pal.sunPower;
     u.uStars.value = pal.stars;
+    u.uMoon.value = pal.moon;
     sunDirFor(dayPhase, u.uSunDir.value as THREE.Vector3);
+    moonDirFor(dayPhase, u.uMoonDir.value as THREE.Vector3);
     return pal;
   };
   setDayPhase(DEFAULT_DAY_PHASE);

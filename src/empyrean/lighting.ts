@@ -86,7 +86,7 @@
  * belongs.
  */
 import * as THREE from "three";
-import { skyPalette, sunDirFor, DEFAULT_DAY_PHASE } from "./sky";
+import { skyPalette, sunDirFor, moonDirFor, DEFAULT_DAY_PHASE } from "./sky";
 import type { BuildContext, FrameContext, System } from "./types";
 
 /** The phase the world opens at, and mostly stays at. */
@@ -289,6 +289,9 @@ const GROUND_VIOLET = /*@__PURE__*/ new THREE.Color().setRGB(0.42, 0.36, 0.55, T
  * Pure apart from `skyPalette`'s shared scratch object, which it reads and
  * copies out of before returning. Allocation-free when handed an `out`.
  */
+/** Module scratch. `dayLook` is called every frame and must not allocate. */
+const _moon = new THREE.Vector3();
+
 export function dayLook(p: number, out: DayLook = makeDayLook()): DayLook {
   out.phase = ((p % 1) + 1) % 1;
   sunDirFor(out.phase, out.sunDir);
@@ -304,6 +307,23 @@ export function dayLook(p: number, out: DayLook = makeDayLook()): DayLook {
 
   // The key never dips below the horizon; see the header.
   out.keyDir.set(out.sunDir.x, Math.max(y, KEY_HEIGHT_FLOOR), out.sunDir.z).normalize();
+
+  /* Once the sun has gone, the key is the moon.
+   *
+   * Without this the night key sits at the *sun's* azimuth held up at the
+   * floor — so the city is lit all night from the exact spot where the sun
+   * set, hours after it set, which is subtly wrong in a way nobody can name
+   * and everybody feels. Now the light comes from where the moon actually is,
+   * and `sky.ts` draws the moon in that direction, so for the first time the
+   * shadows in the street agree with the thing in the sky that is casting
+   * them. Blended rather than switched: through dusk both are in the sky and
+   * the key should be somewhere between them. */
+  const moonWeight = pal.moon * (1 - out.gradeDaylight);
+  if (moonWeight > 0.001) {
+    moonDirFor(out.phase, _moon);
+    _moon.y = Math.max(_moon.y, KEY_HEIGHT_FLOOR);
+    out.keyDir.lerp(_moon.normalize(), moonWeight).normalize();
+  }
 
   /* The disc's own colour is the key light's colour, by construction rather
    * than by matching: gold at sunset, white at noon, a pale blue at midnight
@@ -338,6 +358,11 @@ export function dayLook(p: number, out: DayLook = makeDayLook()): DayLook {
   out.fogDensity = a.fogD + (b.fogD - a.fogD) * t;
   out.exposure = a.exposure + (b.exposure - a.exposure) * t;
   return out;
+}
+
+/** Unit vector toward the moon at `dayPhase` p. `sky.ts` decides the path. */
+export function moonDirection(p: number, out = new THREE.Vector3()): THREE.Vector3 {
+  return moonDirFor(p, out);
 }
 
 /** Unit vector toward the sun at `dayPhase` p. `sky.ts` decides the path. */
