@@ -235,9 +235,6 @@ export default function Empyrean() {
             </p>
           </div>
 
-          <div className="mt-4 flex w-full justify-center sm:mt-5">
-            <Guestbook />
-          </div>
 
           <Link
             to="/"
