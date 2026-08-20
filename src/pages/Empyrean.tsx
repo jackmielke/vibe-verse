@@ -20,6 +20,9 @@ import { Link } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import type { EmpyreanState } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
+import Guestbook from "@/empyrean/ui/Guestbook";
+import empyreanArt from "@/assets/empyrean-inspiration.png.asset.json";
+
 import EmpyreanSkyPanel, { readSkyChoice } from "@/components/EmpyreanSkyPanel";
 // Type-only, so naming the five conditions here costs nothing at runtime and
 // the panel's string ids are checked against the engine's own union.
