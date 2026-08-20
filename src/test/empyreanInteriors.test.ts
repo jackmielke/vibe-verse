@@ -15,6 +15,7 @@ import { ISLAND_Y } from "@/empyrean/config";
 import { cityPlan, walkableAt, LANDMARKS, type Lot, type Vec2 } from "@/empyrean/cityplan";
 import { BODY_R, CLIMB, makeFlyer, stepFlyer } from "@/empyrean/flight";
 import { buildCollision } from "@/empyrean/collide";
+import { SUN_DIR } from "@/empyrean/sky";
 import { spirePlan, type SpirePlan } from "@/empyrean/spire";
 import {
   buildInteriors,
@@ -101,9 +102,9 @@ function frame(x: number, y: number, z: number): FrameContext {
 }
 
 describe("empyrean interiors — the plan", () => {
-  it("names five rooms, each once", () => {
-    expect(plan.length).toBe(5);
-    expect(new Set(plan.map((r) => r.id)).size).toBe(5);
+  it("names nine rooms, each once", () => {
+    expect(plan.length).toBe(9);
+    expect(new Set(plan.map((r) => r.id)).size).toBe(9);
     for (const r of plan) {
       expect(r.name.length).toBeGreaterThan(3);
       expect(r.y).toBe(ISLAND_Y);
@@ -133,7 +134,10 @@ describe("empyrean interiors — the plan", () => {
   it("faces every lot room out of its own shopfront, and stands inside the lot", () => {
     const lots = cityPlan().lots;
     const onLots = plan.filter((r) => r.lot);
-    expect(onLots.length).toBe(2);
+    expect(onLots.length).toBe(6);
+    // And no two of them on the same one, which is the failure mode of a rule
+    // like "the nearest gardens shop" once two rooms both want one.
+    expect(new Set(onLots.map((r) => r.lot)).size).toBe(6);
     for (const r of onLots) {
       const lot = lots.find((l) => l.id === r.lot);
       expect(lot, `lot ${r.lot}`).toBeTruthy();
@@ -167,11 +171,12 @@ describe("empyrean interiors — the build", () => {
     expect(built.blockers.length).toBeGreaterThan(40);
     expect(built.decks.length).toBeGreaterThan(10);
     const ids = cityPlan().lots.map((l) => l.id);
-    // Two shop lots for the cafe and the gallery, and the tower The Meridian
-    // stands in — see `spire.ts`, and the spire suite at the bottom of this
-    // file for what happens if that claim ever goes missing.
-    expect(built.claimedLots.length).toBe(3);
-    expect(new Set(built.claimedLots).size).toBe(3);
+    // Six lot rooms — the cafe, the gallery, the flat, the glasshouse, the
+    // workshop and the bath — plus the tower The Meridian stands in; see
+    // `spire.ts`, and the spire suite at the bottom of this file for what
+    // happens if that claim ever goes missing.
+    expect(built.claimedLots.length).toBe(7);
+    expect(new Set(built.claimedLots).size).toBe(7);
     for (const id of built.claimedLots) expect(ids).toContain(id);
   });
 
@@ -350,6 +355,185 @@ describe("empyrean interiors — the build", () => {
 
     expect(() => built.dispose()).not.toThrow();
     expect(built.group.children.length).toBe(0);
+  });
+});
+
+/* =========================================================================
+ * The four rooms that are chosen rather than inherited
+ *
+ * The café and the gallery take "the nearest shop to the landmark" and that
+ * is the whole rule. These four each want something more specific — a lot big
+ * enough, a lot the right *height*, a lot whose front faces off the edge of
+ * the island — and every one of those is a rule over the plan rather than a
+ * coordinate, for the reason `spire.ts` gives: reseed `cityplan.ts` and a
+ * coordinate is a photograph of whatever ended up standing there instead.
+ *
+ * So the assertions here are the ones that catch a rule that has quietly
+ * stopped being a rule: every lot the rule passed over has to fail it.
+ * ====================================================================== */
+
+describe("empyrean interiors — the rooms on chosen lots", () => {
+  const lots = cityPlan().lots;
+  const built = buildInteriors({ quality: "high", seedSalt: "rooms" });
+  const world = buildCollision(built.blockers as never[], built.decks as never[]);
+  const room = (id: string) => plan.find((r) => r.id === id)!;
+  const lotOf = (id: string) => lots.find((l) => l.id === room(id).lot)!;
+  const near = (l: Lot, to: { x: number; z: number }) =>
+    Math.hypot(l.centroid.x - to.x, l.centroid.z - to.z);
+
+  /** The placement's own fit test, restated: all four corners inside the lot. */
+  function fits(lot: Lot, hx: number, hz: number): boolean {
+    const yaw = Math.atan2(lot.frontNormal.z, lot.frontNormal.x);
+    const cx = lot.frontMid.x - lot.frontNormal.x * (hz + 0.5);
+    const cz = lot.frontMid.z - lot.frontNormal.z * (hz + 0.5);
+    const s = Math.sin(yaw);
+    const c = Math.cos(yaw);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+      const p = { x: cx + sx * hx * s + sz * hz * c, z: cz - sx * hx * c + sz * hz * s };
+      if (!pointInPoly(p, lot.poly)) return false;
+    }
+    return true;
+  }
+
+  it("puts the flat and the workshop on the nearest lot that will hold them", () => {
+    const tram = LANDMARKS.find((l) => l.id === "tram-halo")!;
+    for (const [id, use, district] of [
+      ["home", "block", "market"],
+      ["armature", "civic", "core"],
+    ] as const) {
+      const r = room(id);
+      const mine = lotOf(id);
+      expect(mine, `${id} has no lot`).toBeTruthy();
+      expect(mine.use, id).toBe(use);
+      expect(mine.district, id).toBe(district);
+      const d = near(mine, tram);
+      for (const other of lots) {
+        if (other.id === mine.id || other.use !== use || other.district !== district) continue;
+        if (other.landmark || built.claimedLots.includes(other.id)) continue;
+        if (near(other, tram) >= d) continue;
+        expect(
+          fits(other, r.hx, r.hz),
+          `${other.id} is nearer the tram than ${mine.id} and was passed over`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("puts the glasshouse on a lot the right height to be one", () => {
+    /* Not "near the Hall" — near is the tie-break. A glasshouse under six
+       storeys of somebody's flat is a cellar with tomatoes in it, so the rule
+       leads with the lot's own eaves and this is that half of it. */
+    const lot = lotOf("glasshouse");
+    expect(lot.use).toBe("shop");
+    expect(lot.district).toBe("gardens");
+    expect(Math.abs(lot.height - room("glasshouse").height)).toBeLessThan(2.5);
+  });
+
+  it("faces the bath off the edge of the island, into the sunset", () => {
+    const lot = lotOf("bath");
+    expect(lot.use).toBe("pavilion");
+    expect(lot.district).toBe("rim");
+    const sunAz = Math.atan2(SUN_DIR.z, SUN_DIR.x);
+    const off = (l: Lot) => {
+      let d = (Math.atan2(l.frontNormal.z, l.frontNormal.x) - sunAz) % (Math.PI * 2);
+      if (d > Math.PI) d -= Math.PI * 2;
+      if (d < -Math.PI) d += Math.PI * 2;
+      return Math.abs(d);
+    };
+    const outward = (l: Lot) => {
+      const rl = Math.hypot(l.frontMid.x, l.frontMid.z) || 1;
+      return (l.frontMid.x / rl) * l.frontNormal.x + (l.frontMid.z / rl) * l.frontNormal.z;
+    };
+    // The rim's lots face outward or along the ring, never in. This one faces
+    // out, or the entire room is a glass wall onto the back of a shop.
+    expect(outward(lot)).toBeGreaterThan(0.8);
+    expect(off(lot)).toBeLessThan(Math.PI / 3);
+    const r = room("bath");
+    for (const other of lots) {
+      if (other.id === lot.id || other.use !== "pavilion" || other.district !== "rim") continue;
+      if (other.landmark || built.claimedLots.includes(other.id)) continue;
+      if (outward(other) <= 0.8 || !fits(other, r.hx, r.hz)) continue;
+      expect(off(other), `${other.id} looks nearer the sunset and was passed over`)
+        .toBeGreaterThanOrEqual(off(lot) - 1e-9);
+    }
+  });
+
+  it("builds the rest of the building over a room shorter than its lot", () => {
+    /* A claimed lot is a lot `buildings.ts` never builds. For a three-metre
+       flat on a thirty-five-metre block that is a hole in the street, and
+       `props.ts` — which is handed no claim list — goes on putting that lot's
+       roof clutter at `lot.y + lot.height` regardless. Two things have to be
+       true or the shell is worse than nothing: it is solid, and it has a floor
+       on top. A blocker with no deck over it is a roof you fall through. */
+    for (const id of ["home", "armature"] as const) {
+      const r = room(id);
+      const lot = lotOf(id);
+      expect(lot.height, `${id}: lot is not tall enough to be worth testing`)
+        .toBeGreaterThan(r.height + 6);
+      // `Lot.height` is eaves above the lot's own deck, and every lot on this
+      // island stands on the main one — so the shell's top is ISLAND_Y + it.
+      const top = lot.height;
+      for (const t of [0.35, 0.6, 0.9]) {
+        const y = ISLAND_Y + r.height + (top - r.height) * t;
+        expect(world.blockedAt(r.x, r.z, y, BODY_R), `${id} is hollow at ${y | 0}`).toBe(true);
+      }
+      expect(
+        world.supportAt(r.x, r.z, ISLAND_Y + top + 0.5) - ISLAND_Y,
+        `${id}: nothing to land on at the lot's own eaves`,
+      ).toBeCloseTo(top, 1);
+    }
+  });
+
+  it("lets you climb into the bath, and stops you everywhere else", () => {
+    const r = room("bath");
+    const flyWorld = {
+      supportAt: world.supportAt,
+      blockedAt: (x: number, z: number, y: number) => world.blockedAt(x, z, y),
+      killY: -400,
+      spawn: { x: 0, y: ISLAND_Y, z: 0, yaw: 0 },
+    };
+    /* The tank is *raised*, not sunk, and this is the test that says why: a
+       `Deck` below the deck is not a hole you can stand in, because the ground
+       always wins, so a sunk bath is one the body strolls over the top of. */
+    const s = makeFlyer({ x: r.doorstep.x, y: ISLAND_Y + 0.3, z: r.doorstep.z, yaw: 0 });
+    const camYaw = Math.atan2(-(r.x - r.doorstep.x), -(r.z - r.doorstep.z));
+    for (let i = 0; i < 600; i++) {
+      stepFlyer(s, { forward: 1, strafe: 0, run: false, jet: false, camYaw }, flyWorld, 1 / 60);
+    }
+    expect(s.grounded).toBe(true);
+    expect(built.inside(s.position.x, s.position.y + 1.2, s.position.z)).toBe("bath");
+    // Standing in the water, which is above the tiled floor and below the rim.
+    expect(s.position.y - ISLAND_Y, "walked in but never got in").toBeGreaterThan(0.1);
+    expect(s.position.y - ISLAND_Y).toBeLessThan(CLIMB);
+
+    /* And there is exactly one way over the coping. Scanned across the front
+       of the tank only — past its ends the floor is open and a run out there
+       would pass this test while the bath stayed sealed. */
+    let run = 0;
+    let best = 0;
+    let hasAxis = false;
+    let bestHasAxis = false;
+    for (let x = -8; x <= 8; x += 0.05) {
+      const p = toWorld(r, x, 1.6);
+      if (world.blockedAt(p.x, p.z, ISLAND_Y + 0.1, BODY_R)) {
+        run = 0;
+        hasAxis = false;
+        continue;
+      }
+      run += 0.05;
+      if (Math.abs(x) < 0.05) hasAxis = true;
+      if (run > best) {
+        best = run;
+        bestHasAxis = hasAxis;
+      }
+    }
+    expect(best, "no way over the coping at all").toBeGreaterThan(1.2);
+    expect(best, "the coping is not a coping").toBeLessThan(6);
+    expect(bestHasAxis, "the way in is not the way you walk in").toBe(true);
+  });
+
+  it("lets go of all four", () => {
+    expect(() => built.dispose()).not.toThrow();
   });
 });
 

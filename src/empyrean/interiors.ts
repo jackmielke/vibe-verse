@@ -61,9 +61,16 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { makeRng, type Rng } from "@/shared/proc/rng";
 import { ISLAND_Y } from "./config";
-import { cityPlan, LANDMARKS, type Landmark, type Lot } from "./cityplan";
+import {
+  cityPlan,
+  LANDMARKS,
+  type DistrictId,
+  type Landmark,
+  type Lot,
+  type Vec2,
+} from "./cityplan";
 import { SUN_DIR } from "./sky";
-import { buildSpire, type SpirePlan } from "./spire";
+import { buildSpire, spirePlan, type SpirePlan } from "./spire";
 import type { BuildContext, FrameContext, Interactable, System } from "./types";
 
 /* -------------------------------------------------------------------------
@@ -607,6 +614,32 @@ class Rb {
   }
 }
 
+/**
+ * Below this many copies, a "population" is folded back into the room's merged
+ * mesh instead of becoming an `InstancedMesh` of its own.
+ *
+ * Instancing is the right answer for four hundred market crates and the wrong
+ * one for three mugs: an `InstancedMesh` is one draw call whatever its count,
+ * and one draw call for ninety triangles is worse than no draw call at all.
+ * Six rooms' worth of two-mug, three-bulb, one-crate sets was ten draws of the
+ * forty this whole system is allowed. The call sites do not change — `inst` is
+ * still what you write — because which side of the line a set lands on depends
+ * on how the room turned out, not on what its author intended.
+ */
+const INST_MIN = 6;
+
+/** Multiply a geometry's per-vertex tint, for an instance being baked flat. */
+function tintGeometry(g: THREE.BufferGeometry, hex: number): void {
+  if (hex === 0xffffff) return;
+  const a = g.getAttribute("aTint") as THREE.BufferAttribute | undefined;
+  if (!a) return;
+  _cA.setHex(hex, THREE.SRGBColorSpace);
+  for (let i = 0; i < a.count; i++) {
+    a.setXYZ(i, a.getX(i) * _cA.r, a.getY(i) * _cA.g, a.getZ(i) * _cA.b);
+  }
+  a.needsUpdate = true;
+}
+
 /** A matrix, without allocating one at every call site. */
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -775,6 +808,29 @@ function bulbGeo(): THREE.BufferGeometry {
   });
 }
 
+/**
+ * A tuft of leaves. Painted white and tinted per instance, the way the fruit
+ * is, so one geometry covers chard, lettuce and whatever is in the seed trays.
+ */
+function leafGeo(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const stem = new THREE.BoxGeometry(0.03, 0.15, 0.03);
+  stem.translate(0, 0.075, 0);
+  parts.push(prep(stem));
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.3;
+    const g = new THREE.BoxGeometry(0.22, 0.03, 0.12);
+    g.translate(0.11, 0, 0);
+    g.rotateZ(0.42);
+    g.rotateY(a);
+    g.translate(0, 0.17, 0);
+    parts.push(prep(g));
+  }
+  const g = mergeGeometries(parts, false)!;
+  parts.forEach((p) => p.dispose());
+  return paint(g, { col: 0xffffff });
+}
+
 /* -------------------------------------------------------------------------
  * Pieces every room wants
  * ---------------------------------------------------------------------- */
@@ -818,6 +874,33 @@ function wallWithOpening(
     b.box(openW, top - openH, thick, ox, (top + openH) / 2, z, skin);
     // Deliberately no blocker: a lintel you can walk under is a lintel.
   }
+}
+
+/**
+ * The same skin, with the sun back on its *outward* face.
+ *
+ * `aSky` is how a vertex is told it can see the sky, and the note at the top
+ * of this file says it is for skylights. That was right while every room here
+ * was a shopfront three metres tall: an interior shader lights from the room's
+ * own lamps, and a wall two metres from a bulb does not need the sun.
+ *
+ * It stops being right the moment one of these rooms owns the whole lot. The
+ * flat's block is thirty-six metres of wall with no lamp within thirty of it,
+ * and the ambient here is a *room's* ambient — 0x2a2740, which against the
+ * masonry works out at about half a per cent of white. It came out perfectly
+ * black, in a street of buildings `buildings.ts` had lit properly, and read as
+ * a hole in the city rather than as a building.
+ *
+ * The predicate is what keeps the file's rule intact: a wall box straddles its
+ * own centre line, so its outer face is outside the room's half-extent and its
+ * inner face is inside it, and only the outer one is given the sun. The sun
+ * still does not come indoors.
+ */
+function faceSky(base: Skin, hx: number, hz: number, amount = 0.8): Skin {
+  return {
+    ...base,
+    sky: (x, _y, z) => (Math.abs(x) > hx + 0.001 || Math.abs(z) > hz + 0.001 ? amount : 0),
+  };
 }
 
 /** A plain wall along X, solid all the way. */
@@ -1275,9 +1358,12 @@ function buildCafe(b: Rb): void {
     b.box(hx * 2, 0.22, 0.24, 0, ceil - 0.11, i * 2, { col: P.timber });
   }
 
-  wallX(b, -hz, -hx, hx, 0.3, ceil, wallSkin);
-  wallZ(b, -hx, -hz, hz, 0.3, ceil, wallSkin);
-  wallZ(b, hx, -hz, hz, 0.3, ceil, wallSkin);
+  // The outward faces are the shopfront, and this room *is* the building on
+  // its lot, so they are lit as one — see `faceSky`.
+  const outerSkin = faceSky(wallSkin, hx, hz);
+  wallX(b, -hz, -hx, hx, 0.3, ceil, outerSkin);
+  wallZ(b, -hx, -hz, hz, 0.3, ceil, outerSkin);
+  wallZ(b, hx, -hz, hz, 0.3, ceil, outerSkin);
 
   /* ---- the shopfront: a door in the middle, glass either side ---- */
   wallWithOpening(b, {
@@ -1288,7 +1374,7 @@ function buildCafe(b: Rb): void {
     top: ceil,
     openW,
     openH,
-    skin: wallSkin,
+    skin: outerSkin,
   });
   /* Both windows, and the door dead centre between them.
    *
@@ -2019,11 +2105,12 @@ function buildGallery(b: Rb): void {
     col2: 0x7a6c72,
     mix: () => 0.2 + 0.3 * Math.abs(Math.sin(x * 0.9 + z * 1.3)),
   }));
-  wallX(b, -hz, -hx, hx, 0.3, ceil, wallSkin);
-  wallZ(b, -hx, -hz, hz, 0.3, ceil, wallSkin);
-  wallZ(b, hx, -hz, hz, 0.3, ceil, wallSkin);
+  const outerSkin = faceSky(wallSkin, hx, hz);
+  wallX(b, -hz, -hx, hx, 0.3, ceil, outerSkin);
+  wallZ(b, -hx, -hz, hz, 0.3, ceil, outerSkin);
+  wallZ(b, hx, -hz, hz, 0.3, ceil, outerSkin);
   wallWithOpening(b, {
-    z: hz, x0: -hx, x1: hx, thick: 0.3, top: ceil, openW, openH, skin: wallSkin,
+    z: hz, x0: -hx, x1: hx, thick: 0.3, top: ceil, openW, openH, skin: outerSkin,
   });
 
   // A coffered ceiling with a long skylight down the middle.
@@ -2106,6 +2193,1493 @@ function buildGallery(b: Rb): void {
 }
 
 /* -------------------------------------------------------------------------
+ * The rest of the building
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Everything above the room, on a lot whose building is taller than it is.
+ *
+ * A claimed lot is a lot `buildings.ts` never builds, and for the café and the
+ * gallery that is the whole story — they are three metres tall on a lot that
+ * was going to be twelve. It stops being the whole story on a thirty-five
+ * metre block: the street gets a hole in it, and `props.ts` — which is handed
+ * no claim list and wants none — goes on putting that lot's roof clutter at
+ * `lot.y + lot.height`, which is now thirty metres of clear air over a flat
+ * roof that is not there.
+ *
+ * So a room on a tall lot builds the rest of its own building. Four blank
+ * walls, a grid of windows with somebody home behind about half of them, a
+ * parapet, a deck so the roof can be landed on — and **one blocker filling the
+ * whole volume**, because the alternative is a hollow tower, and `spire.ts`
+ * has already paid for the lesson that a camera boom inside one of those is a
+ * black frame with the player two metres away behind a wall.
+ *
+ * It is all merged into the room's own shell mesh, so it costs no draw call at
+ * all: a few hundred triangles for a building that would otherwise be missing.
+ */
+function upperShell(
+  b: Rb,
+  o: {
+    hx: number;
+    hz: number;
+    thick: number;
+    /** Bottom of the shell — the room's ceiling. */
+    from: number;
+    /** The lot's own eaves height. */
+    to: number;
+    skin: Skin;
+    /** Window colour for the flats that are in. */
+    warm?: number;
+    /** How many of them are. */
+    lit?: number;
+  },
+): void {
+  const { hx, hz, thick, from, to, skin } = o;
+  // Under two metres there is no storey to build and a lid is enough.
+  if (to <= from + 2.0) return;
+  const rng = b.rng;
+  const warm = o.warm ?? 0xffb877;
+  const litP = o.lit ?? 0.42;
+  const ex = hx + thick / 2;
+  const ez = hz + thick / 2;
+  const h = to - from;
+  const my = (from + to) / 2;
+
+  /* Every face of this is outdoors — the volume it encloses is solid and
+     nobody ever sees the inside of it — so the sun goes on all of it rather
+     than on the outward half only. Without it the block is a black hole in a
+     lit street; see `faceSky`. */
+  const lit = { ...skin, sky: 1.15 };
+  b.box(ex * 2, h, thick, 0, my, hz, lit);
+  b.box(ex * 2, h, thick, 0, my, -hz, lit);
+  b.box(thick, h, ez * 2 - thick * 2, hx, my, 0, lit);
+  b.box(thick, h, ez * 2 - thick * 2, -hx, my, 0, lit);
+  b.box(ex * 2, 0.5, ez * 2, 0, to - 0.25, 0, { col: 0x5a5462, sky: 1.15 });
+  for (const [px, pz, w, d] of [
+    [0, ez, ex * 2, 0.34] as const,
+    [0, -ez, ex * 2, 0.34] as const,
+    [ex, 0, 0.34, ez * 2] as const,
+    [-ex, 0, 0.34, ez * 2] as const,
+  ]) {
+    b.box(w, 0.95, d, px, to + 0.48, pz, {
+      col: 0x8c8390, col2: 0x4a444f, mix: (_x, y) => (y > to + 0.8 ? 0 : 0.7), sky: 1.15,
+    });
+    b.blocker(px, pz, w / 2, d / 2, to, to + 0.95);
+  }
+  b.blocker(0, 0, ex, ez, from, to);
+  // A roof is only a roof if something can land on it.
+  b.deck(0, 0, ex - 0.4, ez - 0.4, to);
+
+  /* ---- the windows, which are the only reason anybody looks up ---- */
+  const rows: number[] = [];
+  for (let y = from + 1.6; y < to - 2.4; y += 3.1) rows.push(y);
+  const cols = (half: number) => {
+    const n = Math.max(2, Math.floor((half * 2 - 1.8) / 2.7));
+    const out: number[] = [];
+    for (let i = 0; i < n; i++) out.push(-half + (half * 2 * (i + 0.5)) / n);
+    return out;
+  };
+  const pane = (u: number, y: number, ry: number, out: number, w: number) => {
+    const sx = Math.sin(ry);
+    const sz = Math.cos(ry);
+    // A pane on face `ry` sits `out` metres along that face's own normal, and
+    // slides along the face's tangent, which is the normal turned a quarter.
+    const px = -sz * u + sx * out;
+    const pz = sx * u + sz * out;
+    const on = rng.chance(litP);
+    const g = new THREE.PlaneGeometry(w, 1.55);
+    g.rotateY(ry);
+    g.translate(px, y, pz);
+    b.add(g, on ? { col: warm, emit: 0.85 } : { col: 0x2b3242, emit: 0.04, sky: 0.7 });
+    if (on && b.quality === "high") {
+      const gg = new THREE.PlaneGeometry(w * 1.3, 2.0);
+      gg.rotateY(ry);
+      gg.translate(px + sx * 0.03, y, pz + sz * 0.03);
+      b.lit(gg, { col: warm, power: 0.5, flick: rng.next() });
+    }
+  };
+  for (const y of rows) {
+    for (const u of cols(hx)) {
+      pane(u, y, 0, hz + thick / 2 + 0.03, 1.5);
+      pane(-u, y, Math.PI, hz + thick / 2 + 0.03, 1.5);
+    }
+    for (const u of cols(hz)) {
+      pane(-u, y, Math.PI / 2, hx + thick / 2 + 0.03, 1.5);
+      pane(u, y, -Math.PI / 2, hx + thick / 2 + 0.03, 1.5);
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * 6. Twelve Anchor Row — somebody's flat
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The one room here that is nobody's business but the people who live in it.
+ *
+ * Every other inside on this island is somewhere you are *meant* to be: a
+ * market, a station, a gallery, a shop that wants your money. The city they
+ * add up to is a city that shops, commutes and looks at art, and says nothing
+ * at all about anybody living here — which for a world whose whole argument is
+ * "it went well" is the argument's missing half.
+ *
+ * So: the ground-floor flat of an ordinary block of flats, with the door open,
+ * the light on and dinner on the table. The forty windows above it are lit
+ * too, and about half of them, which is the other half of the same point.
+ */
+/* The opening is 4.2 m and not the 2.8 a front door would be, and that is not
+ * generosity. The doorway test is not about the door: it walks a body across
+ * the threshold and asks for 2.5 m of run it can stand in, and what is left
+ * of an opening after two body radii and the chopped jambs of an *oblique*
+ * room is the opening minus about 1.4 m — and the cost depends on the room's
+ * *yaw*, because a wall at 45° to the world is the worst case for the chop: it
+ * is why the workshop needs five metres and this needs four and a bit for the
+ * same result. Measure it, do not reason about it. `empyreanInteriors.test.ts`
+ * walks the threshold and is the only opinion that counts.
+ *
+ * So this is a glazed ground-floor frontage with the door folded back against
+ * it, which is what the flat under a block of flats has anyway — and it has
+ * the side effect the room needs most: from the pavement, you can see the
+ * table. */
+/* The ceiling is 3.6 m, and a flat with a three-metre ceiling is the more
+ * plausible room. It was 3.05 and it made the room unphotographable, for a
+ * reason worth writing down because it will catch the next low room too:
+ *
+ * `camera.ts` aims the boom **2.6 m above the player's feet**, and pulls the
+ * lens in along the boom when it is inside something — which indoors, in a
+ * room whose own walls are blockers, is most of the time. So the working
+ * assumption for any room here is that the lens ends up *at the target*, 2.6 m
+ * up. At a 3.05 m ceiling that is 45 cm of clearance, and the ceiling slab
+ * itself is 30 cm thick starting at the ceiling — so a body a foot off the
+ * floor (mid-step, mid-jump, or warped there by a screenshot script) puts the
+ * lens inside the slab, and the frame becomes one flat fill with a seam across
+ * it. It does not read as a camera problem; it reads as the room not being
+ * there. The café is at 3.5 and has never had it. Keep interior ceilings above
+ * about 3.5 m or accept that the room cannot be looked at. */
+const HOME = { hx: 6.2, hz: 8.0, ceil: 3.6, openW: 4.4, openH: 2.4 };
+
+function buildHome(b: Rb, shellTop: number): void {
+  const { hx, hz, ceil, openW, openH } = HOME;
+  const rng = b.rng;
+
+  const wallSkin: Skin = {
+    col: 0x9b7f6a,
+    col2: 0x3d2f2c,
+    mix: (_x, y) => THREE.MathUtils.clamp(1 - y / ceil, 0, 1) * 0.7,
+  };
+
+  /* ---- floorboards, running front to back, and a rug ---- */
+  pavedFloor(b, hx, hz, 0.62, (x) => ({
+    col: 0x7a5637,
+    col2: 0x9a7350,
+    mix: () => 0.2 + 0.6 * ((Math.sin(x * 9.1) + 1) / 2),
+  }));
+  const rug = quad(-2.0, 0.02, 0.6, 3.4, 0.02, 0.6, 3.4, 0.02, 5.4, -2.0, 0.02, 5.4);
+  b.add(rug, {
+    col: 0xa8483c,
+    col2: 0xd8a35c,
+    mix: (x, _y, z) => (Math.abs(Math.sin(x * 1.6) + Math.cos(z * 1.9)) > 1.1 ? 0.9 : 0.1),
+  });
+
+  b.box(hx * 2, 0.3, hz * 2, 0, ceil + 0.15, 0, { col: 0x413026 });
+  const outerSkin = faceSky(wallSkin, hx, hz);
+  wallX(b, -hz, -hx, hx, 0.3, ceil, outerSkin);
+  wallZ(b, -hx, -hz, hz, 0.3, ceil, outerSkin);
+  wallZ(b, hx, -hz, hz, 0.3, ceil, outerSkin);
+  wallWithOpening(b, { z: hz, x0: -hx, x1: hx, thick: 0.3, top: ceil, openW, openH, skin: outerSkin });
+
+  /* ---- the street front: a window either side of the door ---- */
+  for (const side of [-1, 1] as const) {
+    const w0 = side < 0 ? -hx + 0.45 : openW / 2 + 0.4;
+    const w1 = side < 0 ? -openW / 2 - 0.4 : hx - 0.45;
+    const ww = w1 - w0;
+    const wc = (w0 + w1) / 2;
+    b.box(ww, 0.95, 0.34, wc, 0.48, hz, { col: 0x4a3730 });
+    b.blocker(wc, hz, ww / 2, 0.2, 0, ceil);
+    b.box(ww, 1.55, 0.08, wc, 1.75, hz, {
+      col: P.glassWarm,
+      col2: P.glassCool,
+      mix: (_x, y) => THREE.MathUtils.clamp((y - 1.0) / 1.5, 0, 1),
+      emit: 0.28,
+      sky: 0.4,
+    });
+    b.box(0.09, 1.6, 0.14, wc, 1.75, hz, { col: 0x4a3730 });
+    b.box(ww + 0.3, 0.14, 0.42, wc, 2.65, hz, { col: 0x4a3730 });
+    // Curtains, half drawn. The single cheapest way to say somebody chose this.
+    for (const cs of [-1, 1] as const) {
+      b.box(ww * 0.3, 1.5, 0.06, wc + cs * ww * 0.34, 1.8, hz - 0.14, {
+        col: cs < 0 ? 0xd8b46a : 0xc98a6a,
+        col2: 0x6a4a38,
+        mix: (_x, y) => THREE.MathUtils.clamp(1 - (y - 1.0) / 1.4, 0, 1) * 0.6,
+      });
+    }
+  }
+  // A pot of something green on the left sill.
+  b.box(0.3, 0.26, 0.28, -3.6, 1.08, hz - 0.42, { col: 0x9a5b45 });
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU;
+    const g = new THREE.BoxGeometry(0.06, 0.42, 0.14);
+    g.rotateZ(Math.cos(a) * 0.55);
+    g.rotateX(Math.sin(a) * 0.55);
+    g.translate(-3.6 + Math.cos(a) * 0.09, 1.42, hz - 0.42 + Math.sin(a) * 0.09);
+    b.add(g, { col: P.green, col2: 0x3d6b34, mix: () => (i % 2) * 0.6 });
+  }
+
+  /* ---- the kitchen, along the left wall ---- */
+  const kx = -hx + 0.72;
+  b.box(1.05, 0.9, 6.6, kx, 0.45, 1.4, { col: 0x6f5a4e });
+  b.box(1.16, 0.08, 6.7, kx, 0.94, 1.4, { col: 0x2f2a2c });
+  b.blocker(kx, 1.4, 0.6, 3.35, 0, 1.0);
+  b.box(0.62, 0.06, 0.8, kx + 0.06, 0.93, 2.9, { col: 0x1e1c22 });
+  b.box(0.07, 0.34, 0.07, kx - 0.2, 1.12, 2.9, { col: 0xc9c2b8 });
+  b.box(0.06, 1.05, 6.5, -hx + 0.2, 1.5, 1.4, {
+    col: 0x7fa8b4,
+    col2: 0x4a6a76,
+    mix: (_x, y, z) => ((Math.round(y / 0.26) + Math.round(z / 0.26)) % 2 === 0 ? 0.9 : 0.1),
+  });
+  for (const sy of [1.78, 2.3]) {
+    b.box(0.4, 0.06, 5.6, -hx + 0.42, sy, 1.4, { col: P.timberPale });
+  }
+  const strip = new THREE.PlaneGeometry(5.4, 0.09);
+  strip.rotateY(Math.PI / 2);
+  strip.translate(-hx + 0.62, 1.71, 1.4);
+  b.lit(strip, { col: 0xffc07a, power: 1.5 });
+  for (let i = 0; i < 14; i++) {
+    const z = -1.2 + (i * 5.2) / 13;
+    const g = new THREE.CylinderGeometry(0.05, 0.055, rng.range(0.14, 0.26), 7);
+    g.translate(-hx + 0.42 + rng.range(-0.06, 0.06), (i % 2 === 0 ? 1.79 : 2.31) + 0.1, z);
+    b.add(g, { col: rng.pick([0xd8d2c4, 0x8a6a4a, 0x4f6f68, 0xb8523f, 0xe0c07a, 0x6f8f5a]) });
+  }
+  // The hob, with something on it that has been on it a while.
+  b.box(0.72, 0.05, 0.9, kx, 0.98, -0.9, { col: 0x24222a });
+  const potB = new THREE.CylinderGeometry(0.24, 0.21, 0.26, 14);
+  potB.translate(kx, 1.13, -0.9);
+  b.add(potB, { col: 0xb9b2ac });
+  const lid = new THREE.CylinderGeometry(0.25, 0.25, 0.04, 14);
+  lid.translate(kx, 1.28, -0.9);
+  b.add(lid, { col: 0xd0c9c2 });
+  for (let i = 0; i < 3; i++) {
+    const st = new THREE.PlaneGeometry(0.16 + i * 0.06, 0.5);
+    st.rotateY(i * 0.7);
+    st.translate(kx, 1.55 + i * 0.24, -0.9);
+    b.lit(st, { col: 0xffe0c0, power: (_x, y) => 0.34 * Math.max(0, 1 - (y - 1.35) / 1.1), flick: 0.2 + i * 0.3 });
+  }
+  const ring = new THREE.PlaneGeometry(0.3, 0.3);
+  ring.rotateX(-Math.PI / 2);
+  ring.translate(kx, 1.0, -0.9);
+  b.lit(ring, { col: 0xff7a3a, power: 1.4, flick: 0.5 });
+  b.lamp(kx + 0.4, 1.9, 1.4, 0xffb878, 1.3, 13, 2.4);
+
+  /* ---- the table, laid for four, three of them used ---- */
+  const tx = 1.9;
+  const tz = -1.6;
+  b.box(2.1, 0.08, 1.1, tx, 0.75, tz, { col: P.timberPale });
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      b.box(0.09, 0.75, 0.09, tx + sx * 0.92, 0.375, tz + sz * 0.42, { col: P.timber });
+    }
+  }
+  b.blocker(tx, tz, 1.1, 0.62, 0, 0.82);
+  const seats: Array<[number, number, number, number]> = [
+    [tx - 0.55, tz + 1.05, Math.PI, 1],
+    [tx + 0.55, tz + 1.05, Math.PI, 1],
+    [tx - 0.55, tz - 1.05, 0, 1],
+    [tx + 0.62, tz - 1.05, 0, 0.72],
+  ];
+  for (const [sx, sz, ry, sc] of seats) b.inst("chair", chairGeo, trs(sx, 0, sz, ry, sc));
+  for (let i = 0; i < 4; i++) {
+    const px = tx - 0.6 + (i % 2) * 1.2;
+    const pz = tz - 0.34 + Math.floor(i / 2) * 0.68;
+    const plate = new THREE.CylinderGeometry(0.14, 0.12, 0.025, 12);
+    plate.translate(px, 0.8, pz);
+    b.add(plate, { col: i === 3 ? 0xe8dcc4 : 0xe8dcc4, emit: 0.05 });
+    if (i < 3) {
+      const food = new THREE.IcosahedronGeometry(0.075, 0);
+      food.translate(px, 0.83, pz);
+      b.add(food, { col: rng.pick([0xd86a34, 0xc0a03c, 0x7fae3a]) });
+    }
+  }
+  b.inst("mug", mugGeo, trs(tx + 0.78, 0.79, tz + 0.1, 0.6));
+  b.inst("mug", mugGeo, trs(tx - 0.8, 0.79, tz - 0.14, 2.3));
+  // The dish in the middle, still hot.
+  const dish = new THREE.CylinderGeometry(0.3, 0.26, 0.15, 14);
+  dish.translate(tx, 0.86, tz);
+  b.add(dish, { col: 0xb8523f, emit: 0.18 });
+  for (let i = 0; i < 2; i++) {
+    const st = new THREE.PlaneGeometry(0.24, 0.42);
+    st.rotateY(i * 1.1);
+    st.translate(tx, 1.2 + i * 0.2, tz);
+    b.lit(st, { col: 0xffd9b0, power: (_x, y) => 0.3 * Math.max(0, 1 - (y - 1.0) / 0.9), flick: 0.4 + i * 0.3 });
+  }
+  const bowl = new THREE.CylinderGeometry(0.2, 0.15, 0.11, 12);
+  bowl.translate(tx - 0.02, 0.81, tz - 0.62);
+  b.add(bowl, { col: 0x9a7350 });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU;
+    b.inst("produce", produceGeo, trs(tx - 0.02 + Math.cos(a) * 0.07, 0.9, tz - 0.62 + Math.sin(a) * 0.07, a, 0.8),
+      P.produce[i % P.produce.length]);
+  }
+  // The pendant over it, which is the light this room is remembered by.
+  b.box(0.05, 0.95, 0.05, tx, ceil - 0.48, tz, { col: P.iron });
+  const shade = new THREE.ConeGeometry(0.42, 0.36, 14, 1, true);
+  shade.translate(tx, ceil - 0.98, tz);
+  b.add(shade, { col: 0xf0d0a0, emit: 0.55 });
+  b.inst("bulb", bulbGeo, trs(tx, ceil - 1.16, tz), 0xffffff, true);
+  /* Range 15, not the 8.5 the café's pendants use.
+   *
+   * `att` is a linear falloff squared, so a lamp is dark at its own range and
+   * a room wider than one is a room with unlit corners. The café is 9.6 m
+   * across and never noticed; this flat is sixteen deep and came out as a
+   * purple void with a bright table in it, which reads as the lighting being
+   * broken rather than as the room being big. Virtual lamps cost six loop
+   * iterations a pixel whatever their range — there is nothing to save here. */
+  b.lamp(tx, ceil - 1.18, tz, P.bulb, 2.0, 15, 4);
+
+  /* ---- the sitting end, under the window ---- */
+  const sx0 = hx - 0.55;
+  b.box(0.95, 0.44, 2.5, sx0, 0.22, 3.1, { col: 0x4a6a76 });
+  b.box(0.88, 0.2, 2.4, sx0 - 0.03, 0.53, 3.1, { col: 0x5f8a94 });
+  b.box(0.3, 0.62, 2.5, hx - 0.24, 0.75, 3.1, { col: 0x4a6a76 });
+  for (const sz of [-1, 1]) b.box(0.9, 0.3, 0.28, sx0, 0.6, 3.1 + sz * 1.25, { col: 0x44606b });
+  b.blocker(sx0, 3.1, 0.52, 1.3, 0, 0.85);
+  for (const cz of [2.5, 3.7]) {
+    b.box(0.22, 0.34, 0.36, sx0 - 0.18, 0.72, cz, { col: rng.pick([0xd8a35c, 0xa8483c, 0xdcc48a]) }, 0.3);
+  }
+  b.box(0.66, 0.06, 1.1, hx - 2.1, 0.42, 3.1, { col: P.timberPale });
+  for (const sz of [-1, 1]) b.box(0.07, 0.42, 0.07, hx - 2.1, 0.21, 3.1 + sz * 0.44, { col: P.timber });
+  b.blocker(hx - 2.1, 3.1, 0.36, 0.58, 0, 0.5);
+  b.box(0.24, 0.03, 0.3, hx - 2.1, 0.47, 3.3, { col: 0xe6dcc6, emit: 0.2 }, 0.4);
+  // A floor lamp in the corner.
+  b.box(0.3, 0.04, 0.3, hx - 1.0, 0.02, 5.6, { col: P.iron });
+  b.box(0.06, 1.5, 0.06, hx - 1.0, 0.75, 5.6, { col: P.iron });
+  const fshade = new THREE.ConeGeometry(0.3, 0.34, 12, 1, true);
+  fshade.rotateX(Math.PI);
+  fshade.translate(hx - 1.0, 1.62, 5.6);
+  b.add(fshade, { col: 0xe8c088, emit: 0.5 });
+  b.inst("bulb", bulbGeo, trs(hx - 1.0, 1.62, 5.6), 0xffe8c8, true);
+  b.lamp(hx - 1.0, 1.66, 5.6, 0xffc07a, 1.25, 12, 3.2);
+
+  /* ---- the kid's end, at the back ---- */
+  const bx = -3.5;
+  const bz = -hz + 1.35;
+  b.box(2.1, 0.34, 1.15, bx, 0.3, bz, { col: P.timber });
+  b.box(2.0, 0.2, 1.05, bx, 0.57, bz, { col: 0xdcd0bc });
+  b.box(0.5, 0.12, 0.9, bx - 0.72, 0.72, bz, { col: 0xf0e6d4 });
+  b.box(1.5, 0.14, 1.02, bx + 0.28, 0.7, bz, { col: 0x5f7fb5, col2: 0x3d5a8a, mix: (x) => (Math.round(x / 0.3) % 2 === 0 ? 0.9 : 0.1) });
+  b.box(2.1, 0.2, 1.15, bx, 1.62, bz, { col: P.timber });
+  b.box(2.0, 0.18, 1.05, bx, 1.81, bz, { col: 0xdcd0bc });
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) b.box(0.09, 1.9, 0.09, bx + sx * 0.98, 0.95, bz + sz * 0.52, { col: P.timber });
+  }
+  b.box(2.0, 0.08, 0.08, bx, 2.28, bz + 0.5, { col: P.timber });
+  for (let i = 0; i < 3; i++) b.box(0.07, 0.07, 1.0, bx + 1.02, 0.55 + i * 0.4, bz, { col: P.timber });
+  b.blocker(bx, bz, 1.1, 0.62, 0, 1.9);
+  // The nightlight, which is the only thing still on in this corner.
+  const nl = new THREE.IcosahedronGeometry(0.09, 0);
+  nl.translate(bx + 1.05, 0.42, bz - 0.5);
+  b.add(nl, { col: 0x9fe8c0, emit: 1.2 });
+  b.lamp(bx + 1.05, 0.5, bz - 0.5, 0x8fe0b8, 0.5, 4.5, 1.2);
+
+  /* ---- the drawings.
+   *
+   * The room is furniture until these are on the wall, and then it is
+   * somebody's. Nine of them, taped up crooked at the height a six-year-old
+   * can reach, each one a pale paper rectangle with two crayon strokes on it
+   * — which at two metres is exactly as legible as a picture would be, and
+   * needs no texture, no atlas and no font. ---- */
+  for (let i = 0; i < 9; i++) {
+    const px = -5.3 + (i % 5) * 1.18 + (i > 4 ? 0.6 : 0);
+    const py = i > 4 ? 2.24 : 1.66;
+    const tilt = rng.range(-0.13, 0.13);
+    const w = rng.range(0.36, 0.5);
+    const hh = rng.range(0.3, 0.4);
+    const g = new THREE.PlaneGeometry(w, hh);
+    g.rotateZ(tilt);
+    g.translate(px, py, -hz + 0.17);
+    b.add(g, { col: 0xf2e8d2, emit: 0.35 });
+    for (let k = 0; k < 2; k++) {
+      const s = new THREE.PlaneGeometry(w * rng.range(0.3, 0.66), hh * rng.range(0.1, 0.3));
+      s.rotateZ(tilt + rng.range(-0.5, 0.5));
+      s.translate(px + rng.range(-0.1, 0.1), py + rng.range(-0.09, 0.09), -hz + 0.19);
+      b.lit(s, { col: rng.pick([0xff8a4a, 0x5fa8e8, 0x7fd06a, 0xffd24a, 0xe86a9a]), power: 0.85 });
+    }
+  }
+  b.lamp(-3.4, 2.3, -hz + 1.2, 0xffc898, 0.8, 11, 1.6);
+  // And one soft fill under the ceiling, so the room has a *shape* at the far
+  // end rather than a lit table floating in the dark.
+  b.lamp(0, ceil - 0.25, -1.0, 0xffc890, 0.6, 22, 0.9);
+
+  /* ---- the house robot, asleep on its plate ---- */
+  const rx = -0.6;
+  const rz = -4.6;
+  const plate = new THREE.CylinderGeometry(0.42, 0.44, 0.05, 16);
+  plate.translate(rx, 0.025, rz);
+  b.add(plate, { col: 0x3a3540 });
+  const pg = new THREE.CylinderGeometry(0.3, 0.3, 0.01, 16);
+  pg.translate(rx, 0.06, rz);
+  b.lit(pg, { col: 0x6fd8b0, power: 0.9, flick: 0.8 });
+  b.box(0.44, 0.4, 0.36, rx, 0.26, rz, { col: 0xd8d2c8, col2: 0x8a8a94, mix: (_x, y) => (y < 0.16 ? 0.9 : 0.1) });
+  b.box(0.34, 0.26, 0.3, rx, 0.6, rz, { col: 0xe8e2d8 });
+  for (const sx of [-1, 1]) {
+    b.box(0.09, 0.24, 0.09, rx + sx * 0.28, 0.3, rz, { col: 0x8a8a94 }, sx * 0.3);
+    const eye = new THREE.PlaneGeometry(0.07, 0.05);
+    eye.translate(rx + sx * 0.08, 0.63, rz + 0.16);
+    b.lit(eye, { col: 0x7fd8ff, power: 0.7, flick: 0.9 });
+  }
+  b.blocker(rx, rz, 0.34, 0.3, 0, 0.78);
+  // Its work, left where it was interrupted: a crate of blocks, half tidied.
+  b.inst("crate", crateGeo, trs(-2.4, 0, -3.0, 0.4));
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.BoxGeometry(0.13, 0.13, 0.13);
+    g.rotateY(rng.range(0, TAU));
+    g.translate(-2.4 + rng.range(-0.9, 0.9), 0.07, -3.0 + rng.range(-0.7, 0.7));
+    b.add(g, { col: rng.pick([0xd8624a, 0xe0a03c, 0x4f8f86, 0x5f7fb5]) });
+  }
+
+  /* ---- the door end: boots, coats, a shelf of the family's things ---- */
+  for (const s of [0, 1]) {
+    b.box(0.16, 0.26, 0.3, 2.3 + s * 0.24, 0.13, hz - 0.95, { col: 0x4a3a30 }, 0.2 + s * 0.3);
+  }
+  b.box(0.12, 0.2, 0.24, 3.1, 0.1, hz - 1.15, { col: 0xc06a4a }, -0.4);
+  b.box(0.08, 0.08, 1.7, hx - 0.22, 1.85, hz - 1.9, { col: P.timber });
+  for (let i = 0; i < 3; i++) {
+    const cw = i === 2 ? 0.34 : 0.5;
+    b.box(0.14, i === 2 ? 0.6 : 0.95, cw, hx - 0.4, 1.85 - (i === 2 ? 0.34 : 0.5), hz - 1.35 - i * 0.5, {
+      col: [0x3d5a8a, 0x7a4a3a, 0xd8a35c][i],
+      col2: 0x241d20,
+      mix: (_x, y) => THREE.MathUtils.clamp(1 - y / 2, 0, 1) * 0.7,
+    });
+  }
+  b.box(1.9, 0.06, 0.3, -1.6, 2.4, -hz + 0.32, { col: P.timberPale });
+  for (let i = 0; i < 6; i++) {
+    b.box(0.11, rng.range(0.2, 0.3), 0.2, -2.4 + i * 0.31, 2.56, -hz + 0.32, {
+      col: rng.pick([0x8a2f3a, 0x2f5a6a, 0x6a5a2f, 0x4a3a5a]),
+    });
+  }
+
+  /* One prompt inside the door, and the reason is the README's: the tests
+   * cover what happens after you press the key, and a browser check covers the
+   * key being *offered*. A room whose only interactables are nine metres in is
+   * a room you can walk into and be told nothing by. */
+  b.hit({
+    id: "home-coats",
+    x: 2.6,
+    y: 1.4,
+    z: hz - 1.6,
+    radius: 3.6,
+    label: "Hang your coat up",
+    detail: "Three hooks, and one of them lower than the others",
+    text: "There is a spare hook. Somebody put it there for whoever turned up.",
+  });
+  b.hit({
+    id: "home-drawings",
+    x: -3.4,
+    y: 1.95,
+    z: -hz + 1.1,
+    radius: 3.0,
+    label: "Look at the drawings",
+    detail: "Nine of them, taped up at reaching height",
+    text: "Eight are the island. The ninth is the island with a dog on it, which nobody here owns yet.",
+  });
+  b.hit({
+    id: "home-table",
+    x: tx,
+    y: 1.0,
+    z: tz,
+    radius: 2.6,
+    label: "Sit down to dinner",
+    detail: "Four places laid, three of them used",
+    text: "Somebody is late, and somebody else has put a plate over their share to keep it warm.",
+  });
+  b.hit({
+    id: "home-robot",
+    x: rx,
+    y: 0.7,
+    z: rz,
+    radius: 2.2,
+    label: "Wake the house robot",
+    detail: "On its plate, at eleven per cent",
+    text: "It opens one eye, works out that you are not either of the children, and closes it again.",
+  });
+
+  doorSpill(b, hz + 0.16, openW / 2, 5.0, 0xffb877, 0.5);
+  /* The block above, in the same stone the street is in.
+   *
+   * It was two shades darker than that and read as a gap between two lit
+   * buildings — a claimed lot is a lot `buildings.ts` never gets to light, so
+   * the shell has to hold its own against neighbours the world's real sun is
+   * on. Half the windows are somebody's evening, which is the argument this
+   * whole room is making, made once more from across the street. */
+  upperShell(b, {
+    hx, hz, thick: 0.3, from: ceil + 0.35, to: shellTop, skin: {
+      col: 0xab998f,
+      col2: 0x5c5157,
+      mix: (_x, y) => THREE.MathUtils.clamp(1 - (y - ceil) / Math.max(shellTop - ceil, 1), 0, 1) * 0.55,
+    },
+    lit: 0.55,
+  });
+}
+/* -------------------------------------------------------------------------
+ * 7. The Glasshouse
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Where the food comes from, which is a question the island otherwise dodges.
+ *
+ * The Market Hall has four hundred stalls of produce on a rock with no soil on
+ * it, six hundred metres up. This is the answer, and it is also the only warm
+ * *green* room in a world made entirely of blue glass and orange sky — which
+ * is worth more than the answer. The glazing carries `aSky`, so the sun the
+ * rest of these rooms are deliberately shut off from comes all the way in
+ * here, and the grow lamps are magenta on purpose: nothing else on this island
+ * is that colour, and the eye goes to it from the street.
+ */
+const GLASS = { hx: 9.0, hz: 9.0, plinth: 1.15, eaves: 4.4, crown: 8.6, openW: 4.4, openH: 3.0 };
+
+function buildGlasshouse(b: Rb, shellTop: number): void {
+  const { hx, hz, plinth, eaves, crown, openW, openH } = GLASS;
+  const rng = b.rng;
+
+  const brick: Skin = {
+    col: 0x8a6a58,
+    col2: 0x4a382f,
+    mix: (_x, y) => THREE.MathUtils.clamp(1 - y / plinth, 0, 1) * 0.7,
+  };
+  /* `sky` at 0.42, not the 0.95 a skylight gets.
+   *
+   * `aSky` multiplies both the direct sun *and* the sky ambient, and this room
+   * is not a skylight in a ceiling — it is four hundred square metres of
+   * glazing wrapped round the camera. At 0.95 the panes come out at full sun
+   * from the inside and the whole upper frame is one flat white sheet with the
+   * beds visible under it: technically correct, and a photograph of nothing.
+   * Enough to read as glass with a sunset behind it is the brief. */
+  const paneSkin: Skin = {
+    col: 0xbfe0ea,
+    col2: 0xffc890,
+    mix: (_x, y) => THREE.MathUtils.clamp((y - plinth) / (crown - plinth), 0, 1) * 0.55,
+    emit: 0.1,
+    sky: 0.42,
+  };
+
+  /* ---- the ground: gravel paths, and beds you can smell ---- */
+  pavedFloor(b, hx, hz, 1.5, (x, z) => {
+    const bed = Math.abs(x) > 4.0 && Math.abs(x) < 8.2;
+    const n = Math.sin(x * 2.1 + z * 1.3) * 0.5;
+    return bed
+      ? { col: 0x4a3a2a, col2: 0x2e241c, mix: () => 0.4 + n * 0.3 }
+      : { col: 0x8f8578, col2: 0x5f584f, mix: () => 0.35 + n * 0.35 };
+  });
+
+  /* ---- plinth, glazing, and the barrel vault over the top ---- */
+  const outerBrick = faceSky(brick, hx, hz);
+  wallX(b, -hz, -hx, hx, 0.4, plinth, outerBrick);
+  wallZ(b, -hx, -hz, hz, 0.4, plinth, outerBrick);
+  wallZ(b, hx, -hz, hz, 0.4, plinth, outerBrick);
+  wallWithOpening(b, { z: hz, x0: -hx, x1: hx, thick: 0.4, top: plinth, openW, openH, skin: outerBrick });
+  // The glazing above the plinth is glass all the way round, and glass does
+  // stop a body: one blocker per wall from the plinth to the eaves, with the
+  // doorway's two jamb pieces left out of the front.
+  for (const [zz, x0, x1] of [
+    [hz, -hx, -openW / 2] as const,
+    [hz, openW / 2, hx] as const,
+    [-hz, -hx, hx] as const,
+  ]) {
+    b.box(x1 - x0, eaves - plinth, 0.16, (x0 + x1) / 2, (plinth + eaves) / 2, zz, paneSkin);
+    b.blocker((x0 + x1) / 2, zz, (x1 - x0) / 2, 0.2, plinth, eaves);
+  }
+  // Over the doorway, glass down to the lintel and nothing below it.
+  b.box(openW, eaves - openH, 0.16, 0, (eaves + openH) / 2, hz, paneSkin);
+  for (const sx of [-1, 1] as const) {
+    b.box(0.16, eaves - plinth, hz * 2, sx * hx, (plinth + eaves) / 2, 0, paneSkin);
+    b.blocker(sx * hx, 0, 0.2, hz, plinth, eaves);
+  }
+  // Mullions, which are what makes it read as a glasshouse rather than a tank.
+  for (let i = -5; i <= 5; i++) {
+    const x = (i * hx) / 5.5;
+    for (const zz of [hz, -hz]) {
+      if (zz === hz && Math.abs(x) < openW / 2 + 0.15) continue;
+      b.box(0.11, eaves - plinth, 0.24, x, (plinth + eaves) / 2, zz, { col: 0x4a4a52 });
+    }
+  }
+  for (let i = -5; i <= 5; i++) {
+    const z = (i * hz) / 5.5;
+    for (const sx of [-1, 1]) b.box(0.24, eaves - plinth, 0.11, sx * hx, (plinth + eaves) / 2, z, { col: 0x4a4a52 });
+  }
+
+  /* The vault: an ellipse across X, extruded along Z.
+   *
+   * Built as one strip of quads rather than a lathe, because the ends have to
+   * be gables and a lathe would have given it two open holes at the exact two
+   * places the room is seen from. */
+  const NV = b.quality === "high" ? 16 : 10;
+  const vx = (t: number) => Math.sin(t) * hx;
+  const vy = (t: number) => eaves + Math.cos(t) * (crown - eaves);
+  for (let i = 0; i < NV; i++) {
+    const t0 = -Math.PI / 2 + (i / NV) * Math.PI;
+    const t1 = -Math.PI / 2 + ((i + 1) / NV) * Math.PI;
+    const g = quad(vx(t0), vy(t0), -hz, vx(t1), vy(t1), -hz, vx(t1), vy(t1), hz, vx(t0), vy(t0), hz);
+    b.add(g, paneSkin);
+    // Gable infill at both ends: a triangle-ish quad down to the eaves line.
+    for (const zz of [-hz, hz]) {
+      const gg = quad(vx(t0), vy(t0), zz, vx(t1), vy(t1), zz, vx(t1), eaves, zz, vx(t0), eaves, zz);
+      b.add(gg, paneSkin);
+    }
+  }
+  // Ribs across the vault, and a purlin along the ridge.
+  const ribs = b.quality === "high" ? 5 : 3;
+  for (let r = 0; r <= ribs; r++) {
+    const z = -hz + (r * hz * 2) / ribs;
+    for (let i = 0; i < NV; i++) {
+      const t0 = -Math.PI / 2 + (i / NV) * Math.PI;
+      const t1 = -Math.PI / 2 + ((i + 1) / NV) * Math.PI;
+      strut(b, vx(t0), vy(t0) - 0.1, z, vx(t1), vy(t1) - 0.1, z, 0.1, 0.16, { col: 0x4a4a52 });
+    }
+  }
+  b.box(0.3, 0.3, hz * 2, 0, crown - 0.22, 0, { col: 0x54545e });
+  const vent = new THREE.PlaneGeometry(0.5, hz * 1.7);
+  vent.rotateX(-Math.PI / 2);
+  vent.translate(0, crown - 0.05, 0);
+  b.lit(vent, { col: 0xcfe4ff, power: 0.5 });
+  lightShaft(b, -2.6, 1.0, crown - 0.6, 0.1, 1.3, 3.0, 0.4, 0xffd0a0, 0.2);
+  lightShaft(b, 3.0, -3.5, crown - 0.6, 0.1, 1.3, 3.0, 2.2, 0xffd0a0, 0.16);
+
+  /* ---- two long beds, three tiers of trays over each ---- */
+  for (const sx of [-1, 1] as const) {
+    const cx = sx * 6.1;
+    b.box(3.5, 0.55, 15.0, cx, 0.27, -0.6, {
+      col: 0x7a5a46,
+      col2: 0x3a2a22,
+      mix: (_x, y) => (y > 0.45 ? 0 : 0.8),
+    });
+    b.blocker(cx, -0.6, 1.75, 7.5, 0, 0.6);
+    b.box(3.3, 0.12, 14.8, cx, 0.58, -0.6, { col: 0x3a2c20, col2: 0x22190f, mix: (x, _y, z) => 0.3 + 0.5 * Math.abs(Math.sin(x * 3.1 + z * 2.3)) });
+    // What is actually growing in it.
+    const rows = b.quality === "high" ? 22 : 12;
+    for (let i = 0; i < rows; i++) {
+      const z = -7.6 + (i * 14.4) / (rows - 1);
+      for (let k = -1; k <= 1; k++) {
+        const px = cx + k * 1.05;
+        b.inst("leaf", leafGeo, trs(px, 0.62, z + rng.range(-0.2, 0.2), rng.range(0, TAU), rng.range(0.8, 1.25)),
+          rng.pick([0x6fae5a, 0x87c25f, 0x4f8f4a, 0x9fc86a]));
+      }
+    }
+    // The wire the tomatoes climb, and the tomatoes.
+    for (let i = 0; i < (b.quality === "high" ? 9 : 5); i++) {
+      const z = -7.2 + (i * 14.4) / 8;
+      const wx = cx + sx * 1.5;
+      b.box(0.05, eaves - 0.7, 0.05, wx, 0.6 + (eaves - 0.7) / 2, z, { col: 0x6a6a72 });
+      for (let k = 0; k < 5; k++) {
+        const y = 0.9 + k * 0.62;
+        const a = k * 1.9;
+        const g = new THREE.BoxGeometry(0.5, 0.06, 0.22);
+        g.rotateY(a);
+        g.rotateZ(0.3);
+        g.translate(wx + Math.cos(a) * 0.2, y, z + Math.sin(a) * 0.2);
+        b.add(g, { col: 0x4f8f4a, col2: 0x7fbe5f, mix: () => (k % 2) * 0.7 });
+        if (k % 2 === 1) {
+          b.inst("produce", produceGeo, trs(wx + Math.cos(a) * 0.3, y - 0.14, z + Math.sin(a) * 0.3, a, 0.8),
+            rng.pick([0xe4442f, 0xf0a429, 0xd94f30]));
+        }
+      }
+    }
+    // The grow lamp over it. Magenta, and the reason you can see this building
+    // from the far end of the avenue.
+    const lampY = 3.3;
+    b.box(0.34, 0.16, 13.5, cx, lampY, -0.6, { col: 0x3a3a44 });
+    const bar = new THREE.PlaneGeometry(0.4, 13.2);
+    bar.rotateX(Math.PI / 2);
+    bar.translate(cx, lampY - 0.11, -0.6);
+    b.lit(bar, { col: 0xff5ad0, power: 1.9, flick: 0.15 });
+    for (const z of [-5.0, 0.0, 5.0]) {
+      b.box(0.05, 1.0, 0.05, cx, lampY + 0.6, z, { col: 0x3a3a44 });
+    }
+    b.lamp(cx, lampY - 0.3, -0.6, 0xd85ac0, 1.0, 22.0, sx > 0 ? 2.0 : 1.9);
+  }
+
+  /* ---- the water channel down the middle ---- */
+  b.box(1.1, 0.24, 15.0, 0, -0.06, -0.8, { col: 0x4a4a52 });
+  for (let i = 0; i < 10; i++) {
+    const z = -8.0 + i * 1.55;
+    const g = quad(-0.42, 0.06, z, 0.42, 0.06, z, 0.42, 0.06, z + 1.4, -0.42, 0.06, z + 1.4);
+    b.lit(g, { col: 0x8fd8e8, power: 0.55 + (i % 3) * 0.12, flick: 0.2 + i * 0.08 });
+  }
+  b.box(1.4, 0.16, 0.5, 0, 0.08, 7.0, { col: 0x6a6a72 });
+  const spout = new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8);
+  spout.rotateZ(Math.PI / 2);
+  spout.translate(0, 0.6, 7.2);
+  b.add(spout, { col: P.brass });
+  const fall = new THREE.PlaneGeometry(0.14, 0.55);
+  fall.translate(0, 0.34, 7.05);
+  b.lit(fall, { col: 0xbfe8f0, power: 1.1, flick: 0.9 });
+
+  /* ---- the fig in the middle of it, which is the thing you walk in for ---- */
+  const fx = 0;
+  const fz = -4.6;
+  const barrel = new THREE.CylinderGeometry(1.15, 1.0, 0.85, 16);
+  barrel.translate(fx, 0.42, fz);
+  b.add(barrel, { col: P.timber, col2: P.timberPale, mix: (_x, y) => (y > 0.7 ? 0.7 : 0.2) });
+  for (const y of [0.16, 0.72]) {
+    const band = new THREE.TorusGeometry(1.1, 0.05, 5, 18);
+    band.rotateX(Math.PI / 2);
+    band.translate(fx, y, fz);
+    b.add(band, { col: P.iron });
+  }
+  b.blocker(fx, fz, 1.15, 1.15, 0, 0.9);
+  const trunk = new THREE.CylinderGeometry(0.17, 0.26, 3.0, 9);
+  trunk.translate(fx, 2.3, fz);
+  b.add(trunk, { col: 0x6a5240, col2: 0x3d2f26, mix: (_x, y) => THREE.MathUtils.clamp(1 - (y - 0.8) / 3, 0, 1) });
+  const blobs = b.quality === "high" ? 7 : 4;
+  for (let i = 0; i < blobs; i++) {
+    const a = (i / blobs) * TAU + 0.4;
+    const rr = i === 0 ? 0 : 1.0 + rng.range(0, 0.7);
+    const g = new THREE.IcosahedronGeometry(rng.range(1.05, 1.6), 0);
+    g.translate(fx + Math.cos(a) * rr, 4.1 + rng.range(-0.5, 1.0), fz + Math.sin(a) * rr);
+    b.add(g, { col: 0x4f8f4a, col2: 0x9fc86a, mix: (_x, y) => THREE.MathUtils.clamp((y - 3.4) / 2.4, 0, 1) * 0.8 });
+  }
+  b.lamp(fx, 3.0, fz, 0xffd0a0, 0.8, 18.0, 1.2);
+
+  /* ---- the potting bench by the door, and the crates going out ---- */
+  const px = 5.6;
+  const pz = 5.4;
+  b.box(2.4, 0.1, 1.0, px, 0.9, pz, { col: P.timberPale }, -0.35);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const ox = sx * 1.05 * Math.cos(-0.35) - sz * 0.42 * Math.sin(-0.35);
+      const oz = sx * 1.05 * Math.sin(-0.35) + sz * 0.42 * Math.cos(-0.35);
+      b.box(0.09, 0.9, 0.09, px + ox, 0.45, pz + oz, { col: P.timber });
+    }
+  }
+  b.blocker(px, pz, 1.25, 0.75, 0, 1.0);
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.CylinderGeometry(0.14, 0.11, 0.19, 9);
+    g.translate(px - 0.9 + i * 0.42, 1.04, pz + rng.range(-0.22, 0.22));
+    b.add(g, { col: 0xa8583c });
+    if (i % 2 === 0) {
+      b.inst("leaf", leafGeo, trs(px - 0.9 + i * 0.42, 1.14, pz, rng.range(0, TAU), 0.7), 0x87c25f);
+    }
+  }
+  b.box(0.6, 0.55, 0.45, px - 1.5, 0.28, pz - 0.9, { col: 0x8a7a5a }, 0.4);
+  const trowel = new THREE.BoxGeometry(0.06, 0.02, 0.3);
+  trowel.rotateY(0.9);
+  trowel.translate(px + 1.0, 1.0, pz - 0.2);
+  b.add(trowel, { col: P.brass });
+  for (let i = 0; i < 4; i++) {
+    const s = i % 2;
+    b.inst("crate", crateGeo, trs(-5.9 + s * 0.72, Math.floor(i / 2) * 0.35, 6.6, 0.1 + s * 0.2));
+    for (let k = 0; k < 3; k++) {
+      b.inst("produce", produceGeo, trs(-6.1 + s * 0.72 + k * 0.2, Math.floor(i / 2) * 0.35 + 0.36, 6.6 + rng.range(-0.14, 0.14), 0, 0.9),
+        P.produce[(i * 3 + k) % P.produce.length]);
+    }
+  }
+
+  /* ---- the picker: a barrow with an opinion ---- */
+  const kx = -3.2;
+  const kz = 6.2;
+  b.box(0.9, 0.5, 1.2, kx, 0.42, kz, { col: 0xd8d2c8, col2: 0x6f8f5a, mix: (_x, y) => (y < 0.3 ? 0.8 : 0) });
+  for (const sz of [-1, 1]) {
+    const w = new THREE.CylinderGeometry(0.22, 0.22, 0.12, 12);
+    w.rotateZ(Math.PI / 2);
+    w.translate(kx, 0.22, kz + sz * 0.5);
+    b.add(w, { col: 0x2e2833 });
+  }
+  b.box(0.5, 0.4, 0.44, kx, 0.86, kz - 0.2, { col: 0xe8e2d8 });
+  const keye = new THREE.PlaneGeometry(0.26, 0.09);
+  keye.translate(kx + 0.26, 0.94, kz - 0.2);
+  keye.rotateY(Math.PI / 2);
+  b.lit(keye, { col: 0xffc978, power: 1.4, flick: 0.7 });
+  b.box(0.1, 0.55, 0.1, kx + 0.2, 1.2, kz + 0.3, { col: 0x8a8a94 }, 0.5);
+  b.blocker(kx, kz, 0.55, 0.7, 0, 1.1);
+  b.lamp(kx, 1.0, kz, 0xffc07a, 0.45, 6.0, 0.8);
+
+  /* ---- the crop board, chalked up this morning ---- */
+  const cbx = -6.4;
+  const cbz = hz - 0.35;
+  b.box(2.6, 1.5, 0.09, cbx, 1.85, cbz, { col: 0x241d20 });
+  b.box(2.8, 0.1, 0.16, cbx, 2.66, cbz, { col: P.timber });
+  for (let i = 0; i < 6; i++) {
+    const g = new THREE.PlaneGeometry(rng.range(0.7, 1.9), 0.075);
+    g.translate(cbx - 0.25 + rng.range(-0.2, 0.2), 2.42 - i * 0.24, cbz - 0.07);
+    b.lit(g, { col: i === 2 ? 0xffe0b0 : 0xdfe9ff, power: i === 2 ? 1.3 : 0.85 });
+  }
+  b.lamp(cbx, 2.6, cbz - 0.8, 0xffc898, 0.5, 7.0, 0.7);
+  // A cool fill under the ridge: this room is eighteen metres across and the
+  // vault is the thing you look up at.
+  b.lamp(0, crown - 1.0, 0, 0xbfe0ff, 0.5, 26, 1.5);
+
+  b.hit({
+    id: "glasshouse-tomato",
+    x: 6.1,
+    y: 1.4,
+    z: 2.0,
+    radius: 3.0,
+    label: "Take a tomato",
+    detail: "Third wire along, the ones nearest the glass",
+    text: "Warm from the lamps, and better than anything the Market Hall will sell you tomorrow.",
+  });
+  b.hit({
+    id: "glasshouse-board",
+    x: cbx,
+    y: 1.9,
+    z: cbz - 1.0,
+    radius: 2.6,
+    label: "Read the crop board",
+    detail: "What is going down to the Hall this week",
+    text: "Beans, chard, four kinds of tomato — and one line underlined twice: FIGS, SOON.",
+  });
+  b.hit({
+    id: "glasshouse-fig",
+    x: fx,
+    y: 2.2,
+    z: fz,
+    radius: 3.8,
+    label: "Look up at the fig",
+    detail: "Older than the glasshouse, by the look of the barrel",
+    text: "It came up in somebody's flat and outgrew it. Two of them carried it here in the barrel.",
+  });
+  b.hit({
+    id: "glasshouse-picker",
+    x: kx + 1.0,
+    y: 1.0,
+    z: kz,
+    radius: 4.2,
+    label: "Ask the picker what is ripe",
+    detail: "It has been at this since the lamps came on",
+    text: "It rotates its eye to the far bed, then back to you, then to the fig. It is not subtle.",
+  });
+
+  doorSpill(b, hz + 0.2, openW / 2, 5.5, 0x9fe0a8, 0.4);
+  // Almost always a no-op: the lot is chosen for having roughly this height in
+  // the first place. It is here for the reseed where it does not.
+  upperShell(b, {
+    hx, hz, thick: 0.4, from: crown + 0.2, to: shellTop,
+    skin: { col: 0x6a6058, col2: 0x38322e, mix: (_x, y) => THREE.MathUtils.clamp(1 - (y - crown) / 8, 0, 1) * 0.6 },
+    lit: 0.2,
+  });
+}
+/* -------------------------------------------------------------------------
+ * 8. The Armature
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Where the civic robots come from, and — much more to the point — where they
+ * go when they break.
+ *
+ * `crowd.ts` walks a couple of dozen of them around this city sweeping and
+ * carrying and minding children, and a world that shows you a hundred working
+ * machines and never once shows you the bench they were mended on is a world
+ * making a promise it will not stand behind. A techno-optimistic future is not
+ * one where nothing breaks; it is one where the broken thing is worth the
+ * afternoon it takes to fix.
+ *
+ * The room is cold — grey concrete, blue-white strip light — and everything
+ * warm in it is somebody working: an orange arc at the bench, a lit chest
+ * cavity, and a wall of small portraits of every machine that ever came in.
+ */
+const ARM = { hx: 7.6, hz: 9.6, ceil: 6.4, openW: 5.0, openH: 4.2 };
+
+function buildArmature(b: Rb, shellTop: number): void {
+  const { hx, hz, ceil, openW, openH } = ARM;
+  const rng = b.rng;
+
+  const wallSkin: Skin = {
+    col: 0x6f7480,
+    col2: 0x2b2f38,
+    mix: (_x, y) => THREE.MathUtils.clamp(1 - y / ceil, 0, 1) * 0.75,
+  };
+
+  /* ---- poured floor, with a work bay painted on it ---- */
+  pavedFloor(b, hx, hz, 2.4, (x, z) => ({
+    col: 0x585c66,
+    col2: 0x3a3e46,
+    mix: () => 0.3 + 0.35 * Math.abs(Math.sin(x * 1.1 + z * 0.7)),
+  }));
+  for (const [ax, az, bx2, bz2] of [
+    [-3.6, -5.4, 3.6, -5.4] as const,
+    [-3.6, 0.6, 3.6, 0.6] as const,
+    [-3.6, -5.4, -3.6, 0.6] as const,
+    [3.6, -5.4, 3.6, 0.6] as const,
+  ]) {
+    const len = Math.hypot(bx2 - ax, bz2 - az);
+    const g = new THREE.PlaneGeometry(ax === bx2 ? 0.16 : len, ax === bx2 ? len : 0.16);
+    g.rotateX(-Math.PI / 2);
+    g.translate((ax + bx2) / 2, 0.03, (az + bz2) / 2);
+    b.add(g, { col: 0xd8b23a, emit: 0.35 });
+  }
+
+  b.box(hx * 2, 0.35, hz * 2, 0, ceil + 0.18, 0, { col: 0x2f333b });
+  const outerSkin = faceSky(wallSkin, hx, hz);
+  wallX(b, -hz, -hx, hx, 0.35, ceil, outerSkin);
+  wallZ(b, -hx, -hz, hz, 0.35, ceil, outerSkin);
+  wallZ(b, hx, -hz, hz, 0.35, ceil, outerSkin);
+  wallWithOpening(b, { z: hz, x0: -hx, x1: hx, thick: 0.35, top: ceil, openW, openH, skin: outerSkin });
+  // The shutter, rolled up over the opening, and the sign band above it.
+  b.box(openW + 0.5, 0.55, 0.5, 0, openH + 0.4, hz - 0.1, { col: 0x3f444e });
+  for (let i = 0; i < 5; i++) {
+    b.box(openW, 0.09, 0.14, 0, openH + 0.72 + i * 0.13, hz - 0.1, { col: 0x565c68 });
+  }
+  const band = new THREE.PlaneGeometry(openW * 1.4, 0.4);
+  band.translate(0, openH + 1.5, hz - 0.02);
+  b.lit(band, { col: 0xffa040, power: 1.6, flick: 0.25 });
+  // Glazing high up on both flanks, so the room has a top edge in the dark.
+  for (const sx of [-1, 1] as const) {
+    b.box(0.1, 1.2, hz * 1.6, sx * hx, ceil - 1.1, 0, {
+      col: P.glassCool, col2: P.glassWarm, mix: (_x, _y, z) => THREE.MathUtils.clamp((z + hz) / (hz * 2), 0, 1),
+      emit: 0.25, sky: 0.5,
+    });
+  }
+
+  /* ---- trusses and three strip lights ---- */
+  for (let i = -2; i <= 2; i++) {
+    const z = i * 3.6;
+    strut(b, -hx, ceil - 0.45, z, hx, ceil - 0.45, z, 0.18, 0.3, { col: 0x3f444e });
+    strut(b, -hx, ceil - 0.45, z, 0, ceil - 1.5, z, 0.12, 0.14, { col: 0x4a505c });
+    strut(b, hx, ceil - 0.45, z, 0, ceil - 1.5, z, 0.12, 0.14, { col: 0x4a505c });
+  }
+  for (const sx of [-1, 0, 1] as const) {
+    const x = sx * 4.3;
+    b.box(0.3, 0.14, hz * 1.7, x, ceil - 0.9, -0.4, { col: 0x3f444e });
+    const t = new THREE.PlaneGeometry(0.42, hz * 1.65);
+    t.rotateX(Math.PI / 2);
+    t.translate(x, ceil - 1.0, -0.4);
+    b.lit(t, { col: 0xd8e8ff, power: 1.5, flick: sx === -1 ? 0.9 : 0.05 });
+    b.lamp(x, ceil - 1.2, -0.4, 0xc8dcff, sx === 0 ? 1.25 : 0.9, 17, sx === 0 ? 3 : 1.7);
+  }
+
+  /* ---- the gantry, and the machine hanging off it ---- */
+  for (const sx of [-1, 1] as const) {
+    b.box(0.24, 0.34, hz * 1.75, sx * 5.1, ceil - 1.75, -0.6, { col: 0x565c68 });
+  }
+  b.box(10.5, 0.28, 0.4, 0, ceil - 1.75, -2.4, { col: 0x6a7280 });
+  b.box(0.6, 0.5, 0.6, 0.4, ceil - 2.2, -2.4, { col: 0x3f444e });
+  strut(b, 0.4, ceil - 2.4, -2.4, 0.4, 3.5, -2.4, 0.07, 0.07, { col: 0x8a8a94 });
+  const hook = new THREE.TorusGeometry(0.16, 0.045, 5, 12, Math.PI * 1.5);
+  hook.rotateY(Math.PI / 2);
+  hook.translate(0.4, 3.3, -2.4);
+  b.add(hook, { col: P.brass });
+
+  /** One civic machine: a barrel body, a dome, two arms, two stub legs. */
+  const robot = (
+    x: number, y: number, z: number, ry: number, s: number,
+    eye: number, eyePow: number, opts?: { openChest?: boolean; oneArm?: boolean },
+  ) => {
+    const body = new THREE.CylinderGeometry(0.42 * s, 0.48 * s, 1.1 * s, 12);
+    body.translate(0, 0.62 * s, 0);
+    body.rotateY(ry);
+    body.translate(x, y, z);
+    b.add(body, { col: 0xc8ccd4, col2: 0x6a7280, mix: (_px, py) => THREE.MathUtils.clamp(1 - (py - y) / (1.4 * s), 0, 1) * 0.8 });
+    const dome = new THREE.SphereGeometry(0.36 * s, 12, 8, 0, TAU, 0, Math.PI / 2);
+    dome.translate(0, 1.2 * s, 0);
+    dome.rotateY(ry);
+    dome.translate(x, y, z);
+    b.add(dome, { col: 0xe0e4ea });
+    const face = new THREE.PlaneGeometry(0.4 * s, 0.13 * s);
+    face.translate(0, 1.12 * s, 0.36 * s);
+    face.rotateY(ry);
+    face.translate(x, y, z);
+    b.lit(face, { col: eye, power: eyePow, flick: rng.next() });
+    for (const sx of [-1, 1] as const) {
+      if (opts?.oneArm && sx < 0) continue;
+      const arm = new THREE.BoxGeometry(0.14 * s, 0.75 * s, 0.16 * s);
+      arm.rotateZ(sx * 0.24);
+      arm.translate(sx * 0.5 * s, 0.72 * s, 0.05 * s);
+      arm.rotateY(ry);
+      arm.translate(x, y, z);
+      b.add(arm, { col: 0x8a9099 });
+    }
+    for (const sx of [-1, 1] as const) {
+      const leg = new THREE.CylinderGeometry(0.11 * s, 0.13 * s, 0.18 * s, 8);
+      leg.translate(sx * 0.22 * s, 0.05 * s, 0);
+      leg.rotateY(ry);
+      leg.translate(x, y, z);
+      b.add(leg, { col: 0x4a505c });
+    }
+    if (opts?.openChest) {
+      const panel = new THREE.BoxGeometry(0.42 * s, 0.5 * s, 0.06 * s);
+      panel.rotateY(0.9);
+      panel.translate(0.5 * s, 0.7 * s, 0.42 * s);
+      panel.rotateY(ry);
+      panel.translate(x, y, z);
+      b.add(panel, { col: 0xa8aeb8 });
+      const guts = new THREE.PlaneGeometry(0.34 * s, 0.44 * s);
+      guts.translate(0, 0.7 * s, 0.43 * s);
+      guts.rotateY(ry);
+      guts.translate(x, y, z);
+      b.lit(guts, { col: 0x7fe8ff, power: 2.1, flick: 0.6 });
+      b.lamp(x, y + 0.7 * s, z + 0.5 * s, 0x6fd8ff, 0.7, 5.5, 2.2);
+    }
+  };
+
+  // On the hook, chest open, half way through whatever this is.
+  robot(0.4, 1.5, -2.4, 0.5, 1.05, 0x7fe8ff, 1.2, { openChest: true });
+  // On a stand, finished, waiting to be told it can go.
+  b.box(1.5, 0.35, 1.5, 4.6, 0.17, 3.0, { col: 0x3f444e });
+  b.blocker(4.6, 3.0, 0.8, 0.8, 0, 0.4);
+  robot(4.6, 0.35, 3.0, -0.7, 1.0, 0xffc978, 1.5);
+  // Two asleep on the charging rail along the back.
+  b.box(hx * 1.5, 0.2, 0.5, -1.2, 0.35, -hz + 0.75, { col: 0x3f444e });
+  const railG = new THREE.PlaneGeometry(hx * 1.4, 0.1);
+  railG.translate(-1.2, 0.48, -hz + 0.52);
+  b.lit(railG, { col: 0x5f9ce8, power: 1.0, flick: 0.85 });
+  b.blocker(-1.2, -hz + 0.75, hx * 0.75, 0.3, 0, 0.45);
+  robot(-4.4, 0.45, -hz + 1.3, 0.15, 1.0, 0x5f9ce8, 0.45);
+  robot(-1.6, 0.45, -hz + 1.3, -0.1, 0.92, 0x5f9ce8, 0.4);
+  b.lamp(-3.0, 1.0, -hz + 1.3, 0x5f9ce8, 0.45, 8.0, 1.0);
+
+  /* ---- the bench, the winder, and the one bright thing in the room ---- */
+  const wx = hx - 1.0;
+  b.box(1.5, 0.95, 9.0, wx, 0.48, -2.6, { col: 0x4a505c });
+  b.box(1.7, 0.1, 9.2, wx, 1.0, -2.6, { col: 0x6a5a48 });
+  b.blocker(wx, -2.6, 0.9, 4.6, 0, 1.05);
+  b.box(0.14, 0.9, 8.8, hx - 0.24, 1.9, -2.6, { col: 0x3a3e46 });
+  for (let i = 0; i < 16; i++) {
+    const z = -6.6 + (i * 8.0) / 15;
+    const w = rng.range(0.08, 0.2);
+    const g = new THREE.PlaneGeometry(w, rng.range(0.24, 0.52));
+    g.rotateY(Math.PI / 2);
+    g.translate(hx - 0.35, 1.95 + rng.range(-0.25, 0.25), z);
+    b.add(g, { col: 0x2a2e36, emit: 0.05 });
+  }
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.PlaneGeometry(0.07, 0.07);
+    g.rotateY(Math.PI / 2);
+    g.translate(hx - 0.32, 2.5, -5.0 + i * 1.4);
+    b.lit(g, { col: [0x7fe87f, 0xffc978, 0x7fe8ff][i], power: 1.6, flick: 0.4 + i * 0.2 });
+  }
+  // The coil winder: a spindle of copper, mid-job.
+  const spool = new THREE.CylinderGeometry(0.3, 0.3, 0.36, 14);
+  spool.rotateZ(Math.PI / 2);
+  spool.translate(wx - 0.2, 1.3, -4.4);
+  b.add(spool, { col: 0xc07a3a, col2: 0xffb060, mix: (_x, y) => THREE.MathUtils.clamp((y - 1.05) / 0.5, 0, 1) });
+  for (const sz of [-1, 1]) {
+    const cheek = new THREE.CylinderGeometry(0.36, 0.36, 0.05, 14);
+    cheek.rotateZ(Math.PI / 2);
+    cheek.translate(wx - 0.2 + sz * 0.2, 1.3, -4.4);
+    b.add(cheek, { col: 0x8a8a94 });
+  }
+  b.box(0.16, 0.6, 0.16, wx - 0.2, 1.3, -4.9, { col: 0x4a505c });
+  // The arc. Small, and the brightest thing in the building.
+  const ax2 = wx - 0.35;
+  const az2 = -0.6;
+  b.box(0.5, 0.3, 0.7, ax2, 1.2, az2, { col: 0x3a3e46 });
+  const arc = new THREE.IcosahedronGeometry(0.07, 0);
+  arc.translate(ax2, 1.32, az2);
+  b.lit(arc, { col: 0xffe8c0, power: 6.0, flick: 0.95 });
+  for (let i = 0; i < (b.quality === "high" ? 10 : 5); i++) {
+    const a = rng.range(0, TAU);
+    const r = rng.range(0.1, 0.55);
+    const g = new THREE.PlaneGeometry(0.035, 0.035);
+    g.translate(ax2 + Math.cos(a) * r, 1.32 + rng.range(-0.15, 0.4), az2 + Math.sin(a) * r);
+    b.lit(g, { col: 0xffa040, power: rng.range(1.5, 4.0), flick: rng.next() });
+  }
+  lightShaft(b, ax2, az2, 3.4, 1.35, 0.1, 0.6, 0, 0xffa040, 0.5);
+  b.lamp(ax2, 1.5, az2, 0xffb060, 1.7, 9.0, 3.4);
+  // A magnifier on an arm, swung over the work.
+  strut(b, wx, 1.05, 0.8, wx - 0.5, 1.9, 0.2, 0.06, 0.06, { col: 0x8a8a94 });
+  const lens = new THREE.TorusGeometry(0.22, 0.035, 5, 16);
+  lens.rotateX(1.1);
+  lens.translate(wx - 0.55, 1.85, 0.15);
+  b.add(lens, { col: P.brass });
+  const lensG = new THREE.PlaneGeometry(0.4, 0.4);
+  lensG.rotateX(1.1);
+  lensG.translate(wx - 0.55, 1.85, 0.15);
+  b.lit(lensG, { col: 0xbfe8ff, power: 0.9, flick: 0.15 });
+  b.inst("mug", mugGeo, trs(wx + 0.2, 1.06, 1.9, 0.8));
+
+  /* ---- parts, and a rack of spare arms ---- */
+  for (let i = 0; i < 6; i++) {
+    const s = i % 3;
+    b.inst("crate", crateGeo, trs(-hx + 1.0 + s * 0.75, Math.floor(i / 3) * 0.36, 5.6, 0.06 * s));
+    b.inst("produce", produceGeo, trs(-hx + 1.0 + s * 0.75, Math.floor(i / 3) * 0.36 + 0.38, 5.6, 0, 1.1),
+      rng.pick([0x8a8a94, 0xc07a3a, 0x5f9ce8]));
+  }
+  b.blocker(-hx + 1.75, 5.6, 1.3, 0.45, 0, 0.75);
+  b.box(0.14, 2.2, 3.2, -hx + 0.5, 1.1, -5.0, { col: 0x4a505c });
+  for (let i = 0; i < 5; i++) {
+    const z = -6.3 + i * 0.66;
+    b.box(0.16, 0.85, 0.14, -hx + 0.85, 1.55 - (i % 2) * 0.3, z, { col: 0x8a9099 }, 0.1 * i);
+  }
+
+  /* ---- the wall of names.
+   *
+   * Fourteen small portraits of machines that came in broken and went out
+   * working, and one crayon drawing of a robot that somebody's child has
+   * taped up in the middle of them, at a noticeably different angle. That
+   * drawing is the whole room's argument and it costs four triangles. ---- */
+  for (let i = 0; i < 14; i++) {
+    const z = -6.4 + (i % 7) * 1.55;
+    const y = i < 7 ? 2.5 : 3.25;
+    const g = new THREE.PlaneGeometry(0.5, 0.4);
+    g.rotateY(Math.PI / 2);
+    g.translate(-hx + 0.22, y, z);
+    b.add(g, { col: 0x2a2e36 });
+    const pt = new THREE.PlaneGeometry(0.34, 0.26);
+    pt.rotateY(Math.PI / 2);
+    pt.translate(-hx + 0.26, y, z);
+    b.lit(pt, { col: rng.pick([0xbfd8ff, 0xffd8b0, 0xc8e8d0]), power: 0.7, flick: 0.05 + i * 0.06 });
+  }
+  const kid = new THREE.PlaneGeometry(0.72, 0.58);
+  kid.rotateY(Math.PI / 2);
+  kid.rotateX(0.16);
+  kid.translate(-hx + 0.24, 2.88, -1.1);
+  b.add(kid, { col: 0xf2e8d2, emit: 0.4 });
+  for (let k = 0; k < 3; k++) {
+    const s = new THREE.PlaneGeometry(rng.range(0.14, 0.4), rng.range(0.05, 0.14));
+    s.rotateY(Math.PI / 2);
+    s.rotateX(0.16 + rng.range(-0.4, 0.4));
+    s.translate(-hx + 0.28, 2.88 + rng.range(-0.16, 0.16), -1.1 + rng.range(-0.2, 0.2));
+    b.lit(s, { col: rng.pick([0x5fa8e8, 0xff8a4a, 0x7fd06a]), power: 1.0 });
+  }
+  b.lamp(-hx + 1.2, 3.2, -1.1, 0xffd0a8, 0.55, 8.0, 1.4);
+
+  b.hit({
+    id: "armature-note",
+    x: 0,
+    y: 1.4,
+    z: hz - 1.8,
+    radius: 3.4,
+    label: "Read the note by the door",
+    detail: "Chalk, on a board nobody has wiped in a while",
+    text: "“LEAVE IT ON THE BENCH. WE WILL LOOK AT IT TONIGHT. NO CHARGE FOR THE SMALL ONES.”",
+  });
+  b.hit({
+    id: "armature-hoist",
+    x: 0.4,
+    y: 1.9,
+    z: -2.4,
+    radius: 3.2,
+    label: "Watch the rewinding",
+    detail: "Chest open, on the hook, eleven years old",
+    text: "A hand-wound coil, one turn at a time, by somebody who could have printed a new one.",
+  });
+  b.hit({
+    id: "armature-wall",
+    x: -hx + 1.3,
+    y: 2.9,
+    z: -1.1,
+    radius: 3.0,
+    label: "Read the wall",
+    detail: "Every machine that ever came in here",
+    text: "Fourteen portraits, and in the middle of them a crayon drawing of a robot with far too many arms.",
+  });
+  b.hit({
+    id: "armature-nine",
+    x: 4.6,
+    y: 1.2,
+    z: 3.0,
+    radius: 2.6,
+    label: "Say hello to Nine",
+    detail: "Finished this morning, waiting to be signed for",
+    text: "Nine lights up, checks its own arm twice, and goes back to waiting. It has been very patient.",
+  });
+
+  // The board the note is chalked on, beside the way in.
+  b.box(1.9, 1.2, 0.09, 1.6, 1.75, hz - 0.4, { col: 0x241d20 });
+  b.box(2.05, 0.1, 0.16, 1.6, 2.4, hz - 0.4, { col: P.timber });
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.PlaneGeometry(rng.range(0.6, 1.5), 0.08);
+    g.translate(1.6 + rng.range(-0.15, 0.15), 2.16 - i * 0.28, hz - 0.47);
+    b.lit(g, { col: 0xdfe9ff, power: 0.9 });
+  }
+  b.lamp(1.6, 2.4, hz - 1.2, 0xffd0a8, 0.45, 7.0, 1.2);
+
+  doorSpill(b, hz + 0.18, openW / 2, 5.5, 0xffa878, 0.42);
+  upperShell(b, {
+    hx, hz, thick: 0.35, from: ceil + 0.4, to: shellTop,
+    skin: { col: 0x9aa0ac, col2: 0x4a505c, mix: (_x, y) => THREE.MathUtils.clamp(1 - (y - ceil) / Math.max(shellTop - ceil, 1), 0, 1) * 0.55 },
+    warm: 0xbfd8ff,
+    lit: 0.4,
+  });
+}
+/* -------------------------------------------------------------------------
+ * 9. The Rimbath
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The one room built around the drop.
+ *
+ * Every other inside here spends its contrast budget on *shutting the sky
+ * out*: a ceiling, a warm lamp, a wall between you and nine hundred metres of
+ * air. This one spends the whole budget the other way. It stands on a rim
+ * pavilion whose front faces off the island — the rim lots all face outward,
+ * which is a fact about the plan rather than a choice — so its entire street
+ * frontage is glass, and the sunset comes through it and lands on the water.
+ *
+ * The lot is picked for that: **the outward-facing rim pavilion whose front is
+ * nearest the sunset**, which is a rule about the sun rather than a pair of
+ * coordinates and moves if either the plan or `SUN_DIR` does.
+ *
+ * ## Getting into the water
+ *
+ * The floor of the world is the deck, and a `Deck` below it is not a hole you
+ * can stand in — `supportAt` takes the highest surface at or under you and the
+ * ground always wins. So the bath is a *raised* tank rather than a sunk one:
+ * a 0.5 m coping you cannot step over, a gap in it at the front with three
+ * treads, and a floor inside at 0.2 m with the water drawn at 0.55. You climb
+ * in and stand thigh-deep. Doing it the obvious way round gives you a
+ * beautifully tiled pool that the body walks straight over the top of.
+ */
+const BATH = { hx: 12.0, hz: 4.6, ceil: 4.3, crown: 5.5, openW: 4.2, openH: 2.7 };
+/** The tank, in the room's own frame. */
+const TANK = { x0: -9.0, x1: 9.0, z0: -2.6, z1: 1.4, rim: 0.5, floor: 0.2, water: 0.55 };
+
+function buildBath(b: Rb, shellTop: number): void {
+  const { hx, hz, ceil, crown, openW, openH } = BATH;
+  const rng = b.rng;
+
+  const tile: Skin = {
+    col: 0x6f8890,
+    col2: 0x2c383e,
+    mix: (x, y, z) =>
+      THREE.MathUtils.clamp(1 - y / ceil, 0, 1) * 0.5 +
+      ((Math.round(x / 0.42) + Math.round(y / 0.42) + Math.round(z / 0.42)) % 2 === 0 ? 0.18 : 0),
+  };
+  // 0.45 rather than a skylight's 0.95 — a whole wall of glazing at full sun
+  // reads from inside as a white sheet. See the glasshouse's note.
+  const paneSkin: Skin = {
+    col: 0xbfe0ea,
+    col2: 0xffc07a,
+    mix: (_x, y) => THREE.MathUtils.clamp(1 - y / ceil, 0, 1) * 0.8,
+    emit: 0.16,
+    sky: 0.45,
+  };
+
+  pavedFloor(b, hx, hz, 0.9, (x, z) => ({
+    col: (Math.round(x / 0.9) + Math.round(z / 0.9)) % 2 === 0 ? 0x8f9aa0 : 0x77848c,
+    col2: 0x3a444a,
+    mix: () => 0.3,
+  }));
+
+  b.box(hx * 2, 0.3, hz * 2, 0, ceil + 0.15, 0, { col: 0x39434a });
+  const outerTile = faceSky(tile, hx, hz);
+  wallX(b, -hz, -hx, hx, 0.32, ceil, outerTile);
+  wallZ(b, -hx, -hz, hz, 0.32, ceil, outerTile);
+  wallZ(b, hx, -hz, hz, 0.32, ceil, outerTile);
+
+  /* ---- the front: open, and that is the entire room ----
+   *
+   * This was a full-height glass wall for about an hour, and it was wrong for
+   * a reason that is worth writing down because it applies to every room in
+   * this file: **the interior surface material is opaque.** It has no alpha
+   * and no blend mode — the transparent things here are the additive glow pass
+   * and nothing else — so a "glass wall" built out of it is a wall. It
+   * photographed as a row of pale white panels with a doorway in the middle,
+   * which is the exact opposite of the one thing this room exists for.
+   *
+   * So the front is a loggia instead: a waist-high balustrade with the water
+   * behind it, piers, a lintel, and open air in between. You look out at the
+   * rim road, the parapet, the ranges and nine hundred metres of nothing, with
+   * nothing in the way — which is what "a bath on the edge of a floating
+   * island" was always supposed to mean. */
+  const piers = 5;
+  for (let i = 0; i <= piers; i++) {
+    const x = -hx + (i * hx * 2) / piers;
+    b.box(0.36, ceil, 0.44, x, ceil / 2, hz, { col: 0x6a747c, col2: 0x333c42, mix: (_px, y) => THREE.MathUtils.clamp(1 - y / ceil, 0, 1) * 0.7, sky: 0.55 });
+    b.blocker(x, hz, 0.18, 0.22, 0, ceil);
+  }
+  // The lintel, which is what stops it reading as a hole in a wall.
+  b.box(hx * 2 + 0.4, 0.55, 0.5, 0, ceil - 0.25, hz, { col: 0x5f6a72, sky: 0.6 });
+  // The balustrade: glass in a frame, cut away at the way in.
+  for (const [x0, x1] of [[-hx, -openW / 2] as const, [openW / 2, hx] as const]) {
+    const w = x1 - x0;
+    const c0 = (x0 + x1) / 2;
+    b.box(w, 0.16, 0.5, c0, 1.08, hz, { col: P.brass, emit: 0.15, sky: 0.5 });
+    b.box(w, 0.9, 0.1, c0, 0.6, hz, paneSkin);
+    b.blocker(c0, hz, w / 2, 0.25, 0, 1.15);
+    for (let i = 1; i < 4; i++) {
+      b.box(0.09, 0.95, 0.2, x0 + (w * i) / 4, 0.58, hz, { col: 0x5f6a72, sky: 0.5 });
+    }
+  }
+  // Two jambs at the way in, so the gap in the balustrade reads as a door.
+  for (const sx of [-1, 1] as const) {
+    b.box(0.26, 1.5, 0.44, sx * (openW / 2 + 0.13), 0.75, hz, { col: P.brass, emit: 0.2, sky: 0.5 });
+  }
+  // A clerestory strip down the ridge, so there is light from above as well.
+  b.box(1.6, 0.3, hz * 1.6, 0, ceil + 0.5, 0, { col: 0x4a545c });
+  b.box(1.3, 0.16, hz * 1.5, 0, crown - 0.5, 0, { col: P.glassCool, emit: 0.5, sky: 1 });
+  for (const sx of [-1, 1] as const) {
+    b.box(0.24, crown - ceil, hz * 1.6, sx * 0.85, (ceil + crown) / 2, 0, { col: 0x4a545c });
+  }
+  b.box(hx * 2 + 0.4, 0.4, hz * 2 + 0.4, 0, crown + 0.1, 0, { col: 0x39434a });
+  b.blocker(0, 0, hx + 0.2, hz + 0.2, ceil + 0.3, crown + 0.3);
+  b.deck(0, 0, hx - 0.2, hz - 0.2, crown + 0.3);
+  lightShaft(b, 0, -0.6, crown - 0.7, TANK.water, 0.5, 1.8, 1.4, 0xffc890, 0.2);
+
+  /* ---- the tank ---- */
+  const { x0, x1, z0, z1, rim, floor, water } = TANK;
+  const tcx = (x0 + x1) / 2;
+  const tcz = (z0 + z1) / 2;
+  const thx = (x1 - x0) / 2;
+  const thz = (z1 - z0) / 2;
+  const basin: Skin = {
+    col: 0x2e5a62,
+    col2: 0x143038,
+    mix: (x, _y, z) => ((Math.round(x / 0.5) + Math.round(z / 0.5)) % 2 === 0 ? 0.15 : 0.6),
+  };
+  // Inside floor, and the four walls of the tank.
+  const inner = quad(x0, floor, z0, x1, floor, z0, x1, floor, z1, x0, floor, z1);
+  b.add(inner, basin);
+  b.deck(tcx, tcz, thx - 0.15, thz - 0.15, floor);
+  for (const [px, pz, phx, phz] of [
+    [tcx, z0 - 0.22, thx + 0.44, 0.22] as const,
+    [tcx, z1 + 0.22, thx + 0.44, 0.22] as const,
+    [x0 - 0.22, tcz, 0.22, thz] as const,
+    [x1 + 0.22, tcz, 0.22, thz] as const,
+  ]) {
+    b.box(phx * 2, rim, phz * 2, px, rim / 2, pz, {
+      col: 0x9aa6ac, col2: 0x4a545c, mix: (_x, y) => (y > rim - 0.12 ? 0 : 0.7),
+    });
+    /* The front coping has the steps cut out of it; everything else is solid.
+     * A ring of coping with no gap in it is a bath you can only look at, and
+     * that failure is invisible in every still ever taken of the room. */
+    if (pz === z1 + 0.22) {
+      const gap = 1.6;
+      for (const side of [-1, 1] as const) {
+        const e0 = side < 0 ? px - phx : gap;
+        const e1 = side < 0 ? -gap : px + phx;
+        b.blocker((e0 + e1) / 2, pz, (e1 - e0) / 2, phz, 0, rim);
+      }
+    } else {
+      b.blocker(px, pz, phx, phz, 0, rim);
+    }
+  }
+  /* The way in. Three treads, and no blockers on any of them — a stair in this
+   * world is a stack of decks the body is lifted by, never a stack of boxes it
+   * has to be let through. See the Observatory's. */
+  for (let i = 0; i < 3; i++) {
+    const y = 0.17 + i * 0.17;
+    const z = z1 + 1.0 - i * 0.5;
+    b.box(2.6, 0.16, 0.55, 0, y - 0.08, z, { col: 0x9aa6ac });
+    b.deck(0, z, 1.3, 0.3, y);
+  }
+  b.deck(0, z1 + 0.1, 1.3, 0.5, floor);
+
+  /* ---- the water ---- */
+  for (let i = 0; i < 9; i++) {
+    const za = z0 + 0.2 + (i * (z1 - z0 - 0.4)) / 9;
+    const zb = z0 + 0.2 + ((i + 1) * (z1 - z0 - 0.4)) / 9;
+    const g = quad(x0 + 0.2, water, za, x1 - 0.2, water, za, x1 - 0.2, water, zb, x0 + 0.2, water, zb);
+    b.lit(g, {
+      col: 0x5fd8d0,
+      power: (x) => 0.42 + 0.2 * Math.sin(x * 0.7 + i * 1.3) + (i % 3 === 0 ? 0.1 : 0),
+      flick: 0.1 + i * 0.09,
+    });
+  }
+  // Lamps under the surface, which is what makes it look deep.
+  for (let i = 0; i < 6; i++) {
+    const x = x0 + 1.6 + (i * (x1 - x0 - 3.2)) / 5;
+    const g = new THREE.PlaneGeometry(0.42, 0.24);
+    g.translate(x, 0.36, z0 + 0.22);
+    b.lit(g, { col: 0x9ff0e8, power: 2.4, flick: 0.2 + i * 0.12 });
+    if (i % 2 === 0) b.lamp(x, water + 0.3, tcz, 0x6fd8d0, 0.7, 14, i === 2 ? 2.6 : 1.1);
+  }
+  // Steam. Tall, soft, slow, and the reason the sunset has something to land on.
+  const puffs = b.quality === "high" ? 14 : 7;
+  for (let i = 0; i < puffs; i++) {
+    const x = rng.range(x0 + 0.6, x1 - 0.6);
+    const z = rng.range(z0 + 0.4, z1 - 0.4);
+    const h = rng.range(1.1, 2.4);
+    const w = rng.range(0.5, 1.3);
+    const g = new THREE.PlaneGeometry(w, h);
+    g.rotateY(rng.range(0, TAU));
+    g.translate(x, water + h / 2, z);
+    /* Weak on purpose. Steam is additive and it is *in front of the view* —
+     * at 0.3 the whole loggia went behind a pale sheet and the drop the room
+     * exists for went with it. It has to say "hot water" and then get out of
+     * the way. */
+    b.lit(g, {
+      col: 0xffe0c8,
+      power: (_x, y) => 0.16 * Math.max(0, 1 - (y - water) / (h * 1.1)),
+      flick: rng.next(),
+    });
+  }
+
+  /* ---- the back: a bench, hooks, towels, a shelf of bowls ---- */
+  const bz = -hz + 0.62;
+  b.box(hx * 1.75, 0.14, 0.9, 0, 0.46, bz, { col: P.timberPale, col2: P.timber, mix: (x) => (Math.round(x / 0.16) % 2 === 0 ? 0.7 : 0.1) });
+  for (let i = -4; i <= 4; i++) b.box(0.12, 0.46, 0.7, i * 2.2, 0.23, bz, { col: 0x6a7076 });
+  b.blocker(0, bz, hx * 0.88, 0.45, 0, 0.55);
+  for (let i = 0; i < 7; i++) {
+    const x = -8.4 + i * 2.8;
+    b.box(0.1, 0.1, 0.24, x, 1.85, -hz + 0.24, { col: P.brass });
+    if (i % 2 === 0) {
+      b.box(0.42, 0.85, 0.14, x, 1.42, -hz + 0.3, {
+        col: rng.pick([0xd8624a, 0xe0a03c, 0x4f8f86, 0xdcc48a]),
+        col2: 0x2e2833,
+        mix: (_x, y) => THREE.MathUtils.clamp(1 - (y - 0.9) / 1.0, 0, 1) * 0.55,
+      });
+    }
+  }
+  for (let i = 0; i < 6; i++) {
+    b.box(0.44, 0.2, 0.34, -7.2 + i * 2.9, 0.66, bz, { col: rng.pick([0xf0e6d4, 0xe8dcc4, 0xdcd0bc]) }, rng.range(-0.2, 0.2));
+  }
+  b.box(hx * 1.5, 0.06, 0.4, 0, 2.35, -hz + 0.4, { col: P.timberPale });
+  for (let i = 0; i < 8; i++) {
+    const g = new THREE.CylinderGeometry(0.15, 0.11, 0.13, 10);
+    g.translate(-7.5 + i * 2.1, 2.45, -hz + 0.4);
+    b.add(g, { col: rng.pick([0xb8523f, 0x4f6f68, 0xe0c07a]) });
+  }
+  b.lamp(-5.0, 2.6, -hz + 1.2, 0xffb878, 1.05, 16.0, 2.2);
+  b.lamp(5.0, 2.6, -hz + 1.2, 0xffb878, 1.05, 16.0, 2.1);
+  for (const lx of [-5.0, 5.0]) {
+    b.box(0.34, 0.4, 0.2, lx, 2.6, -hz + 0.36, { col: P.brass, emit: 0.55 });
+    b.inst("bulb", bulbGeo, trs(lx, 2.6, -hz + 0.6), 0xffe0b0, true);
+  }
+
+  /* ---- the cold end: a plunge, a bucket, and somebody's ring ---- */
+  const px = -10.5;
+  b.box(2.4, 0.55, 3.0, px, 0.27, -0.6, { col: 0x8f9aa0, col2: 0x4a545c, mix: (_x, y) => (y > 0.44 ? 0 : 0.7) });
+  b.blocker(px, -0.6, 1.2, 1.5, 0, 0.55);
+  const cold = quad(px - 1.0, 0.5, -1.9, px + 1.0, 0.5, -1.9, px + 1.0, 0.5, 0.7, px - 1.0, 0.5, 0.7);
+  b.lit(cold, { col: 0x7fb8ff, power: 0.7, flick: 0.3 });
+  b.lamp(px, 0.9, -0.6, 0x6fa8f0, 0.45, 8.0, 0.9);
+  const bucket = new THREE.CylinderGeometry(0.24, 0.19, 0.32, 12);
+  bucket.translate(px + 1.8, 0.16, 1.6);
+  b.add(bucket, { col: P.timber });
+  for (const s of [0, 1]) {
+    b.box(0.13, 0.06, 0.3, px + 2.5 + s * 0.2, 0.03, 1.2, { col: P.timberPale }, 0.3);
+  }
+  const ringT = new THREE.TorusGeometry(0.38, 0.11, 6, 16);
+  ringT.rotateX(Math.PI / 2);
+  ringT.translate(9.6, 0.62, 2.2);
+  b.add(ringT, {
+    col: 0xe8e2d8, col2: 0xd8624a,
+    mix: (x, _y, z) => (Math.atan2(z - 2.2, x - 9.6) % 1.6 > 0.8 ? 1 : 0),
+  });
+  b.box(0.5, 0.16, 0.34, 10.4, 0.08, 1.0, { col: 0x5fa8e8 }, 0.4);
+
+  b.hit({
+    id: "bath-water",
+    x: 0,
+    y: 1.0,
+    z: TANK.z1 + 0.9,
+    radius: 3.4,
+    label: "Put a foot in",
+    detail: "Hotter than it looks, from the vents under the deck",
+    text: "Hot enough to hurt for a second. Somebody has left a bucket and a pair of wooden sandals.",
+  });
+  b.hit({
+    id: "bath-view",
+    x: 0,
+    y: 1.5,
+    z: hz - 1.2,
+    radius: 3.6,
+    label: "Look out over the rim",
+    detail: "Glass, then twenty metres of road, then nothing",
+    text: "The water stops eight metres from the edge of the world. Below the line of it: the lake, and the whole way down.",
+  });
+
+  doorSpill(b, hz + 0.16, openW / 2, 5.0, 0x7fe0d8, 0.45);
+  // A rim pavilion is six or seven metres tall and so is this, so this does
+  // nothing — until somebody reseeds the plan and it is the only thing
+  // standing between a bathhouse and a hole in the rim.
+  upperShell(b, {
+    hx, hz, thick: 0.32, from: crown + 0.4, to: shellTop,
+    skin: { col: 0x5f6a70, col2: 0x2c343a, mix: (_x, y) => THREE.MathUtils.clamp(1 - (y - crown) / 8, 0, 1) * 0.6 },
+    lit: 0.25,
+  });
+}
+
+/* -------------------------------------------------------------------------
  * Placement
  * ---------------------------------------------------------------------- */
 
@@ -2150,6 +3724,95 @@ function nearestLot(use: Lot["use"], district: Lot["district"], to: { x: number;
   return lots[0];
 }
 
+/**
+ * Is there room for a room in this lot?
+ *
+ * The same arithmetic the placement below uses to put one there — front wall
+ * flush with the lot's own shopfront, and then every corner of the footprint
+ * tested against the lot polygon. It is the fit half of every rule in this
+ * file, and it is a *filter* rather than an assertion on purpose: a rule that
+ * says "the nearest lot" and then throws when the nearest lot is a four-metre
+ * wedge is a rule that stops working the first time the plan is reseeded.
+ * `spire.ts` learned this about towers; it is the same lesson about shops.
+ */
+function pointInLot(p: { x: number; z: number }, poly: readonly Vec2[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.z > p.z !== b.z > p.z && p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Where a room of this depth stands in this lot, and which way it looks. */
+function onLot(lot: Lot, hz: number): { x: number; z: number; yaw: number } {
+  return {
+    x: lot.frontMid.x - lot.frontNormal.x * (hz + LOT_GAP),
+    z: lot.frontMid.z - lot.frontNormal.z * (hz + LOT_GAP),
+    yaw: Math.atan2(lot.frontNormal.z, lot.frontNormal.x),
+  };
+}
+
+/** How far the room's front wall sits back from the lot's own frontage. */
+const LOT_GAP = 0.5;
+
+function roomFitsLot(lot: Lot, hx: number, hz: number): boolean {
+  const { x, z, yaw } = onLot(lot, hz);
+  const s = Math.sin(yaw);
+  const c = Math.cos(yaw);
+  for (const [sx, sz] of [
+    [-1, -1] as const, [1, -1] as const, [1, 1] as const, [-1, 1] as const,
+  ]) {
+    const p = { x: x + sx * hx * s + sz * hz * c, z: z - sx * hx * c + sz * hz * s };
+    if (!pointInLot(p, lot.poly)) return false;
+  }
+  return true;
+}
+
+/**
+ * A lot chosen by a rule.
+ *
+ * `score` decides — lowest wins, ties broken by id so the answer is the same
+ * on every machine — and everything else is a filter: the right use, the right
+ * district, unclaimed by a landmark, not already spoken for by another room,
+ * and big enough to hold this one. Every room in this file that is not sitting
+ * inside a landmark is placed by this, and none of them by a coordinate.
+ */
+function lotFor(o: {
+  use: Lot["use"];
+  district: DistrictId;
+  hx: number;
+  hz: number;
+  score: (lot: Lot) => number;
+  where?: (lot: Lot) => boolean;
+  exclude?: readonly string[];
+}): Lot {
+  const taken = new Set(o.exclude ?? []);
+  const ok = cityPlan().lots.filter(
+    (l) =>
+      l.use === o.use &&
+      l.district === o.district &&
+      !l.landmark &&
+      !taken.has(l.id) &&
+      (!o.where || o.where(l)) &&
+      roomFitsLot(l, o.hx, o.hz),
+  );
+  if (!ok.length) {
+    throw new Error(
+      `empyrean/interiors: no ${o.district}/${o.use} lot holds a ${o.hx * 2}×${o.hz * 2} m room`,
+    );
+  }
+  ok.sort((a, b) => {
+    const sa = o.score(a);
+    const sb = o.score(b);
+    return Math.abs(sa - sb) < 1e-9 ? a.id.localeCompare(b.id) : sa - sb;
+  });
+  return ok[0];
+}
+
 function placements(): Placement[] {
   const hall = landmarkNamed("market-hall");
   const obs = landmarkNamed("observatory");
@@ -2168,6 +3831,69 @@ function placements(): Placement[] {
   // The Observatory's shutter is cut toward the sunset, expressed in the
   // room's own frame: a local azimuth `al` points at world `al + yaw - PI/2`.
   const slotAz = SUN_AZ - obs.yaw + Math.PI / 2;
+
+  /* ---- the four rooms that are chosen rather than inherited ----
+   *
+   * Each of these is one predicate and one score over the plan. Nothing below
+   * mentions a coordinate, so reseeding `cityplan.ts` moves all four and none
+   * of them lands inside somebody else's building. The exclusions are there
+   * because two of these share a use and a district with a room that was here
+   * first, and "the nearest gardens shop" is a rule that can return the
+   * gallery. */
+  const spoken = [cafeLot.id, galLot.id, spirePlan().lot];
+  const near = (l: Lot, to: { x: number; z: number }) =>
+    Math.hypot(l.centroid.x - to.x, l.centroid.z - to.z);
+
+  // Somebody lives near the tram, like most people who live anywhere.
+  const homeLot = lotFor({
+    use: "block",
+    district: "market",
+    hx: HOME.hx,
+    hz: HOME.hz,
+    score: (l) => near(l, tram),
+    exclude: spoken,
+  });
+  /* A glasshouse wants the low wide lot, not the bottom two metres of six
+   * storeys — so height comes first and the walk to the Hall it sends its
+   * crates to is the tie-break, not the other way round. */
+  const glassLot = lotFor({
+    use: "shop",
+    district: "gardens",
+    hx: GLASS.hx,
+    hz: GLASS.hz,
+    score: (l) => Math.abs(l.height - GLASS.crown) + near(l, hall) / 500,
+    exclude: spoken,
+  });
+  // The repair shop is at the foot of the Beacon, one stop from the station.
+  const armLot = lotFor({
+    use: "civic",
+    district: "core",
+    hx: ARM.hx,
+    hz: ARM.hz,
+    score: (l) => near(l, tram),
+    exclude: spoken,
+  });
+  /* And the bath faces the sunset. Every rim lot's front points either
+   * straight off the island or along the ring — never inward — so "outward,
+   * and squarest to the sun" is a rule the plan can actually satisfy, and the
+   * room is nothing at all if its glass faces the wrong way. */
+  const bathLot = lotFor({
+    use: "pavilion",
+    district: "rim",
+    hx: BATH.hx,
+    hz: BATH.hz,
+    where: (l) => {
+      const rl = Math.hypot(l.frontMid.x, l.frontMid.z) || 1;
+      return (l.frontMid.x / rl) * l.frontNormal.x + (l.frontMid.z / rl) * l.frontNormal.z > 0.8;
+    },
+    score: (l) => Math.abs(angDiff(Math.atan2(l.frontNormal.z, l.frontNormal.x), SUN_AZ)),
+    exclude: spoken,
+  });
+
+  const home = onLot(homeLot, HOME.hz);
+  const glasshouse = onLot(glassLot, GLASS.hz);
+  const armature = onLot(armLot, ARM.hz);
+  const bath = onLot(bathLot, BATH.hz);
 
   return [
     {
@@ -2235,6 +3961,58 @@ function placements(): Placement[] {
       openW: GALLERY.openW,
       lot: galLot.id,
       build: buildGallery,
+    },
+    {
+      id: "home",
+      name: "Twelve Anchor Row",
+      x: home.x,
+      z: home.z,
+      yaw: home.yaw,
+      hx: HOME.hx,
+      hz: HOME.hz,
+      height: HOME.ceil,
+      openW: HOME.openW,
+      lot: homeLot.id,
+      build: (b) => buildHome(b, homeLot.height),
+    },
+    {
+      id: "glasshouse",
+      name: "The Glasshouse",
+      x: glasshouse.x,
+      z: glasshouse.z,
+      yaw: glasshouse.yaw,
+      hx: GLASS.hx,
+      hz: GLASS.hz,
+      height: GLASS.crown,
+      openW: GLASS.openW,
+      lot: glassLot.id,
+      build: (b) => buildGlasshouse(b, glassLot.height),
+    },
+    {
+      id: "armature",
+      name: "The Armature",
+      x: armature.x,
+      z: armature.z,
+      yaw: armature.yaw,
+      hx: ARM.hx,
+      hz: ARM.hz,
+      height: ARM.ceil,
+      openW: ARM.openW,
+      lot: armLot.id,
+      build: (b) => buildArmature(b, armLot.height),
+    },
+    {
+      id: "bath",
+      name: "The Rimbath",
+      x: bath.x,
+      z: bath.z,
+      yaw: bath.yaw,
+      hx: BATH.hx,
+      hz: BATH.hz,
+      height: BATH.crown,
+      openW: BATH.openW,
+      lot: bathLot.id,
+      build: (b) => buildBath(b, bathLot.height),
     },
   ];
 }
@@ -2344,6 +4122,19 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
 
     const b = new Rb(rng.fork(spec.id), ctx.quality);
     spec.build(b);
+
+    /* ---- fold the sets that were never worth a draw call ---- */
+    for (const [key, set] of [...b.sets]) {
+      if (set.m.length >= INST_MIN) continue;
+      for (let k = 0; k < set.m.length; k++) {
+        const g = set.geo.clone();
+        g.applyMatrix4(set.m[k]);
+        tintGeometry(g, set.tint[k]);
+        (set.glow ? b.glow : b.solid).push(g);
+      }
+      set.geo.dispose();
+      b.sets.delete(key);
+    }
 
     /* ---- one group, one rotation, everything else stays local ---- */
     const rg = new THREE.Group();
@@ -2605,8 +4396,26 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
     for (; slot < LIGHT_POOL; slot++) pool[slot].intensity = 0;
   };
 
+  /* A hand on the rooms from outside the world, for the screenshot script.
+   *
+   * Six of the nine stand on lots chosen by a rule over `cityplan.ts`, so
+   * their world coordinates are not knowable anywhere but here — and a
+   * viewpoint table with a hardcoded pair in it is a photograph of whatever
+   * ends up standing there after the next reseed, which is the same argument
+   * `spire.ts` makes for `__empyreanLift`. Published from the system rather
+   * than from `world.ts` for exactly that reason: this is the module that
+   * knows. */
+  if (typeof window !== "undefined") {
+    (window as unknown as { __empyreanRooms?: unknown }).__empyreanRooms = () =>
+      infos.map((r) => ({ id: r.id, name: r.name, x: r.x, y: r.y, z: r.z, yaw: r.yaw, hx: r.hx, hz: r.hz, height: r.height }));
+  }
+
   handle.dispose = () => {
     spire.dispose();
+    if (typeof window !== "undefined") {
+      const w = window as unknown as { __empyreanRooms?: unknown };
+      if (w.__empyreanRooms) delete w.__empyreanRooms;
+    }
     for (const r of rooms) {
       for (const g of r.geos) g.dispose();
       for (const m of r.mats) m.dispose();
@@ -2672,8 +4481,27 @@ function toWorldRot(x: number, z: number, rot: number, ox: number, oz: number): 
 
 /**
  * A deck cannot be over-approximated — an AABB bigger than the platform is
- * floor you can stand on that is not there — so an oblique one is inset by the
- * worst-case overshoot before it is tiled.
+ * floor you can stand on that is not there — and it cannot be *under*-covered
+ * in the middle either, because `supportAt` is a point query with no radius
+ * and a body will find a ten-centimetre hole and fall through it.
+ *
+ * Those two together rule out the obvious thing. Chopping the deck into tiles
+ * in its own frame and inscribing an axis-aligned box in each tile leaves the
+ * inscribed boxes on a *rotated* lattice, so the world-axis gaps between them
+ * open up as the rotation leaves 45°: at 85° the gaps are fifteen centimetres,
+ * which is a bath with a trapdoor in the bottom of it. (That is exactly how
+ * this presented — a body that walked in, dropped through the floor of the
+ * tank and could then get out of it in no direction at all, because the rim it
+ * had climbed over was solid from the inside.)
+ *
+ * So the chop is in **world x**, not in the deck's own frame. Strips tile the
+ * world x axis exactly, so there is nothing between them; and within a strip
+ * the box takes the z-range the deck covers across the *whole* strip, which
+ * for a convex quad is `max` of the lower edge and `min` of the upper edge at
+ * the two ends. That is contained by construction — the lower hull of a convex
+ * shape is a convex function, so its largest value over an interval is at an
+ * end — and it gives up only a sliver along each slanted edge, which is the
+ * safe direction to be wrong in.
  */
 function pushWorldDecks(out: Deck[], d: LDeck, rot: number, ox: number, oz: number): void {
   const c = Math.cos(rot);
@@ -2689,20 +4517,47 @@ function pushWorldDecks(out: Deck[], d: LDeck, rot: number, ox: number, oz: numb
     });
     return;
   }
-  const nx = Math.max(1, Math.ceil((d.hx * 2) / CHOP));
-  const nz = Math.max(1, Math.ceil((d.hz * 2) / CHOP));
-  const px = d.hx / nx;
-  const pz = d.hz / nz;
-  const hx = px * Math.abs(c) + pz * Math.abs(s);
-  const hz = px * Math.abs(s) + pz * Math.abs(c);
-  const inx = Math.max(0.05, hx - (px * Math.abs(c) + pz * Math.abs(s) - px));
-  const inz = Math.max(0.05, hz - (px * Math.abs(s) + pz * Math.abs(c) - pz));
-  for (let i = 0; i < nx; i++) {
-    for (let j = 0; j < nz; j++) {
-      const lx = -d.hx + px * (2 * i + 1);
-      const lz = -d.hz + pz * (2 * j + 1);
-      const [wx, wz] = toWorldRot(d.x + lx, d.z + lz, rot, ox, oz);
-      out.push({ y: ISLAND_Y + d.y, x: wx, z: wz, hx: inx, hz: inz });
+
+  const corners: Array<[number, number]> = [];
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+    corners.push(toWorldRot(d.x + sx * d.hx, d.z + sz * d.hz, rot, ox, oz));
+  }
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const [cx] of corners) {
+    if (cx < x0) x0 = cx;
+    if (cx > x1) x1 = cx;
+  }
+
+  /** The deck's z range on the vertical line at `x`. Empty outside it. */
+  const spanAt = (x: number): [number, number] => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < 4; i++) {
+      const a = corners[i];
+      const b = corners[(i + 1) % 4];
+      if (a[0] === b[0]) continue;
+      const t = (x - a[0]) / (b[0] - a[0]);
+      if (t < 0 || t > 1) continue;
+      const z = a[1] + (b[1] - a[1]) * t;
+      if (z < lo) lo = z;
+      if (z > hi) hi = z;
     }
+    return [lo, hi];
+  };
+
+  const n = Math.max(1, Math.ceil((x1 - x0) / CHOP));
+  const w = (x1 - x0) / n;
+  for (let i = 0; i < n; i++) {
+    const sa = x0 + i * w;
+    const sb = sa + w;
+    // Nudged inside the edges: at the very ends the span collapses to a point
+    // and a strip of zero depth is a strip that does nothing.
+    const A = spanAt(Math.min(sa + 1e-4, x1));
+    const B = spanAt(Math.max(sb - 1e-4, x0));
+    const lo = Math.max(A[0], B[0]);
+    const hi = Math.min(A[1], B[1]);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi - lo < 0.08) continue;
+    out.push({ y: ISLAND_Y + d.y, x: (sa + sb) / 2, z: (lo + hi) / 2, hx: w / 2, hz: (hi - lo) / 2 });
   }
 }

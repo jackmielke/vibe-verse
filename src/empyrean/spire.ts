@@ -679,7 +679,23 @@ void main() {
   vec2 pane = vec2(floor(g.x), floor(g.y));
   float wobX = (hash21(pane + vec2(s * 0.19, 11.3)) - 0.5) * 0.030;
   float wobY = (hash21(pane + vec2(41.7, s * 0.23)) - 0.5) * 0.022;
-  vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), N));
+  /* The tangent basis, guarded.
+   *
+   * cross(up, N) is the zero vector when N points straight up or straight
+   * down, and normalize of that is NaN. On a tower that is one ring of
+   * pixels on a ledge soffit — a handful of fragments out of a million.
+   *
+   * They were not harmless. A NaN goes into the HDR target, the post chain
+   * downsamples it, and a blur kernel spreads it across its whole tile: what
+   * reaches the screen is a hard-edged black rectangle six hundred pixels
+   * across, with none of the properties of the thing that caused it. It does
+   * not shrink with distance, because a mip tile is a fixed size on screen.
+   * Its edges do not converge, because they are not world-space edges. It
+   * survived a complete rewrite of the geometry it was blamed on, because it
+   * never came from that geometry — it was parked as unexplained for weeks,
+   * and chased through two other files before this line was found. */
+  vec3 upAxis = abs(N.y) > 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+  vec3 T = normalize(cross(upAxis, N));
   vec3 B = cross(N, T);
   vec3 Ng = normalize(N + (T * wobX + B * wobY) * glazed * det);
 

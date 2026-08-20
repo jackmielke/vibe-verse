@@ -174,26 +174,35 @@ const VIEWS = {
    * `lx` is across the room, `lz` is out through its own front door — so a
    * positive `lz` is outside on the pavement and a negative one is at the back
    * wall — and `out: true` faces the street rather than the back of the room.
+   *
+   * **The boom lands at `lz + (out ? -dist : +dist)`, and that has to still be
+   * inside the room.** It is the arithmetic that decides whether a viewpoint
+   * is a photograph of a room or of the pavement behind it: the rooms here are
+   * nine to nineteen metres deep, and the default eight-and-a-half-metre boom
+   * is longer than half of them. The lens height is `ly + 2.6 + sin(pitch) *
+   * dist` and wants to stay half a metre clear of the ceiling for the same
+   * reason — `camera.ts` aims 2.6 m above the feet and collapses the boom onto
+   * that target whenever it is blocked, which indoors is most of the time.
    */
 
   /** Twelve Anchor Row, from the pavement: the lit flat in the dark block. */
-  home: { room: { id: "home", lz: 9.5, ly: 1.0, out: false, pitch: -0.22, dist: 9 } },
+  home: { room: { id: "home", lz: 9.5, ly: 0.2, out: false, pitch: -0.22, dist: 9 } },
   /** Standing in the middle of it, looking at the table and the kitchen. */
-  homein: { room: { id: "home", lz: -1.5, ly: 0.6, out: false, pitch: 0.05, dist: 4.5 } },
-  /** From the back wall looking out of the window at the street. */
-  homeout: { room: { id: "home", lx: 0.5, lz: -6.0, ly: 0.9, out: true, pitch: 0.04, dist: 5.5 } },
-  /** The Glasshouse from the doorway, down the length of it. */
-  glasshouse: { room: { id: "glasshouse", lz: 7.0, ly: 1.0, out: false, pitch: 0.02, dist: 5 } },
+  homein: { room: { id: "home", lz: -1.0, ly: 0, out: false, pitch: 0.05, dist: 4.5 } },
+  /** From the back of the room looking out of the window at the street. */
+  homeout: { room: { id: "home", lx: 0.8, lz: 1.0, ly: 0, out: true, pitch: 0.04, dist: 5.0 } },
+  /** The Glasshouse from the door end, down the length of it. */
+  glasshouse: { room: { id: "glasshouse", lz: 2.0, ly: 0, out: false, pitch: 0.02, dist: 5 } },
   /** Under the fig, looking up into the vault. */
-  glassvault: { room: { id: "glasshouse", lz: -1.0, ly: 1.2, out: false, pitch: -0.45, dist: 6 } },
+  glassvault: { room: { id: "glasshouse", lz: -1.0, ly: 0, out: false, pitch: -0.45, dist: 6 } },
   /** The Armature, from just inside the shutter. */
-  armature: { room: { id: "armature", lz: 6.5, ly: 1.2, out: false, pitch: 0.02, dist: 6 } },
+  armature: { room: { id: "armature", lz: 2.5, ly: 0, out: false, pitch: 0.02, dist: 5 } },
   /** At the bench, with the arc and the wall of names. */
-  armbench: { room: { id: "armature", lx: 2.0, lz: -1.0, ly: 1.1, out: false, pitch: 0.0, dist: 4.5 } },
-  /** The Rimbath, from the back wall, looking out through the glass. */
-  bath: { room: { id: "bath", lx: 0, lz: -3.2, ly: 1.1, out: true, pitch: 0.06, dist: 6 } },
-  /** Standing in the water, looking along the tank at the sunset. */
-  bathwater: { room: { id: "bath", lx: -6.0, lz: -0.6, ly: 0.4, out: false, pitch: 0.02, dist: 5 } },
+  armbench: { room: { id: "armature", lx: 2.0, lz: -1.0, ly: 0, out: false, pitch: 0.0, dist: 4.5 } },
+  /** The Rimbath, looking out through the glass wall at the drop. */
+  bath: { room: { id: "bath", lx: 0, lz: 1.2, ly: 0, out: true, pitch: 0.06, dist: 3.4 } },
+  /** Standing in the water, with the sunset coming in off the rim. */
+  bathwater: { room: { id: "bath", lx: -5.0, lz: 0.2, ly: 0.2, out: true, pitch: 0.04, dist: 3.0 } },
 
   /* ---- The Meridian ----------------------------------------------------
    *
