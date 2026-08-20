@@ -76,6 +76,7 @@ export class CameraRig {
   private readonly lead = new THREE.Vector3();
   private readonly right = new THREE.Vector3();
   private readonly probe = new THREE.Vector3();
+  private readonly probeArm = new THREE.Vector3();
 
   constructor(yaw: number) {
     this.yaw = yaw;
@@ -210,12 +211,15 @@ export class CameraRig {
      * does not snap when you turn into an alley. */
     this.right.set(bz, 0, -bx).normalize();
     const trial = (sign: number) => {
+      /* `probeArm` is a field, not a fresh vector. This ran twice a frame and
+         was the only allocation left in the rig — sixty frames a second times
+         two is seven thousand vectors a minute for a number that is thrown
+         away immediately. */
+      this.probeArm.set(bx * this.dist * 0.6, by * this.dist * 0.6, bz * this.dist * 0.6);
       this.probe
         .copy(this.target)
         .addScaledVector(this.right, sign * 1.1)
-        .add(
-          new THREE.Vector3(bx * this.dist * 0.6, by * this.dist * 0.6, bz * this.dist * 0.6),
-        );
+        .add(this.probeArm);
       return world.blockedAt(this.probe.x, this.probe.z, this.probe.y) ? 0 : sign;
     };
     this.shoulderTarget = trial(1) || trial(-1) || 0;
