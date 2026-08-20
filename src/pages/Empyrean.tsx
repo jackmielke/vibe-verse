@@ -22,6 +22,7 @@ import type { EmpyreanState } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
 import Guestbook from "@/empyrean/ui/Guestbook";
 import empyreanArt from "@/assets/empyrean-inspiration.png.asset.json";
+import empyreanCity from "@/assets/empyrean-city.png.asset.json";
 
 import EmpyreanSkyPanel, { readSkyChoice } from "@/components/EmpyreanSkyPanel";
 // Type-only, so naming the five conditions here costs nothing at runtime and
@@ -197,10 +198,20 @@ export default function Empyrean() {
           />
 
           {/* Everything readable lives on one pane of glass. */}
-          <div className="w-full max-w-xl rounded-[2rem] border border-white/25 bg-white/10 px-6 py-8 shadow-[0_30px_120px_rgba(6,10,40,0.55)] backdrop-blur-2xl">
+          <div className="group w-full max-w-xl rounded-[2rem] border border-white/25 bg-white/10 px-6 py-8 shadow-[0_30px_120px_rgba(6,10,40,0.55)] backdrop-blur-2xl">
+            {/* The island itself, hung on the glass like a poster. */}
+            <div className="relative mx-auto mb-6 w-44 sm:w-56">
+              <div className="absolute -inset-3 rounded-[1.75rem] bg-[radial-gradient(60%_60%_at_50%_45%,rgba(120,220,255,.55),transparent_70%)] blur-2xl" />
+              <img
+                src={empyreanCity.url}
+                alt="The Empyrean: a floating city of iridescent glass towers above a frozen lake"
+                className="relative w-full rounded-[1.5rem] border border-white/35 shadow-[0_20px_60px_rgba(6,10,40,.6)] transition-transform duration-500 ease-out will-change-transform group-hover:-translate-y-1.5 group-hover:rotate-[1.5deg]"
+              />
+            </div>
             <p className="mb-3 text-[11px] uppercase tracking-[0.42em] text-cyan-100/85">
               The vibeverse
             </p>
+
             <h1 className="font-heading text-4xl tracking-tight text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.45)] sm:text-6xl">
               The Empyrean
             </h1>
