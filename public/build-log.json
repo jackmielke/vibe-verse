@@ -1,7 +1,271 @@
 {
-  "generated_at": "2026-08-20T05:52:33.417Z",
+  "generated_at": "2026-08-20T10:11:30.551Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "8def08e7",
+      "date": "2026-08-20",
+      "subject": "The Meridian: a tower you walk into, ride up, and stand on top of",
+      "lede": "Twenty-three towers in the Spires and not one of them had an inside. `spire.ts` builds a single tower end to end — curtain-walled shell, double-height lobby, a scenic lift that really travels, and a belvedere with a cantilevered glass floor you can stand on and see the street three hundred metres straight down through.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "dc4d2367",
+      "date": "2026-08-20",
+      "subject": "Families, children, dogs and robots — and benches that know which way they face",
+      "lede": "Eight hundred and twenty people were eight hundred and twenty individuals transiting. Now about seventy-seven of them are families, ninety-two are couples, thirty are walking a dog, and there are twenty-eight civic robots — five sweepers working a kerb, eleven couriers with a parcel, twelve companions that go and stand next to the *child* when a group stops.",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "fb5e928c",
+      "date": "2026-08-20",
+      "subject": "Lead the onboarding with the thing you can see, and photograph the spaceport",
+      "lede": "The opening line named sunmotes scattered all over the island and the Launch Terrace. Both are true and neither is in front of you. There is now an aircraft parked on a lit pad twenty metres up the avenue from where you arrive, and getting into it is one keypress — so that is the line. A first sentence that names something visible and actionable in three seconds is worth three that describe the world.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "45b35450",
+      "date": "2026-08-20",
+      "subject": "Give the whole-world builds room, now that the world is bigger",
+      "lede": "Three tests build the entire world — every building, every interior, eight hundred props, the crowd, the traffic, and now seven aircraft and a spaceport — and two of them started overrunning vitest's five-second default the moment it grew. Both failed on a timeout rather than an assertion, which reads as \"the world is broken\" and is the most expensive false alarm this repository can raise. Thirty seconds each, matchi",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "754bccff",
+      "date": "2026-08-20",
+      "subject": "Warn before the launch, not after it, and write down the two new systems",
+      "lede": "A rocket you are told about once it has lit is a rocket you missed. The countdown toast now fires at T-44 and says which way to look; the second one still counts the *sound* rather than the ignition, because from the plaza that is 5.9 seconds late and the delay is the most convincing thing about watching a launch from two kilometres away.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "d3e99b8a",
+      "date": "2026-08-20",
+      "subject": "Aircraft on the roofs, a spaceport on the horizon, and a playground",
+      "lede": "Three things, and the two big ones were built in parallel by agents against the contract in `types.ts`.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "298e4cac",
+      "date": "2026-08-20",
+      "subject": "An uncaught exception is a smoke failure, however much got drawn first",
+      "lede": "Tonight I pushed a half-written module to a branch that deploys. `/empyrean` threw `flyerParts is not defined` out of its vehicle builder partway through booting, and `npm run smoke` printed",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "11cbb97b",
+      "date": "2026-08-20",
+      "subject": "Write down the skybridge attempt, since the failure outlived the code",
+      "lede": "Nine glass tubes between tower crowns, chosen off the built lots. Rendered, the city grew one screen-filling near-black rectangle occluding everything in a forty-degree cone — and it survived a complete rewrite of the geometry, from `boxAt` on the glass bucket to `prism` with the pen's base, span and seed set the way `buildLot` sets them. The artefact did not change at all when the geometry it supposedly came from ch",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "6b6452b8",
+      "date": "2026-08-20",
+      "subject": "A moon you can believe, at the third size",
+      "lede": "The first one thresholded the dot product against 0.9993, which is four degrees across — eight moons wide — and with the halo on it the night sky had a searchlight in it. The dot product is the wrong quantity as well as the wrong number: cos is flat at zero, so every value that matters is within one part in a hundred thousand of 1.0 and the precision goes exactly where all the detail is. The chord between two unit ve",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "5c21874f",
+      "date": "2026-08-20",
+      "subject": "Back out an agent's half-written vehicles.ts that I pushed by accident",
+      "lede": "`git add -A src` while four subagents were mid-edit swept an unfinished `vehicles.ts` and three of their scratch test files into a commit about the sky, and I pushed it to a branch that deploys. `/empyrean` threw `flyerParts is not defined` out of `buildVehicles` before the world booted: a black screen on a live route, from a commit whose message is about the moon.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "2d78841a",
+      "date": "2026-08-20",
+      "subject": "A moon, a blue hour, and a dusk that ends",
+      "lede": "Now that the hour is somebody's to choose, the hours have to be worth choosing, and two of them were not.",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "8aab423e",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "e5a0107e",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "3e5fcaa0",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "49ee9670",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "10e71005",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "b7242969",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "4c56fb78",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "7240652a",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "e899d1d8",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "48847af5",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "9455eb08",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "6854bb74",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "844e70b1",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "d4bc1de6",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "8b239503",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "89a75dbe",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "3d77d21f",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "e760a194",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "8cd085b2",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "5af23d70",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "7c217095",
+      "date": "2026-08-20",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "c64773d1",
+      "date": "2026-08-20",
+      "subject": "Regenerate the published build log",
+      "lede": "`prebuild` rewrites it on every `npm run build`, so it comes out of a verification run dirty and one commit behind. Regenerated against the tip so the copy served at myvibeverse.com/build-log.json matches what is on main.",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "2767213d",
       "date": "2026-08-20",
@@ -727,296 +991,6 @@
         "The Long Silence"
       ],
       "files": 20
-    },
-    {
-      "sha": "ec4175d4",
-      "date": "2026-08-17",
-      "subject": "Put the city on a beat, and made a crowd sound like one",
-      "lede": "The dances were already the most tightly synchronised thing in the world and the least perceptible. Every character runs off `Date.now()` at one tempo, so two people who start the same move ten seconds apart are genuinely in step — and in silence that reads as coincidence rather than as anything happening. So: music, on the same clock.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 12
-    },
-    {
-      "sha": "ff23349a",
-      "date": "2026-08-17",
-      "subject": "Stamp dates for the worlds that arrived while this was in flight",
-      "lede": "Regenerated after rebasing onto the Midnight Zone, Glass Lake, Dune Sea and the letterbox work — npm run stamp reads each world's source, so the dates on the cards were four worlds out of date the moment the rebase landed.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "c53bd6d7",
-      "date": "2026-08-17",
-      "subject": "Exploring pays, because nothing else did",
-      "lede": "The ledger said something bleak. Of 495 wallets, 491 sat at exactly the 100 coins they were handed on arrival, ONE had ever gone past it, and the richest in the whole vibeverse held 116. Three cosmetics had ever been bought, all on one afternoon. `game_reward` had fired once in its life.",
-      "places": [
-        "the machinery underneath"
-      ],
-      "files": 16
-    },
-    {
-      "sha": "e2dc8847",
-      "date": "2026-08-17",
-      "subject": "A crashed world ended the smoke run green",
-      "lede": "`npm run smoke` opens all fifty-four routes and is the only automated check that a world still comes up. It has four verdicts: canvas, text, blank, and crash — the last one when the route renders the app's own crash screen, which is deliberately the WORST outcome, because a blank route might still be loading while a crashed one has already given up.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "caccb2a5",
-      "date": "2026-08-17",
-      "subject": "✉️ The paper takes letters, and Vibey finally reads it out loud",
-      "lede": "Two things the paper was missing: a way in, and a voice.",
-      "places": [
-        "this newspaper",
-        "the machinery underneath"
-      ],
-      "files": 13
-    },
-    {
-      "sha": "6896dbb4",
-      "date": "2026-08-17",
-      "subject": "The bay has something in it, and you can finally look up",
-      "lede": "The sea got waves, then a floor, then caustics on the floor, then fish over the caustics, then a way to swim down through all of it — and no reason to. You dive once, see the best-looking thing in the world, surface, and never dive again. Three commits of ocean making a very good set and not a place.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "f68b30fa",
-      "date": "2026-08-17",
-      "subject": "Everybody starts as a mushroom",
-      "lede": "The default character was Vibey, the fallback for an unknown id was Flux, and Webslinger sat at index 1 — so the second face anybody saw in the vibeverse was a wall-crawler, in every picker, on every surface that lists the roster. It is Toadstool now: the default, the fallback, and the first tile.",
-      "places": [
-        "the character roster",
-        "the machinery underneath"
-      ],
-      "files": 7
-    },
-    {
-      "sha": "18b88dcb",
-      "date": "2026-08-17",
-      "subject": "🔦 The Midnight Zone was unplayable, and none of it showed up in a build",
-      "lede": "Jack played the thing I shipped and got a black screen most of the time, a descent that never ended, and something he described as very glitchy. All of it was real, all of it was mine, and every single one got past a green build, a green typecheck, 1,528 passing tests and a set of screenshots I took myself.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "dffe1d7a",
-      "date": "2026-08-17",
-      "subject": "A card for San Francisco that shows the city it is now",
-      "lede": "The old one predated the walking mode, the ten landmarks and the lighting work. Captured from the running world at golden hour off Telegraph Hill, looking down Columbus into the Financial District — Coit Tower, Washington Square, North Beach's roofs, the Transamerica and the Salesforce spike and the bay, in one frame.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "461d142e",
-      "date": "2026-08-17",
-      "subject": "Traffic can knock you over, water muffles the world, and /city got measured",
-      "lede": "Three things, and the third one found a regression I had shipped.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 10
-    },
-    {
-      "sha": "fe24c75a",
-      "date": "2026-08-17",
-      "subject": "sf-flicker was measuring a falling character",
-      "lede": "/sf opens in walking mode now, and `setPose` moves the PLAYER rather than a detached camera. So the probe's own poses — 236 m over the Financial District, 22 m above Market Street — handed the walking controller a character in mid-air, and it did the correct thing with it: dropped it. The settle test is defined as two frames of a frozen pose. It was comparing two frames of a fall, reading 37%, and blaming the city.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "390b8cf5",
-      "date": "2026-08-17",
-      "subject": "npm run stamp: San Francisco's date",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_011nNcUJKivGcV3xsUbHjaFx",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "a13e9849",
-      "date": "2026-08-17",
-      "subject": "Spawn on the plaza, not inside it",
-      "lede": "Walking into Union Square worked. Spawning there did not, and it failed in the way that is hardest to report: the character was simply not in the picture. Every character, GLB and procedural alike, which is what made it look like a rig-loading bug rather than a physics one.",
-      "places": [
-        "San Francisco"
-      ],
-      "files": 2
-    },
-    {
-      "sha": "60b25c05",
-      "date": "2026-08-17",
-      "subject": "Walk San Francisco, and stop the city boiling while you do",
-      "lede": "The glitching was one bug, and it was not the one it looked like. A chunk that generates no geometry — water, park, the Presidio's meadows, a third of this map — was treated as \"not built yet\" rather than \"built, and empty\", so every rescan rebuilt every one of them, four hundred milliseconds apart, forever. The queue never drained in a whole session, real chunks queued behind work already done, and the LOD cross-fad",
-      "places": [
-        "San Francisco"
-      ],
-      "files": 21
-    },
-    {
-      "sha": "cffdbc9f",
-      "date": "2026-08-16",
-      "subject": "Fireballs, bumper cars, F to get out, and the invisible swimmer",
-      "lede": "Six things from Jack, all in and around driving.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "fff1ed10",
-      "date": "2026-08-16",
-      "subject": "npm run stamp: the dunes moved",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "271da818",
-      "date": "2026-08-16",
-      "subject": "The Dune Sea was drawing the sky where the ground should be",
-      "lede": "The world looked flat, washed out and wrong, and it was not the lighting. The terrain mesh's triangle winding was inverted, so three culled every face that pointed at the camera. What rendered was the handful of slopes angled *away* — the rest of the frame was the sky dome showing straight through the floor. It reads exactly like an overexposed desert, which is why it survived four passes at the shading: every one of",
-      "places": [],
-      "files": 9
-    },
-    {
-      "sha": "f28e4477",
-      "date": "2026-08-16",
-      "subject": "Drive into the sea and the sea does something about it",
-      "lede": "`CollisionWorld` floors everything at y=0 so nothing can fall out of the world, and over open water that floor is a phantom plate with no mesh under it. Every ground query a car made therefore answered \"sea level, go ahead\" — so a kart driven off the quay carried on driving, at sea level, across the bay, wheels spinning on nothing. With an ocean this good it was the loudest remaining tell that the water is scenery.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 7
-    },
-    {
-      "sha": "2540f1fe",
-      "date": "2026-08-16",
-      "subject": "npm run stamp: The Dune Sea gets its date",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "c7d5b2c6",
-      "date": "2026-08-16",
-      "subject": "The Dune Sea: sandboarding a sunset, on one function",
-      "lede": "A second sport, at /dunes, and the same character rides it — the vibeverse pick, through `loadCharacterRig`, exactly as on the Glass Lake.",
-      "places": [],
-      "files": 12
-    },
-    {
-      "sha": "f30d5d94",
-      "date": "2026-08-16",
-      "subject": "The Glass Lake: it is you out there now, and the steering woke up",
-      "lede": "The skater was a figure built from primitives in this world's own code, which is a strange thing for a repo whose whole character system exists so that the person you picked follows you between worlds. It now loads that person: `lobby.character` — the same key the lobby, the hub and the profile all write — through `loadCharacterRig`, which handles the fifty-odd catalog GLBs and the code-built cast that has no file at",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "dbcace51",
-      "date": "2026-08-16",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "cd24e85e",
-      "date": "2026-08-16",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "2675c183",
-      "date": "2026-08-16",
-      "subject": "npm run stamp: dates for the two worlds that landed together",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_016tVHkMSXzbXQL6eX1LJ3UF",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "82036eb4",
-      "date": "2026-08-16",
-      "subject": "The Glass Lake: black ice, a live aurora, and the reflection for free",
-      "lede": "A new world at /glass-lake. It is night, you are on a hundred and ninety metres of frozen lake, and the sky above it is not a texture.",
-      "places": [],
-      "files": 18
-    },
-    {
-      "sha": "f8deb431",
-      "date": "2026-08-16",
-      "subject": "The sea has an inside now: dive under Vibe City",
-      "lede": "The ocean had a top and nothing behind it. You could swim on it, and the moment your eyes went under, the world carried on being the world — same fog, same sky, same flat blue sheet seen from a side it was never drawn for. This is the other half, reached by aiming the camera down and swimming.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "8765c89c",
-      "date": "2026-08-16",
-      "subject": "A world was added and three homepages said fifty-three anyway",
-      "lede": "The Midnight Zone landed on main, and Aurora, Swiss and Storybook each went on announcing \"Fifty-three worlds\" over a grid of fifty-four — because each of them had spelled the number out by hand in its headline. That is exactly the failure `registry.ts` was built to end, reappearing in a new directory.",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "234182e8",
-      "date": "2026-08-16",
-      "subject": "Step through the fifteen with a key, and fix Riso's smear",
-      "lede": "`[` and `]` walk the bake-off. Not the arrow keys: Console drives its shelves with those, so a stepper bound to them would step the theme and scroll the shelf on the same press. Verified both — `]]]` walks midnight→alpine→editorial→zine, and two ArrowRights inside Console move its cursor and leave the URL alone.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "df6f7646",
-      "date": "2026-08-16",
-      "subject": "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out",
-      "lede": "Forty-four worlds in the vibeverse and not one of them underwater. So: a submersible, trimmed slightly heavy so it sinks on its own, and 8,200 m of ocean between you and the floor of the trench.",
-      "places": [
-        "The Long Silence"
-      ],
-      "files": 25
-    },
-    {
-      "sha": "cd60b3da",
-      "date": "2026-08-16",
-      "subject": "Zine put its wall below the fold, which is the only thing Zine is",
-      "lede": "The headline was set to 12vw and stacked above the collage, so the first screen of a theme whose entire argument is \"worlds pinned to a wall at angles\" was a sentence on black. The text now sits beside the wall and sticks while it scrolls, which is also more like an actual zine — the writing pinned up among the pictures rather than introducing them.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "fab43bad",
-      "date": "2026-08-16",
-      "subject": "Alpine lost its sign-in button on a phone, and nothing noticed",
-      "lede": "The nav did not wrap, so at 390px the last item ran off the edge of the sky — which has `overflow: hidden`, so the page did not scroll, nothing was reported, and the button was simply gone. Every check passed on a homepage you could not sign in from.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "30d33671",
-      "date": "2026-08-16",
-      "subject": "The picker shows you the page, not a paragraph about the page",
-      "lede": "`/homes` listed fifteen candidates as three-colour swatches and a sentence each, which is enough to tell them apart and not nearly enough to choose between them. It now carries a live preview beside the list: hover a row, see that homepage running.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "332aafcd",
-      "date": "2026-08-16",
-      "subject": "Ten more front doors, and every one of them argues with the rest",
-      "lede": "Completes the bake-off at `/homes`. The ten added here are structural rather than tonal — the point of fifteen is lost the moment two of them are the same layout in different colours:",
-      "places": [],
-      "files": 17
     }
   ]
 }
