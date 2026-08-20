@@ -63,6 +63,7 @@ import { makeRng, type Rng } from "@/shared/proc/rng";
 import { ISLAND_Y } from "./config";
 import { cityPlan, LANDMARKS, type Landmark, type Lot } from "./cityplan";
 import { SUN_DIR } from "./sky";
+import { buildSpire, type SpirePlan } from "./spire";
 import type { BuildContext, FrameContext, Interactable, System } from "./types";
 
 /* -------------------------------------------------------------------------
@@ -128,6 +129,16 @@ export interface InteriorsHandle extends System {
   inside(x: number, y: number, z: number): string | null;
   /** The rooms, as data. Same array `interiorPlan()` returns. */
   readonly rooms: readonly InteriorInfo[];
+  /**
+   * The one tower you can go up, as data.
+   *
+   * Kept apart from `rooms` because it is not the same kind of thing: the
+   * five street rooms are furniture inside somebody else's shell and this is
+   * a whole building — its own facade, its own lift and a floor three hundred
+   * metres up. `spire.ts` owns it; this file carries it so that the engine
+   * sees one interiors system rather than two.
+   */
+  readonly spire: SpirePlan;
   /** Lots these interiors stand in. Nothing else should build on them. */
   readonly claimedLots: readonly string[];
   /**
@@ -2298,6 +2309,16 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
   const claimed: string[] = [];
   const infos = interiorPlan();
 
+  /* The tower with the lift in it. Built first so its lot joins the claim
+   * list before the engine reads it — `buildings.ts` is handed that list and
+   * a solid block on top of a lobby is a lobby nobody can get into. */
+  const spire = buildSpire(ctx);
+  group.add(spire.group);
+  claimed.push(spire.plan.lot);
+  for (const b of spire.blockers) blockers.push(b);
+  for (const d of spire.decks) decks.push(d);
+  for (const h of spire.interactables()) hits.push(h);
+
   const handle: InteriorsHandle = {
     name: "interiors",
     group,
@@ -2305,6 +2326,7 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
     blockers,
     decks,
     rooms: infos,
+    spire: spire.plan,
     claimedLots: claimed,
     onToast: null,
     interactables: () => hits,
@@ -2312,6 +2334,7 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
     update: () => undefined,
     dispose: () => undefined,
   };
+  spire.onToast = (text, tone) => handle.onToast?.(text, tone);
 
   const specs = placements();
   for (let i = 0; i < specs.length; i++) {
@@ -2499,11 +2522,12 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
       if (ly < -1.5 || ly > r.info.height + 1.5) continue;
       return r.info.id;
     }
-    return null;
+    return spire.inside(x, y, z);
   };
 
   handle.update = (frame: FrameContext): void => {
     const p = frame.player.position;
+    spire.update(frame);
 
     /* Which room is worth spending the six lights on: the one you are in,
        else the nearest within WAKE_R. One pass, no allocation. */
@@ -2582,6 +2606,7 @@ export function buildInteriors(ctx: BuildContext): InteriorsHandle {
   };
 
   handle.dispose = () => {
+    spire.dispose();
     for (const r of rooms) {
       for (const g of r.geos) g.dispose();
       for (const m of r.mats) m.dispose();

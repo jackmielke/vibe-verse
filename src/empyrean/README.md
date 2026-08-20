@@ -70,11 +70,12 @@ unplaceably wrong, and invisible until somebody looks at the lake.
 | `buildings.ts` | every facade on every lot, and the landmark structures |
 | `streets.ts` | roadway, kerbs, pavements, crossings, plaza inlays, stairs |
 | `props.ts` | lamps, benches, trees, stalls, awnings, banners, fountains |
-| `crowd.ts` | pedestrians on the nav graph |
+| `crowd.ts` | pedestrians on the nav graph — families, dogs, civic robots |
 | `traffic.ts` | skycars on their lanes and the ring tram |
-| `vehicles.ts` | the skiff, the glider, the lifter, and seven flyers |
-| `launchsite.ts` | the spaceport on the snow, and the rocket that leaves it |
+| `vehicles.ts` | the skiff, the glider, the lifter and the rooftop flyers |
 | `interiors.ts` | the rooms you can walk into |
+| `spire.ts` | The Meridian: one whole tower, its lobby, its lift and its sky deck |
+| `launchsite.ts` | the spaceport on the snow, and the rocket that leaves it |
 | `activities/` | races, courier runs, the photo hunt, the collectibles |
 | `weather.ts` | the weather cycle, snow, cloud banks, birds, the aurora |
 | `lighting.ts` | sun, shadows, the day cycle, what switches on at dusk |
@@ -84,6 +85,59 @@ unplaceably wrong, and invisible until somebody looks at the lake.
 | `collide.ts` | every system's boxes and decks, in one grid |
 | `minimap.ts` | the plan, drawn in 2D canvas rather than by a second camera |
 | `audio.ts` | wind, jets, the city, and a pad that never resolves |
+
+## The one tower you can go up
+
+Twenty-three towers in the Spires and, for a long time, not one of them had an
+inside. `spire.ts` builds a single tower end to end — **The Meridian** — and
+`interiors.ts` carries it, because from the engine's side it is still one
+interiors system. It claims its lot the way the café and the gallery do, so
+`buildings.ts` leaves the footprint alone and the whole building, facade
+included, is this file's.
+
+The lot is chosen **by a rule and never by a coordinate**: the tallest `tower`
+lot whose own footprint will hold a lobby. Both halves matter — height,
+because a lift is only worth building if the ride is worth taking, and the
+footprint, because two thirds of the towers here stand on wedges four metres
+wide at the door. Reseed `cityplan.ts` and the tower moves with it.
+
+**The lift is a `Deck` whose `y` changes, and nothing else.** There is no ride
+mode, no fade and no teleport: `flight.ts` looks support up from
+`prevY + CLIMB`, so a floor that rose less than 0.62 m since the last physics
+step picks the body up on its own. `dt` is clamped to 0.05 s, which puts the
+naive limit at 12.4 m/s — measured, not reasoned: 12.4 carries the body and
+13.0 leaves it at the bottom of the shaft. The car caps its rise at 0.45 m
+*per frame* as well, so the invariant holds whatever the clock does.
+
+Three things about it that are not obvious and are load-bearing:
+
+- **Down is not up.** A rising floor pushes a body; a falling one just leaves,
+  and the body free-falls after it and sags `u²/2g` behind — 19 cm at 3 m/s
+  and 1.8 m at 9. So the descent, and only the descent, sets the body onto the
+  floor it is standing on. It cannot move anybody through anything and it does
+  nothing at all on the way up.
+- **The car is drawn a frame behind its own deck.** Systems update after the
+  body has already stepped, so the body is always standing on the deck as it
+  was one frame ago. Draw the car at the new height and the character rides
+  eighteen centimetres sunk into its floor; draw it where the deck was and the
+  two agree exactly, with no correction of any kind.
+- **Every floor in the tower is a rectangle with the shaft cut out of it.** A
+  slab across the shaft at the lobby ceiling is a floor the rising car puts
+  the player onto and then leaves, and the ride ends nine metres up.
+
+The tower is *solid* between the lobby ceiling and the sky deck — not because
+anybody walks in there, but because the camera boom does, and a lens parked
+inside a hollow tower gives you a black frame with the player two metres away
+behind a wall. That does not read as a collision bug when you are looking at
+it; it reads as the world being broken.
+
+`node scripts/empyrean-shot.mjs meridian | lobby | lift | skydeck | glassfloor`
+photographs all of it. Those five are given in the *tower's* own frame and
+resolved in the page from `window.__empyreanLift`, for the same reason the lot
+is chosen by a rule: a hardcoded pair of coordinates is a photograph of
+whatever ends up standing there instead. `lift` also drives the car to a
+height first, because under this container's rasteriser riding it takes eleven
+real minutes.
 
 ## The two things that are not on the island
 
@@ -204,23 +258,6 @@ Kept because each one cost a rebuild and would cost another.
   inside of every solid building, and a raycast against three hundred thousand
   triangles with no BVH is not a unit test. Emit the boxes from the same
   polygons the geometry is lofted from, and if you cannot, look at it.
-- **Skybridges were tried and are not here, and the reason is not written
-  down anywhere else.** Glass tubes between the tower crowns, chosen off the
-  built lots — nine of them, 59 to 80 m long, at 730 to 900 m. Rendered, the
-  city grew one screen-filling near-black rectangle that occluded everything
-  in a forty-degree cone. It survived a complete rewrite of the geometry
-  (`boxAt` on the glass bucket, then `prism` with `pen.baseY`, `pen.span` and
-  `pen.seed` set the way `buildLot` sets them), which is the interesting part:
-  the artefact did not change at all when the geometry it supposedly came
-  from changed entirely. What was ruled out, so the next attempt does not
-  re-run it: no NaN in any attribute of any bucket; no triangle with an edge
-  over 197 m (which is a legitimate tall wall panel); every mesh's world
-  bounding box unchanged and sane; draw-call count unchanged, so no extra
-  chunk; and `hide("buildings")` makes it vanish, so it is in that group and
-  not in the mirror, the terrain or a postfx pass. Something about adding
-  geometry to those buckets *after* the lot loop is wrong in a way that is
-  not in the vertex data. Start there.
-
 - **Test the world, not just the modules.** `src/test/empyreanWorld.test.ts`
   builds every system, steps it, and looks for the failures whose symptom is a
   black screen rather than an exception: a NaN in a position buffer (one

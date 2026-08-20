@@ -116,9 +116,83 @@ const VIEWS = {
   under: { at: [0, 250, 700], look: [0, -0.34], dist: 20 },
   /** On the ice, looking back up at the whole thing. */
   ice: { at: [0, 3, 1250], look: [0, -0.30], dist: 30 },
+  /* Standing on the Kestrel's rooftop pad in the Bazaar — the flyer, its
+     markings and its light column, with the city behind them. The height is
+     the roof of lot b1-0-11 and is not a round number on purpose: it is
+     `lot.y + lot.height`, which is where `buildings.ts` puts the deck, and a
+     metre either way is a shot of a parapet or of nothing. */
+  flypad: { at: [188, 669.3, 56.7], look: [2.0, -0.16], dist: 13 },
+  /** Off the Bazaar at roof height, so the pads' light columns line up. */
+  flyroofs: { at: [250, 700, 250], look: [Math.PI * 0.78, 0.12], dist: 26 },
+  /* ---- The Meridian ----------------------------------------------------
+   *
+   * The one tower you can go inside. These five are given in the *tower's*
+   * own frame rather than in world coordinates, and resolved in the page from
+   * `__empyreanLift.plan()`, because the tower is chosen from the city plan
+   * by a rule ("the tallest tower whose footprint will hold a lobby") and
+   * moves the moment that plan is reseeded. A hardcoded pair of coordinates
+   * here is a photograph of whatever ended up standing there instead.
+   *
+   * `lx` is across the front, `lz` is out through the front door, `ly` is
+   * above the lobby floor, and `out: true` faces the street rather than the
+   * back of the room. `lift` puts the car at a height first — there is no
+   * other way to photograph a car halfway up a three-hundred-metre shaft on a
+   * rasteriser that draws one frame a second.
+   */
+
+  /** The front door, from the pavement. */
+  meridian: { spire: { lx: 0, lz: 21, ly: 1.0, out: false, pitch: -0.30, dist: 9 } },
+  /** Inside the lobby, looking back at the reception desk. */
+  lobby: { spire: { lx: 0, lz: 6.5, ly: 0.6, out: false, pitch: 0.02, dist: 5.5 } },
+  /** In the car, halfway up, with the city going by. */
+  lift: { spire: { bay: true, ly: 150, out: true, pitch: 0.08, dist: 4.0, lift: 150 } },
+  /** On the sky deck, looking out over the Spires. */
+  skydeck: { spire: { deck: true, ly: "deck", out: true, pitch: -0.10, dist: 8 } },
+  /** Standing on the glass floor, looking straight down at the street. */
+  glassfloor: { spire: { ledge: true, ly: "deck", out: true, pitch: 0.70, dist: 4 } },
+
   /** The card composition, from the shot-mode camera. */
   card: null,
 };
+
+/**
+ * Turn a tower-frame viewpoint into the `at`/`look`/`dist` the rig wants.
+ *
+ * Runs in the page, because the only place the tower's position is known is
+ * the module that chose it. Returns null if the tower is not there, which is
+ * itself the answer to "did the lift survive the last change".
+ */
+function resolveSpire(spec) {
+  const hook = window.__empyreanLift;
+  if (!hook) return null;
+  const p = hook.plan();
+  const s = Math.sin(p.yaw);
+  const c = Math.cos(p.yaw);
+  let lx = spec.lx ?? 0;
+  let lz = spec.lz ?? 0;
+  if (spec.bay) {
+    lx = p.bay.cx;
+    lz = p.bay.cz;
+  } else if (spec.deck) {
+    lx = p.deck.cx;
+    lz = p.deck.cz - p.deck.hz + 3.0;
+  } else if (spec.ledge) {
+    lx = p.ledge.cx;
+    lz = p.ledge.cz;
+  } else {
+    lx += p.lobby.cx;
+  }
+  const ly = spec.ly === "deck" ? p.deckY : spec.ly;
+  if (spec.lift !== undefined) hook.set(spec.lift);
+  // The lens sits behind whichever way the body is facing.
+  const dx = spec.out ? c : -c;
+  const dz = spec.out ? s : -s;
+  return {
+    at: [p.x + lx * s + lz * c, p.y + ly, p.z - lx * c + lz * s],
+    look: [Math.atan2(-dx, -dz), spec.pitch ?? 0],
+    dist: spec.dist ?? 6,
+  };
+}
 async function up(url, ms) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -174,6 +248,11 @@ for (const name of names) {
       errs.push(`console ${t}`);
     }
   });
+  /* The tower-frame resolver, installed in the page rather than serialised
+   * into each evaluate. `new Function` on a stringified function survives
+   * neither a minifier nor a page that has reloaded under you, and the second
+   * of those happens here every time Vite re-optimises a dependency. */
+  await page.addInitScript(`window.__resolveSpire = ${resolveSpire.toString()};`);
   if (CHAR) {
     await page.addInitScript((c) => {
       try {
@@ -233,6 +312,11 @@ for (const name of names) {
       ([v, day, wx, hide]) => {
         const d = window.__empyrean;
         if (!d) return;
+        if (v.spire) {
+          const r = window.__resolveSpire(v.spire);
+          if (!r) return;
+          Object.assign(v, r);
+        }
         // Freeze first, warp second. Gravity undoes a warp in about a second
         // and a half, which is why every aerial viewpoint used to be a
         // photograph of the pavement the player landed on.
@@ -255,6 +339,11 @@ for (const name of names) {
       (v) => {
         const d = window.__empyrean;
         if (!d) return;
+        if (v.spire) {
+          const r = window.__resolveSpire(v.spire);
+          if (r) Object.assign(v, r);
+        }
+        if (!v.at) return;
         d.warp(v.at[0], v.at[1], v.at[2]);
         d.look(v.look[0], v.look[1]);
         d.dist(v.dist);
