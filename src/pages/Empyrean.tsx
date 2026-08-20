@@ -20,7 +20,7 @@ import { Link } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import type { EmpyreanState } from "@/empyrean/types";
 import type { EmpyreanWorld } from "@/empyrean/world";
-import Guestbook from "@/empyrean/ui/Guestbook";
+
 import empyreanArt from "@/assets/empyrean-inspiration.png.asset.json";
 import empyreanCity from "@/assets/empyrean-city.png.asset.json";
 
