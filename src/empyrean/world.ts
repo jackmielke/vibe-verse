@@ -284,7 +284,16 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   const buildings = add(buildBuildings(build, { skipLots: interiors.claimedLots }));
   const streets = add(buildStreets(build));
   const props = add(buildProps(build));
-  const crowd = add(buildCrowd(build));
+  /* The benches are the one thing the crowd cannot derive.
+   *
+   * `props.ts` places them from its own occupancy grid, and a system may not
+   * import another system — so the engine carries the list across, the same
+   * way it carries the claimed lots to the buildings. Without it everybody
+   * who sits does the kerb sit, which is correct on bare pavement and looks
+   * odd beside 334 empty benches. */
+  const crowd = add(
+    buildCrowd(build, { seats: props.placements.filter((p) => p.kind === "bench") }),
+  );
   const traffic = add(buildTraffic(build));
   const activities = add(buildActivities(build));
   const weather = add(buildWeather(build));
@@ -1005,6 +1014,17 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
       return out;
     },
     room: () => interiors.inside(flyer.position.x, flyer.position.y, flyer.position.z),
+    /* Where the benches are.
+     *
+     * `props.ts` places them from its own occupancy grid, so there is no way
+     * to work one out from the plan — which is the same reason the crowd has
+     * to be handed them. A harness that wants to photograph somebody sitting
+     * down needs the same list, and guessing coordinates puts the camera
+     * inside a shopfront. */
+    benches: () =>
+      props.placements
+        .filter((p) => p.kind === "bench")
+        .map((p) => ({ x: p.x, y: p.y, z: p.z, yaw: p.yaw ?? 0 })),
     counts: () => ({
       systems: systems.length,
       ...collision.counts,

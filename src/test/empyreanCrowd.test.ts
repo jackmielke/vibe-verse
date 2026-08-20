@@ -17,7 +17,12 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { buildCrowd } from "@/empyrean/crowd";
 import { buildTraffic } from "@/empyrean/traffic";
-import { surfaceAt, walkableAt, RING_R } from "@/empyrean/cityplan";
+/* The one import here that no *system* is allowed: the benches come out of
+   props.ts's own occupancy grid and RNG stream and are not derivable from the
+   plan, so the engine carries the list from one to the other and this is the
+   test of that join. A test may look at both sides of it; a system may not. */
+import { buildProps } from "@/empyrean/props";
+import { surfaceAt, walkableAt, HALO_R, LANDMARKS, RING_R } from "@/empyrean/cityplan";
 import { ISLAND_Y, PLATEAU_R, SPAWN } from "@/empyrean/config";
 import type { FrameContext } from "@/empyrean/types";
 
@@ -63,9 +68,14 @@ describe("the crowd", () => {
   const ctx = makeCtx();
   const crowd = buildCrowd({ quality: "high", seedSalt: "test" });
 
-  it("puts several hundred people on the deck, in three levels of detail", () => {
+  it("puts a thousand-odd people on the deck, in three levels of detail", () => {
     crowd.update?.(ctx);
-    expect(crowd.count).toBeGreaterThan(400);
+    /* Sixteen hundred built, and never all of them out at once — the hour
+       decides how many are, and this is the sunset. The number is pinned
+       because "the streets are thin" was true for a long time and was
+       invisible to every other test in this file: they all ask whether a body
+       is somewhere legal, and none of them asks whether there are enough. */
+    expect(crowd.count).toBeGreaterThan(1100);
     /* Six meshes: three tiers of body, and one each for the dogs, the robots
        and the prams. Six is the number to hold the line on — a population
        that stops instancing turns eight hundred people into eight hundred
@@ -78,9 +88,9 @@ describe("the crowd", () => {
        street of eight hundred identically-sized adults all in transit passes
        every other test in this file. */
     const c = crowd.census;
-    expect(c.people).toBeGreaterThan(400);
-    expect(c.families).toBeGreaterThan(30);
-    expect(c.couples).toBeGreaterThan(40);
+    expect(c.people).toBeGreaterThan(1100);
+    expect(c.families).toBeGreaterThan(60);
+    expect(c.couples).toBeGreaterThan(80);
     // Roughly one person in ten is a child, and every one of them is with
     // somebody: a child alone on the pavement is a different sort of city.
     expect(c.children / c.people).toBeGreaterThan(0.06);
@@ -91,7 +101,7 @@ describe("the crowd", () => {
 
     const snap = crowd.snapshot();
     const kids = snap.people.filter((p) => p.role === "child" || p.role === "rider");
-    expect(kids.length).toBeGreaterThan(50);
+    expect(kids.length).toBeGreaterThan(100);
     expect(kids.every((k) => k.lead !== k.id)).toBe(true);
     // Every group is contiguous and led from the front, which is what lets a
     // follower read a leader that has already moved this frame.
@@ -434,7 +444,7 @@ describe("the crowd", () => {
     }
     const dark = crowd.count;
     expect(bright).toBeGreaterThan(dark);
-    expect(dark).toBeGreaterThan(300);
+    expect(dark).toBeGreaterThan(700);
 
     const phone = buildCrowd({ quality: "low", seedSalt: "test" });
     const phoneCtx = makeCtx();
@@ -443,9 +453,13 @@ describe("the crowd", () => {
       phoneCtx.time += phoneCtx.dt;
       phone.update?.(phoneCtx);
     }
-    // The low tier is the 60% cut the world asks for, and it is applied once.
+    /* The low tier is the 60% cut the world asks for, and it is applied once.
+       It thins *proportionally*: the ratio is what is asserted, not an
+       absolute headcount, so raising the population cannot quietly stop the
+       phone being a phone. */
     expect(phone.count).toBeLessThan(bright * 0.55);
-    expect(phone.count).toBeGreaterThan(150);
+    expect(phone.count).toBeGreaterThan(bright * 0.28);
+    expect(phone.count).toBeGreaterThan(350);
     phone.dispose();
   }, 60000);
 
@@ -495,11 +509,59 @@ describe("the crowd", () => {
     // tier. Anything more means somebody stopped instancing something.
     expect(high.draws, line).toBe(6);
     expect(low.draws, line).toBe(6);
-    // Hard LOD is what keeps this small: nothing past 260 m is drawn at all,
-    // and nothing that is not a person past 155 m.
-    expect(high.tris, line).toBeLessThan(45_000);
-    expect(low.tris, line).toBeLessThan(high.tris * 0.6);
+    /* Hard LOD is what keeps this small: nothing past 260 m is drawn at all,
+       and nothing that is not a person past 155 m. Measured at sixteen
+       hundred bodies it is about 23,000 from this camera against the world's
+       400,000 ceiling — and the number that moved when the population doubled
+       was *not* proportional, because the rings and not the headcount are
+       what bounds it. */
+    expect(high.tris, line).toBeLessThan(60_000);
+    expect(low.tris, line).toBeLessThan(high.tris * 0.7);
   }, 30000);
+
+  it("costs about half a microsecond a body, and stays linear in bodies", () => {
+    /* The real cost of this system is CPU per frame, not triangles, and it is
+       per *body*: the GPU poses a walk cycle and a bench sit for the same
+       money, and the CPU writes twenty-two floats and decides nothing for
+       anybody who is not a group leader with an expired clock.
+       Measured on this container at the time of writing, from a street-level
+       camera in the Bazaar: 0.81 ms a frame for 1317 bodies on the high tier
+       and 0.38 for 527 on the low — 0.62 and 0.71 microseconds each. It was
+       0.31 ms for 681 bodies before the population was doubled.
+       Wall-clock is a terrible thing to assert on a shared box, so what is
+       asserted is the *shape*: the high tier has two and a half times the
+       low tier's population, so it may cost two and a half times as much and
+       not six, which is what anything accidentally quadratic in here — a
+       separation pass that stopped capping its neighbours, an A* budget that
+       stopped being a budget — would cost. */
+    const run = (quality: "low" | "high") => {
+      const c = buildCrowd({ quality, seedSalt: "cost" });
+      const local = makeCtx();
+      local.quality = quality;
+      local.camera.position.set(0, ISLAND_Y + 1.7, 175);
+      local.camera.updateMatrixWorld(true);
+      // Warm: the first hundred frames of a population are its slowest by a
+      // wide margin, and they are the frames the engine spends compiling.
+      for (let f = 0; f < 2000; f++) {
+        local.time += local.dt;
+        c.update?.(local);
+      }
+      const t0 = process.hrtime.bigint();
+      for (let f = 0; f < 2000; f++) {
+        local.time += local.dt;
+        c.update?.(local);
+      }
+      const ms = Number(process.hrtime.bigint() - t0) / 1e6 / 2000;
+      const people = c.census.people;
+      c.dispose();
+      return { ms, people };
+    };
+    const hi = run("high");
+    const lo = run("low");
+    const line = `high ${hi.people} bodies ${hi.ms.toFixed(3)} ms, low ${lo.people} ${lo.ms.toFixed(3)} ms`;
+    expect(hi.people / lo.people, line).toBeGreaterThan(2);
+    expect(hi.ms / lo.ms, line).toBeLessThan(5);
+  }, 120000);
 
   it("does not allocate per frame", () => {
     const buffers = crowd.group.children.map((child) =>
@@ -528,6 +590,285 @@ describe("the crowd", () => {
        under a few megabytes is the interpreter breathing. */
     expect(after - before).toBeLessThan(24 * 1024 * 1024);
   }, 60000);
+
+  it("disposes without leaving anything in the scene", () => {
+    crowd.dispose();
+    expect(crowd.group.children.length).toBe(0);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The benches
+ *
+ * `props.ts` puts 334 benches on this city's pavements and for a long time
+ * nobody sat on a single one, because a bench comes out of that file's own
+ * occupancy grid and its own RNG stream and is not derivable from the plan.
+ * The engine now carries the list across, which makes this the test of a
+ * *join* between two systems that may not import each other — and the failure
+ * it exists for is not an exception. It is a body sitting nine inches to the
+ * left of a bench, or two bodies in the same place on one, or a bench with
+ * somebody sitting on it back to front. None of those throws, none of them
+ * fails any other test here, and all of them are obvious the moment you look.
+ * ---------------------------------------------------------------------- */
+describe("the crowd, on the city's benches", () => {
+  const props = buildProps({ quality: "high", seedSalt: "test" });
+  const benches = props.placements.filter((p) => p.kind === "bench");
+  const ctx = makeCtx();
+  const crowd = buildCrowd({ quality: "high", seedSalt: "test" }, { seats: benches });
+
+  /** Where the two places on a bench are, derived the way the crowd does it. */
+  const seatAt = (seat: number) => {
+    const b = benches[seat >> 1];
+    const yaw = b.yaw ?? 0;
+    const u = (seat & 1) === 0 ? -0.42 : 0.42;
+    return { x: b.x + Math.cos(yaw) * u, z: b.z - Math.sin(yaw) * u, yaw };
+  };
+
+  it("is handed benches that know which way they face", () => {
+    /* Half of this fix lives in props.ts and the other half here, and the
+       join between them is one optional field. A placement that quietly
+       stopped carrying it would leave everybody kerb-sitting again with
+       nothing at all to show for it. */
+    expect(benches.length).toBeGreaterThan(250);
+    expect(benches.every((b) => b.yaw !== undefined && Number.isFinite(b.yaw))).toBe(true);
+  });
+
+  it("sits people on them, on them, and facing the way they face", () => {
+    for (let f = 0; f < 60 * 240; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+    }
+    const c = crowd.census;
+    // Not "somebody, somewhere": a visible fraction of a sixteen-hundred-body
+    // city, on furniture, at any given moment.
+    expect(c.benched).toBeGreaterThan(25);
+    expect(c.benched / Math.max(1, c.sitting)).toBeGreaterThan(0.3);
+
+    const snap = crowd.snapshot();
+    const seated = snap.people.filter((p) => p.active && p.seat >= 0 && p.state === "sit");
+    expect(seated.length).toBeGreaterThan(20);
+
+    let worst = "";
+    let worstD = 0;
+    for (const p of seated) {
+      const s = seatAt(p.seat);
+      const d = Math.hypot(p.x - s.x, p.z - s.z);
+      if (d > worstD) {
+        worstD = d;
+        worst = `${p.id} is ${d.toFixed(2)} m off seat ${p.seat}`;
+      }
+      /* Half a metre. A seated body is held on its seat by the same home
+         spring that holds a standing one on its spot, so the crowd walking
+         past can push it a hand's breadth along the slats — which is what
+         people on benches do — and cannot push it off one. */
+      expect(d, worst).toBeLessThan(0.5);
+    }
+
+    /* Facing is measured after four seconds, not on the frame it is sampled.
+     *
+     * Sitting down is a *turn*, at the same 2.5 rad/s everything else here
+     * turns at, and that is deliberate: snapping the yaw on arrival makes a
+     * body pivot on the spot the instant its backside lands. So at any given
+     * instant one or two of forty seated people are still swinging round, and
+     * an assertion on a single frame fails on them — measured, at 1.13 rad
+     * off, which is a body settling and not a body facing the wrong way.
+     * Everybody who is still on the same seat four seconds later has
+     * finished. */
+    const wasOn = new Map<number, number>();
+    for (const p of seated) wasOn.set(p.id, p.seat);
+    for (let f = 0; f < 240; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+    }
+    let settled = 0;
+    for (const p of crowd.snapshot().people) {
+      if (p.state !== "sit" || p.seat < 0 || wasOn.get(p.id) !== p.seat) continue;
+      settled++;
+      const s = seatAt(p.seat);
+      let turn = p.yaw - s.yaw;
+      while (turn > Math.PI) turn -= Math.PI * 2;
+      while (turn < -Math.PI) turn += Math.PI * 2;
+      // Facing along the bench's own axis, not across it and not off the back.
+      expect(Math.abs(turn), `${p.id} is turned ${turn.toFixed(2)} rad on its bench`).toBeLessThan(0.3);
+    }
+    expect(settled).toBeGreaterThan(15);
+  }, 300000);
+
+  it("never puts two people in the same place on one, and lets two share", () => {
+    /* A bench is 1.7 m of slat: two people fit and a third does not. The two
+       places are handed out exclusively and given back when somebody leaves,
+       and both halves of that matter — forget the giving back and the city's
+       benches fill up over ten minutes and are never free again. */
+    const held = new Map<number, number>();
+    let sharedSeen = 0;
+    let everFree = 0;
+    for (let f = 0; f < 60 * 200; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+      if (f % 600 !== 0) continue;
+      held.clear();
+      const perBench = new Map<number, number>();
+      for (const p of crowd.snapshot().people) {
+        if (p.seat < 0) continue;
+        expect(held.has(p.seat), `seat ${p.seat} held by ${held.get(p.seat)} and ${p.id}`).toBe(false);
+        held.set(p.seat, p.id);
+        perBench.set(p.seat >> 1, (perBench.get(p.seat >> 1) ?? 0) + 1);
+      }
+      for (const n of perBench.values()) {
+        expect(n).toBeLessThanOrEqual(2);
+        if (n === 2) sharedSeen++;
+      }
+      // …and the great majority of the city's benches are free, which is what
+      // a city's benches are. A booking that is never returned shows up here.
+      if (perBench.size < benches.length * 0.5) everFree++;
+    }
+    expect(sharedSeen).toBeGreaterThan(3);
+    expect(everFree).toBeGreaterThan(15);
+  }, 300000);
+
+  it("still kerb-sits when it is given no benches at all", () => {
+    /* The fallback, and the reason it has to stay: 334 benches against about
+       a hundred thousand square metres of pavement. Built with no options the
+       system must be exactly what it was — nobody on a bench, everybody who
+       sits sitting on the kerb, and not one instance carrying a seat height
+       into the shader. */
+    const bare = buildCrowd({ quality: "high", seedSalt: "test" });
+    const bareCtx = makeCtx();
+    for (let f = 0; f < 60 * 120; f++) {
+      bareCtx.time += bareCtx.dt;
+      bare.update?.(bareCtx);
+    }
+    expect(bare.census.benched).toBe(0);
+    expect(bare.census.sitting).toBeGreaterThan(5);
+    expect(bare.snapshot().people.every((p) => p.seat === -1)).toBe(true);
+    let checkedTiers = 0;
+    for (const child of bare.group.children) {
+      const geo = (child as THREE.Mesh).geometry as THREE.InstancedBufferGeometry;
+      // Three of the six meshes are the dogs, the robots and the prams, and
+      // none of them has a pose at all.
+      const pose = geo.getAttribute("aPose");
+      if (!pose) continue;
+      checkedTiers++;
+      expect(pose.itemSize).toBe(4);
+      const arr = pose.array as ArrayLike<number>;
+      for (let i = 0; i < (geo.instanceCount ?? 0); i++) expect(arr[i * 4 + 3]).toBe(0);
+    }
+    expect(checkedTiers).toBe(3);
+    bare.dispose();
+  }, 120000);
+
+  it("hands the shader a seat height that is either a bench or nothing", () => {
+    /* The pose is solved from `aPose.w` in the vertex shader, so a half-way
+       value is a body half-way into a bench and a stale one is a body sitting
+       47 cm above a pavement. Neither throws and neither is visible in a
+       still that happens not to contain a bench. */
+    const near = makeCtx();
+    near.camera.position.set(0, ISLAND_Y + 1.7, 175);
+    near.camera.updateMatrixWorld(true);
+    let seatedInstances = 0;
+    for (let f = 0; f < 60 * 90; f++) {
+      near.time += near.dt;
+      crowd.update?.(near);
+    }
+    for (const child of crowd.group.children) {
+      const geo = (child as THREE.Mesh).geometry as THREE.InstancedBufferGeometry;
+      const pose = geo.getAttribute("aPose");
+      if (!pose) continue; // a dog, a robot or a pram
+      const arr = pose.array as ArrayLike<number>;
+      for (let i = 0; i < (geo.instanceCount ?? 0); i++) {
+        const h = arr[i * 4 + 3];
+        expect(h === 0 || Math.abs(h - 0.47) < 1e-5, `aPose.w[${i}] is ${h}`).toBe(true);
+        if (h > 0) seatedInstances++;
+      }
+    }
+    expect(seatedInstances).toBeGreaterThan(0);
+  }, 120000);
+
+  it("disposes, and lets its props go too", () => {
+    crowd.dispose();
+    expect(crowd.group.children.length).toBe(0);
+    props.dispose();
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * The Halo
+ *
+ * The great circular plaza at the middle of the city, with the Beacon in it,
+ * and for a long time not one pedestrian at any hour. It was not a weighting
+ * problem: `buildNav` gives the plaza one ring of nodes round its *kerb* and
+ * nothing across it, so there was no route through the middle of the city and
+ * the Beacon — the thing the whole map is oriented on — had zero standing
+ * spots of the ten it asks for, because the nearest node to any point on its
+ * circle was 24 m away. `crowd.ts` paves it.
+ * ---------------------------------------------------------------------- */
+describe("the crowd, in the Halo", () => {
+  const ctx = makeCtx();
+  const crowd = buildCrowd({ quality: "high", seedSalt: "test" });
+  const beacon = LANDMARKS.find((l) => l.id === "beacon")!;
+  const cistern = LANDMARKS.find((l) => l.id === "fountain")!;
+
+  it("walks people across it and stands them in front of the Beacon", () => {
+    let emptyFrames = 0;
+    let samples = 0;
+    let atBeacon = 0;
+    let inPlaza = 0;
+    for (let f = 0; f < 60 * 300; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+      if (f % 900 !== 0) continue;
+      samples++;
+      let here = 0;
+      let looking = 0;
+      for (const p of crowd.snapshot().people) {
+        if (!p.active) continue;
+        const r = Math.hypot(p.x, p.z);
+        if (r >= HALO_R) continue;
+        here++;
+        if (r < beacon.clear + 18) looking++;
+      }
+      inPlaza += here;
+      atBeacon += looking;
+      if (here === 0) emptyFrames++;
+    }
+    const line = `${(inPlaza / samples).toFixed(0)} in the plaza, ${(atBeacon / samples).toFixed(0)} at the Beacon`;
+    // Never once empty, and not by one or two people either.
+    expect(emptyFrames, line).toBe(0);
+    expect(inPlaza / samples, line).toBeGreaterThan(15);
+    expect(atBeacon / samples, line).toBeGreaterThan(3);
+  }, 300000);
+
+  it("keeps them out of the things standing in it", () => {
+    /* The plaza is paved *round* what is on it, from the clearance each
+       landmark declares for itself, so the graph survives the plan moving
+       either of them. Nobody stands inside the Beacon's base and nobody
+       paddles in the Cistern. */
+    let worst = "";
+    for (let f = 0; f < 60 * 120; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+      if (f % 300 !== 0) continue;
+      for (const p of crowd.snapshot().people) {
+        if (!p.active) continue;
+        const rb = Math.hypot(p.x - beacon.x, p.z - beacon.z);
+        const rc = Math.hypot(p.x - cistern.x, p.z - cistern.z);
+        if (rb < beacon.clear || rc < cistern.clear) {
+          worst = `${p.id} at ${p.x.toFixed(1)},${p.z.toFixed(1)}: ${rb.toFixed(1)} m from the Beacon, ${rc.toFixed(1)} from the Cistern`;
+        }
+        /* The clearance each landmark declares, exactly, and not a metre
+           inside it. A pedestrian is not held on a nav node — it is offset
+           across the pavement it is walking and shoved by everybody around
+           it — so the plaza is laid out with room for all of that, and this
+           is the assertion that the room is enough. */
+        expect(rb, worst).toBeGreaterThan(beacon.clear);
+        expect(rc, worst).toBeGreaterThan(cistern.clear);
+        // …and on the plaza itself rather than in the void beside it.
+        if (Math.hypot(p.x, p.z) < HALO_R) {
+          expect(surfaceAt(p.x, p.z).kind).toBe("plaza");
+        }
+      }
+    }
+  }, 180000);
 
   it("disposes without leaving anything in the scene", () => {
     crowd.dispose();

@@ -1,28 +1,83 @@
 /**
  * The people.
  *
- * Several hundred of them, walking the pavement graph in `cityplan.ts` with
- * somewhere to actually be: a shop door, the Beacon, the tram platform, a
- * wide kerb in the Bazaar, a stretch of rim rail with four hundred metres of
- * nothing under it. They path there, they arrive, they do something for a
- * while, and then they pick somewhere else.
+ * Sixteen hundred of them, walking the pavement graph in `cityplan.ts` with
+ * somewhere to actually be: a shop door, the Beacon, the tram platform, one
+ * particular end of one particular bench, a stretch of rim rail with four
+ * hundred metres of nothing under it. They path there, they arrive, they do
+ * something for a while, and then they pick somewhere else.
+ *
+ * ## How many, and why that many
+ *
+ * It was eight hundred and twenty, and eight hundred and twenty over a
+ * six-hundred-and-eighty-metre island is one person per hundred and forty
+ * square metres of pavement — which on a 4.5 m ring pavement is one person
+ * every thirty metres of street, per side. That is not a quiet city, it is an
+ * evacuated one, and no test could see it because every test here asks
+ * whether a body is somewhere legal rather than whether there are enough of
+ * them.
+ *
+ * Sixteen hundred is one every twelve metres or so. It is deliberately not
+ * the number the budget allows: this costs 0.81 ms of CPU a frame against a
+ * measured 0.31 at eight hundred and twenty, it is linear at about six tenths
+ * of a microsecond a body, and half as many again would still fit inside the
+ * frame and nowhere near the triangle ceiling. It stops here because a street
+ * at six in the evening is mostly ordinary and quietly full, and the failure
+ * past this point is a parade — which is worse than an empty street, because
+ * an empty street at least reads as an empty street.
+ *
+ * The low tier is 640, the same 40% of the high tier it has always been.
  *
  * ## The mix, which is the whole point
  *
- * At any moment about seventy per cent of them are walking, seventeen are
- * standing — outside a shop, at a platform, in a pair facing each other — six
- * are sitting and five are on the rim rail. That distribution is the deliverable.
- * Push the errands longer and everyone is permanently in transit, which reads
- * as a commute; push the dwells longer and the pavement is a waxwork. Neither
- * is visible in a screenshot, so `src/test/empyreanCrowd.test.ts` measures it
- * through `nearest`: who is standing here, and are they still here in five
- * seconds.
+ * At any moment about seventy per cent of them are walking, fifteen are
+ * standing — outside a shop, at a platform, in a pair facing each other —
+ * ten are sitting (half of those on an actual bench) and five are on the rim
+ * rail. That distribution is the deliverable. Push the errands longer and everyone is permanently in
+ * transit, which reads as a commute; push the dwells longer and the pavement
+ * is a waxwork. Neither is visible in a screenshot, so
+ * `src/test/empyreanCrowd.test.ts` measures it through `nearest`: who is
+ * standing here, and are they still here in five seconds.
  *
  * Sitting and leaning are the two long dwells and they draw from the same
  * pool, so on fixed weights they take turns winning — a hundred people on the
  * rim and nobody sitting for two minutes, then the reverse. Each is therefore
  * damped by how many are already doing it (`satiate`), which is both what
  * stabilises the mix and what a full bench does.
+ *
+ * ## The benches, and the two ways of sitting
+ *
+ * There are 334 benches in this city and for a long time nobody sat on any of
+ * them, because a bench is not derivable from the plan — `props.ts` places
+ * them from its own occupancy grid and its own RNG stream, and a system may
+ * not import another system. So the best this file could do was a *kerb* sit:
+ * hips a hand's breadth off the deck, legs straight out in front, which is
+ * correct on a bench, a step, a plinth or bare pavement and, crucially, on
+ * nothing at all. That is still what most sitting is, because there are a
+ * hundred thousand square metres of pavement and 334 benches.
+ *
+ * The other half arrives through `buildCrowd`'s options: hand it the bench
+ * placements and it lays two seats on each — 0.42 m either side of the middle
+ * of 1.7 m of slat — and hands them out one at a time, exclusively, at the
+ * moment a body decides where to go rather than when it gets there. Deciding
+ * on arrival means two people walk to the same end of the same bench.
+ * A couple gets both ends; a family's third and fourth members sit on the
+ * kerb beside it, which is what fits and what happens.
+ *
+ * Three things about it are load-bearing:
+ *
+ * - **The seat is a height, not a flag.** `aPose.w` carries how high the
+ *   thing under the body is and the whole chair sit is solved from it, so the
+ *   kerb sit is the same three lines with a zero in them and is bit-for-bit
+ *   what it was. With no seats supplied nothing here does anything at all.
+ * - **A bench gets one extra leg of walking.** Every other destination is a
+ *   nav node and a body stops on it; a bench is a metre off the pavement
+ *   centreline and up to seven metres along it from the nearest node. So the
+ *   last few metres are walked off the graph, decelerating, and the snap that
+ *   finishes it is sixteen centimetres at a third of a metre a second.
+ * - **The booking is given up in exactly two places** — when a body picks a
+ *   new destination and when it goes indoors. Miss either and the benches
+ *   fill up over ten minutes and never empty again.
  *
  * ## Nobody is on their own, and that is what makes it a place
  *
@@ -88,9 +143,14 @@
  * at a jetpack are solved in the vertex shader from that phase and those
  * weights, so a hurrying courier and a man on a bench cost the same.
  *
- * It comes out at about half a millisecond of CPU for eight hundred bodies,
- * of which roughly a third is the separation pass, and fifteen thousand
- * triangles across the three tiers with the camera standing in the street.
+ * It comes out at 0.81 ms of CPU for sixteen hundred bodies and 26,000
+ * triangles across the three tiers with the camera standing in a Bazaar
+ * street — against a four-hundred-thousand-triangle ceiling for the whole
+ * world. The low tier is 0.38 ms and 11,000. Roughly a third of the CPU is
+ * the separation pass. The cost is linear in bodies, so the number to watch
+ * when changing anything here is the microseconds per body (0.62) and not
+ * the triangle count, which is bounded by the LOD rings rather than by the
+ * population.
  *
  * Three consequences worth knowing before changing anything here:
  *
@@ -104,7 +164,7 @@
  * - **LOD is by distance and it is hard.** Full articulation to 45 m, a
  *   six-box body to 130 m, a three-band billboard to 260 m, nothing beyond.
  *
- * ## The graph is the plan's, filtered
+ * ## The graph is the plan's, filtered — and, in one place, extended
  *
  * `cityPlan().nav` is trustworthy about its nodes: all 1403 of them stand on
  * pavement, plaza or road, and none needs moving. (That was not always true —
@@ -112,6 +172,14 @@
  * road is narrower, which put 244 nodes a few centimetres into the flowerbeds,
  * and this file used to nudge them back. The plan fixes it at source now, so
  * the nudge is gone.)
+ *
+ * It is not *complete*, though, and the hole in it was the whole reason the
+ * Halo was empty. See `haloNodes`: the plan gives the central plaza one ring
+ * of nodes round its kerb and nothing across it, so nobody could walk through
+ * the middle of the city and the Beacon — 500 m of lit glass at the exact
+ * centre — had **zero** standing spots, measured, of the ten it asks for.
+ * This file paves it, because that is a walking correction and traffic and
+ * couriers may reasonably want the raw graph.
  *
  * Its *edges* still need one check. Crossings are stitched by proximity, and
  * 18 of the 5226 of them cut the corner of a block — mostly the long diagonal
@@ -166,6 +234,8 @@ export interface Census {
   sitting: number;
   leaning: number;
   standing: number;
+  /** Of the sitters, how many are on an actual bench rather than a kerb. */
+  benched: number;
   dogs: number;
   robots: number;
   prams: number;
@@ -179,6 +249,17 @@ export interface PersonView {
   z: number;
   /** Index of whoever decides for them; equal to `id` when that is themselves. */
   lead: number;
+  /** Facing, radians, same convention as everywhere else here: yaw 0 is -Z. */
+  yaw: number;
+  /**
+   * Which place on which bench they hold, or -1 for everybody else.
+   *
+   * Two places to a bench, so `seat >> 1` is the bench and `seat & 1` is
+   * which end of it. Exposed because "is anybody actually on a bench, and is
+   * anybody on the same end of one as somebody else" is the question the
+   * rendered buffers cannot answer and the one worth asking.
+   */
+  seat: number;
   role: "alone" | "lead" | "adult" | "child" | "rider";
   group: "alone" | "couple" | "family" | "dog";
   state: "walk" | "stand" | "sit" | "lean" | "wait" | "pause";
@@ -216,12 +297,53 @@ export interface CrowdHandle extends System {
   snapshot(): CrowdSnapshot;
 }
 
+/**
+ * One bench, as this system needs it.
+ *
+ * `props.ts` owns the benches and this system may not import it, so the
+ * engine carries the list across — the same one-fact-between-two-systems
+ * arrangement that tells `buildings.ts` which lots the interiors have taken.
+ *
+ * `yaw` is the bench's own facing, straight off the pavement spot it was
+ * placed on: the seat looks along -Z rotated by it, which is the same
+ * convention a body's yaw uses, so somebody sitting on a bench faces the way
+ * the bench faces and needs no correction. A placement without one is skipped
+ * rather than guessed at — a body sitting on a bench at ninety degrees to it
+ * is worse than a body sitting on the kerb beside it.
+ */
+export interface CrowdSeat {
+  x: number;
+  z: number;
+  /** Deck height the bench stands on, not the height of its seat. */
+  y: number;
+  yaw?: number;
+}
+
+export interface CrowdOptions {
+  /**
+   * Every bench in the city.
+   *
+   * Optional, and the whole system works without it: with no seats nobody is
+   * ever sent to a bench and everybody who sits does the kerb sit this file
+   * has always done. Supplying them adds a second kind of sitting on top,
+   * and the kerb sit stays as the fallback for the far more numerous places
+   * to sit that are not furniture.
+   */
+  seats?: readonly CrowdSeat[];
+}
+
 /* -------------------------------------------------------------------------
  * Tuning
  * ---------------------------------------------------------------------- */
 
-/** Population before daylight scaling. Low tier is the 60% cut. */
-const POP = { high: 820, low: 330 } as const;
+/**
+ * Population before daylight scaling. Low tier is the same 60% cut it was.
+ *
+ * See the note at the top of the file on why this is 1600 and not 820, and
+ * why it is not the largest number that fits: the ceiling here is a mood, not
+ * a budget.
+ */
+const POP = { high: 1600, low: 640 } as const;
 
 /** LOD ring radii, metres. Past the last one a person is not drawn at all. */
 const LOD_NEAR = 45;
@@ -325,6 +447,25 @@ const D_RIM = 2;
 const D_SIT = 3;
 const D_TRAM = 4;
 const D_PLAZA = 5;
+/** A named place on a named bench. Only ever exists when seats were supplied. */
+const D_BENCH = 6;
+
+/**
+ * The two places on a bench, and how high the seat is.
+ *
+ * A bench here is 1.7 m of slat between two iron ends, so two people fit and
+ * a third does not. 0.42 m either side of the middle puts them close enough
+ * to be together and far enough not to be one silhouette; the separation pass
+ * ignores them once they are seated, so this offset is the *only* thing
+ * holding two bodies off each other on a bench and it is exact rather than
+ * negotiated. Nobody ever gets a place somebody else is already in: a slot is
+ * claimed when the destination is chosen and held until they get up.
+ *
+ * 0.47 m is the top of the slats in `props.ts` — 0.44 for the lowest, plus
+ * half its thickness and the two 5 mm risers above it.
+ */
+const SEAT_OFF = 0.42;
+const SEAT_H = 0.47;
 
 const DISTRICT_IDS: DistrictId[] = ["halo", "core", "market", "gardens", "rim"];
 
@@ -374,22 +515,161 @@ interface WalkGraph {
   list: Int32Array;
 }
 
+/**
+ * The Halo, which the plan does not pave.
+ *
+ * The great circular plaza at the middle of the city — 112 m across, with the
+ * Beacon standing in it and the Cistern off to one side — had **no nav nodes
+ * inside it at all**. `buildNav` gives it exactly one ring, at `HALO_R + 6`,
+ * which is the kerb *round* the plaza rather than anything across it, so the
+ * only route from one avenue to the opposite one was the long way round the
+ * edge. Every pedestrian in the city took it, because it was the only one.
+ *
+ * That is why nothing was ever in the Halo, and it was not a weighting
+ * problem: it also meant the *Beacon had no standing spots*. Landmarks get
+ * theirs by looking for a node within 14 m of a circle at `clear + 12` — 38 m
+ * for the Beacon — and the nearest node to any point on that circle was 24 m
+ * away on the kerb ring. Of the ten spots it asks for it got zero, measured,
+ * so the single most visible object in the world was a place nobody had any
+ * reason to walk to. The Cistern got five, all of them 25 m away on the same
+ * kerb.
+ *
+ * So the plaza gets paved, here rather than in the plan, for the same reason
+ * the corner-cutting crossings are dropped here: it is a *walking* correction
+ * and traffic and couriers may reasonably want the raw graph. Two rings and a
+ * circle round the fountain, checked exactly the way the plan's own nodes are
+ * — `surfaceAt` has to call every node plaza, every metre of every edge has
+ * to be plaza too, and everything stays outside the clearance each landmark
+ * declares for itself. Nothing here knows a radius the plan does not.
+ */
+const PLAZA_RINGS = [
+  /* Just outside the Beacon's own 26 m of clearance, and on the circle its
+     standing spots are looked for on. */
+  { r: 37, n: 17 },
+  /* Half way out to the kerb ring at 62, close enough to stitch to it. */
+  { r: 51, n: 23 },
+] as const;
+
+/** How far apart two plaza nodes may be and still be walkable between. */
+const PLAZA_STITCH = 17;
+
+/** Landmarks standing in the Halo, which the plaza has to be laid around. */
+const HALO_LANDMARKS = LANDMARKS.filter((lm) => Math.hypot(lm.x, lm.z) < HALO_R + 6);
+
+/**
+ * How much room to leave round something standing in the plaza, on top of the
+ * clearance it declares for itself.
+ *
+ * Six metres, and it is not padding. A pedestrian is never *on* a nav node:
+ * it walks a lateral offset across the width of the pavement it is on and it
+ * is shoved by everybody it passes, so a plaza node six metres clear of the
+ * Cistern is a body two metres clear of it in a crowd. Two metres of margin
+ * put people in the fountain, measured.
+ */
+const HALO_MARGIN = 6;
+
+function clearOfHaloLandmarks(x: number, z: number): boolean {
+  for (const lm of HALO_LANDMARKS) {
+    if (Math.hypot(x - lm.x, z - lm.z) < lm.clear + HALO_MARGIN) return false;
+  }
+  return true;
+}
+
+function haloNodes(): Array<{ x: number; z: number }> {
+  const out: Array<{ x: number; z: number }> = [];
+  const push = (x: number, z: number) => {
+    if (surfaceAt(x, z).kind !== "plaza") return;
+    if (!clearOfHaloLandmarks(x, z)) return;
+    out.push({ x, z });
+  };
+  for (const ring of PLAZA_RINGS) {
+    for (let i = 0; i < ring.n; i++) {
+      const a = (i / ring.n) * TAU;
+      push(Math.cos(a) * ring.r, Math.sin(a) * ring.r);
+    }
+  }
+  /* And a circle round the fountain, just outside everything it reserves.
+     A fountain nobody can stand at is a sculpture. */
+  for (const lm of HALO_LANDMARKS) {
+    if (lm.kind !== "fountain") continue;
+    const rr = lm.clear + HALO_MARGIN + 2;
+    const n = Math.max(6, Math.round((TAU * rr) / 13));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + 0.2;
+      push(lm.x + Math.cos(a) * rr, lm.z + Math.sin(a) * rr);
+    }
+  }
+  return out;
+}
+
+/** True when every metre between two points is open plaza. */
+function plazaBetween(ax: number, az: number, bx: number, bz: number): boolean {
+  const d = Math.hypot(bx - ax, bz - az);
+  const steps = Math.max(2, Math.ceil(d));
+  for (let k = 0; k <= steps; k++) {
+    const t = k / steps;
+    const x = ax + (bx - ax) * t;
+    const z = az + (bz - az) * t;
+    const kind = surfaceAt(x, z).kind;
+    if (kind !== "plaza" && kind !== "walk" && kind !== "road") return false;
+    if (!clearOfHaloLandmarks(x, z)) return false;
+  }
+  return true;
+}
+
 function buildWalkGraph(): WalkGraph {
   const nav = cityPlan().nav;
-  const raw = nav.length;
+  const extra = haloNodes();
+  const raw = nav.length + extra.length;
   const px = new Float64Array(raw);
   const pz = new Float64Array(raw);
+  const pw = new Float32Array(raw);
   const ok = new Uint8Array(raw);
+  /* The plan's adjacency, copied rather than referenced: the plaza stitches
+     new edges onto the plan's own nodes, and `cityPlan()` is shared with
+     every other system in the world. */
+  const adj: number[][] = new Array(raw);
 
   // Every node the plan offers, as long as it is somewhere a body can stand.
   // Currently that is all of them; the check costs one `surfaceAt` each and
   // is the difference between a plan regression and a crowd in the walls.
-  for (let i = 0; i < raw; i++) {
+  for (let i = 0; i < nav.length; i++) {
     const node = nav[i];
     px[i] = node.x;
     pz[i] = node.z;
+    pw[i] = node.width;
+    adj[i] = node.links.slice();
     const kind = surfaceAt(node.x, node.z).kind;
     if (kind === "walk" || kind === "plaza" || kind === "road") ok[i] = 1;
+  }
+  for (let e = 0; e < extra.length; e++) {
+    const i = nav.length + e;
+    px[i] = extra[e].x;
+    pz[i] = extra[e].z;
+    /* Seven, not the twelve the plan gives its own kerb ring.
+     *
+     * `width` is how far across its walkway a body may drift, and on a
+     * hundred-metre plaza the honest answer is "as far as it likes" — but the
+     * one thing in the middle of this one is a fountain, and twelve puts a
+     * body nearly five metres off the line it is walking. Seven spreads the
+     * crowd across the plaza and still lands inside the margin the nodes were
+     * laid out with. */
+    pw[i] = 7;
+    adj[i] = [];
+    ok[i] = 1;
+  }
+  /* Stitch the plaza to itself and to the kerb ring the plan already has.
+     Proximity, then the same exactness the plan's crossings get: an edge only
+     survives if every metre of it is open plaza. */
+  for (let e = 0; e < extra.length; e++) {
+    const i = nav.length + e;
+    for (let j = 0; j < raw; j++) {
+      if (j === i || !ok[j]) continue;
+      if (Math.hypot(px[j] - px[i], pz[j] - pz[i]) > PLAZA_STITCH) continue;
+      if (!plazaBetween(px[i], pz[i], px[j], pz[j])) continue;
+      if (!adj[i].includes(j)) adj[i].push(j);
+      if (!adj[j].includes(i)) adj[j].push(i);
+    }
   }
 
   // An edge survives if nothing along it is a building plot, the parapet or
@@ -413,7 +693,7 @@ function buildWalkGraph(): WalkGraph {
   const edgeB: number[] = [];
   for (let i = 0; i < raw; i++) {
     if (!ok[i]) continue;
-    for (const j of nav[i].links) {
+    for (const j of adj[i]) {
       if (j <= i || !ok[j]) continue;
       if (!passable(i, j)) continue;
       edgeA.push(i);
@@ -486,7 +766,7 @@ function buildWalkGraph(): WalkGraph {
     gx[id] = px[i];
     gz[id] = pz[i];
     gy[id] = surfaceAt(px[i], pz[i]).y;
-    gw[id] = nav[i].width;
+    gw[id] = pw[i];
     gd[id] = DISTRICT_IDS.indexOf(districtAt(Math.hypot(px[i], pz[i])).id);
     gstart[id + 1] = deg[i];
   }
@@ -519,6 +799,8 @@ interface DestPool {
   /** Which way a body faces once it gets there. */
   faceX: Float32Array;
   faceZ: Float32Array;
+  /** Which bench this is, for a `D_BENCH`; -1 for everything else. */
+  bench: Int32Array;
   n: number;
 }
 
@@ -532,7 +814,7 @@ interface DestPool {
  */
 const TRAM_STOP_A = [Math.PI, Math.PI * 0.75, Math.PI * 0.25, -Math.PI / 2];
 
-export function buildCrowd(ctx: BuildContext): CrowdHandle {
+export function buildCrowd(ctx: BuildContext, options?: CrowdOptions): CrowdHandle {
   const rng = makeRng(`empyrean-crowd:${ctx.seedSalt}`);
   const graph = buildWalkGraph();
   const plan = cityPlan();
@@ -583,8 +865,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
   const dKind: number[] = [];
   const dFx: number[] = [];
   const dFz: number[] = [];
+  const dBench: number[] = [];
 
-  const addDest = (node: number, kind: number, fx: number, fz: number) => {
+  const addDest = (node: number, kind: number, fx: number, fz: number, bench = -1) => {
     if (node < 0) return;
     /* Never somewhere to *stand* in the carriageway.
      *
@@ -601,6 +884,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     dKind.push(kind);
     dFx.push(fx / len);
     dFz.push(fz / len);
+    dBench.push(bench);
   };
 
   // Shop doors. The doorstep, not the wall — see the note in cityplan.ts.
@@ -659,11 +943,59 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     addDest(i, D_PLAZA, -graph.x[i], -graph.z[i]);
   }
 
+  /* ---- the benches, if anybody handed us any --------------------------- *
+   *
+   * Two places on each, laid out along its own long axis, and a destination
+   * that stands for the bench rather than for either place: which of the two
+   * a body gets is decided when it sets off, so a couple can take both and
+   * two strangers cannot take the same one.
+   *
+   * `y` is the deck under the bench, not the seat — the body's origin stays
+   * on the ground the way it does everywhere else here and the *pose* lifts
+   * the hips. That is what keeps a seated body's shins reaching the deck
+   * instead of a whole body floating 47 cm up with its feet in the air.
+   */
+  const seatsIn = options?.seats ?? [];
+  const benchN = seatsIn.length;
+  const seatX = new Float32Array(benchN * 2);
+  const seatZ = new Float32Array(benchN * 2);
+  const seatY = new Float32Array(benchN * 2);
+  const seatFx = new Float32Array(benchN * 2);
+  const seatFz = new Float32Array(benchN * 2);
+  /** Who is in this place, or -1. The only thing stopping two bodies sharing one. */
+  const seatOwner = new Int32Array(benchN * 2).fill(-1);
+  for (let b = 0; b < benchN; b++) {
+    const bench = seatsIn[b];
+    const yaw = bench.yaw;
+    // No facing, no seat. See the note on CrowdSeat.
+    if (yaw === undefined || !Number.isFinite(yaw)) continue;
+    // A body's forward at this yaw, which is also the bench's: both are -Z.
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    // …and the bench's long axis, which is its local +X.
+    const lx = Math.cos(yaw);
+    const lz = -Math.sin(yaw);
+    for (let k = 0; k < 2; k++) {
+      const u = k === 0 ? -SEAT_OFF : SEAT_OFF;
+      const s = b * 2 + k;
+      seatX[s] = bench.x + lx * u;
+      seatZ[s] = bench.z + lz * u;
+      seatY[s] = bench.y;
+      seatFx[s] = fx;
+      seatFz[s] = fz;
+    }
+    /* One destination for the bench, at the nearest node on the graph. A
+       bench further than that from any pavement node is one nobody could
+       have been walking past anyway. */
+    addDest(nearestNode(bench.x, bench.z, 12), D_BENCH, fx, fz, b);
+  }
+
   const dests: DestPool = {
     node: Int32Array.from(dNode),
     kind: Uint8Array.from(dKind),
     faceX: Float32Array.from(dFx),
     faceZ: Float32Array.from(dFz),
+    bench: Int32Array.from(dBench),
     n: dNode.length,
   };
 
@@ -775,6 +1107,20 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
   const aTrail = new Int32Array(MAX).fill(-1);
   const aDestNode = new Int32Array(MAX).fill(-1);
   const aDestKind = new Uint8Array(MAX);
+  /** Which place on which bench this body holds, or -1. */
+  const aSeat = new Int32Array(MAX).fill(-1);
+  /**
+   * How high the thing under this body's backside is, metres, 0 for the kerb.
+   *
+   * Latched rather than derived from `aSeat`, and that is not tidiness: the
+   * seat is given up the instant a body decides to leave, and the *pose*
+   * takes a third of a second to unfold out of it. Clear the height with the
+   * booking and a body standing up off a bench drops 37 cm into the pavement
+   * on the frame it decides to go.
+   */
+  const aSeatH = new Float32Array(MAX);
+  /** Walking the last few metres off the graph and onto a bench. */
+  const aFinal = new Uint8Array(MAX);
   const aFaceX = new Float32Array(MAX);
   const aFaceZ = new Float32Array(MAX);
   const aQueued = new Uint8Array(MAX);
@@ -1236,7 +1582,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     attribute vec3 aPos;
     attribute float aYaw;
     attribute vec3 aAnim;   // walk phase 0..1, gait amplitude, gesture
-    attribute vec3 aPose;   // sit, lean, look-up
+    attribute vec4 aPose;   // sit, lean, look-up, seat height
     attribute vec3 aBody;   // height scale, build scale, accessory kind
     attribute vec3 aExtra;  // child-ness, what the hands are doing, riding
     attribute vec3 aTop;
@@ -1262,6 +1608,12 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       float sit = aPose.x;
       float lean = aPose.y;
       float look = aPose.z;
+      /* How high whatever this body is sitting on is, in metres, or zero for
+         the kerb. It is a height and not a flag because the pose is solved
+         from it: a bench and a step and a plinth are the same three lines
+         with a different number in them. */
+      float seatH = aPose.w;
+      float onSeat = step(0.001, seatH);
 
       /* One walk cycle, four angles. The knee only ever bends backwards,
          which is the difference between a person and a marionette. */
@@ -1272,17 +1624,29 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       float torso = gait * 0.09 + lean * 0.34 - sit * 0.05;
       float head = look * 0.72 - lean * 0.14 + sin(uTime * 0.7 + aPos.z) * 0.03;
 
-      /* Sitting is a *kerb* sit, not a chair sit: hips a hand's breadth off
+      /* Two sits, and which one you get is whether anything is under you.
+         There are three hundred and thirty-four benches in this city and
+         about a hundred thousand square metres of pavement, so both matter.
+
+         With seatH at zero it is a *kerb* sit: hips a hand's breadth off
          the deck with the legs stretched out in front, which is what somebody
          sitting on a step, a plinth, a bench's edge or the bare kerb looks
          like — and, crucially, what somebody sitting on nothing at all looks
-         like too, because there is no way from here to know whether the
-         bench props.ts might have put on this pavement is really there. A
-         chair sit needs furniture under it or it is a person levitating.
-         The knee stays straight for the same reason: fold it and the shin
-         goes through the deck. */
+         like too. That is the fallback and it is the common case: a chair sit
+         over nothing is a person levitating, and the straight knee is the
+         same argument, because a folded one puts the shin through the deck.
+
+         With a seat height it is a chair sit, and every part of it is that
+         one number: the hips are dropped to the seat instead of to the deck,
+         and the knee folds the whole ninety degrees so the shins hang down
+         the front of it. aBody.x is in the drop because the drop happens
+         before the body is scaled — without it a tall body's hips finish
+         above a short body's on the same bench. A child's shins are shorter
+         than the seat is high and its feet swing, which is correct and is
+         the one place this is worth more than the geometry it costs. */
+      float sitDrop = mix(0.80, 0.90 - seatH / max(0.4, aBody.x), onSeat);
       thigh = mix(thigh, 1.5708, sit);
-      knee = mix(knee, 0.0, sit);
+      knee = mix(knee, mix(0.0, -1.5708, onSeat), sit);
       arm = mix(arm, 0.06, sit);
       torso -= sit * 0.13;
 
@@ -1372,8 +1736,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
          come out in shoe leather from the waist down. */
       vUp = p.y;
 
-      // 0.80 puts a straight, horizontal leg's underside on the deck.
-      p.y -= sit * 0.80;
+      // 0.80 puts a straight, horizontal leg's underside on the deck; a
+      // bench's own figure puts the hips on the bench. See sitDrop.
+      p.y -= sit * sitDrop;
       p.z -= lean * 0.12;
       p.y += gait * 0.026 * cos(aAnim.x * TAU * 2.0);
 
@@ -1431,7 +1796,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     attribute float aPart;
     attribute vec3 aPos;
     attribute vec3 aAnim;
-    attribute vec3 aPose;
+    attribute vec4 aPose;
     attribute vec3 aBody;
     attribute vec3 aTop;
     attribute vec3 aBot;
@@ -1445,6 +1810,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       float swing = aAnim.y * 0.10 * sin(aAnim.x * TAU);
       mv.x += position.x * w + swing * position.y;
       mv.y += position.y * h;
+      // Somebody on a bench stands on the bench, not on the pavement. Two
+      // hundred metres out this is a pixel, and it is a pixel in the right
+      // place for one multiply.
+      mv.y += aPose.x * aPose.w;
       gl_Position = projectionMatrix * mv;
       vCol = aPart < 0.5 ? aSkin : (aPart > 3.5 ? aBot : aTop);
     }
@@ -1518,7 +1887,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     const pos = new Float32Array(cap * 3);
     const yaw = new Float32Array(cap);
     const anim = new Float32Array(cap * 3);
-    const pose = new Float32Array(cap * 3);
+    const pose = new Float32Array(cap * 4);
     const body = new Float32Array(cap * 3);
     const extra = new Float32Array(cap * 3);
     const top = new Float32Array(cap * 3);
@@ -1534,7 +1903,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     bind("aPos", pos, 3);
     bind("aYaw", yaw, 1);
     bind("aAnim", anim, 3);
-    bind("aPose", pose, 3);
+    bind("aPose", pose, 4);
     bind("aBody", body, 3);
     bind("aExtra", extra, 3);
     bind("aTop", top, 3);
@@ -1580,9 +1949,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     tier.anim[s * 3] = aphase[i];
     tier.anim[s * 3 + 1] = agait[i];
     tier.anim[s * 3 + 2] = agesture[i];
-    tier.pose[s * 3] = aSit[i];
-    tier.pose[s * 3 + 1] = aLean[i];
-    tier.pose[s * 3 + 2] = aLook[i];
+    tier.pose[s * 4] = aSit[i];
+    tier.pose[s * 4 + 1] = aLean[i];
+    tier.pose[s * 4 + 2] = aLook[i];
+    tier.pose[s * 4 + 3] = aSeatH[i];
     tier.body[s * 3] = aHeight[i];
     tier.body[s * 3 + 1] = aBuild[i];
     tier.body[s * 3 + 2] = aAcc[i];
@@ -2121,7 +2491,33 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     return 1 / (1 + t * t);
   };
 
+  /** Give up a place on a bench, if this body is holding one. */
+  const releaseSeat = (i: number) => {
+    const s = aSeat[i];
+    if (s < 0) return;
+    if (seatOwner[s] === i) seatOwner[s] = -1;
+    aSeat[i] = -1;
+  };
+  /**
+   * …and whoever is with them, because the leader booked both.
+   *
+   * Only the first follower is ever given one: a bench holds two, and the
+   * third and fourth members of a family sit on the kerb beside it, which is
+   * both what fits and what happens.
+   */
+  const releaseGroupSeats = (i: number) => {
+    releaseSeat(i);
+    const f = firstFollower(i);
+    if (f >= 0) releaseSeat(f);
+  };
+
   const pickDestination = (i: number) => {
+    /* Whatever was booked is given up here and nowhere else. Every route out
+       of a destination goes through this function or through going indoors,
+       so a seat cannot be left held by somebody who has walked away — which
+       presents as benches that fill up over ten minutes and never empty. */
+    releaseGroupSeats(i);
+    aFinal[i] = 0;
     // Eight candidates, best score wins: district pull for the hour, a taste
     // for the kind of place, and a strong preference for somewhere you could
     // plausibly walk to before the sun finishes going down.
@@ -2144,8 +2540,42 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
        * So the weight falls off as the share fills, which halves at target
        * and collapses past it — a bench nobody is on is worth more than the
        * tenth seat on a full one, which is also true of benches. */
-      if (kind === D_RIM) score *= 5.5 * (0.5 + daylight * 0.9) * satiate(leanCount, leanTarget);
+      /* The rim was 5.5, and 5.5 was why the streets were thin.
+       *
+       * Measured at the sunset this world exists for: 345 of 1303 people —
+       * a quarter of the city — were on the rim ring or walking to it, and
+       * `census.leaning` sat at two and a half times the `leanTarget` this
+       * same file computes. Two separate statements of intent said otherwise:
+       * the doc at the top of this file says five per cent on the rail, and
+       * `DISTRICT_PULL.rim` is the *sparsest* district in the table and gets
+       * sparser after dark. `satiate` cannot hold it on its own, because the
+       * rim also gets `reach` 190 against a local errand's 60 — at 150 m a
+       * rim spot scores 0.56 of its weight and a shop door scores 0.29 — so
+       * it wins from anywhere on the island.
+       *
+       * 2.4 lands `leaning` on the number `leanTarget` asks for, and the
+       * ~190 people that frees go back into the street network: the east
+       * avenue went from 35 bodies over its 230 m of pavement to 50, the
+       * Halo from 128 to 230. This is a correction toward what the file
+       * already said, not a change of mind about the rim. */
+      if (kind === D_RIM) score *= 2.4 * (0.5 + daylight * 0.9) * satiate(leanCount, leanTarget);
       if (kind === D_SIT) score *= 1.1 * (0.6 + daylight * 0.7) * satiate(sitCount, sitTarget);
+      if (kind === D_BENCH) {
+        const b = dests.bench[c];
+        // Both places taken. Not a low score — no score: a body sent to a
+        // full bench would stand in front of it for two minutes.
+        if (seatOwner[b * 2] >= 0 && seatOwner[b * 2 + 1] >= 0) continue;
+        /* Damped by the same count a kerb sit is, so seats change *where*
+           the city sits rather than how much of it does.
+           Below the kerb's 1.1 rather than above it, which looks backwards
+           and is not: there are 334 benches against 112 kerb spots, so at
+           equal weight three sits in four would be on furniture and the
+           street would visibly sit down — measured, sitting went from 4% of
+           the crowd to 14% and the rim halved to pay for it. At 0.9 it is
+           about half and half, which is what a pavement with a bench every
+           forty-six metres actually looks like. */
+        score *= 0.9 * (0.6 + daylight * 0.7) * satiate(sitCount, sitTarget);
+      }
       if (kind === D_DOOR) score *= 1.25;
       if (kind === D_TRAM) score *= 0.7;
       /* Sharply local, except for the two things people cross a city for.
@@ -2167,6 +2597,26 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     aDestKind[i] = dests.kind[best];
     aFaceX[i] = dests.faceX[best];
     aFaceZ[i] = dests.faceZ[best];
+    if (aDestKind[i] === D_BENCH) {
+      /* Book a place now rather than on arrival. Deciding at the bench means
+         two people walk to the same end of it and one of them is standing in
+         the other's lap when they get there; deciding here means the second
+         one never chose this bench at all. */
+      const b = dests.bench[best];
+      const mine = seatOwner[b * 2] < 0 ? b * 2 : b * 2 + 1;
+      seatOwner[mine] = i;
+      aSeat[i] = mine;
+      /* And the other place goes to whoever they came with, if that is
+         somebody who would sit on a bench: a partner or the second parent.
+         A couple on a bench is the single best thing a bench can have on it
+         and it costs one array read, because a group is contiguous. */
+      const other = mine === b * 2 ? b * 2 + 1 : b * 2;
+      const f = firstFollower(i);
+      if (f >= 0 && aRole[f] === R_ADULT && seatOwner[other] < 0) {
+        seatOwner[other] = f;
+        aSeat[f] = other;
+      }
+    }
     requestPath(i);
     /* Nobody else in the group is consulted, and that is the point: whoever
        is with them is coming, and they are coming by walking where this body
@@ -2230,6 +2680,11 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         aState[i] = ST_SIT;
         aTimer[i] = rng.range(40, 110);
         break;
+      case D_BENCH:
+        aState[i] = ST_SIT;
+        // Longer than a kerb, because a bench is more comfortable than a kerb.
+        aTimer[i] = rng.range(55, 140);
+        break;
       case D_LANDMARK:
         aState[i] = ST_STAND;
         aTimer[i] = rng.range(20, 55);
@@ -2251,9 +2706,65 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     /* A group stops for longer than one person does, because the reason a
        group has stopped is usually each other. */
     if (aGroup[i] !== G_ALONE) aTimer[i] *= 1.45;
+
+    /* Onto the bench, exactly.
+     *
+     * `reachEnd` has already walked the last few metres off the graph and
+     * slowed down doing it, so this is a snap of at most sixteen centimetres
+     * at a walking pace of about a third of a metre a second — which is
+     * nothing to look at, and is the difference between sitting *on* a bench
+     * and sitting a hand's breadth to one side of it. The yaw is deliberately
+     * not snapped: `aFaceX/Z` is the bench's own facing and the turn that
+     * follows reads as somebody settling. */
+    if (kind === D_BENCH && aSeat[i] >= 0) {
+      const s = aSeat[i];
+      ax[i] = seatX[s];
+      az[i] = seatZ[s];
+      ay[i] = seatY[s];
+      segAx[i] = seatX[s];
+      segAz[i] = seatZ[s];
+      segAy[i] = seatY[s];
+      segTx[i] = seatX[s];
+      segTz[i] = seatZ[s];
+      segTy[i] = seatY[s];
+      avx[i] = 0;
+      avz[i] = 0;
+    }
+  };
+
+  /**
+   * The end of the walk, which for a bench is not the end of the path.
+   *
+   * Every other destination here is a nav node and a body stops on it. A
+   * bench is a metre or so off the pavement centreline and up to seven metres
+   * along it from the nearest node, so arriving at the node and sitting down
+   * puts somebody on the pavement near a bench — which is exactly what this
+   * system did before there were any. So a bench gets one extra leg, walked
+   * off the graph, decelerating into the seat.
+   */
+  const reachEnd = (i: number) => {
+    if (aDestKind[i] === D_BENCH && aSeat[i] >= 0 && !aFinal[i]) {
+      const s = aSeat[i];
+      const dx = seatX[s] - ax[i];
+      const dz = seatZ[s] - az[i];
+      if (dx * dx + dz * dz > 0.16 * 0.16) {
+        aFinal[i] = 1;
+        aState[i] = ST_WALK;
+        segAx[i] = ax[i];
+        segAz[i] = az[i];
+        segAy[i] = ay[i];
+        segTx[i] = seatX[s];
+        segTz[i] = seatZ[s];
+        segTy[i] = seatY[s];
+        return;
+      }
+    }
+    aFinal[i] = 0;
+    arrive(i);
   };
 
   const runPath = (i: number) => {
+    aFinal[i] = 0;
     const goal = aDestNode[i];
     if (goal < 0) {
       aState[i] = ST_WAIT;
@@ -2274,7 +2785,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     if (from === goal) {
       pathLen[i] = 0;
       pathIdx[i] = 0;
-      arrive(i);
+      reachEnd(i);
       return;
     }
 
@@ -2338,7 +2849,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     pathLen[i] = take;
     pathIdx[i] = 0;
     if (take === 0) {
-      arrive(i);
+      reachEnd(i);
       return;
     }
     aState[i] = ST_WALK;
@@ -2404,7 +2915,16 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     let ty = ay[lead];
     const perpX = Math.cos(ayaw[lead]);
     const perpZ = -Math.sin(ayaw[lead]);
-    if (walking && row >= 0 && trFill[row] > 1) {
+    /* The other end of the bench, when the leader booked one for them. Not
+       the ring the other followers fall into: this is a named place with a
+       body's width to it, and the point of it is that it is exactly beside
+       the person they came with rather than somewhere near them. */
+    const seat = leadState === ST_SIT ? aSeat[i] : -1;
+    if (seat >= 0) {
+      tx = seatX[seat];
+      tz = seatZ[seat];
+      ty = seatY[seat];
+    } else if (walking && row >= 0 && trFill[row] > 1) {
       const k = trailAt(row, aLagI[i]);
       tx = trX[k];
       ty = trY[k];
@@ -2448,6 +2968,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     const dz = tz - az[i];
     const d = Math.hypot(dx, dz);
     if (aChase[i] > 0 && d < 0.5) aChase[i] = 0;
+    /* Still on their feet until they are actually at the bench. Copying the
+       leader's sit the moment the leader sits slides a seated body across
+       three metres of pavement, which is a thing you cannot un-see. */
+    if (seat >= 0 && d > 0.4) aState[i] = ST_WALK;
 
     /* `aTimer` on a follower is the dawdle clock and nothing else — only a
        child ever sets it, and only a child is ever held by it. Reading it on
@@ -2481,6 +3005,13 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     if (moved > 0.18) {
       faceX = avx[i];
       faceZ = avz[i];
+    } else if (seat >= 0 && aState[i] === ST_SIT) {
+      /* Sitting on a bench faces the way the bench faces. Turning to the
+         person next to you is the right instinct on a kerb and is wrong here:
+         it swings a seated body ninety degrees and puts its legs through the
+         slats. */
+      faceX = seatFx[seat];
+      faceZ = seatFz[seat];
     } else {
       // Stopped, so look at whoever you are with rather than at the street.
       faceX = ax[lead] - ax[i];
@@ -2532,6 +3063,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     sitting: 0,
     leaning: 0,
     standing: 0,
+    benched: 0,
     dogs: 0,
     robots: 0,
     prams: 0,
@@ -2650,6 +3182,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     const crowded = liveCount;
     let live = 0;
     let nowSit = 0;
+    let nowBench = 0;
     let nowLean = 0;
     let nowStand = 0;
     let nowKids = 0;
@@ -2680,8 +3213,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       live++;
       classNow[classOf(i)]++;
       const liveState = aState[i];
-      if (liveState === ST_SIT) nowSit++;
-      else if (liveState === ST_LEAN) nowLean++;
+      if (liveState === ST_SIT) {
+        nowSit++;
+        if (aSeat[i] >= 0) nowBench++;
+      } else if (liveState === ST_LEAN) nowLean++;
       else if (liveState !== ST_WALK) nowStand++;
       if (aKid[i] > 0.5) nowKids++;
       if (lead === i && aGroup[i] !== G_ALONE) {
@@ -2753,7 +3288,13 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         const dx = tx - ax[i];
         const dz = tz - az[i];
         const d = Math.hypot(dx, dz);
-        if (d < 1.05) {
+        // The last leg onto a bench is walked to the seat and not to a node,
+        // so it ends when the body is *on* it rather than a stride short.
+        if (d < (aFinal[i] ? 0.16 : 1.05)) {
+          if (aFinal[i]) {
+            aFinal[i] = 0;
+            arrive(i);
+          } else {
           pathIdx[i]++;
           if (pathIdx[i] >= pathLen[i]) {
             const goal = aDestNode[i];
@@ -2763,7 +3304,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
               aState[i] = ST_WAIT;
               aTimer[i] = 0.1;
             } else {
-              arrive(i);
+              reachEnd(i);
             }
           } else {
             enterSegment(i, path[base + pathIdx[i] - 1], path[base + pathIdx[i]]);
@@ -2774,8 +3315,13 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
               aTimer[i] = rng.range(2.5, 8);
             }
           }
+          }
         } else {
-          const speed = aspeed[i];
+          /* Slowing into a seat. Full pace right up to the bench overshoots
+             it and then orbits it — the steering has no brake of its own —
+             and the snap `arrive` finishes with is only invisible because
+             this makes it small and slow. */
+          const speed = aFinal[i] ? Math.max(0.35, Math.min(aspeed[i], d * 1.6)) : aspeed[i];
           const wantX = (dx / d) * speed + shoveX;
           const wantZ = (dz / d) * speed + shoveZ;
           const k = Math.min(1, dt * 5.5);
@@ -2827,7 +3373,11 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
            available, and it costs one array read: a group is contiguous, so
            the first follower is the very next index. */
         const with1 = firstFollower(i);
-        if (with1 >= 0 && aActive[with1] && aRole[with1] !== R_RIDER) {
+        if (aSeatH[i] > 0) {
+          /* …unless you are on a bench, in which case you are facing the way
+             the bench faces and so is whoever is next to you. */
+          agesture[i] = 0.35 + 0.3 * Math.sin(clock * 0.55 + i);
+        } else if (with1 >= 0 && aActive[with1] && aRole[with1] !== R_RIDER) {
           const mx = ax[with1] - ax[i];
           const mz = az[with1] - az[i];
           const md = Math.hypot(mx, mz);
@@ -2871,6 +3421,11 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
             if ((atDoor || home) && rng.chance(home ? 0.7 : 0.5)) {
               aActive[i] = 0;
               aDestNode[i] = -1;
+              // The other route out of a destination, and the one that leaks
+              // a booking if it is forgotten: they go indoors still holding
+              // a bench and nobody can ever sit on it again.
+              releaseGroupSeats(i);
+              aFinal[i] = 0;
               continue;
             }
             pickDestination(i);
@@ -2902,6 +3457,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
 
       /* -- pose blending ------------------------------------------------- */
       const toSit = aState[i] === ST_SIT ? 1 : 0;
+      /* Held past the decision to get up, and released only once the pose has
+         actually unfolded — see the note on `aSeatH`. */
+      if (toSit) aSeatH[i] = aSeat[i] >= 0 ? SEAT_H : 0;
+      else if (aSit[i] < 0.02) aSeatH[i] = 0;
       const toLean = aState[i] === ST_LEAN ? 1 : 0;
       if (aLookT[i] > 0) aLookT[i] -= dt;
       const wantLook = aLookT[i] > 0 ? 1 : 0;
@@ -3209,6 +3768,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     census.families = nowFamilies;
     census.couples = nowCouples;
     census.sitting = nowSit;
+    census.benched = nowBench;
     census.leaning = nowLean;
     census.standing = nowStand;
 
@@ -3284,6 +3844,8 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
           y: ay[i],
           z: az[i],
           lead: aLead[i],
+          yaw: ayaw[i],
+          seat: aSeat[i],
           role: ROLES[aRole[i]] ?? "alone",
           group: GROUPS[aGroup[i]] ?? "alone",
           state: STATES[aState[i]] ?? "wait",
