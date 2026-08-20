@@ -70,6 +70,13 @@ __zz_compile.mjs
 .tmp-console.mjs
 
 # Scratch harnesses agents leave behind. Never committed.
+#
+# Four separate patterns have accumulated here because each one was added the
+# morning after a scratch file was found in a commit. `.scratch/` is the
+# fifth, and it is the general case: any directory by that name, anywhere,
+# rather than another prefix to guess at.
 .tmp-*
 __zz_*
 .tmp/
+.scratch/
+**/.scratch/
