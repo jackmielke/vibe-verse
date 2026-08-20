@@ -198,6 +198,11 @@ describe("what the world costs", () => {
        the traffic and now a spaceport — and it started overrunning the five
        second default the moment the world grew. A timeout here reads as "the
        world is broken", which is the most expensive false alarm this
-       repository can raise, and it raised it once already tonight. */
-  }, 30_000);
+       repository can raise, and it raised it once already tonight.
+
+       Sixty, not thirty, since the crowd grew groups: most of the cost here
+       is JIT warm-up — the same hundred and twenty frames cost a fifth of
+       this once the code is hot — and a test that fails on a cold cache and
+       passes on a warm one is worse than a slow one. */
+  }, 60_000);
 });

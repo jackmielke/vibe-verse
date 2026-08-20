@@ -84,6 +84,18 @@ export interface PropPlacement {
   x: number;
   z: number;
   y: number;
+  /**
+   * Which way it faces, radians, for the things where that is the whole
+   * point.
+   *
+   * A bench is the case this exists for. `crowd.ts` can find a place to sit
+   * from the nav graph, and it cannot find a *bench* — those come out of this
+   * system's own occupancy grid and RNG stream and are not derivable from the
+   * plan. Without a facing, the best the crowd can do is sit somebody down
+   * beside a bench rather than on it, which is exactly what it did: three
+   * hundred and thirty-four benches and nobody on any of them.
+   */
+  yaw?: number;
 }
 
 export interface PropsHandle extends System {
@@ -953,8 +965,8 @@ export function buildProps(ctx: BuildContext): PropsHandle {
   const counts: Record<string, number> = {};
   const blockers: PropsHandle["blockers"] = [];
 
-  const note = (kind: string, x: number, z: number, y: number) => {
-    placements.push({ kind, x, z, y });
+  const note = (kind: string, x: number, z: number, y: number, yaw?: number) => {
+    placements.push({ kind, x, z, y, yaw });
     counts[kind] = (counts[kind] ?? 0) + 1;
   };
   /* Counted but not recorded as a point, because it does not have one: a
@@ -1416,7 +1428,7 @@ export function buildProps(ctx: BuildContext): PropsHandle {
     const z = s.z + s.oz * 1.0;
     if (!ok(x, z, 3.2, -4)) continue;
     pushStreet(bench(x, DECK_Y, z, s.yaw, rng), x, z);
-    note("bench", x, z, DECK_Y);
+    note("bench", x, z, DECK_Y, s.yaw);
     blockAt(x, z, 0.9, 0.35, DECK_Y, 0.9);
     benchN++;
     if (benchN % 2 === 0) {

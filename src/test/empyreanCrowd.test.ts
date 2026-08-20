@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { buildCrowd } from "@/empyrean/crowd";
 import { buildTraffic } from "@/empyrean/traffic";
-import { surfaceAt, RING_R } from "@/empyrean/cityplan";
+import { surfaceAt, walkableAt, RING_R } from "@/empyrean/cityplan";
 import { ISLAND_Y, PLATEAU_R, SPAWN } from "@/empyrean/config";
 import type { FrameContext } from "@/empyrean/types";
 
@@ -66,8 +66,239 @@ describe("the crowd", () => {
   it("puts several hundred people on the deck, in three levels of detail", () => {
     crowd.update?.(ctx);
     expect(crowd.count).toBeGreaterThan(400);
-    expect(crowd.group.children.length).toBe(3);
+    /* Six meshes: three tiers of body, and one each for the dogs, the robots
+       and the prams. Six is the number to hold the line on — a population
+       that stops instancing turns eight hundred people into eight hundred
+       draws without failing anything else. */
+    expect(crowd.group.children.length).toBe(6);
   });
+
+  it("puts families, couples, dogs and robots on the street, not just adults", () => {
+    /* The mix is the deliverable, so it is asserted rather than admired. A
+       street of eight hundred identically-sized adults all in transit passes
+       every other test in this file. */
+    const c = crowd.census;
+    expect(c.people).toBeGreaterThan(400);
+    expect(c.families).toBeGreaterThan(30);
+    expect(c.couples).toBeGreaterThan(40);
+    // Roughly one person in ten is a child, and every one of them is with
+    // somebody: a child alone on the pavement is a different sort of city.
+    expect(c.children / c.people).toBeGreaterThan(0.06);
+    expect(c.children / c.people).toBeLessThan(0.22);
+    expect(c.dogs).toBeGreaterThan(5);
+    expect(c.robots).toBeGreaterThan(8);
+    expect(c.prams).toBeGreaterThan(4);
+
+    const snap = crowd.snapshot();
+    const kids = snap.people.filter((p) => p.role === "child" || p.role === "rider");
+    expect(kids.length).toBeGreaterThan(50);
+    expect(kids.every((k) => k.lead !== k.id)).toBe(true);
+    // Every group is contiguous and led from the front, which is what lets a
+    // follower read a leader that has already moved this frame.
+    for (const p of snap.people) {
+      expect(p.lead).toBeLessThanOrEqual(p.id);
+      if (p.lead !== p.id) expect(snap.people[p.lead].lead).toBe(p.lead);
+    }
+    expect(snap.robots.some((r) => r.kind === "sweeper")).toBe(true);
+    expect(snap.robots.some((r) => r.kind === "courier")).toBe(true);
+    expect(snap.robots.some((r) => r.kind === "companion")).toBe(true);
+  });
+
+  it("keeps a family together for five simulated minutes, junctions included", () => {
+    /* The failure this exists for is the one that makes a family stop being a
+       family: two bodies handed the same destination, pathing separately, and
+       taking different sides of the same block at the first junction. They
+       arrive together, having walked two different streets, and from thirty
+       metres they are two strangers who happen to be going the same way.
+       Followers therefore walk their leader's own trail, and this is the
+       assertion that says so — over long enough for a group to cross the
+       city several times and be shoved through several crowds doing it. */
+    let worst = 0;
+    let worstWho = "";
+    let over3 = 0;
+    let apart = 0;
+    let samples = 0;
+
+    for (let f = 0; f < 18000; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+      if (f % 300 !== 0) continue;
+      const snap = crowd.snapshot();
+      for (const p of snap.people) {
+        if (!p.active || p.lead === p.id || p.role === "rider") continue;
+        const lead = snap.people[p.lead];
+        const d = Math.hypot(p.x - lead.x, p.z - lead.z);
+        samples++;
+        if (d > 3) over3++;
+        if (d > 1.4) apart++;
+        if (d > worst) {
+          worst = d;
+          worstWho = `${p.role} ${p.id} is ${d.toFixed(1)} m from ${p.lead}`;
+        }
+        // Followers stand on pavement too, not only leaders.
+        expect(walkableAt(p.x, p.z)).toBe(true);
+      }
+    }
+
+    expect(samples).toBeGreaterThan(3000);
+    // Nobody is ever left behind — an arm's length of slack, never a street.
+    expect(worst, worstWho).toBeLessThan(6);
+    expect(over3 / samples, worstWho).toBeLessThan(0.02);
+    /* …and they are not welded together either. A child that keeps perfect
+       station is a small adult on a rail; the gap has to open and close. */
+    expect(apart / samples).toBeGreaterThan(0.02);
+  }, 120000);
+
+  it("carries children on shoulders rather than dragging them through the deck", () => {
+    const snap = crowd.snapshot();
+    const riders = snap.people.filter((p) => p.role === "rider");
+    expect(riders.length).toBeGreaterThan(3);
+    for (const r of riders) {
+      const parent = snap.people[r.lead];
+      // Directly above whoever is carrying them, and above their head height.
+      expect(Math.hypot(r.x - parent.x, r.z - parent.z)).toBeLessThan(0.05);
+      expect(r.y - parent.y).toBeGreaterThan(0.6);
+      expect(r.y - parent.y).toBeLessThan(1.4);
+    }
+    /* And `nearest` does not offer one, because everything that calls it
+       wants a body another body could walk up to. */
+    for (const r of riders) {
+      const hit = crowd.nearest(r.x, r.z, 0.4);
+      if (hit) expect(hit.id).not.toBe(r.id);
+    }
+  });
+
+  it("never leaves anybody sitting in the carriageway", () => {
+    /* A destination is somewhere a body stops for a minute or two, and the
+       nav graph legitimately contains road nodes because a crossing is one.
+       Sitting on a crossing is not a crossing. Nearly a third of everybody
+       seated was in a junction before the destinations were filtered, which
+       no test in this file could see: they were on the island, on the deck,
+       and on something walkable the whole time. */
+    const kinds: Record<string, number> = {};
+    let stopped = 0;
+    let inRoad = 0;
+    for (let f = 0; f < 6000; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+      if (f % 250 !== 0) continue;
+      for (const p of crowd.snapshot().people) {
+        if (!p.active) continue;
+        if (p.state !== "sit" && p.state !== "lean" && p.state !== "stand") continue;
+        const kind = surfaceAt(p.x, p.z).kind;
+        kinds[kind] = (kinds[kind] ?? 0) + 1;
+        stopped++;
+        if (kind === "road") inRoad++;
+        expect(kind).not.toBe("void");
+        expect(kind).not.toBe("parapet");
+      }
+    }
+    expect(stopped).toBeGreaterThan(2000);
+    const line = JSON.stringify(kinds);
+    // A body shoved a few centimetres over a kerb by the queue behind it is
+    // not the bug; a bench in the middle of an avenue is.
+    expect(inRoad / stopped, line).toBeLessThan(0.05);
+  }, 60000);
+
+  it("walks its dogs on the pavement and on the end of a lead", () => {
+    let checks = 0;
+    for (let f = 0; f < 5400; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+      if (f % 300 !== 0) continue;
+      const snap = crowd.snapshot();
+      for (const dog of snap.dogs) {
+        const owner = snap.people[dog.owner];
+        if (!owner.active) continue;
+        checks++;
+        const kind = surfaceAt(dog.x, dog.z).kind;
+        expect(kind).not.toBe("void");
+        expect(kind).not.toBe("parapet");
+        expect(Math.abs(dog.y - ISLAND_Y)).toBeLessThan(1);
+        // A lead is a lead. If a dog can be further from its owner than one
+        // is long, the lead drawn between them is a line across the street.
+        expect(Math.hypot(dog.x - owner.x, dog.z - owner.z)).toBeLessThan(3.2);
+      }
+      for (const bot of snap.robots) {
+        const kind = surfaceAt(bot.x, bot.z).kind;
+        expect(kind).not.toBe("void");
+        expect(kind).not.toBe("parapet");
+        expect(Math.abs(bot.y - ISLAND_Y)).toBeLessThan(1.2);
+      }
+    }
+    expect(checks).toBeGreaterThan(100);
+  }, 60000);
+
+  it("has no NaN in anything it hands the driver", () => {
+    /* One NaN collapses a bounding sphere and the mesh silently stops being
+       drawn. The crowd writes twenty-odd floats per body per frame into
+       buffers three tiers deep, and a divide by a zero-length segment is one
+       line away at all times. */
+    for (let f = 0; f < 600; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+    }
+    for (const child of crowd.group.children) {
+      const geo = (child as THREE.Mesh).geometry as THREE.InstancedBufferGeometry;
+      for (const name of Object.keys(geo.attributes)) {
+        const arr = geo.getAttribute(name).array as ArrayLike<number>;
+        const live = Math.min(arr.length, Math.max(1, geo.instanceCount) * 4);
+        for (let i = 0; i < live; i++) {
+          if (!Number.isFinite(arr[i])) {
+            throw new Error(`${child.name || child.type} ${name}[${i}] is ${arr[i]}`);
+          }
+        }
+      }
+    }
+  }, 30000);
+
+  it("is a different street in the afternoon than it is at three in the morning", () => {
+    /* `dayPhase` already thins the crowd. This is the other half: *which*
+       people. Families are an afternoon and early-evening thing; couples are
+       a dusk thing. Both are one multiplier on the chance of stepping back
+       out of a door, so it takes a couple of minutes of world time to show,
+       which is exactly why it is measured rather than eyeballed. */
+    const settle = (phase: number, light: number) => {
+      ctx.dayPhase = phase;
+      ctx.daylight = light;
+      ctx.gradeDaylight = light > 0.02 ? 1 : 0;
+      for (let f = 0; f < 10800; f++) {
+        ctx.time += ctx.dt;
+        crowd.update?.(ctx);
+      }
+      const c = crowd.census;
+      return {
+        people: c.people,
+        family: c.families / Math.max(1, c.people),
+        couple: c.couples / Math.max(1, c.people),
+        kids: c.children,
+      };
+    };
+    const afternoon = settle(0.6, 1);
+    const dusk = settle(0.79, 0.3);
+    const small = settle(0.06, 0);
+
+    // Half past four: the street is as full as it gets and it is full of
+    // families. Four in the morning: thinner, and what is left is adults.
+    expect(afternoon.family).toBeGreaterThan(small.family * 1.6);
+    expect(afternoon.kids).toBeGreaterThan(small.kids * 1.8);
+    // Dusk belongs to couples — they are a larger share of a smaller street
+    // than they are at any other hour.
+    expect(dusk.couple).toBeGreaterThan(afternoon.couple);
+    expect(dusk.couple).toBeGreaterThan(small.couple);
+    // And the headcount still falls with the light, which is what it did
+    // before any of this and must go on doing.
+    expect(afternoon.people).toBeGreaterThan(dusk.people);
+    expect(dusk.people).toBeGreaterThan(small.people);
+
+    ctx.dayPhase = 0.75;
+    ctx.daylight = 0.35;
+    ctx.gradeDaylight = 1;
+    for (let f = 0; f < 3600; f++) {
+      ctx.time += ctx.dt;
+      crowd.update?.(ctx);
+    }
+  }, 120000);
 
   it("keeps every body on something walkable for five simulated minutes", () => {
     let worst = "";
@@ -217,6 +448,58 @@ describe("the crowd", () => {
     expect(phone.count).toBeGreaterThan(150);
     phone.dispose();
   }, 60000);
+
+  it("costs six draws and a few thousand triangles, on both tiers", () => {
+    /* The world's budget test cannot see any of this, and it is worth knowing
+       why: it multiplies a geometry's triangles by `InstancedMesh.count`, and
+       the crowd is not an `InstancedMesh`. It is a `Mesh` over an
+       `InstancedBufferGeometry`, because a body needs a dozen custom
+       per-instance attributes — pose weights, colours, what its hands are
+       doing — and an instance matrix is none of them. So the most expensive
+       system in this world reports about two hundred triangles over there,
+       which is the cost of one person. This is the real number. */
+    const cost = (root: THREE.Object3D) => {
+      let draws = 0;
+      let tris = 0;
+      root.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const geo = mesh.geometry as THREE.InstancedBufferGeometry;
+        const index = geo.getIndex();
+        const verts = index ? index.count : geo.getAttribute("position").count;
+        draws++;
+        tris += (verts / 3) * (geo.instanceCount ?? 1);
+      });
+      return { draws, tris: Math.round(tris) };
+    };
+
+    const near = makeCtx();
+    near.camera.position.set(0, ISLAND_Y + 6, 120);
+    near.camera.updateMatrixWorld(true);
+    const measure = (quality: "low" | "high") => {
+      const c = buildCrowd({ quality, seedSalt: "budget" });
+      near.quality = quality;
+      for (let f = 0; f < 240; f++) {
+        near.time += near.dt;
+        c.update?.(near);
+      }
+      const out = cost(c.group);
+      c.dispose();
+      return out;
+    };
+
+    const high = measure("high");
+    const low = measure("low");
+    const line = `high ${high.draws}d/${high.tris} low ${low.draws}d/${low.tris}`;
+    // Three tiers of body plus a dog, a robot and a pram: six, whatever the
+    // tier. Anything more means somebody stopped instancing something.
+    expect(high.draws, line).toBe(6);
+    expect(low.draws, line).toBe(6);
+    // Hard LOD is what keeps this small: nothing past 260 m is drawn at all,
+    // and nothing that is not a person past 155 m.
+    expect(high.tris, line).toBeLessThan(45_000);
+    expect(low.tris, line).toBeLessThan(high.tris * 0.6);
+  }, 30000);
 
   it("does not allocate per frame", () => {
     const buffers = crowd.group.children.map((child) =>

@@ -24,6 +24,58 @@
  * damped by how many are already doing it (`satiate`), which is both what
  * stabilises the mix and what a full bench does.
  *
+ * ## Nobody is on their own, and that is what makes it a place
+ *
+ * About a third of the deck is in a *group*: a couple, a parent with a child
+ * or two, somebody with a dog. A group is one leader and its followers, laid
+ * out contiguously in the arrays so the leader is always updated first, and
+ * **only the leader decides anything**. It picks the destination, it holds the
+ * path, it owns the dwell clock. The followers never path at all.
+ *
+ * That is deliberate, and it is the whole reason a family reads as a family.
+ * Two pedestrians who happen to share a destination take the same A* result
+ * and then diverge the moment one of them is shoved a metre sideways at a
+ * junction — they arrive together having walked two different streets, which
+ * from thirty metres is two strangers. So a follower does not navigate: it
+ * walks where its leader *actually walked*, from a short ring buffer of the
+ * leader's own recent positions, sampled every 32 cm of ground covered. A
+ * child two samples back is 64 cm behind its parent, on ground the parent has
+ * already proved is pavement, and it stays there round a corner, through a
+ * crossing and into a crowd. When the leader stops, the followers fall into a
+ * ring around it — which is what a group waiting to cross looks like — and
+ * when it sits, they sit next to it.
+ *
+ * The lateral part of a slot is bounded by `clearanceAt`, which reports how
+ * far you can move from a point in *any* direction and still be somewhere a
+ * body may stand. Between two shopfronts on a 3.5 m lane a family closes up
+ * to single file on its own, without anything having to know a lane is
+ * narrow. It is the same function that answers "is there room here for two
+ * people and a dog", and it is asked once per group per frame rather than
+ * once per member, because it is the leader's ground that everyone is on.
+ *
+ * A child is not a small adult. It is 0.60 of the height with a head a third
+ * again as big for it, it dawdles — an occasional 0.6–1.6 s of standing and
+ * staring at something, then a run to catch up at 1.7× — and it is the one
+ * thing here allowed to be brightly coloured. The lag and the catching up is
+ * the read; the height alone just makes a short adult.
+ *
+ * ## The three things that are not people
+ *
+ * Dogs, robots and prams are one extra draw call between them (`KIT`), one
+ * geometry with every part of all three in it and a per-instance kind that
+ * collapses the parts it is not to a point. A dog follows its owner's trail
+ * one sample back with a weave and a sniff; a lead is drawn as a single sagging
+ * quad from its collar to the owner's hand, positioned in the vertex shader
+ * from a world-space offset, because a lead that does not join the two of them
+ * is worse than no lead.
+ *
+ * The robots are civic and they are cheerful: a sweeper working the kerb, a
+ * courier rolling with a parcel, a companion bobbing along after a family.
+ * None of them serves anybody and none of them watches anybody. They ride the
+ * nav graph with a random walk that prefers to carry straight on, which needs
+ * no A* and cannot leave the pavement, because every edge of that graph was
+ * checked at build.
+ *
  * ## Why the crowd is the performance story of this world
  *
  * Everything else here is drawn once and shaded; the crowd is eight hundred
@@ -79,6 +131,7 @@ import * as THREE from "three";
 import { makeRng } from "@/shared/proc/rng";
 import {
   cityPlan,
+  clearanceAt,
   districtAt,
   surfaceAt,
   HALO_R,
@@ -94,15 +147,73 @@ import { ISLAND_Y, PLATEAU_R } from "./config";
 import { SUN_DIR } from "./sky";
 import type { BuildContext, FrameContext, System } from "./types";
 
+/**
+ * A live tally of what the street is made of.
+ *
+ * One object, built once and mutated in place — a fresh literal every frame
+ * is exactly the allocation this system is not allowed to make. Read it, do
+ * not keep it.
+ */
+export interface Census {
+  /** People on the deck right now. */
+  people: number;
+  children: number;
+  /** Whole groups out: a couple, a parent and a child, somebody with a dog. */
+  groups: number;
+  families: number;
+  couples: number;
+  /** People not going anywhere: sitting, on the rail, stopped and talking. */
+  sitting: number;
+  leaning: number;
+  standing: number;
+  dogs: number;
+  robots: number;
+  prams: number;
+}
+
+/** One body, as seen from outside. See `snapshot`. */
+export interface PersonView {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  /** Index of whoever decides for them; equal to `id` when that is themselves. */
+  lead: number;
+  role: "alone" | "lead" | "adult" | "child" | "rider";
+  group: "alone" | "couple" | "family" | "dog";
+  state: "walk" | "stand" | "sit" | "lean" | "wait" | "pause";
+  active: boolean;
+}
+
+/** Everything the simulation knows, in plain objects. See `snapshot`. */
+export interface CrowdSnapshot {
+  people: PersonView[];
+  dogs: Array<{ x: number; y: number; z: number; owner: number }>;
+  robots: Array<{ x: number; y: number; z: number; kind: "sweeper" | "courier" | "companion" }>;
+  prams: Array<{ x: number; y: number; z: number; owner: number }>;
+}
+
 export interface CrowdHandle extends System {
   /** Live population, for the HUD and for debugging. */
   readonly count: number;
+  /** What is out there, mutated in place each frame. */
+  readonly census: Readonly<Census>;
   /** Nearest pedestrian to a point, for interactions later. */
   nearest(
     x: number,
     z: number,
     maxDist: number,
   ): { x: number; y: number; z: number; id: number } | null;
+  /**
+   * Everything, copied out into objects.
+   *
+   * **This allocates, on purpose, and is not for a frame.** It exists so a
+   * test can ask questions the rendered instance buffers cannot answer — is
+   * this family still together, is that dog on the pavement, is anybody
+   * sitting in the road — and so somebody at a console can find out why one
+   * pedestrian is behaving oddly without adding a print to the loop.
+   */
+  snapshot(): CrowdSnapshot;
 }
 
 /* -------------------------------------------------------------------------
@@ -116,6 +227,20 @@ const POP = { high: 820, low: 330 } as const;
 const LOD_NEAR = 45;
 const LOD_MID = 130;
 const LOD_FAR = 260;
+
+/**
+ * How many of the things that are not people.
+ *
+ * Scaled with the tier like everything else here, and thinned again with the
+ * light in `update`: a street sweeper works after dark, a toddler does not.
+ */
+const KIT = {
+  high: { dogs: 30, sweepers: 5, couriers: 11, companions: 12 },
+  low: { dogs: 11, sweepers: 2, couriers: 4, companions: 4 },
+} as const;
+
+/** How far a dog, a robot or a pram is worth drawing. They are small. */
+const LOD_KIT = 155;
 
 /** A* searches per frame. Everyone else stands still and waits. */
 const REPATH_BUDGET = 4;
@@ -139,6 +264,60 @@ const ST_WAIT = 4;
 /** Stopped mid-walk to look at something. Keeps its path. */
 const ST_PAUSE = 5;
 
+/**
+ * What somebody is to their group.
+ *
+ * `aLead[i] === i` for anybody who decides for themselves, which is both a
+ * solo pedestrian and the leader of a group; the roles below are what tells
+ * the two apart and what a follower is *for*.
+ */
+const R_ALONE = 0;
+const R_LEAD = 1;
+/** Another adult: walks abreast, turns to face the leader when they stop. */
+const R_ADULT = 2;
+/** A child: smaller, two samples back, and inclined to dawdle. */
+const R_CHILD = 3;
+/** A child on the leader's shoulders. Goes where they go, never walks. */
+const R_RIDER = 4;
+
+/** What kind of group this is, for the hour and for the census. */
+const G_ALONE = 0;
+const G_COUPLE = 1;
+const G_FAMILY = 2;
+const G_DOG = 3;
+
+/**
+ * What the hands are doing. A contract with the vertex shader.
+ *
+ * 0 nothing, 1 both on a pram handle, 2 an adult holding a child's hand on
+ * their left, 3 both arms up round a child on the shoulders, 4 a child
+ * reaching up for the hand in 2, 5 a lead in the right hand.
+ */
+const H_NONE = 0;
+const H_PRAM = 1;
+const H_HAND = 2;
+const H_CARRY = 3;
+const H_REACH = 4;
+const H_LEAD = 5;
+
+/** Which kind of thing an instance of the kit mesh is. */
+const K_DOG = 0;
+const K_SWEEPER = 1;
+const K_COURIER = 2;
+const K_COMPANION = 3;
+const K_PRAM = 4;
+
+/**
+ * The leader's trail: where they have actually been, every 32 cm of ground.
+ *
+ * Sampled by distance rather than by time on purpose — a slot is then a fixed
+ * distance back however fast the leader is going, so a child sits 64 cm behind
+ * its parent at a stroll and at a hurry, and the trail simply stops growing
+ * when the leader stops instead of collapsing to a point.
+ */
+const TRAIL_N = 14;
+const TRAIL_STEP = 0.32;
+
 /** What it is walking toward. Decides what it does when it gets there. */
 const D_DOOR = 0;
 const D_LANDMARK = 1;
@@ -148,6 +327,21 @@ const D_TRAM = 4;
 const D_PLAZA = 5;
 
 const DISTRICT_IDS: DistrictId[] = ["halo", "core", "market", "gardens", "rim"];
+
+/**
+ * How strongly the clock is at a given hour, 0..1, wrapping at midnight.
+ *
+ * `dayPhase` is 0 at midnight and 0.75 at the sunset this world is painted
+ * at, so the afternoon is a wide bump around 0.62 and dusk is a narrow one
+ * just after 0.79. Used to decide who is out — more families in the
+ * afternoon, more couples at dusk — and for nothing to do with light.
+ */
+function dayBump(phase: number, centre: number, width: number): number {
+  let d = phase - centre;
+  d -= Math.round(d);
+  const t = d / width;
+  return Math.max(0, 1 - t * t);
+}
 
 /**
  * How busy each district is, and how that moves with the light.
@@ -392,6 +586,16 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
 
   const addDest = (node: number, kind: number, fx: number, fz: number) => {
     if (node < 0) return;
+    /* Never somewhere to *stand* in the carriageway.
+     *
+     * The nav graph is allowed road nodes — a crossing is a road node and a
+     * pedestrian has to be able to use one — but a destination is a place a
+     * body stops for forty seconds to a couple of minutes, and where the
+     * pavement crosses an avenue the closed-form surface says "road", because
+     * it is one. Nearly a third of everybody sitting was sitting in a junction
+     * before this line, which reads exactly as badly as it sounds and is
+     * invisible in every test that only asks whether they are on the island. */
+    if (surfaceAt(graph.x[node], graph.z[node]).kind === "road") return;
     const len = Math.hypot(fx, fz) || 1;
     dNode.push(node);
     dKind.push(kind);
@@ -547,7 +751,28 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
   const aTopC = new Float32Array(MAX * 3);
   const aBotC = new Float32Array(MAX * 3);
   const aSkinC = new Float32Array(MAX * 3);
-  const aPartner = new Int32Array(MAX).fill(-1);
+  /* Who decides for this body. `aLead[i] === i` means "I do" — which covers
+     somebody walking on their own and the leader of a group alike. */
+  const aLead = new Int32Array(MAX);
+  const aRole = new Uint8Array(MAX);
+  const aGroup = new Uint8Array(MAX);
+  /** Which side of the leader, how far out, and where in the ring when stopped. */
+  const aSlotSide = new Float32Array(MAX);
+  const aSlotOff = new Float32Array(MAX);
+  const aSlotAng = new Float32Array(MAX);
+  /** How many trail samples back this follower walks. */
+  const aLagI = new Uint8Array(MAX);
+  /** Child-ness: proportions in the shader, dawdling in the loop. */
+  const aKid = new Float32Array(MAX);
+  /** What the hands are doing — one of the `H_` codes. */
+  const aHold = new Float32Array(MAX);
+  /** Riding on somebody's shoulders, blended. */
+  const aRide = new Float32Array(MAX);
+  /** Seconds until this child stops to look at something, then catches up. */
+  const aDawdle = new Float32Array(MAX);
+  const aChase = new Float32Array(MAX);
+  /** Row in the trail buffer, or -1 for anybody nobody is following. */
+  const aTrail = new Int32Array(MAX).fill(-1);
   const aDestNode = new Int32Array(MAX).fill(-1);
   const aDestKind = new Uint8Array(MAX);
   const aFaceX = new Float32Array(MAX);
@@ -592,6 +817,14 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     0x8f4f7a, 0x35505a, 0xc06a55, 0x5b7a3f,
   ];
   const BOTTOMS = [0x22242e, 0x3a3340, 0x4a4438, 0x2b3644, 0x5a4a3f, 0x1e2a2e, 0x6a5f52];
+  /* Children are the one thing on this street allowed to be loud. Adults here
+     wear a city's worth of muted wool; a scarlet coat forty centimetres tall
+     beside one of them is the single cheapest way to make a pair of bodies
+     read as a parent and a child rather than as two pedestrians. */
+  const KID_TOPS = [
+    0xe8564a, 0xf2a03c, 0x3fbf7f, 0x3f9fe0, 0xf06fa8, 0xffd24a, 0x9b6ede, 0x2fd0c4,
+  ];
+  const KID_BOTTOMS = [0x2f4a7a, 0x7a3a5e, 0x2e6b4a, 0x8a5a2e, 0x35405a, 0x5a3f6b];
   const tmpColor = new THREE.Color();
 
   const setColor = (arr: Float32Array, i: number, hex: number, jitter: number) => {
@@ -602,42 +835,242 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     arr[i * 3 + 2] = tmpColor.b * k;
   };
 
+  /* ---- who is with whom ------------------------------------------------
+   *
+   * Groups are laid out contiguously with the leader first, and that is not
+   * cosmetic: `update` walks the arrays in index order, so a follower always
+   * reads a leader whose position for this frame is already final. Reverse
+   * the two and every child in the city is a frame behind its parent — which
+   * at a stroll is a centimetre and at a corner is most of a metre.
+   */
+  const kitT = KIT[ctx.quality];
+  const dogOwner: number[] = [];
+  const companionOwner: number[] = [];
+  const pramOwner: number[] = [];
+  let familyN = 0;
+  let coupleN = 0;
+
+  const startGroup = (lead: number, kind: number) => {
+    aLead[lead] = lead;
+    aGroup[lead] = kind;
+    aRole[lead] = kind === G_ALONE ? R_ALONE : R_LEAD;
+  };
+  const addFollower = (
+    lead: number,
+    i: number,
+    role: number,
+    side: number,
+    off: number,
+    lag: number,
+    ang: number,
+  ) => {
+    aLead[i] = lead;
+    aRole[i] = role;
+    aGroup[i] = aGroup[lead];
+    aSlotSide[i] = side;
+    aSlotOff[i] = off;
+    aLagI[i] = lag;
+    aSlotAng[i] = ang;
+  };
+  /* A child, and whether it is holding a hand.
+   *
+   * The hand is the leader's *left* — part 2 in the shader, the even side —
+   * so a child that takes it has to be on that side of them and level with
+   * them rather than trailing. Everything else about the pose follows from
+   * those two facts, which is why the side is decided here and not there. */
+  const makeChild = (lead: number, i: number, side: number, lag: number, ang: number, freeHands: boolean) => {
+    addFollower(lead, i, R_CHILD, side, rng.range(0.46, 0.62), lag, ang);
+    aKid[i] = 1;
+    if (freeHands && side > 0 && aHold[lead] === H_NONE && rng.chance(0.55)) {
+      aHold[lead] = H_HAND;
+      aHold[i] = H_REACH;
+      aSlotOff[i] = 0.52;
+      aLagI[i] = 1;
+    }
+  };
+
+  let cursor = 0;
+  while (cursor < MAX) {
+    const room = MAX - cursor;
+    const roll = rng.next();
+    const lead = cursor;
+    if (room >= 3 && roll < 0.05) {
+      /* Three: either both parents and one child, or one adult with two,
+         which is the arrangement that actually reads at a distance — the
+         second child walks on the other side and lags further. */
+      startGroup(lead, G_FAMILY);
+      familyN++;
+      const pram = rng.chance(0.3);
+      const ride = !pram && rng.chance(0.24);
+      if (pram) {
+        aHold[lead] = H_PRAM;
+        pramOwner.push(lead);
+      }
+      if (rng.chance(0.42)) {
+        addFollower(lead, lead + 1, R_ADULT, -1, rng.range(0.58, 0.74), 0, -1.05);
+        makeChild(lead, lead + 2, 1, 2, 0.95, !pram && !ride);
+      } else {
+        makeChild(lead, lead + 1, 1, 2, 0.95, !pram && !ride);
+        makeChild(lead, lead + 2, -1, 3, -0.95, false);
+      }
+      if (ride) {
+        const kid = lead + 2;
+        aRole[kid] = R_RIDER;
+        aRide[kid] = 1;
+        aHold[lead] = H_CARRY;
+        aHold[kid] = H_NONE;
+      }
+      cursor += 3;
+    } else if (room >= 2 && roll < 0.13) {
+      startGroup(lead, G_FAMILY);
+      familyN++;
+      const pram = rng.chance(0.3);
+      const ride = !pram && rng.chance(0.2);
+      if (pram) {
+        aHold[lead] = H_PRAM;
+        pramOwner.push(lead);
+      }
+      makeChild(lead, lead + 1, 1, 2, 0.95, !pram && !ride);
+      if (ride) {
+        aRole[lead + 1] = R_RIDER;
+        aRide[lead + 1] = 1;
+        aHold[lead] = H_CARRY;
+        aHold[lead + 1] = H_NONE;
+      }
+      cursor += 2;
+    } else if (room >= 2 && roll < 0.29) {
+      startGroup(lead, G_COUPLE);
+      coupleN++;
+      const side = rng.chance(0.5) ? 1 : -1;
+      addFollower(lead, lead + 1, R_ADULT, side, rng.range(0.56, 0.72), 0, side * rng.range(0.85, 1.25));
+      cursor += 2;
+    } else {
+      startGroup(lead, G_ALONE);
+      cursor += 1;
+    }
+
+    /* A dog needs a free hand, so it goes to somebody who has one. */
+    if (dogOwner.length < kitT.dogs && aHold[lead] === H_NONE && rng.chance(0.075)) {
+      aHold[lead] = H_LEAD;
+      dogOwner.push(lead);
+      if (aGroup[lead] === G_ALONE) aGroup[lead] = G_DOG;
+    }
+    if (
+      aGroup[lead] === G_FAMILY &&
+      companionOwner.length < kitT.companions &&
+      rng.chance(0.22)
+    ) {
+      companionOwner.push(lead);
+    }
+  }
+
+  /* How many people are in each sort of group, which is fixed for the life of
+     the world: the population is recycled, never respawned. The hour moves
+     how many of each are *out*, and it needs the denominator to do it. */
+  const CLASS_N = 3;
+  const classBuilt = new Int32Array(CLASS_N);
+  const classOf = (i: number): number =>
+    aGroup[i] === G_FAMILY ? 2 : aGroup[i] === G_COUPLE ? 1 : 0;
+  for (let i = 0; i < MAX; i++) classBuilt[classOf(i)]++;
+
+  /* Only somebody who is followed needs a trail kept for them. */
+  let trailRows = 0;
+  const claimTrail = (lead: number) => {
+    if (aTrail[lead] < 0) aTrail[lead] = trailRows++;
+  };
+  for (let i = 0; i < MAX; i++) if (aLead[i] !== i) claimTrail(aLead[i]);
+  for (const owner of dogOwner) claimTrail(owner);
+  for (const owner of companionOwner) claimTrail(owner);
+
+  const trX = new Float32Array(Math.max(1, trailRows) * TRAIL_N);
+  const trY = new Float32Array(Math.max(1, trailRows) * TRAIL_N);
+  const trZ = new Float32Array(Math.max(1, trailRows) * TRAIL_N);
+  const trHead = new Int32Array(Math.max(1, trailRows));
+  const trFill = new Int32Array(Math.max(1, trailRows));
+  const trLastX = new Float32Array(Math.max(1, trailRows));
+  const trLastZ = new Float32Array(Math.max(1, trailRows));
+
+  /** The trail sample `k` steps back, clamped to what has been recorded. */
+  const trailAt = (row: number, k: number): number => {
+    const back = Math.min(k, trFill[row] - 1);
+    return row * TRAIL_N + ((trHead[row] - back + TRAIL_N * 2) % TRAIL_N);
+  };
+
+  /* ---- appearance ------------------------------------------------------ */
   for (let i = 0; i < MAX; i++) {
-    aHeight[i] = rng.range(0.90, 1.09);
-    aBuild[i] = rng.range(0.86, 1.16);
-    aAcc[i] = rng.chance(0.34) ? (rng.chance(0.5) ? 1 : rng.chance(0.65) ? 2 : 3) : 0;
-    setColor(aTopC, i, rng.pick(TOPS), 0.18);
-    setColor(aBotC, i, rng.pick(BOTTOMS), 0.14);
+    const kid = aKid[i] > 0.5;
+    /* A child is 0.6 of an adult, and the vertex shader gives it a head a
+       third again as big for its size. Height alone makes a short adult. */
+    aHeight[i] = kid ? rng.range(0.55, 0.69) : rng.range(0.90, 1.09);
+    aBuild[i] = kid ? rng.range(0.94, 1.10) : rng.range(0.86, 1.16);
+    // A child gets a bobble hat or a satchel and never an umbrella.
+    aAcc[i] = kid
+      ? rng.chance(0.42)
+        ? rng.chance(0.6)
+          ? 1
+          : 2
+        : 0
+      : rng.chance(0.34)
+        ? rng.chance(0.5)
+          ? 1
+          : rng.chance(0.65)
+            ? 2
+            : 3
+        : 0;
+    setColor(aTopC, i, kid ? rng.pick(KID_TOPS) : rng.pick(TOPS), 0.18);
+    setColor(aBotC, i, kid ? rng.pick(KID_BOTTOMS) : rng.pick(BOTTOMS), 0.14);
     setColor(aSkinC, i, rng.pick(SKINS), 0.06);
     aHurry[i] = rng.chance(0.22) ? rng.range(1.55, 2.1) : rng.range(0.95, 1.2);
     aphase[i] = rng.next();
+    /* Children stop. That is the whole of what makes a family read as one
+       from across a street: not the size difference, the gap opening and
+       closing. `1e9` is "never" for everybody else. */
+    aDawdle[i] = kid ? rng.range(3, 18) : 1e9;
   }
-  // Pairs. Two people who arrived together, go together, and stand facing
-  // each other outside a shop for a minute at a time — the single strongest
-  // "somebody lives here" read there is, and it costs one integer.
-  for (let i = 0; i + 1 < MAX; i += 2) {
-    if (!rng.chance(0.22)) continue;
-    aPartner[i] = i + 1;
-    aPartner[i + 1] = i;
+  /* A parent carrying a child walks the way somebody carrying a child walks. */
+  for (let i = 0; i < MAX; i++) {
+    if (aHold[i] === H_CARRY || aHold[i] === H_PRAM) aHurry[i] = Math.min(aHurry[i], 1.02);
+    if (aRole[i] === R_CHILD || aRole[i] === R_RIDER) aHurry[i] = Math.min(aHurry[i], 1.15);
   }
 
   /* ---- where everybody starts ------------------------------------------ */
   for (let i = 0; i < MAX; i++) {
-    const node = Math.floor(rng.next() * graph.n);
-    ax[i] = graph.x[node];
-    az[i] = graph.z[node];
-    ay[i] = graph.y[node];
+    const lead = aLead[i];
+    if (lead === i) {
+      const node = Math.floor(rng.next() * graph.n);
+      ax[i] = graph.x[node];
+      az[i] = graph.z[node];
+      ay[i] = graph.y[node];
+      ayaw[i] = rng.range(0, TAU);
+    } else {
+      // Beside whoever they came with, facing the same way.
+      ax[i] = ax[lead] + Math.cos(ayaw[lead]) * aSlotSide[i] * aSlotOff[i];
+      az[i] = az[lead] - Math.sin(ayaw[lead]) * aSlotSide[i] * aSlotOff[i];
+      ay[i] = ay[lead];
+      ayaw[i] = ayaw[lead];
+    }
     segAx[i] = ax[i];
     segAz[i] = az[i];
     segAy[i] = ay[i];
     segTx[i] = ax[i];
     segTz[i] = az[i];
     segTy[i] = ay[i];
-    ayaw[i] = rng.range(0, TAU);
     aState[i] = ST_WAIT;
-    aTimer[i] = rng.range(0, 6);
+    aTimer[i] = lead === i ? rng.range(0, 6) : 0;
     aActive[i] = 1;
     aspeed[i] = 1.25 * aHurry[i];
+    const row = aTrail[i];
+    if (row >= 0) {
+      for (let k = 0; k < TRAIL_N; k++) {
+        trX[row * TRAIL_N + k] = ax[i];
+        trY[row * TRAIL_N + k] = ay[i];
+        trZ[row * TRAIL_N + k] = az[i];
+      }
+      trHead[row] = 0;
+      trFill[row] = 1;
+      trLastX[row] = ax[i];
+      trLastZ[row] = az[i];
+    }
   }
 
   /* -----------------------------------------------------------------------
@@ -805,6 +1238,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     attribute vec3 aAnim;   // walk phase 0..1, gait amplitude, gesture
     attribute vec3 aPose;   // sit, lean, look-up
     attribute vec3 aBody;   // height scale, build scale, accessory kind
+    attribute vec3 aExtra;  // child-ness, what the hands are doing, riding
     attribute vec3 aTop;
     attribute vec3 aBot;
     attribute vec3 aSkin;
@@ -852,6 +1286,34 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       arm = mix(arm, 0.06, sit);
       torso -= sit * 0.13;
 
+      /* What the hands are doing.
+         Five poses and one arm rotation between them, because every one of
+         them is the same joint: a pram handle and a child's hand and a dog's
+         lead differ only in how far forward the arm is and whether it is one
+         arm or both. Even parts are the left side, which is why the hand a
+         child takes is the left one — the child is placed on that side of the
+         parent by the group builder for exactly this reason. */
+      float hold = aExtra.y;
+      float ride = aExtra.z;
+      float wantArm = 0.0;
+      float takeArm = 0.0;
+      float leftArm = step(0.0, side);
+      if (hold > 0.5 && hold < 1.5) { wantArm = 1.00; takeArm = 1.0; }
+      else if (hold > 1.5 && hold < 2.5) { wantArm = 0.72; takeArm = leftArm; }
+      else if (hold > 2.5 && hold < 3.5) { wantArm = 2.02; takeArm = 1.0; }
+      else if (hold > 3.5 && hold < 4.5) { wantArm = 1.32; takeArm = 1.0 - leftArm; }
+      else if (hold > 4.5) { wantArm = 0.52; takeArm = 1.0 - leftArm; }
+      arm = mix(arm, wantArm + gait * 0.055 * sin(ph), takeArm * (1.0 - sit));
+
+      /* Up on somebody's shoulders: thighs over the shoulders, shins hanging
+         down the front, hands somewhere on the top of a head. The seat height
+         is in aPos — the CPU knows how tall the parent is and the shader does
+         not — so all of this is the fold and none of it is the lift. */
+      thigh = mix(thigh, 1.24, ride);
+      knee = mix(knee, -1.12, ride);
+      arm = mix(arm, -0.28, ride);
+      torso -= ride * 0.05;
+
       vec3 p = position;
       vec3 n = normal;
 
@@ -892,6 +1354,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         p = waist + rotX(p - waist, torso);
         n = rotX(n, torso);
       } else if (part < 0.5 || (part > 7.5 && part < 8.5)) {
+        // A child's head is a third again as big for its body as an adult's,
+        // and without that a short body is a short adult and nothing else.
+        p = neck + (p - neck) * (1.0 + aExtra.x * 0.34);
         p = neck + rotX(p - neck, head);       // head and what is on it
         n = rotX(n, head);
         p = waist + rotX(p - waist, torso);
@@ -1031,6 +1496,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     anim: Float32Array;
     pose: Float32Array;
     body: Float32Array;
+    extra: Float32Array;
     top: Float32Array;
     bot: Float32Array;
     skin: Float32Array;
@@ -1054,6 +1520,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     const anim = new Float32Array(cap * 3);
     const pose = new Float32Array(cap * 3);
     const body = new Float32Array(cap * 3);
+    const extra = new Float32Array(cap * 3);
     const top = new Float32Array(cap * 3);
     const bot = new Float32Array(cap * 3);
     const skin = new Float32Array(cap * 3);
@@ -1069,6 +1536,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     bind("aAnim", anim, 3);
     bind("aPose", pose, 3);
     bind("aBody", body, 3);
+    bind("aExtra", extra, 3);
     bind("aTop", top, 3);
     bind("aBot", bot, 3);
     bind("aSkin", skin, 3);
@@ -1094,7 +1562,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     mesh.frustumCulled = false;
     mesh.renderOrder = 2;
     group.add(mesh);
-    return { geo, mesh, pos, yaw, anim, pose, body, top, bot, skin, attrs, n: 0 };
+    return { geo, mesh, pos, yaw, anim, pose, body, extra, top, bot, skin, attrs, n: 0 };
   };
 
   const tiers: Tier[] = [
@@ -1118,6 +1586,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     tier.body[s * 3] = aHeight[i];
     tier.body[s * 3 + 1] = aBuild[i];
     tier.body[s * 3 + 2] = aAcc[i];
+    tier.extra[s * 3] = aKid[i];
+    tier.extra[s * 3 + 1] = aHold[i];
+    tier.extra[s * 3 + 2] = aRide[i];
     tier.top[s * 3] = aTopC[i * 3];
     tier.top[s * 3 + 1] = aTopC[i * 3 + 1];
     tier.top[s * 3 + 2] = aTopC[i * 3 + 2];
@@ -1128,6 +1599,502 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     tier.skin[s * 3 + 1] = aSkinC[i * 3 + 1];
     tier.skin[s * 3 + 2] = aSkinC[i * 3 + 2];
   };
+
+  /* -----------------------------------------------------------------------
+   * The kit — dogs, robots and prams
+   *
+   * Three geometries, one material, one program, three draw calls. They share
+   * a shader because they share a *problem*: a handful of boxes, a yaw, a
+   * phase, and one moving part each. Part ids are global across the three, so
+   * the shader knows which of them it is looking at without being told.
+   * -------------------------------------------------------------------- */
+
+  /** 0 body, 1 head, 2 muzzle and ears, 3 front legs, 4 back legs, 5 tail,
+      6 the lead — one thin box, repositioned in world space. */
+  const DOG_BOXES: BoxSpec[] = [
+    { cx: 0, cy: 0.42, cz: 0, sx: 0.20, sy: 0.20, sz: 0.54, part: 0 },
+    { cx: 0, cy: 0.55, cz: -0.34, sx: 0.19, sy: 0.17, sz: 0.19, part: 1 },
+    { cx: 0, cy: 0.51, cz: -0.47, sx: 0.10, sy: 0.09, sz: 0.13, part: 2 },
+    { cx: 0.075, cy: 0.66, cz: -0.31, sx: 0.05, sy: 0.10, sz: 0.035, part: 2 },
+    { cx: -0.075, cy: 0.66, cz: -0.31, sx: 0.05, sy: 0.10, sz: 0.035, part: 2 },
+    { cx: 0.075, cy: 0.17, cz: -0.18, sx: 0.06, sy: 0.34, sz: 0.06, part: 3 },
+    { cx: -0.075, cy: 0.17, cz: -0.18, sx: 0.06, sy: 0.34, sz: 0.06, part: 3 },
+    { cx: 0.075, cy: 0.17, cz: 0.19, sx: 0.06, sy: 0.34, sz: 0.06, part: 4 },
+    { cx: -0.075, cy: 0.17, cz: 0.19, sx: 0.06, sy: 0.34, sz: 0.06, part: 4 },
+    { cx: 0, cy: 0.52, cz: 0.30, sx: 0.045, sy: 0.045, sz: 0.22, part: 5 },
+    { cx: 0, cy: 0.5, cz: 0, sx: 0.026, sy: 1.0, sz: 0.026, part: 6 },
+  ];
+
+  /** 7 chassis, 8 dome, 9 eyes, 10 antenna, 11 the one tool it has, 12 base. */
+  const BOT_BOXES: BoxSpec[] = [
+    { cx: 0, cy: 0.36, cz: 0, sx: 0.42, sy: 0.44, sz: 0.52, part: 7 },
+    { cx: 0, cy: 0.67, cz: -0.02, sx: 0.34, sy: 0.22, sz: 0.34, part: 8 },
+    { cx: 0.085, cy: 0.69, cz: -0.17, sx: 0.10, sy: 0.10, sz: 0.05, part: 9 },
+    { cx: -0.085, cy: 0.69, cz: -0.17, sx: 0.10, sy: 0.10, sz: 0.05, part: 9 },
+    { cx: 0, cy: 0.87, cz: 0, sx: 0.026, sy: 0.20, sz: 0.026, part: 10 },
+    { cx: 0, cy: 1.00, cz: 0, sx: 0.085, sy: 0.085, sz: 0.085, part: 10 },
+    { cx: 0, cy: 0.16, cz: -0.34, sx: 0.58, sy: 0.16, sz: 0.16, part: 11 },
+    { cx: 0, cy: 0.09, cz: 0, sx: 0.44, sy: 0.16, sz: 0.50, part: 12 },
+  ];
+
+  /** 13 body, 14 hood, 15 wheels, 16 the handle the parent is holding. */
+  /* The wheels are 20 cm and turn about an axle at 14.5 cm, which is not a
+     coincidence: a *square* wheel spinning about its centre sweeps its own
+     diagonal, so a 28 cm one at that height dips four centimetres through the
+     pavement twice a revolution. Small enough that the diagonal clears the
+     deck is the whole constraint, and it is why the body sits where it does. */
+  const PRAM_BOXES: BoxSpec[] = [
+    { cx: 0, cy: 0.46, cz: 0, sx: 0.40, sy: 0.30, sz: 0.60, part: 13 },
+    { cx: 0, cy: 0.66, cz: 0.14, sx: 0.38, sy: 0.26, sz: 0.30, part: 14 },
+    { cx: 0.20, cy: 0.145, cz: -0.22, sx: 0.06, sy: 0.20, sz: 0.20, part: 15 },
+    { cx: -0.20, cy: 0.145, cz: -0.22, sx: 0.06, sy: 0.20, sz: 0.20, part: 15 },
+    { cx: 0.20, cy: 0.145, cz: 0.22, sx: 0.06, sy: 0.20, sz: 0.20, part: 15 },
+    { cx: -0.20, cy: 0.145, cz: 0.22, sx: 0.06, sy: 0.20, sz: 0.20, part: 15 },
+    { cx: 0.18, cy: 0.68, cz: 0.30, sx: 0.035, sy: 0.42, sz: 0.035, part: 16 },
+    { cx: -0.18, cy: 0.68, cz: 0.30, sx: 0.035, sy: 0.42, sz: 0.035, part: 16 },
+    { cx: 0, cy: 0.88, cz: 0.31, sx: 0.40, sy: 0.04, sz: 0.04, part: 16 },
+  ];
+
+  const KIT_VERT = /* glsl */ `
+    #define TAU 6.2831853
+    uniform float uTime;
+
+    attribute float aPart;
+    attribute vec3 aPos;
+    attribute float aYaw;
+    attribute vec3 aTune;   // scale, phase 0..1, mode
+    attribute vec3 aRope;   // world offset from here to the hand, for a lead
+    attribute vec3 aTint;
+
+    varying vec3 vCol;
+    varying vec3 vNrm;
+    varying vec3 vView;
+    varying float vGlow;
+
+    vec3 rotX(vec3 p, float a) {
+      float s = sin(a), c = cos(a);
+      return vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
+    }
+    vec3 rotY(vec3 p, float a) {
+      float s = sin(a), c = cos(a);
+      return vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
+    }
+
+    void main() {
+      float part = aPart;
+      float scale = aTune.x;
+      float ph = aTune.y * TAU;
+      float mode = aTune.z;
+      vec3 p = position;
+      vec3 n = normal;
+      vec3 col = aTint;
+      float glow = 0.0;
+      // Which of a pair this vertex belongs to. Every paired box here sits
+      // wholly to one side of the centreline, so the sign of x is the side.
+      float sd = position.x >= 0.0 ? 1.0 : -1.0;
+      vec3 world;
+
+      if (part > 5.5 && part < 6.5) {
+        /* The lead. Drawn straight into world space between the dog's collar
+           and the hand at the other end of it, because those two points are
+           in different frames and no single yaw takes you from one to the
+           other. A lead that does not join them is worse than none. */
+        vec3 collar = aPos + rotY(vec3(0.0, 0.5 * scale, -0.26 * scale), aYaw);
+        vec3 hand = aPos + aRope;
+        vec3 span = hand - collar;
+        float len = length(span);
+        if (len < 0.05) {
+          world = collar;                       // nobody on the other end
+          n = vec3(0.0, 1.0, 0.0);
+        } else {
+          float t = position.y;
+          vec3 dir = span / len;
+          vec3 across = normalize(cross(dir, vec3(0.0, 1.0, 0.0)) + vec3(0.0, 0.0, 1e-4));
+          vec3 up = cross(across, dir);
+          vec3 mid = collar + span * t;
+          mid.y -= 0.16 * len * sin(3.14159 * t);   // slack
+          world = mid + across * position.x + up * position.z;
+          n = up;
+        }
+        col = vec3(0.80, 0.30, 0.32);
+        vNrm = n;
+        vCol = col;
+        vGlow = 0.0;
+        vView = cameraPosition - world;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 1.0);
+        return;
+      }
+
+      if (part < 5.5) {
+        /* A dog. The mode slot is how hard it is trotting: at zero the head
+           goes down, which is the whole of "it has found something". */
+        float gait = mode;
+        if (part < 0.5) {
+          p.y += 0.014 * sin(ph * 2.0) * gait;
+        } else if (part < 2.5) {
+          vec3 neck = vec3(0.0, 0.5, -0.24);
+          float tilt = 0.42 * (1.0 - gait) + 0.08 * sin(ph) * gait;
+          p = neck + rotX(p - neck, tilt);
+          n = rotX(n, tilt);
+          if (part > 1.5) col = aTint * 0.80;
+        } else if (part < 4.5) {
+          float back = part > 3.5 ? 3.14159 : 0.0;
+          /* 0.62 and not more: the legs are straight, so a swing of a is a
+             paw lifted by 0.34 * (1 - cos a) — at 0.8 that is ten centimetres
+             of daylight under a trotting dog at both ends of every stride. */
+          float swing = gait * 0.62 * sin(ph + back + (sd > 0.0 ? 0.0 : 3.14159));
+          vec3 hip = vec3(p.x, 0.34, part > 3.5 ? 0.19 : -0.18);
+          p = hip + rotX(p - hip, swing);
+          n = rotX(n, swing);
+        } else {
+          vec3 root = vec3(0.0, 0.52, 0.20);
+          float wag = sin(uTime * 7.5 + ph) * (0.25 + gait * 0.55);
+          p = root + rotY(rotX(p - root, -0.55), wag);
+          n = rotY(rotX(n, -0.55), wag);
+          col = aTint * 0.92;
+        }
+      } else if (part < 12.5) {
+        /* A robot. One chassis, three jobs: mode 0 sweeps, 1 delivers,
+           2 keeps a child company. Nothing here is a servant and nothing
+           here has a face that could frown.
+
+           Every scale below is about the part's OWN centre. Scaling the raw
+           position instead moves a part as well as resizing it, by its
+           distance from the origin — which floated the companion's head
+           twenty-three centimetres clear of its body and threw the courier's
+           parcel a metre and a half up and behind it. Both drew perfectly,
+           both were in the right place in every test, and both were only
+           ever going to be found by looking. */
+        float sweeper = 1.0 - step(0.5, mode);
+        float courier = step(0.5, mode) * (1.0 - step(1.5, mode));
+        float pal = step(1.5, mode);
+        float lift = courier * 0.06 - sweeper * 0.03;
+        if (part < 7.5) {
+          vec3 c = vec3(0.0, 0.36, 0.0);
+          vec3 sc = sweeper > 0.5 ? vec3(1.26, 0.82, 1.12)
+                  : courier > 0.5 ? vec3(0.96, 1.20, 0.94)
+                  : vec3(0.92, 0.88, 0.92);
+          p = c + (p - c) * sc;
+        } else if (part < 8.5) {
+          vec3 c = vec3(0.0, 0.67, -0.02);
+          p = c + (p - c) * (pal > 0.5 ? vec3(1.10, 1.30, 1.10) : vec3(1.0));
+          p.y += lift;
+          col = vec3(0.93, 0.96, 0.98);
+        } else if (part < 9.5) {
+          // The eyes: big, round-ish, dark, proud of the dome so they read
+          // from a distance, and lit from inside once the lamps come on.
+          vec3 c = vec3(sd * 0.085, 0.69, -0.17);
+          p = c + (p - c) * vec3(1.2, 1.2, 1.4);
+          p.y += lift;
+          p.z -= 0.035;
+          col = vec3(0.09, 0.12, 0.18);
+          glow = 1.0;
+        } else if (part < 10.5) {
+          p.y += lift;
+          col = p.y > 0.93 ? vec3(1.0, 0.78, 0.30) : vec3(0.80, 0.83, 0.86);
+          glow = p.y > 0.93 ? 1.0 : 0.0;
+        } else if (part < 11.5) {
+          vec3 c = vec3(0.0, 0.16, -0.34);
+          if (sweeper > 0.5) {
+            // A brush roller, turning on its own axis. Slow enough to read
+            // as a brush rather than as a warning light.
+            p = c + rotX(p - c, uTime * 5.0);
+            n = rotX(n, uTime * 5.0);
+            col = vec3(0.95, 0.80, 0.34);
+          } else if (courier > 0.5) {
+            // A parcel on the back deck, with a ribbon of tape over it.
+            p = c + (p - c) * vec3(0.52, 2.1, 1.9) + vec3(0.0, 0.63, 0.56);
+            col = abs(p.x) < 0.035 ? vec3(0.92, 0.55, 0.36) : vec3(0.86, 0.73, 0.52);
+          } else {
+            p *= 0.0;
+          }
+        } else {
+          if (pal > 0.5) {
+            // No wheels on a thing that hovers: a lit pad instead.
+            vec3 c = vec3(0.0, 0.09, 0.0);
+            p = c + (p - c) * vec3(0.78, 0.30, 0.78) + vec3(0.0, 0.06, 0.0);
+            col = vec3(0.45, 0.85, 0.95);
+            glow = 1.0;
+          } else {
+            col = vec3(0.22, 0.24, 0.28);
+          }
+        }
+      } else {
+        /* A pram. The wheels are the only moving part and they are most of
+           what says this is being pushed rather than parked. */
+        if (part > 14.5 && part < 15.5) {
+          vec3 axle = vec3(0.0, 0.145, position.z >= 0.0 ? 0.22 : -0.22);
+          p = axle + rotX(p - axle, ph * 3.0);
+          n = rotX(n, ph * 3.0);
+          col = vec3(0.17, 0.18, 0.21);
+        } else if (part > 15.5) {
+          col = vec3(0.74, 0.77, 0.81);
+        } else if (part > 13.5) {
+          col = aTint * 0.74;
+        }
+      }
+
+      p *= scale;
+      float sy = sin(aYaw), cy = cos(aYaw);
+      vec3 w = vec3(p.x * cy + p.z * sy, p.y, -p.x * sy + p.z * cy);
+      vec3 wn = vec3(n.x * cy + n.z * sy, n.y, -n.x * sy + n.z * cy);
+      world = aPos + w;
+
+      vCol = col;
+      vNrm = wn;
+      vGlow = glow;
+      vView = cameraPosition - world;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 1.0);
+    }
+  `;
+
+  const KIT_FRAG = /* glsl */ `
+    precision mediump float;
+    uniform vec3 uSun;
+    uniform vec3 uSunCol;
+    uniform vec3 uSkyCol;
+    uniform vec3 uRimCol;
+
+    varying vec3 vCol;
+    varying vec3 vNrm;
+    varying vec3 vView;
+    varying float vGlow;
+
+    void main() {
+      vec3 N = normalize(vNrm);
+      vec3 V = normalize(vView);
+      float ndl = max(dot(N, uSun), 0.0);
+      float sky = 0.55 + 0.45 * N.y;
+      float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+      vec3 lit = vCol * (uSunCol * ndl + uSkyCol * sky) + uRimCol * rim * 0.22;
+      // An eye and a signal lamp are lit from inside, which is the difference
+      // between a machine that is on and a machine that is broken.
+      lit += vCol * vGlow * 0.35 + vGlow * vec3(0.30, 0.40, 0.46) * 0.5;
+      gl_FragColor = vec4(lit, 1.0);
+    }
+  `;
+
+  const kitMat = new THREE.ShaderMaterial({
+    name: "EmpyreanCrowdKit",
+    uniforms,
+    vertexShader: KIT_VERT,
+    fragmentShader: KIT_FRAG,
+    fog: false,
+  });
+
+  interface Kit {
+    geo: THREE.InstancedBufferGeometry;
+    mesh: THREE.Mesh;
+    pos: Float32Array;
+    yaw: Float32Array;
+    tune: Float32Array;
+    rope: Float32Array;
+    tint: Float32Array;
+    attrs: THREE.InstancedBufferAttribute[];
+    n: number;
+  }
+
+  const makeKit = (boxes: BoxSpec[], want: number): Kit => {
+    const cap = Math.max(1, want);
+    const src = boxBody(boxes);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(src.position, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(src.normal, 3));
+    geo.setAttribute("aPart", new THREE.BufferAttribute(src.part, 1));
+    geo.setIndex(new THREE.BufferAttribute(src.index, 1));
+
+    const pos = new Float32Array(cap * 3);
+    const yaw = new Float32Array(cap);
+    const tune = new Float32Array(cap * 3);
+    const rope = new Float32Array(cap * 3);
+    const tint = new Float32Array(cap * 3);
+    const attrs: THREE.InstancedBufferAttribute[] = [];
+    const bind = (name: string, arr: Float32Array, size: number) => {
+      const attr = new THREE.InstancedBufferAttribute(arr, size);
+      attr.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute(name, attr);
+      attrs.push(attr);
+    };
+    bind("aPos", pos, 3);
+    bind("aYaw", yaw, 1);
+    bind("aTune", tune, 3);
+    bind("aRope", rope, 3);
+    bind("aTint", tint, 3);
+
+    geo.instanceCount = 0;
+    // The deck they stand on, declared, for the same reason as the tiers.
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, ISLAND_Y, 0), PLATEAU_R * 1.6);
+    geo.boundingBox = new THREE.Box3(
+      new THREE.Vector3(-PLATEAU_R, ISLAND_Y - 2, -PLATEAU_R),
+      new THREE.Vector3(PLATEAU_R, ISLAND_Y + 3, PLATEAU_R),
+    );
+    const mesh = new THREE.Mesh(geo, kitMat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 2;
+    group.add(mesh);
+    return { geo, mesh, pos, yaw, tune, rope, tint, attrs, n: 0 };
+  };
+
+  const writeKit = (
+    kit: Kit,
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    scale: number,
+    phase: number,
+    mode: number,
+    r: number,
+    g: number,
+    b: number,
+    ropeX: number,
+    ropeY: number,
+    ropeZ: number,
+  ) => {
+    const i = kit.n++;
+    kit.pos[i * 3] = x;
+    kit.pos[i * 3 + 1] = y;
+    kit.pos[i * 3 + 2] = z;
+    kit.yaw[i] = yaw;
+    kit.tune[i * 3] = scale;
+    kit.tune[i * 3 + 1] = phase;
+    kit.tune[i * 3 + 2] = mode;
+    kit.rope[i * 3] = ropeX;
+    kit.rope[i * 3 + 1] = ropeY;
+    kit.rope[i * 3 + 2] = ropeZ;
+    kit.tint[i * 3] = r;
+    kit.tint[i * 3 + 1] = g;
+    kit.tint[i * 3 + 2] = b;
+  };
+
+  /* ---- dogs ------------------------------------------------------------ */
+
+  const NDOG = dogOwner.length;
+  const dgOwner = Int32Array.from(dogOwner.length ? dogOwner : []);
+  const dgX = new Float32Array(NDOG);
+  const dgY = new Float32Array(NDOG);
+  const dgZ = new Float32Array(NDOG);
+  const dgYaw = new Float32Array(NDOG);
+  const dgPhase = new Float32Array(NDOG);
+  const dgGait = new Float32Array(NDOG);
+  const dgSize = new Float32Array(NDOG);
+  const dgSniff = new Float32Array(NDOG);
+  const dgWeave = new Float32Array(NDOG);
+  const dgCol = new Float32Array(NDOG * 3);
+  const DOG_COATS = [0x6b4a33, 0x2e2a28, 0xd8c4a0, 0xa8683a, 0xe8e2d6, 0x8a8f95, 0x4a3a2e];
+  for (let d = 0; d < NDOG; d++) {
+    const o = dgOwner[d];
+    dgX[d] = ax[o];
+    dgY[d] = ay[o];
+    dgZ[d] = az[o];
+    dgYaw[d] = ayaw[o];
+    dgPhase[d] = rng.next();
+    dgSize[d] = rng.range(0.72, 1.24);
+    dgWeave[d] = rng.next();
+    dgSniff[d] = rng.range(3, 20);
+    tmpColor.setHex(rng.pick(DOG_COATS));
+    dgCol[d * 3] = tmpColor.r;
+    dgCol[d * 3 + 1] = tmpColor.g;
+    dgCol[d * 3 + 2] = tmpColor.b;
+  }
+
+  /* ---- robots ---------------------------------------------------------- */
+
+  const NBOT = kitT.sweepers + kitT.couriers + companionOwner.length;
+  const btX = new Float32Array(NBOT);
+  const btY = new Float32Array(NBOT);
+  const btZ = new Float32Array(NBOT);
+  const btYaw = new Float32Array(NBOT);
+  const btMode = new Uint8Array(NBOT);
+  const btOwner = new Int32Array(NBOT).fill(-1);
+  const btNode = new Int32Array(NBOT);
+  const btNext = new Int32Array(NBOT);
+  const btPrev = new Int32Array(NBOT).fill(-1);
+  const btT = new Float32Array(NBOT);
+  const btLen = new Float32Array(NBOT);
+  const btSpeed = new Float32Array(NBOT);
+  const btSide = new Float32Array(NBOT);
+  const btPhase = new Float32Array(NBOT);
+  const btTimer = new Float32Array(NBOT);
+  const btCol = new Float32Array(NBOT * 3);
+  /* Mint, coral, sunflower, sky. Chosen so that a five-year-old would pick
+     one up, and so that none of them could be mistaken for a uniform. */
+  const BOT_COATS = [0x46c6a8, 0xf2795f, 0xf5c04a, 0x5aa9e6, 0xb08ae0];
+
+  /** The neighbour that carries on the way we were going, roughly. */
+  const pickNext = (node: number, fromX: number, fromZ: number, avoid: number): number => {
+    let best = -1;
+    let bestScore = -Infinity;
+    const dx = graph.x[node] - fromX;
+    const dz = graph.z[node] - fromZ;
+    const dl = Math.hypot(dx, dz) || 1;
+    for (let e = graph.start[node]; e < graph.start[node + 1]; e++) {
+      const nb = graph.list[e];
+      if (nb === node) continue;
+      const ex = graph.x[nb] - graph.x[node];
+      const ez = graph.z[nb] - graph.z[node];
+      const el = Math.hypot(ex, ez) || 1;
+      let score = (dx / dl) * (ex / el) + (dz / dl) * (ez / el) + rng.next() * 0.55;
+      if (nb === avoid) score -= 1.6;
+      if (score > bestScore) {
+        bestScore = score;
+        best = nb;
+      }
+    }
+    return best < 0 ? node : best;
+  };
+
+  for (let b = 0; b < NBOT; b++) {
+    const mode = b < kitT.sweepers ? 0 : b < kitT.sweepers + kitT.couriers ? 1 : 2;
+    btMode[b] = mode;
+    btPhase[b] = rng.next();
+    btSide[b] = rng.chance(0.5) ? 1 : -1;
+    tmpColor.setHex(BOT_COATS[mode === 0 ? 0 : mode === 1 ? 1 : rng.int(2, 4)]);
+    btCol[b * 3] = tmpColor.r;
+    btCol[b * 3 + 1] = tmpColor.g;
+    btCol[b * 3 + 2] = tmpColor.b;
+    if (mode === 2) {
+      const owner = companionOwner[b - kitT.sweepers - kitT.couriers];
+      btOwner[b] = owner;
+      btX[b] = ax[owner];
+      btY[b] = ay[owner];
+      btZ[b] = az[owner];
+      btSpeed[b] = 1.6;
+      continue;
+    }
+    // A sweeper works at a crawl; a courier keeps up with the pavement.
+    btSpeed[b] = mode === 0 ? rng.range(0.75, 1.0) : rng.range(1.5, 2.0);
+    const node = Math.floor(rng.next() * graph.n);
+    btNode[b] = node;
+    btNext[b] = pickNext(node, graph.x[node] - 1, graph.z[node], -1);
+    btLen[b] = Math.max(
+      0.5,
+      Math.hypot(graph.x[btNext[b]] - graph.x[node], graph.z[btNext[b]] - graph.z[node]),
+    );
+    btX[b] = graph.x[node];
+    btY[b] = graph.y[node];
+    btZ[b] = graph.z[node];
+  }
+
+  /* ---- prams ----------------------------------------------------------- */
+
+  const NPRAM = pramOwner.length;
+  const pmOwner = Int32Array.from(pramOwner.length ? pramOwner : []);
+  const pmPhase = new Float32Array(NPRAM);
+  const pmCol = new Float32Array(NPRAM * 3);
+  const PRAM_COATS = [0x3f6f8f, 0x8f4f6f, 0x4f7f5f, 0x7f5f3f, 0x555f7f];
+  for (let m = 0; m < NPRAM; m++) {
+    pmPhase[m] = rng.next();
+    tmpColor.setHex(rng.pick(PRAM_COATS));
+    pmCol[m * 3] = tmpColor.r;
+    pmCol[m * 3 + 1] = tmpColor.g;
+    pmCol[m * 3 + 2] = tmpColor.b;
+  }
+
+  const dogMesh = makeKit(DOG_BOXES, NDOG);
+  const botMesh = makeKit(BOT_BOXES, NBOT);
+  const pramMesh = makeKit(PRAM_BOXES, NPRAM);
+  const kits: Kit[] = [dogMesh, botMesh, pramMesh];
 
   /* -----------------------------------------------------------------------
    * The crowd's own spatial index — separation, and `nearest`
@@ -1201,16 +2168,11 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     aFaceX[i] = dests.faceX[best];
     aFaceZ[i] = dests.faceZ[best];
     requestPath(i);
-    const mate = aPartner[i];
-    // Whoever you came with is coming too.
-    if (mate >= 0 && aActive[mate] && mate > i) {
-      aDestNode[mate] = aDestNode[i];
-      aDestKind[mate] = aDestKind[i];
-      aFaceX[mate] = aFaceX[i];
-      aFaceZ[mate] = aFaceZ[i];
-      aTimer[mate] = 999;
-      requestPath(mate);
-    }
+    /* Nobody else in the group is consulted, and that is the point: whoever
+       is with them is coming, and they are coming by walking where this body
+       walks rather than by being handed the same destination and finding
+       their own way to it. Two people who path separately to one door arrive
+       together having walked different streets. */
   };
 
   /** Fit the current segment: the offset that keeps a body on its pavement. */
@@ -1286,10 +2248,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
         aTimer[i] = rng.range(12, 34);
         break;
     }
-    const mate = aPartner[i];
-    // Whoever leads a pair holds the clock for both of them; the other one
-    // waits until they are re-targeted, however long that is.
-    if (mate >= 0) aTimer[i] = mate < i ? 1e9 : rng.range(45, 120);
+    /* A group stops for longer than one person does, because the reason a
+       group has stopped is usually each other. */
+    if (aGroup[i] !== G_ALONE) aTimer[i] *= 1.45;
   };
 
   const runPath = (i: number) => {
@@ -1385,6 +2346,165 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
   };
 
   /* -----------------------------------------------------------------------
+   * Following
+   * -------------------------------------------------------------------- */
+
+  /** The first follower of a group, or -1. Groups are contiguous. */
+  const firstFollower = (i: number): number =>
+    i + 1 < MAX && aLead[i + 1] === i ? i + 1 : -1;
+
+  /**
+   * One member of a group, moving because somebody else decided to.
+   *
+   * A follower has no path, no destination and no A* — it walks where its
+   * leader walked, `aLagI` samples back down the leader's own trail, offset
+   * sideways by as much as `clearanceAt` says the pavement there can spare.
+   * Every point on that trail is ground the leader has already stood on, so a
+   * follower cannot be pushed into a wall by a corner, a crossing or a crowd,
+   * and cannot take a different turning at a junction because it is never
+   * asked to choose one.
+   *
+   * When the leader stops, the trail stops growing, so the followers close up
+   * into a ring around them instead — which is what a group waiting at a
+   * kerb looks like — and turn to face whoever they came with.
+   */
+  const follow = (i: number, lead: number, dt: number, shoveX: number, shoveZ: number) => {
+    const leadState = aState[lead];
+    const walking = leadState === ST_WALK || leadState === ST_WAIT;
+
+    /* Somebody on their parent's shoulders is not on the pavement at all.
+       The seat is computed here rather than in the shader because only this
+       side knows how tall the parent is: their shoulder, less the child's own
+       hip, is exactly where the child's origin has to be. */
+    if (aRole[i] === R_RIDER) {
+      ax[i] = ax[lead];
+      az[i] = az[lead];
+      ay[i] = ay[lead] + 1.44 * aHeight[lead] - 0.90 * aHeight[i];
+      ayaw[i] = ayaw[lead];
+      avx[i] = 0;
+      avz[i] = 0;
+      agait[i] += (0 - agait[i]) * Math.min(1, dt * 5);
+      agesture[i] += (0.5 - agesture[i]) * Math.min(1, dt * 2);
+      aState[i] = ST_STAND;
+      aRide[i] = 1;
+      return;
+    }
+
+    /* What the leader is doing, this body's version of it. A child does not
+       lean over a parapet with six hundred metres under it; it stands next to
+       the adult who is. */
+    if (leadState === ST_SIT) aState[i] = ST_SIT;
+    else if (leadState === ST_LEAN) aState[i] = aKid[i] > 0.5 ? ST_STAND : ST_LEAN;
+    else if (leadState === ST_WALK || leadState === ST_WAIT) aState[i] = ST_WALK;
+    else aState[i] = ST_STAND;
+
+    const row = aTrail[lead];
+    let tx = ax[lead];
+    let tz = az[lead];
+    let ty = ay[lead];
+    const perpX = Math.cos(ayaw[lead]);
+    const perpZ = -Math.sin(ayaw[lead]);
+    if (walking && row >= 0 && trFill[row] > 1) {
+      const k = trailAt(row, aLagI[i]);
+      tx = trX[k];
+      ty = trY[k];
+      tz = trZ[k];
+      // As far out as there is room for, and no further. On a 3.5 m lane
+      // between two shopfronts a family closes up into single file on its own.
+      const room = Math.min(aSlotOff[i], Math.max(0, clearanceAt(tx, tz) - 0.30));
+      tx += perpX * room * aSlotSide[i];
+      tz += perpZ * room * aSlotSide[i];
+    } else {
+      const room = Math.min(
+        aSlotOff[i] + 0.34,
+        Math.max(0.3, clearanceAt(ax[lead], az[lead]) - 0.30),
+      );
+      const ang = ayaw[lead] + aSlotAng[i];
+      tx = ax[lead] + Math.sin(ang) * room;
+      tz = az[lead] + Math.cos(ang) * room;
+    }
+
+    /* Dawdling, which is the entire read.
+     *
+     * A child that keeps station perfectly is a small adult on a rail. One
+     * that stops dead every ten seconds or so to look at something and then
+     * runs to catch up is a child from thirty metres away, and it costs two
+     * floats and no thinking. */
+    if (aKid[i] > 0.5) {
+      if (aTimer[i] > 0) {
+        aTimer[i] -= dt;
+        if (aTimer[i] <= 0) aChase[i] = 1;
+      } else if (walking) {
+        aDawdle[i] -= dt;
+        if (aDawdle[i] <= 0) {
+          aTimer[i] = rng.range(0.5, 1.5);
+          aLookT[i] = Math.max(aLookT[i], aTimer[i] * 0.8);
+          aDawdle[i] = rng.range(7, 26);
+        }
+      }
+    }
+
+    const dx = tx - ax[i];
+    const dz = tz - az[i];
+    const d = Math.hypot(dx, dz);
+    if (aChase[i] > 0 && d < 0.5) aChase[i] = 0;
+
+    /* `aTimer` on a follower is the dawdle clock and nothing else — only a
+       child ever sets it, and only a child is ever held by it. Reading it on
+       an adult froze every companion in the city where it was standing when
+       the world booted, for as long as the timer it was given at build:
+       still walking on the spot, still facing the right way, and quietly a
+       hundred metres from the person they arrived with. */
+    const held = aKid[i] > 0.5 && aTimer[i] > 0;
+    let speed = 0;
+    if (!held) {
+      const base = walking ? aspeed[lead] : 0.85;
+      // Fast enough to close a gap, and only while there is a gap to close.
+      speed = Math.min(base * (aChase[i] > 0 ? 1.75 : 1.12), d * 2.7);
+    }
+    const wantX = d > 1e-4 ? (dx / d) * speed + shoveX * 0.5 : shoveX * 0.5;
+    const wantZ = d > 1e-4 ? (dz / d) * speed + shoveZ * 0.5 : shoveZ * 0.5;
+    const k = Math.min(1, dt * 6);
+    avx[i] += (wantX - avx[i]) * k;
+    avz[i] += (wantZ - avz[i]) * k;
+    ax[i] += avx[i] * dt;
+    az[i] += avz[i] * dt;
+    ay[i] += (ty - ay[i]) * Math.min(1, dt * 7);
+
+    const moved = Math.hypot(avx[i], avz[i]);
+    agait[i] += (Math.min(1.3, moved / 1.3) - agait[i]) * Math.min(1, dt * 6);
+    aphase[i] += (moved * dt) / (1.35 * aHeight[i]);
+    if (aphase[i] > 1) aphase[i] -= Math.floor(aphase[i]);
+
+    let faceX = 0;
+    let faceZ = 0;
+    if (moved > 0.18) {
+      faceX = avx[i];
+      faceZ = avz[i];
+    } else {
+      // Stopped, so look at whoever you are with rather than at the street.
+      faceX = ax[lead] - ax[i];
+      faceZ = az[lead] - az[i];
+      const md = Math.hypot(faceX, faceZ);
+      if (md > 0.25 && md < 4.5) {
+        agesture[i] = 0.45 + 0.4 * Math.sin(clock * 0.7 + i);
+      } else {
+        faceX = 0;
+        faceZ = 0;
+      }
+    }
+    if (faceX !== 0 || faceZ !== 0) {
+      // Same convention as everywhere else here: yaw 0 faces -Z.
+      const want = Math.atan2(-faceX, -faceZ);
+      let diff = want - ayaw[i];
+      while (diff > Math.PI) diff -= TAU;
+      while (diff < -Math.PI) diff += TAU;
+      ayaw[i] += diff * Math.min(1, dt * (moved > 0.18 ? 6 : 2.6));
+    }
+    if (moved > 0.18) agesture[i] += (0 - agesture[i]) * Math.min(1, dt * 3);
+  };
+
+  /* -----------------------------------------------------------------------
    * Frame
    * -------------------------------------------------------------------- */
 
@@ -1392,6 +2512,30 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
   let sitCount = 0;
   let leanCount = 0;
   let clock = 0;
+  /** How much the hour wants families and couples on the street. */
+  let familyBias = 1;
+  let coupleBias = 1;
+  /** How many of each sort of group the hour wants out, and how many are. */
+  const classTarget = new Float32Array(CLASS_N);
+  const classLive = new Int32Array(CLASS_N);
+  const classNow = new Int32Array(CLASS_N);
+  const classW = new Float32Array(CLASS_N);
+  const classCap = new Uint8Array(CLASS_N);
+
+  /** Mutated in place every frame — never rebuilt. See `Census`. */
+  const census: Census = {
+    people: 0,
+    children: 0,
+    groups: 0,
+    families: 0,
+    couples: 0,
+    sitting: 0,
+    leaning: 0,
+    standing: 0,
+    dogs: 0,
+    robots: 0,
+    prams: 0,
+  };
 
   const update = (ctx: FrameContext) => {
     const dt = ctx.dt;
@@ -1425,6 +2569,61 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     sitTarget = target * 0.085;
     leanTarget = target * (0.03 + 0.06 * daylight);
 
+    /* Who is out, and when.
+     *
+     * The city has always thinned with the light. This is the other half of
+     * it: *which* people. Families are an afternoon and early-evening thing
+     * and are indoors by the small hours; couples are a dusk thing and are
+     * the last ones on the rim. Both are one multiplier on the chance of
+     * stepping back out of a door, which is the only lever there is — the
+     * population is fixed at build and recycled, never respawned. */
+    const afternoon = dayBump(ctx.dayPhase, 0.62, 0.19);
+    const dusk = dayBump(ctx.dayPhase, 0.80, 0.11);
+    familyBias = 0.3 + 2.0 * afternoon * (0.3 + 0.7 * daylight);
+    coupleBias = 0.55 + 1.6 * dusk + 0.35 * daylight;
+    /* Split the headcount the hour allows between the three sorts of group,
+       rather than biasing a lottery — because the lottery does not work. The
+       population reaches `target`, the gate that lets anybody back out of a
+       door shuts, and whatever mix happened to get out first is the mix the
+       city keeps for ever: measured, families were within half a per cent of
+       the same share of the street at four in the afternoon and four in the
+       morning. The shares below sum to `target`, so the crowd still thins
+       with the light by exactly as much as it did before; only who moves.
+
+       The clamping matters. A share is allowed to exceed the number of
+       people who are *in* that sort of group — at the afternoon's weight the
+       families' share comes out at 314 of a population that only contains
+       190 of them — and an uncapped target that can never be met holds the
+       whole street a hundred and fifty people below its headcount at the
+       brightest hour of the day. Two or three passes settle it. */
+    classW[0] = classBuilt[0];
+    classW[1] = classBuilt[1] * coupleBias;
+    classW[2] = classBuilt[2] * familyBias;
+    classCap.fill(0);
+    for (let pass = 0; pass < CLASS_N; pass++) {
+      let ws = 0;
+      let used = 0;
+      for (let c = 0; c < CLASS_N; c++) {
+        if (classCap[c]) used += classTarget[c];
+        else ws += classW[c];
+      }
+      if (ws <= 0) break;
+      const remain = Math.max(0, target - used);
+      let clamped = false;
+      for (let c = 0; c < CLASS_N; c++) {
+        if (classCap[c]) continue;
+        const want = (remain * classW[c]) / ws;
+        if (want >= classBuilt[c]) {
+          classTarget[c] = classBuilt[c];
+          classCap[c] = 1;
+          clamped = true;
+        } else {
+          classTarget[c] = want;
+        }
+      }
+      if (!clamped) break;
+    }
+
     const cam = ctx.camera.position;
     const px = ctx.player.position;
     const overhead = ctx.player.altitude > 7 && ctx.player.altitude < 140;
@@ -1441,6 +2640,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     }
 
     for (const tier of tiers) tier.n = 0;
+    for (const kit of kits) kit.n = 0;
+    census.dogs = 0;
+    census.robots = 0;
+    census.prams = 0;
     // Decisions this frame read *last* frame's headcount, so an early-indexed
     // body is not comparing a target against a total that is still being
     // counted.
@@ -1448,24 +2651,49 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     let live = 0;
     let nowSit = 0;
     let nowLean = 0;
+    let nowStand = 0;
+    let nowKids = 0;
+    let nowGroups = 0;
+    let nowFamilies = 0;
+    let nowCouples = 0;
 
     /* ---- everybody ------------------------------------------------------ */
     for (let i = 0; i < MAX; i++) {
-      if (!aActive[i]) {
-        // Inside somewhere. Come back out when the street wants more people.
-        if (crowded < target && rng.chance(dt * 0.12)) {
+      const lead = aLead[i];
+      if (lead !== i) {
+        /* Whoever you came with went in with you and comes out with you.
+           The leader is always the lower index, so this is already settled
+           for this frame by the time anybody reads it. */
+        aActive[i] = aActive[lead];
+      } else if (!aActive[i]) {
+        // Inside somewhere. Come back out when the street wants more people
+        // of this sort — which is what makes six in the evening full of
+        // families and four in the morning not.
+        const c = classOf(i);
+        if (crowded < target && classLive[c] < classTarget[c] && rng.chance(dt * 0.25)) {
           aActive[i] = 1;
           aState[i] = ST_WAIT;
           aTimer[i] = 0;
         }
-        continue;
       }
+      if (!aActive[i]) continue;
       live++;
-      if (aState[i] === ST_SIT) nowSit++;
-      else if (aState[i] === ST_LEAN) nowLean++;
+      classNow[classOf(i)]++;
+      const liveState = aState[i];
+      if (liveState === ST_SIT) nowSit++;
+      else if (liveState === ST_LEAN) nowLean++;
+      else if (liveState !== ST_WALK) nowStand++;
+      if (aKid[i] > 0.5) nowKids++;
+      if (lead === i && aGroup[i] !== G_ALONE) {
+        nowGroups++;
+        if (aGroup[i] === G_FAMILY) nowFamilies++;
+        else if (aGroup[i] === G_COUPLE) nowCouples++;
+      }
 
-      const state = aState[i];
-      aTimer[i] -= dt;
+      const state = liveState;
+      // A follower's timer is its own — the dawdle clock — and `follow` runs
+      // it. Decrementing it here as well halves every child's attention span.
+      if (lead === i) aTimer[i] -= dt;
 
       /* -- the player ---------------------------------------------------- */
       const pdx = ax[i] - px.x;
@@ -1497,6 +2725,11 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
           if (rx < 0 || rx >= GRID_N) continue;
           for (let j = bodyCell[rz * GRID_N + rx]; j >= 0 && looked < 10; j = bodyNext[j]) {
             if (j === i) continue;
+            /* Not from your own group. The slots already hold them apart at
+               the distance they are meant to be apart, and a separation force
+               on top of that is two systems fighting over the same metre —
+               which presents as a family that vibrates. */
+            if (aLead[j] === lead) continue;
             looked++;
             const dx = ax[i] - ax[j];
             const dz = az[i] - az[j];
@@ -1511,7 +2744,9 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       }
 
       /* -- states -------------------------------------------------------- */
-      if (state === ST_WALK) {
+      if (lead !== i) {
+        follow(i, lead, dt, shoveX, shoveZ);
+      } else if (state === ST_WALK) {
         const base = i * MAX_PATH;
         const tx = segTx[i];
         const tz = segTz[i];
@@ -1587,12 +2822,16 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
 
         let fx = state === ST_PAUSE ? segTx[i] - ax[i] : aFaceX[i];
         let fz = state === ST_PAUSE ? segTz[i] - az[i] : aFaceZ[i];
-        const mate = aPartner[i];
-        if (mate >= 0 && aActive[mate] && aState[mate] !== ST_WALK) {
-          const mx = ax[mate] - ax[i];
-          const mz = az[mate] - az[i];
+        /* Turn to whoever you came with. Two people stopped on a pavement
+           facing each other is the strongest "somebody lives here" signal
+           available, and it costs one array read: a group is contiguous, so
+           the first follower is the very next index. */
+        const with1 = firstFollower(i);
+        if (with1 >= 0 && aActive[with1] && aRole[with1] !== R_RIDER) {
+          const mx = ax[with1] - ax[i];
+          const mz = az[with1] - az[i];
           const md = Math.hypot(mx, mz);
-          if (md > 0.4 && md < 4.5) {
+          if (md > 0.35 && md < 4.5) {
             fx = mx / md;
             fz = mz / md;
             agesture[i] = 0.55 + 0.45 * Math.sin(clock * 0.6 + i);
@@ -1616,22 +2855,48 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
             else requestPath(i);
             aTimer[i] = 1.5;
           } else {
-            // Done here. Some of them step inside instead of walking on.
-            const mateLed = aPartner[i] >= 0 && aPartner[i] < i;
-            if (
-              !mateLed &&
-              aDestKind[i] === D_DOOR &&
-              crowded > target &&
-              rng.chance(0.5)
-            ) {
+            /* Done here. Some of them step inside instead of walking on —
+               and a group steps inside together, because `aActive` is
+               mirrored down the group at the top of the loop. A family is
+               readier to go in the further the afternoon is behind it. */
+            const c = classOf(i);
+            /* Going home, which is a different thing from stepping into a
+               shop: it happens from wherever they are and it happens because
+               the hour has moved on from the sort of evening this group is
+               having. Tying it to a door as well made the mix take twenty
+               minutes of world time to turn over, which is longer than
+               anybody looks at a street. */
+            const home = classLive[c] > classTarget[c] + 2;
+            const atDoor = aDestKind[i] === D_DOOR && crowded > target;
+            if ((atDoor || home) && rng.chance(home ? 0.7 : 0.5)) {
               aActive[i] = 0;
               aDestNode[i] = -1;
               continue;
             }
-            if (!mateLed) pickDestination(i);
+            pickDestination(i);
             aState[i] = ST_WAIT;
             aTimer[i] = 1.2;
           }
+        }
+      }
+
+      /* -- the leader's trail -------------------------------------------- */
+      /* Sampled by distance, so a slot is a fixed distance back however fast
+         this body is going, and the trail simply stops growing when it stops
+         rather than collapsing to a point under its followers' feet. */
+      const trow = aTrail[i];
+      if (trow >= 0) {
+        const tdx = ax[i] - trLastX[trow];
+        const tdz = az[i] - trLastZ[trow];
+        if (tdx * tdx + tdz * tdz >= TRAIL_STEP * TRAIL_STEP) {
+          const h = (trHead[trow] + 1) % TRAIL_N;
+          trHead[trow] = h;
+          trX[trow * TRAIL_N + h] = ax[i];
+          trY[trow * TRAIL_N + h] = ay[i];
+          trZ[trow * TRAIL_N + h] = az[i];
+          trLastX[trow] = ax[i];
+          trLastZ[trow] = az[i];
+          if (trFill[trow] < TRAIL_N) trFill[trow]++;
         }
       }
 
@@ -1656,9 +2921,296 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       else writeInstance(tiers[2], i);
     }
 
+    /* ---- dogs ------------------------------------------------------------
+     *
+     * A dog walks its owner's trail one sample back with a weave across it
+     * and a stop to smell something every ten or twenty seconds, and it is
+     * quicker than they are, which is the whole of why it reads as a dog:
+     * it is always either ahead and waiting or behind and hurrying, and never
+     * once in step. The lead is drawn to the hand, so the two of them are
+     * visibly one thing even at the far end of a street.
+     */
+    const dogsOut = Math.round(NDOG * (0.5 + 0.5 * daylight));
+    for (let d = 0; d < NDOG; d++) {
+      const o = dgOwner[d];
+      if (d >= dogsOut || !aActive[o]) {
+        // Parked on their owner, so the pair come back out of a door together.
+        dgX[d] = ax[o];
+        dgY[d] = ay[o];
+        dgZ[d] = az[o];
+        continue;
+      }
+      census.dogs++;
+
+      if (dgSniff[d] < 0) {
+        dgSniff[d] += dt;
+        if (dgSniff[d] >= 0) dgSniff[d] = rng.range(7, 24);
+      } else {
+        dgSniff[d] -= dt;
+        if (dgSniff[d] <= 0) dgSniff[d] = -rng.range(0.9, 2.4);
+      }
+
+      const row = aTrail[o];
+      const walking = aState[o] === ST_WALK || aState[o] === ST_WAIT;
+      let tx = ax[o];
+      let tz = az[o];
+      let ty = ay[o];
+      if (walking && row >= 0 && trFill[row] > 1) {
+        const k = trailAt(row, 1);
+        tx = trX[k];
+        ty = trY[k];
+        tz = trZ[k];
+      }
+      // Off to the owner's right — the hand the lead is in — and weaving.
+      const wob = -0.44 + Math.sin(clock * 1.7 + dgWeave[d] * TAU) * 0.5;
+      const room = Math.max(0, clearanceAt(tx, tz) - 0.35);
+      const off = Math.max(-room, Math.min(room, wob));
+      tx += Math.cos(ayaw[o]) * off;
+      tz += -Math.sin(ayaw[o]) * off;
+
+      const dx = tx - dgX[d];
+      const dz = tz - dgZ[d];
+      const dd = Math.hypot(dx, dz);
+      // A lead is a metre and a half; past that it is being pulled taut.
+      const speed = dgSniff[d] < 0 && dd < 1.6 ? 0 : Math.min(2.9, dd * 3.2);
+      if (dd > 1e-4 && speed > 0) {
+        dgX[d] += (dx / dd) * speed * dt;
+        dgZ[d] += (dz / dd) * speed * dt;
+        const want = Math.atan2(-dx / dd, -dz / dd);
+        let diff = want - dgYaw[d];
+        while (diff > Math.PI) diff -= TAU;
+        while (diff < -Math.PI) diff += TAU;
+        dgYaw[d] += diff * Math.min(1, dt * 7);
+      }
+      dgY[d] += (ty - dgY[d]) * Math.min(1, dt * 7);
+      const trot = Math.min(1.2, speed / 1.6);
+      dgGait[d] += (trot - dgGait[d]) * Math.min(1, dt * 7);
+      dgPhase[d] += (speed * dt) / (0.55 * dgSize[d]);
+      if (dgPhase[d] > 1) dgPhase[d] -= Math.floor(dgPhase[d]);
+
+      const cdx = dgX[d] - cam.x;
+      const cdy = dgY[d] - cam.y;
+      const cdz = dgZ[d] - cam.z;
+      if (cdx * cdx + cdy * cdy + cdz * cdz > LOD_KIT * LOD_KIT) continue;
+      // The hand on the other end of the lead: the right arm, held forward.
+      const hb = aBuild[o];
+      const hlx = -0.245 * hb;
+      const hlz = -0.27 * hb;
+      const cy = Math.cos(ayaw[o]);
+      const sy = Math.sin(ayaw[o]);
+      const handX = ax[o] + hlx * cy + hlz * sy;
+      const handZ = az[o] - hlx * sy + hlz * cy;
+      const handY = ay[o] + 0.92 * aHeight[o];
+      writeKit(
+        dogMesh,
+        dgX[d],
+        dgY[d],
+        dgZ[d],
+        dgYaw[d],
+        dgSize[d],
+        dgPhase[d],
+        dgGait[d],
+        dgCol[d * 3],
+        dgCol[d * 3 + 1],
+        dgCol[d * 3 + 2],
+        handX - dgX[d],
+        handY - dgY[d],
+        handZ - dgZ[d],
+      );
+    }
+
+    /* ---- robots ----------------------------------------------------------
+     *
+     * Civic, and cheerful. A sweeper works the kerb at a crawl, a courier
+     * rolls a parcel along the pavement and stops at doors, and a companion
+     * bobs along after a family. None of them needs a path: the sweeper and
+     * the courier random-walk the nav graph with a strong preference for
+     * carrying straight on, which cannot leave the pavement because every
+     * edge of that graph was checked when it was built.
+     */
+    for (let b = 0; b < NBOT; b++) {
+      const mode = btMode[b];
+      if (mode === 2) {
+        const o = btOwner[b];
+        // A small robot that follows a child is a daytime thing.
+        if (!aActive[o] || daylight < 0.12) {
+          btX[b] = ax[o];
+          btY[b] = ay[o];
+          btZ[b] = az[o];
+          continue;
+        }
+        const row = aTrail[o];
+        const walking = aState[o] === ST_WALK || aState[o] === ST_WAIT;
+        let tx = ax[o];
+        let tz = az[o];
+        let ty = ay[o];
+        if (walking && row >= 0 && trFill[row] > 1) {
+          const k = trailAt(row, 4);
+          tx = trX[k];
+          ty = trY[k];
+          tz = trZ[k];
+        } else {
+          /* Standing still, it goes and stands by the child rather than by
+             the adult, which is the whole of the joke and costs one index:
+             a group is contiguous, so the children are the next two slots. */
+          const k1 = o + 1 < MAX && aLead[o + 1] === o ? o + 1 : -1;
+          const k2 = o + 2 < MAX && aLead[o + 2] === o ? o + 2 : -1;
+          // No closure here: this runs per companion per frame, and a helper
+          // arrow declared inside `update` is an allocation sixty times a
+          // second, which is the one thing this system may not do.
+          const ok1 = k1 >= 0 && aKid[k1] > 0.5 && aRole[k1] !== R_RIDER;
+          const ok2 = k2 >= 0 && aKid[k2] > 0.5 && aRole[k2] !== R_RIDER;
+          const near = ok1 ? k1 : ok2 ? k2 : -1;
+          if (near >= 0) {
+            tx = ax[near];
+            tz = az[near];
+            ty = ay[near];
+          }
+        }
+        const room = Math.max(0, clearanceAt(tx, tz) - 0.4);
+        const off = Math.max(-room, Math.min(room, Math.sin(clock * 0.9 + btPhase[b] * TAU) * 0.6));
+        tx += Math.cos(ayaw[o]) * off;
+        tz += -Math.sin(ayaw[o]) * off;
+        const dx = tx - btX[b];
+        const dz = tz - btZ[b];
+        const dd = Math.hypot(dx, dz);
+        const speed = Math.min(2.4, dd * 2.6);
+        if (dd > 1e-4) {
+          btX[b] += (dx / dd) * speed * dt;
+          btZ[b] += (dz / dd) * speed * dt;
+          const want = Math.atan2(-dx / dd, -dz / dd);
+          let diff = want - btYaw[b];
+          while (diff > Math.PI) diff -= TAU;
+          while (diff < -Math.PI) diff += TAU;
+          btYaw[b] += diff * Math.min(1, dt * 4);
+        }
+        btY[b] += (ty - btY[b]) * Math.min(1, dt * 6);
+      } else {
+        if (btTimer[b] > 0) {
+          btTimer[b] -= dt;
+        } else {
+          btT[b] += (btSpeed[b] * dt) / btLen[b];
+          while (btT[b] >= 1) {
+            btT[b] -= 1;
+            const prev = btNode[b];
+            btNode[b] = btNext[b];
+            btNext[b] = pickNext(btNode[b], graph.x[prev], graph.z[prev], prev);
+            btPrev[b] = prev;
+            btLen[b] = Math.max(
+              0.5,
+              Math.hypot(
+                graph.x[btNext[b]] - graph.x[btNode[b]],
+                graph.z[btNext[b]] - graph.z[btNode[b]],
+              ),
+            );
+            // A parcel arriving somewhere, or a stretch of kerb worth doing
+            // twice. Both of them are a machine that is visibly working.
+            if (rng.chance(mode === 1 ? 0.12 : 0.06)) {
+              btTimer[b] = mode === 1 ? rng.range(3, 9) : rng.range(2, 5);
+            }
+          }
+        }
+        const nx = graph.x[btNode[b]];
+        const nz = graph.z[btNode[b]];
+        const mx = graph.x[btNext[b]];
+        const mz = graph.z[btNext[b]];
+        const ex = mx - nx;
+        const ez = mz - nz;
+        const el = Math.hypot(ex, ez) || 1;
+        const t = btT[b];
+        let px2 = nx + ex * t;
+        let pz2 = nz + ez * t;
+        // The sweeper hugs the edge of the pavement, which is where the grit
+        // is; the courier keeps out of the middle of it.
+        const want = mode === 0 ? 1.2 : 0.55;
+        const room = Math.max(0, clearanceAt(px2, pz2) - 0.5);
+        const off = Math.min(want, room) * btSide[b];
+        px2 += (ez / el) * off;
+        pz2 += (-ex / el) * off;
+        btX[b] = px2;
+        btZ[b] = pz2;
+        btY[b] = graph.y[btNode[b]] + (graph.y[btNext[b]] - graph.y[btNode[b]]) * t;
+        const wantYaw = Math.atan2(-ex / el, -ez / el);
+        let diff = wantYaw - btYaw[b];
+        while (diff > Math.PI) diff -= TAU;
+        while (diff < -Math.PI) diff += TAU;
+        btYaw[b] += diff * Math.min(1, dt * 3.5);
+      }
+      census.robots++;
+
+      const cdx = btX[b] - cam.x;
+      const cdz = btZ[b] - cam.z;
+      const cdy = btY[b] - cam.y;
+      if (cdx * cdx + cdy * cdy + cdz * cdz > LOD_KIT * LOD_KIT) continue;
+      const hover = mode === 2 ? 0.30 + 0.055 * Math.sin(clock * 2.4 + btPhase[b] * TAU) : 0;
+      writeKit(
+        botMesh,
+        btX[b],
+        btY[b] + hover,
+        btZ[b],
+        btYaw[b],
+        mode === 2 ? 0.56 : mode === 0 ? 1.02 : 0.92,
+        btPhase[b],
+        mode,
+        btCol[b * 3],
+        btCol[b * 3 + 1],
+        btCol[b * 3 + 2],
+        0,
+        0,
+        0,
+      );
+    }
+
+    /* ---- prams -----------------------------------------------------------
+     * Nothing decides anything here: a pram is exactly where the person
+     * pushing it is, plus half a metre of forward. */
+    for (let m = 0; m < NPRAM; m++) {
+      const o = pmOwner[m];
+      if (!aActive[o]) continue;
+      census.prams++;
+      const fx = -Math.sin(ayaw[o]);
+      const fz = -Math.cos(ayaw[o]);
+      const x = ax[o] + fx * 0.68;
+      const z = az[o] + fz * 0.68;
+      pmPhase[m] += Math.hypot(avx[o], avz[o]) * dt * 0.55;
+      if (pmPhase[m] > 1) pmPhase[m] -= Math.floor(pmPhase[m]);
+      const cdx = x - cam.x;
+      const cdz = z - cam.z;
+      const cdy = ay[o] - cam.y;
+      if (cdx * cdx + cdy * cdy + cdz * cdz > LOD_KIT * LOD_KIT) continue;
+      writeKit(
+        pramMesh,
+        x,
+        ay[o],
+        z,
+        ayaw[o],
+        1,
+        pmPhase[m],
+        0,
+        pmCol[m * 3],
+        pmCol[m * 3 + 1],
+        pmCol[m * 3 + 2],
+        0,
+        0,
+        0,
+      );
+    }
+
     liveCount = live;
+    for (let c = 0; c < CLASS_N; c++) {
+      classLive[c] = classNow[c];
+      classNow[c] = 0;
+    }
     sitCount = nowSit;
     leanCount = nowLean;
+    census.people = live;
+    census.children = nowKids;
+    census.groups = nowGroups;
+    census.families = nowFamilies;
+    census.couples = nowCouples;
+    census.sitting = nowSit;
+    census.leaning = nowLean;
+    census.standing = nowStand;
 
     /* ---- a few paths, and only a few ------------------------------------ */
     for (let k = 0; k < REPATH_BUDGET && repathCount > 0; k++) {
@@ -1676,6 +3228,11 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       if (tier.n === 0) continue;
       for (const attr of tier.attrs) attr.needsUpdate = true;
     }
+    for (const kit of kits) {
+      kit.geo.instanceCount = kit.n;
+      if (kit.n === 0) continue;
+      for (const attr of kit.attrs) attr.needsUpdate = true;
+    }
   };
 
   return {
@@ -1684,6 +3241,7 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
     get count() {
       return liveCount;
     },
+    census,
     nearest(x: number, z: number, maxDist: number) {
       let best = -1;
       let bestD = maxDist * maxDist;
@@ -1699,6 +3257,10 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
           const rx = cx + dx;
           if (rx < 0 || rx >= GRID_N) continue;
           for (let i = bodyCell[rz * GRID_N + rx]; i >= 0; i = bodyNext[i]) {
+            /* Not somebody's child on their shoulders. They are a metre and a
+               half above the deck and standing on nobody: every caller of
+               this wants a body another body could walk up to. */
+            if (aRole[i] === R_RIDER) continue;
             const q = (ax[i] - x) ** 2 + (az[i] - z) ** 2;
             if (q < bestD) {
               bestD = q;
@@ -1710,14 +3272,65 @@ export function buildCrowd(ctx: BuildContext): CrowdHandle {
       if (best < 0) return null;
       return { x: ax[best], y: ay[best], z: az[best], id: best };
     },
+    snapshot() {
+      const ROLES = ["alone", "lead", "adult", "child", "rider"] as const;
+      const GROUPS = ["alone", "couple", "family", "dog"] as const;
+      const STATES = ["walk", "stand", "sit", "lean", "wait", "pause"] as const;
+      const people: PersonView[] = [];
+      for (let i = 0; i < MAX; i++) {
+        people.push({
+          id: i,
+          x: ax[i],
+          y: ay[i],
+          z: az[i],
+          lead: aLead[i],
+          role: ROLES[aRole[i]] ?? "alone",
+          group: GROUPS[aGroup[i]] ?? "alone",
+          state: STATES[aState[i]] ?? "wait",
+          active: aActive[i] === 1,
+        });
+      }
+      const dogs = [];
+      for (let d = 0; d < NDOG; d++) {
+        dogs.push({ x: dgX[d], y: dgY[d], z: dgZ[d], owner: dgOwner[d] });
+      }
+      const robots = [];
+      for (let b = 0; b < NBOT; b++) {
+        robots.push({
+          x: btX[b],
+          y: btY[b],
+          z: btZ[b],
+          kind: (btMode[b] === 0 ? "sweeper" : btMode[b] === 1 ? "courier" : "companion") as
+            | "sweeper"
+            | "courier"
+            | "companion",
+        });
+      }
+      const prams = [];
+      for (let m = 0; m < NPRAM; m++) {
+        const o = pmOwner[m];
+        prams.push({
+          x: ax[o] - Math.sin(ayaw[o]) * 0.68,
+          y: ay[o],
+          z: az[o] - Math.cos(ayaw[o]) * 0.68,
+          owner: o,
+        });
+      }
+      return { people, dogs, robots, prams };
+    },
     update,
     dispose() {
       for (const tier of tiers) {
         tier.geo.dispose();
         group.remove(tier.mesh);
       }
+      for (const kit of kits) {
+        kit.geo.dispose();
+        group.remove(kit.mesh);
+      }
       bodyMat.dispose();
       cardMat.dispose();
+      kitMat.dispose();
     },
   };
 }
