@@ -27,6 +27,7 @@
  *   node scripts/sf-live.mjs --spawn coit --out shots/coit.png
  *   node scripts/sf-live.mjs --keys w --hold 30000            walk forward
  *   node scripts/sf-live.mjs --drive                          get in the nearest car
+ *   node scripts/sf-live.mjs --ped --out shots/crowd.png      look at the nearest person
  *   node scripts/sf-live.mjs --look 44,11,60,-20,11,-40       pose the camera
  */
 import { chromium } from "playwright";
@@ -42,6 +43,7 @@ function parseArgs(argv) {
     if (!a.startsWith("--")) continue;
     const key = a.slice(2);
     if (key === "drive") out.drive = true;
+    else if (key === "ped") out.ped = true;
     else {
       const val = argv[++i];
       out[key] = /^-?\d+(\.\d+)?$/.test(val) ? Number(val) : val;
@@ -127,6 +129,19 @@ if (args.look) {
   const [px, py, pz, lx, ly, lz] = String(args.look).split(",").map(Number);
   await page.evaluate(([p, l]) => window.__sf.setPose(p, l), [[px, py, pz], [lx, ly, lz]]);
   await page.waitForTimeout(8000);
+}
+
+if (args.ped) {
+  // Stand a few metres off and look at whoever is nearest. A crowd of a dozen
+  // spread over a 200 m radius is not something you can find by aiming.
+  const ped = await page.evaluate(() => window.__sf.nearestPedestrian());
+  console.log(`nearest pedestrian ${JSON.stringify(ped)}`);
+  if (ped) {
+    await page.evaluate((p) => {
+      window.__sf.setPose([p.x + 3.2, p.y + 1.7, p.z + 3.2], [p.x, p.y + 0.9, p.z], 55);
+    }, ped);
+    await page.waitForTimeout(8000);
+  }
 }
 
 if (args.drive) {

@@ -1061,6 +1061,28 @@ export function makePalette(rng: Rng, archetype: CharacterArchetype): Float32Arr
     case "tourist":
       writeColour(p, 3, rng.pick([0x9fb8c4, 0xd6c6a8, 0xb26a5c, 0x86a08c]), 0.2, rng);
       break;
+    case "techie":
+      // Grey marl or navy under the gilet, and the gilet is the accent: the
+      // colours a company orders a thousand of.
+      writeColour(p, 3, rng.pick([0x6a7078, 0x2b3440, 0x4a4f58, 0x8d9299]), 0.12, rng);
+      writeColour(p, 6, rng.pick([0x2c3440, 0x3a4250, 0x4a4740]), 0.14, rng);
+      writeColour(p, 12, rng.pick([0x1f2a36, 0x33383d, 0x2f4858, 0x4a3f52]), 0.14, rng);
+      break;
+    case "cyclist":
+      // One saturated garment so a bike is visible in the fog, and black below.
+      writeColour(p, 3, rng.pick([0xd8e04a, 0xe8871f, 0x2fa8d8, 0xd94a4a]), 0.16, rng);
+      writeColour(p, 6, 0x1c1f24, 0.1, rng);
+      writeColour(p, 12, rng.pick([0xd8e04a, 0xe8871f]), 0.12, rng);
+      break;
+    case "street":
+      // Everything sun-bleached and road-dirty. Deliberately still a real
+      // wardrobe — layered coats and work trousers, the clothes somebody was
+      // wearing before — rather than a costume that reads as a punchline.
+      writeColour(p, 3, rng.pick([0x4a4638, 0x3d4340, 0x5b5348, 0x6b5f4c, 0x33383d]), 0.26, rng);
+      writeColour(p, 6, rng.pick([0x3a362c, 0x2b2f33, 0x4a4740]), 0.24, rng);
+      writeColour(p, 9, rng.pick([0x6b5a44, 0x9a9a96, 0x4a3220, 0x2a1c14]), 0.2, rng);
+      writeColour(p, 12, rng.pick([0x5b5348, 0x3f4535, 0x6c6a66]), 0.22, rng);
+      break;
     default:
       break;
   }
@@ -1094,6 +1116,25 @@ export function archetypeMask(archetype: CharacterArchetype, rng: Rng): number {
       if (rng.chance(0.75)) m |= CHAR_MASK_BACKPACK;
       if (rng.chance(0.25)) m |= CHAR_MASK_CAP;
       break;
+    case "techie":
+      // The vest slot was built for body armour and happens to be the exact
+      // silhouette of the fleece gilet worn by half of Montgomery Street.
+      // Same geometry, different colour, and it reads instantly.
+      m |= CHAR_MASK_VEST | CHAR_MASK_BACKPACK;
+      if (rng.chance(0.3)) m |= CHAR_MASK_CAP;
+      break;
+    case "cyclist":
+      m |= CHAR_MASK_HELMET;
+      if (rng.chance(0.8)) m |= CHAR_MASK_BACKPACK;
+      if (rng.chance(0.45)) m |= CHAR_MASK_VEST;
+      break;
+    case "street":
+      // Layers, and everything owned carried at once. The coat is nearly
+      // always on, because it is nearly always cold here.
+      m |= CHAR_MASK_COAT;
+      if (rng.chance(0.72)) m |= CHAR_MASK_BACKPACK;
+      if (rng.chance(0.42)) m |= CHAR_MASK_CAP;
+      break;
     default:
       if (rng.chance(0.3)) m |= CHAR_MASK_BACKPACK;
       if (rng.chance(0.22)) m |= CHAR_MASK_COAT;
@@ -1118,6 +1159,15 @@ export function archetypeBody(archetype: CharacterArchetype, rng: Rng): [number,
   if (archetype === "cop" || archetype === "officer") {
     h = 0.97 + rng.gauss() * 0.035;
     g = 1.04 + rng.next() * 0.12;
+  }
+  if (archetype === "cyclist") {
+    g = 0.9 + rng.next() * 0.08;
+  }
+  if (archetype === "street") {
+    // Bulked out by the layers rather than by the body underneath, and the
+    // spread is wider than the general population's in both directions.
+    g = 1.02 + rng.gauss() * 0.14;
+    h = 0.92 + rng.gauss() * 0.055;
   }
   return [Math.max(0.82, Math.min(1.1, h)), Math.max(0.8, Math.min(1.35, g))];
 }

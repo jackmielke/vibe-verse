@@ -88,6 +88,17 @@ export type CharacterArchetype =
   | "civilian-slim"
   | "tourist"
   | "worker"
+  /* ---- the San Francisco cast ----
+     A crowd made only of "civilian" is a crowd from nowhere. These are the
+     silhouettes you actually pass on these specific pavements, and the crowd
+     picks between them by district and by hour: the vest-and-lanyard walking
+     into FiDi at nine, the bike courier on Market, the person living on the
+     street in the Tenderloin, the queue outside a Mission taquería at
+     midnight. Recognition is the whole point — somebody who lives here should
+     be able to name the block from the people on it. */
+  | "techie"
+  | "cyclist"
+  | "street"
   | "cop"
   | "swat"
   | "soldier"

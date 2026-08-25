@@ -102,6 +102,18 @@ export interface SfDebugHook {
   teleport?: (x: number, y: number, z: number, yaw?: number) => void;
   /** The closest simulated vehicle, for tests that need to reach one. */
   nearestVehicle?: () => NearestVehicle | null;
+  /** The closest pedestrian. A crowd of twelve spread over a 200 m radius is
+   *  nearly impossible to point a camera at by hand. */
+  nearestPedestrian?: () => NearestPedestrian | null;
+}
+
+export interface NearestPedestrian {
+  entityId: number;
+  x: number;
+  y: number;
+  z: number;
+  distance: number;
+  alive: boolean;
 }
 
 export interface NearestVehicle {

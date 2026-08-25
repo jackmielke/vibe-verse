@@ -193,6 +193,19 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
         distance: Math.round(v.distance * 100) / 100,
       };
     };
+    hook.nearestPedestrian = () => {
+      let best: import("./debug/shotHook").NearestPedestrian | null = null;
+      pedestrians.forEachHitbox(
+        frame.position.x, frame.position.z, 400,
+        (entityId, x, y, z, _h, alive) => {
+          const d = Math.hypot(x - frame.position.x, z - frame.position.z);
+          if (!best || d < best.distance) {
+            best = { entityId, x, y, z, distance: Math.round(d * 100) / 100, alive };
+          }
+        },
+      );
+      return best;
+    };
     return () => {
       delete hook.camPose;
       delete hook.setPose;
@@ -202,6 +215,7 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
       delete hook.state;
       delete hook.teleport;
       delete hook.nearestVehicle;
+      delete hook.nearestPedestrian;
     };
   }, [camera, gl, scene, hook]);
 

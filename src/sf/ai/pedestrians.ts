@@ -35,6 +35,7 @@
  *   pedestrians.hitTest / applyDamage
  */
 import { districtAt } from "../geo/sfGeo";
+import { frame } from "../state/store";
 import { makeRng, type Rng } from "../math/rng";
 import {
   edgeSpan,
@@ -82,6 +83,10 @@ const S_COWER = 4;
 const S_IDLE = 5;
 const S_DEAD = 6;
 
+/**
+ * The default cast, for a district with nothing more specific to say.
+ * Repeats are the weighting: most people on a pavement are just people.
+ */
 const ARCHETYPES: CharacterArchetype[] = [
   "civilian",
   "civilian",
@@ -91,6 +96,133 @@ const ARCHETYPES: CharacterArchetype[] = [
   "tourist",
   "worker",
 ];
+
+/* ================================================================== *
+ * Casting
+ * ================================================================== *
+ * Who is on this pavement, in this neighbourhood, at this hour.
+ *
+ * The crowd used to be one uniform pick from the list above everywhere in the
+ * city, which made every district read the same: the Marina at ten in the
+ * morning had the same seven people as the Tenderloin at midnight. San
+ * Francisco is nine kilometres of extremely distinct neighbourhoods and the
+ * pedestrians are most of what distinguishes them at street level — more than
+ * the facades, because you are looking along the pavement, not up.
+ *
+ * A weighted table per district, biased by the clock. Weights are relative and
+ * do not need to sum to anything.
+ */
+type CastEntry = [CharacterArchetype, number];
+
+/** Ordinary people, in the proportions a street has them. Every cast gets these. */
+const BASE_CAST: CastEntry[] = [
+  ["civilian", 34],
+  ["civilian-slim", 9],
+  ["civilian-heavy", 9],
+];
+
+const DISTRICT_CAST: Record<string, CastEntry[]> = {
+  // Downtown: lanyards, couriers, and the people the city has failed, all on
+  // the same block — which is the actual experience of walking Market Street.
+  fidi: [["techie", 26], ["worker", 10], ["cyclist", 7], ["street", 5], ["tourist", 4]],
+  soma: [["techie", 20], ["worker", 14], ["cyclist", 8], ["street", 9]],
+  rincon: [["techie", 22], ["cyclist", 7], ["worker", 6], ["street", 4]],
+  // Civic Center and the Tenderloin edge: the sharpest contrast in the city.
+  civiccenter: [["street", 26], ["worker", 10], ["techie", 6], ["cyclist", 4]],
+  // Tourist city.
+  embarcadero: [["tourist", 24], ["cyclist", 10], ["techie", 8], ["worker", 6], ["street", 4]],
+  chinatown: [["tourist", 20], ["worker", 10], ["street", 3]],
+  northbeach: [["tourist", 18], ["worker", 8], ["street", 4]],
+  telegraph: [["tourist", 22], ["worker", 4]],
+  presidio: [["cyclist", 16], ["tourist", 12]],
+  marina: [["cyclist", 12], ["techie", 12], ["tourist", 8]],
+  // Residential and the neighbourhood commercial strips.
+  mission: [["cyclist", 12], ["worker", 12], ["street", 10], ["techie", 8], ["tourist", 4]],
+  castro: [["tourist", 8], ["cyclist", 8], ["worker", 6], ["street", 4]],
+  haight: [["tourist", 12], ["street", 10], ["cyclist", 8]],
+  hayesvalley: [["techie", 10], ["cyclist", 8], ["worker", 6], ["street", 4]],
+  westernaddition: [["worker", 10], ["street", 8], ["cyclist", 5]],
+  alamo: [["cyclist", 8], ["techie", 7], ["worker", 5]],
+  nobhill: [["tourist", 10], ["techie", 8], ["worker", 6], ["street", 3]],
+  russianhill: [["tourist", 8], ["techie", 7], ["cyclist", 5]],
+  pacheights: [["techie", 8], ["worker", 7], ["cyclist", 4]],
+  potrero: [["techie", 10], ["worker", 10], ["cyclist", 6], ["street", 4]],
+  dogpatch: [["worker", 12], ["techie", 8], ["cyclist", 6], ["street", 3]],
+  bayview: [["worker", 16], ["street", 8]],
+  richmond: [["worker", 8], ["cyclist", 6], ["tourist", 4]],
+  sunset: [["worker", 8], ["cyclist", 6], ["tourist", 3]],
+};
+
+/* Scratch, refilled per call: the cast and its weights in parallel arrays
+   rather than tuples, so casting somebody allocates nothing. */
+const _castWho: CharacterArchetype[] = [];
+const _castWeight: number[] = [];
+
+/**
+ * Pick an archetype for somebody spawning at (x, z) at `hour`.
+ *
+ * The clock moves the weights rather than the membership: commuters thin out
+ * after the evening, tourists go home when it gets dark and cold, and the
+ * people who live outside are there at every hour — more visibly at the ones
+ * when nobody else is.
+ */
+export function castArchetype(
+  x: number,
+  z: number,
+  hour: number,
+  rng: Rng,
+): CharacterArchetype {
+  const key = districtAt(x, z).key;
+  _castWho.length = 0;
+  _castWeight.length = 0;
+
+  const workday = hour >= 7 && hour < 19;
+  const daylight = hour >= 8 && hour < 18.5;
+  let total = 0;
+  const add = (a: CharacterArchetype, w0: number): void => {
+    let w = w0;
+    if (a === "techie" || a === "worker") w *= workday ? 1 : 0.28;
+    else if (a === "tourist") w *= daylight ? 1 : 0.3;
+    else if (a === "cyclist") w *= workday ? 1 : 0.5;
+    // Not a night-time spike so much as everybody else having gone home.
+    else if (a === "street") w *= workday ? 1 : 1.35;
+    if (w <= 0) return;
+    _castWho.push(a);
+    _castWeight.push(w);
+    total += w;
+  };
+
+  for (const [a, w] of BASE_CAST) add(a, w);
+  const extra = DISTRICT_CAST[key];
+  if (extra) for (const [a, w] of extra) add(a, w);
+
+  if (total <= 0) return rng.pick(ARCHETYPES);
+  let r = rng.next() * total;
+  for (let i = 0; i < _castWho.length; i++) {
+    r -= _castWeight[i];
+    if (r <= 0) return _castWho[i];
+  }
+  return _castWho[_castWho.length - 1];
+}
+
+/** Per-archetype pace multiplier over the population's own spread. */
+export function paceFor(archetype: CharacterArchetype): number {
+  switch (archetype) {
+    // Late for something.
+    case "techie":
+      return 1.12;
+    case "worker":
+      return 1.05;
+    // Stopping every few paces to look at the thing they came to look at.
+    case "tourist":
+      return 0.82;
+    // Nowhere to be, and usually carrying everything they own.
+    case "street":
+      return 0.66;
+    default:
+      return 1;
+  }
+}
 
 /** Walking speeds, m/s. Real pedestrian mean is 1.34; the spread is the point. */
 const WALK_MIN = 1.05;
@@ -305,7 +437,18 @@ class Pedestrians {
     if (this.count >= this.max || this.count >= this.capacity) return -1;
     const i = this.count++;
     const rng = this.rng;
-    const arche = rng.pick(ARCHETYPES);
+
+    /* Place first, then cast. Who somebody is depends on which pavement they
+       are standing on, so the position has to exist before the wardrobe does —
+       this used to pick uniformly from one list and every district got the
+       same seven people. */
+    this.edge[i] = e.id;
+    this.dir[i] = dir;
+    this.side[i] = side;
+    this.travel[i] = travel;
+    this.placeOnSidewalk(i, e);
+
+    const arche = castArchetype(this.x[i], this.z[i], frame.timeOfDay, rng);
     this.id[i] = nextEntityId();
     this.seed[i] = rng.next();
     this.mask[i] = archetypeMask(arche, rng);
@@ -315,15 +458,12 @@ class Pedestrians {
     const pal = makePalette(rng, arche);
     this.palette.set(pal, i * PALETTE_FLOATS);
 
-    this.edge[i] = e.id;
-    this.dir[i] = dir;
-    this.side[i] = side;
-    this.travel[i] = travel;
     this.state[i] = S_WALK;
     this.timer[i] = 0;
     this.clip[i] = ANIM_WALK;
     this.blend[i] = 0;
-    this.prefSpeed[i] = WALK_MIN + rng.next() * (WALK_MAX - WALK_MIN);
+    this.prefSpeed[i] =
+      (WALK_MIN + rng.next() * (WALK_MAX - WALK_MIN)) * paceFor(arche);
     this.speed[i] = this.prefSpeed[i];
     this.phase[i] = rng.next();
     this.lod[i] = LOD_FULL;
@@ -334,7 +474,6 @@ class Pedestrians {
     this.vx[i] = 0;
     this.vz[i] = 0;
 
-    this.placeOnSidewalk(i, e);
     this.yaw[i] = dir === 1 ? Math.atan2(e.dz, e.dx) : Math.atan2(-e.dz, -e.dx);
     return i;
   }
