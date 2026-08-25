@@ -541,6 +541,21 @@ class AmbientSystem {
     this.tier = tier;
     this.scale = QUALITY[tier].maxParticles / QUALITY.high.maxParticles;
     this.scale = Math.max(0.15, Math.min(1.5, this.scale));
+    // Clear the fractional emission budget and the scatter cursor. `take()`
+    // carries a remainder between frames so a rate below one particle per
+    // frame still emits, and neither `dispose()` nor this used to reset it —
+    // so a level reload, a respawn or a quality change inherited however much
+    // of a particle the previous world had left over, and the first frames
+    // after it emitted a different amount than a cold boot would.
+    //
+    // Invisible in play, and it made `vfx.smoke`'s determinism check pass by
+    // coincidence: two identical runs agreed only because the leftover
+    // happened to land on the same floor at the fog density of the day. It
+    // stopped agreeing the moment the default fog moved.
+    for (const k of Object.keys(this.acc) as (keyof AmbientSystem["acc"])[]) {
+      this.acc[k] = 0;
+    }
+    this.cursor = 0;
     this.started = true;
   }
 

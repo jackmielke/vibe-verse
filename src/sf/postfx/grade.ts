@@ -337,7 +337,8 @@ export class GradeEffect extends Effect {
       ["lutTex", new THREE.Uniform(lut.texture)],
 
       ["bloomAmount", new THREE.Uniform(1)],
-      ["flareAmount", new THREE.Uniform(0.5)],
+      // Halved with the flare's own strength — see `uStrength` in bloom.ts.
+      ["flareAmount", new THREE.Uniform(0.25)],
       ["streakAmount", new THREE.Uniform(0.35)],
       ["dirtAmount", new THREE.Uniform(0.5)],
 

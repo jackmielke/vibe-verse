@@ -124,12 +124,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "c02b5ca", iso: "2026-06-17T20:19:43+00:00", subject: "Changes" },
   ],
   "empyrean": [
+    { sha: "8328bd3", iso: "2026-08-20T21:32:15+00:00", subject: "Write down the night's four features and its two worst lessons" },
     { sha: "613a2ed", iso: "2026-08-20T21:28:28+00:00", subject: "You can ride the ring tram, and a moving floor is now a primitive" },
     { sha: "9ecb358", iso: "2026-08-20T20:20:20+00:00", subject: "The camera rig allocated two vectors a frame" },
     { sha: "52c5fd2", iso: "2026-08-20T20:15:20+00:00", subject: "The black rectangle was one NaN, and four rooms somebody lives in" },
     { sha: "10eb3a5", iso: "2026-08-20T18:50:36+00:00", subject: "A camp on the ice, a festival after dark, a camera, and the bridges back" },
     { sha: "6345a15", iso: "2026-08-20T11:51:45+00:00", subject: "Twice as many people, and 334 benches that finally have somebody on them" },
-    { sha: "8def08e", iso: "2026-08-20T09:43:36+00:00", subject: "The Meridian: a tower you walk into, ride up, and stand on top of" },
   ],
   "evolve": [
     { sha: "9064949", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
@@ -296,12 +296,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1e", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "8876dd8", iso: "2026-08-25T09:20:29+00:00", subject: "Turn the post chain on, and thin Karl out" },
+    { sha: "3f39ce5", iso: "2026-08-25T09:08:52+00:00", subject: "The crowd is from San Francisco now, not from nowhere" },
+    { sha: "88d5f36", iso: "2026-08-25T08:54:26+00:00", subject: "The Legos were parked cars and distant trees" },
+    { sha: "d2d9a7f", iso: "2026-08-25T08:17:32+00:00", subject: "The city was already built. Nothing had turned it on." },
     { sha: "a13e984", iso: "2026-08-17T02:54:08+00:00", subject: "Spawn on the plaza, not inside it" },
     { sha: "60b25c0", iso: "2026-08-17T02:10:52+00:00", subject: "Walk San Francisco, and stop the city boiling while you do" },
-    { sha: "05f01ed", iso: "2026-08-04T17:47:22+00:00", subject: "Changes" },
-    { sha: "3503cda", iso: "2026-08-02T14:17:10+00:00", subject: "One way home, in the same corner of every world" },
-    { sha: "4640558", iso: "2026-07-29T10:14:23+00:00", subject: "SF: eight subsystems land — postfx, physics, player, weapons, vfx, ai, vehicles, audio" },
-    { sha: "9ba1460", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
   ],
   "shop": [
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },

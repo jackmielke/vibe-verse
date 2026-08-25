@@ -123,10 +123,14 @@ export const postfx: PostFxRuntime = {
   look: "auto",
   lookBlend: 1,
 
-  grain: 0.55,
-  chromaticAberration: 0.6,
-  vignette: 0.65,
-  lensDirt: 0.5,
+  /* Keep in step with `DEFAULT_SETTINGS` in ui/uiStore.ts, which overwrites
+     all but `lensDirt` as soon as the interface mounts. */
+  grain: 0.35,
+  chromaticAberration: 0.25,
+  vignette: 0.5,
+  /* Dirt multiplies bloom by up to 1 + 2.2×, so at 0.5 a clearcoat highlight
+     on a car roof smeared a rainbow ghost across half the frame. */
+  lensDirt: 0.2,
   bloomIntensity: 1,
   sharpen: 0.35,
 

@@ -1,7 +1,55 @@
 {
-  "generated_at": "2026-08-20T21:30:46.790Z",
+  "generated_at": "2026-08-25T09:55:10.469Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "8876dd83",
+      "date": "2026-08-25",
+      "subject": "Turn the post chain on, and thin Karl out",
+      "lede": "The last unmounted subsystem. `Pipeline` subscribes to the frame at priority 1, which is React Three Fiber's signal to stop rendering by itself and hand presentation over, so mounting it changes how every pixel gets to the screen: ambient occlusion, screen-space reflections, volumetrics, TAA, bloom and the ACES grade instead of a straight forward render. Every pass is behind the quality tier, and `detectQualityTier` ",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "3f39ce53",
+      "date": "2026-08-25",
+      "subject": "The crowd is from San Francisco now, not from nowhere",
+      "lede": "Everybody on every pavement in the city was one uniform pick from a list of seven: three civilians, a slim one, a heavy one, a tourist, a construction worker. The Marina at ten in the morning had the same seven people as the Tenderloin at midnight, and since you spend a walking game looking *along* the pavement rather than up at the facades, the crowd is most of what tells one neighbourhood from another at street lev",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "88d5f366",
+      "date": "2026-08-25",
+      "subject": "The Legos were parked cars and distant trees",
+      "lede": "Two different things at street level both read as coloured bricks floating about, and neither was a placement bug — every object was exactly where it should be. They were both silhouette bugs.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "d2d9a7f0",
+      "date": "2026-08-25",
+      "subject": "The city was already built. Nothing had turned it on.",
+      "lede": "Seventy-nine thousand lines of San Francisco — vehicles, crowds, traffic, police, weapons, physics, missions, audio, the whole HUD — sat in `src/sf` importing each other and imported by nothing. The composition root mounted six static components and a walker. Every one of those subsystems documents its own integration in its header (\"Mount it once inside the Canvas\"), every one typechecks, and 113 tests across nine s",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 11
+    },
+    {
+      "sha": "8328bd37",
+      "date": "2026-08-20",
+      "subject": "Write down the night's four features and its two worst lessons",
+      "lede": "The card was taken before the skybridges went back in, before there was a camp on the ice and before anything happened after dark. `npm run stamp` reads each world's `source` to work out when it last changed and that date is on every card in the hub, so it has to be run after a night like this one or every card lies by a day.",
+      "places": [],
+      "files": 6
+    },
     {
       "sha": "613a2edd",
       "date": "2026-08-20",
@@ -949,46 +997,6 @@
       "lede": "Standing on a pavement is where a city is judged, and until now the pavements had nothing on them. Now: lamp posts with their arms out over the road, traffic signals, hydrants, benches, bins, bus shelters, and the overhead trolley wires that are one of the most recognisable things about Market Street. Plus nine hundred people walking, a hundred and ninety cars, and fifteen boats.",
       "places": [],
       "files": 9
-    },
-    {
-      "sha": "e7f01015",
-      "date": "2026-08-17",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "bd18321b",
-      "date": "2026-08-17",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "33dd2309",
-      "date": "2026-08-17",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "05213a1c",
-      "date": "2026-08-17",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "64c0d0f4",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: you can land on a round building now, and it makes a noise",
-      "lede": "**The physics.** Reported as \"if it's a curved building, I don't land right\", and that was exactly it. Every collider in the city was a prism with the footprint of the building's base, and a great many of the buildings are not prisms:",
-      "places": [],
-      "files": 10
     }
   ]
 }

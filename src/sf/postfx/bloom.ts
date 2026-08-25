@@ -326,7 +326,15 @@ export class BloomPyramid {
         uDispersal: { value: 0.31 },
         uHaloWidth: { value: 0.46 },
         uChroma: { value: 0.012 },
-        uStrength: { value: 0.55 },
+        /* The ghost image is the thresholded frame inverted through the optical
+           axis, so a bright sky at the top of the screen ghosts to the *bottom*
+           of it — which in a third-person game is exactly where the car you are
+           driving is. At 0.55 that put a blown white blob and a rainbow arc
+           across the vehicle on any street facing the sun, which reads as a
+           rendering fault rather than as a lens. Kept, because a real lens does
+           this, but at a strength where it flatters the frame instead of
+           eating it. */
+        uStrength: { value: 0.18 },
       },
       depthTest: false,
       depthWrite: false,

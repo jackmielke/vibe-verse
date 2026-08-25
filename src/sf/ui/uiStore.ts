@@ -131,9 +131,16 @@ export const DEFAULT_SETTINGS: UiSettings = {
   quality: detectQualityTier(),
   fov: PLAYER.fov,
   brightness: 1,
-  filmGrain: 0.55,
-  chromaticAberration: 0.6,
-  vignette: 0.65,
+  /* Lens defaults. These must agree with `postfx/state.ts` — the settings
+     bridge in SfUi pushes these into the post chain on mount, so whatever is
+     here wins and a mismatch just means the value in `state.ts` is only ever
+     true for the first frame. Tuned down from the values the pipeline was
+     authored with: those were chosen against still frames, and at 0.6 the
+     chromatic aberration puts a visible rainbow fringe on every road marking
+     at the edge of the screen for as long as you are playing. */
+  filmGrain: 0.35,
+  chromaticAberration: 0.25,
+  vignette: 0.5,
   motionBlur: 1,
   bloom: 1,
   fpsCap: 0,

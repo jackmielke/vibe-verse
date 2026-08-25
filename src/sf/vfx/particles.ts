@@ -553,6 +553,7 @@ class ParticleSystem {
     this.dispose();
     this.tier = tier;
     seedStream = makeRng("sf-vfx-particles");
+    reseedVfxRng();
     const budget = QUALITY[tier].maxParticles;
     const tilePx = tilePxForTier(tier);
     for (const spec of LAYER_SPECS) {
@@ -661,11 +662,38 @@ export const particles = new ParticleSystem();
  * ================================================================== */
 
 /**
- * The randomness every emitter draws from. Forked, seeded and never reseeded
- * from wall-clock time, so a replay of the same spawn calls produces the same
- * explosion — which the screenshot harness depends on.
+ * The randomness every emitter draws from. Seeded, never seeded from the
+ * wall clock, and reset on `particles.init` — so a replay of the same spawn
+ * calls produces the same explosion, which the screenshot harness depends on.
+ *
+ * That last clause used to be untrue in a way that is worth spelling out. The
+ * stream was created once at module scope and never reset, so "the same spawn
+ * calls" only reproduced on the *first* boot of a page; every reload, quality
+ * change or respawn afterwards continued from wherever the previous world had
+ * left the generator. `seedStream` two lines into `init()` was already reseeded
+ * for exactly this reason and this one was missed.
+ *
+ * It is a `const` because half the vfx package imports the binding directly, so
+ * the reseed swaps the generator *behind* a stable façade rather than rebinding
+ * the export.
  */
-export const vfxRng: Rng = makeRng("sf-vfx-emitters");
+const VFX_RNG_SEED = "sf-vfx-emitters";
+let vfxRngInner: Rng = makeRng(VFX_RNG_SEED);
+
+export const vfxRng: Rng = {
+  next: () => vfxRngInner.next(),
+  range: (min, max) => vfxRngInner.range(min, max),
+  int: (min, max) => vfxRngInner.int(min, max),
+  chance: (p) => vfxRngInner.chance(p),
+  pick: (items) => vfxRngInner.pick(items),
+  gauss: () => vfxRngInner.gauss(),
+  fork: (salt) => vfxRngInner.fork(salt),
+};
+
+/** Put the emitter stream back to its first value. Called from `init`. */
+export function reseedVfxRng(): void {
+  vfxRngInner = makeRng(VFX_RNG_SEED);
+}
 
 /** Multiplier applied by `budget()`; set from the quality tier. */
 let particleScale = 1;
