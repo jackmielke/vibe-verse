@@ -31,6 +31,7 @@ import Weapons from "./weapons";
 import GameDirector from "./game";
 import SfAudio from "./audio";
 import SfUi from "./ui/SfUi";
+import Pipeline from "./postfx/Pipeline";
 
 /* ------------------------------------------------------------------ *
  * Renderer configuration — the AAA baseline every other system assumes.
@@ -110,21 +111,28 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
      * plane is the one that moves FC, so under log depth that is the knob.
      */
     hook.snapshot = (depthNudge) => {
+      // No nudge: read back the frame that was last presented, rather than
+      // re-rendering one. The post chain owns the render loop (it subscribes at
+      // priority 1, which is how R3F hands over), so a bare `gl.render` here
+      // would draw the raw scene straight over the composed image and every
+      // screenshot would silently be of a world with no AO, no bloom and no
+      // grade — a picture of something we do not ship. `preserveDrawingBuffer`
+      // is on, so the buffer is still there to read.
+      if (depthNudge === undefined) return gl.domElement.toDataURL("image/png");
+
+      // A depth probe deliberately wants the unposted scene: it is measuring
+      // z-fighting, and the composite would only get in the way.
       const log = gl.capabilities.logarithmicDepthBuffer === true;
       const prevNear = cam.near;
       const prevFar = cam.far;
-      if (depthNudge !== undefined) {
-        if (log) cam.far = prevFar * depthNudge;
-        else cam.near = prevNear * depthNudge;
-        cam.updateProjectionMatrix();
-      }
+      if (log) cam.far = prevFar * depthNudge;
+      else cam.near = prevNear * depthNudge;
+      cam.updateProjectionMatrix();
       gl.render(scene, cam);
       const url = gl.domElement.toDataURL("image/png");
-      if (depthNudge !== undefined) {
-        cam.near = prevNear;
-        cam.far = prevFar;
-        cam.updateProjectionMatrix();
-      }
+      cam.near = prevNear;
+      cam.far = prevFar;
+      cam.updateProjectionMatrix();
       return url;
     };
     /* Name what is under a screen coordinate. See `pick` in the hook type for
@@ -440,6 +448,13 @@ export default function SanFranciscoGame({
         {/* Nothing is ever heard in a screenshot, and priming the banks costs
             a couple of seconds of load the harness would spend waiting. */}
         <SfAudio prime={!shot} music={!shot} ambience={!shot} />
+        {/* Last, and it takes over the render loop: `Pipeline` subscribes to
+            the frame at priority 1, which is R3F's signal to stop rendering by
+            itself and let this own the presentation. Ambient occlusion, screen
+            space reflections, volumetrics, bloom and the grade all live behind
+            the quality tier, so a laptop that auto-detects Medium is not paying
+            for the passes it cannot afford. */}
+        <Pipeline />
         <fog attach="fog" args={[0xb9c8d4, 400, Math.min(q.drawDistance, WORLD.skyCeiling * 4)]} />
       </Canvas>
       {/* Outside the Canvas: the HUD, map, menus and pause screen are DOM. */}

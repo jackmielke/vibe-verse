@@ -131,7 +131,13 @@ export const frame: FrameState = {
   vehicleId: null,
   thirdPerson: false,
   timeOfDay: 17.4,
-  fogDensity: 0.35,
+  /* Karl is real, but he is not this thick every day. 0.35 was chosen when
+     nothing consumed it but the distance fog and the sky; the volumetric pass
+     reads the same number and multiplies it through the whole depth range, so
+     at 0.35 downtown sits in a milky haze you cannot read a street sign
+     through. The weather system and the shot harness both still drive this
+     wherever they want it. */
+  fogDensity: 0.2,
   windDirection: new THREE.Vector2(0.82, 0.57),
   windSpeed: 7.5,
   paused: false,
