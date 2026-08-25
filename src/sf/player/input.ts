@@ -90,6 +90,8 @@ export const ACTIONS = [
   "pause",
   "map",
   "hud",
+  /** Swap between over-the-shoulder and down-the-sights. */
+  "camera",
 ] as const;
 
 export type ActionName = (typeof ACTIONS)[number];
@@ -147,6 +149,9 @@ export const DEFAULT_BINDINGS: Bindings = {
   pause: ["Escape", "Pad9"],
   map: ["KeyM", "Pad8"],
   hud: ["KeyU"],
+  // Not `KeyV`, which every third-person game in the world uses and which the
+  // wingsuit already has here.
+  camera: ["KeyT", "Pad13"],
 };
 
 /* ------------------------------------------------------------------ *

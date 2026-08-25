@@ -154,6 +154,8 @@ export interface SfRuntimeState {
   vehiclesSpawned: number;
   /** Waiting on Rapier to accept a body. Should drain to 0. */
   vehiclesPending: number;
+  /** True while the camera is out on the boom. */
+  thirdPerson: boolean;
 }
 
 export interface PickHit {

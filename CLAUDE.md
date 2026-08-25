@@ -36,6 +36,36 @@ code instead of fetched — a different, *synchronous* code path that a default
 run never touches. /city crashed on that path for every player who had picked
 one of them, through a green build, a green typecheck and a green smoke run.
 
+**A green test suite does not mean the code is reachable.** San Francisco
+carried 78,686 lines — vehicles, crowds, traffic, police, weapons, physics,
+missions, audio, the whole HUD — that imported each other, typechecked, and
+were covered by 113 passing tests, while the route mounted six static
+components and a walker. Every one of those files documents its own
+integration in its header ("Mount it once inside the Canvas"). Nobody had. Two
+bugs in it had therefore never executed: the parking spawner rejected every
+spot on dry land and had never produced a single car, and vehicles were culled
+on the frame after they spawned. Both were one line, and no amount of testing
+would have found them, because nothing ran them.
+
+If you are about to build something, check whether it is already here and
+merely unplugged. `node scripts/sf-live.mjs` reports what is actually alive —
+crowd, traffic, vehicles, pending spawns — and is the fastest way to tell "not
+built" from "built, never mounted".
+
+**There is no GPU in the sandbox, and it lies to you in two specific ways.**
+Chromium falls back to SwiftShader and /sf renders at well under one frame per
+second, so wall-clock time is not simulated time: holding a key for two seconds
+may be two frames, and an interaction needs tens of seconds to land. Worse, the
+AI director sheds crowd and traffic the moment it measures below 45 fps
+(`spawner.setRelief`), so a local population of twelve pedestrians is the floor
+it shed to, not the budget — on real hardware the same code puts out two
+hundred. Never tune population against what you see here.
+
+And `page.screenshot()` does not composite this WebGL canvas in software mode:
+it returns a blank white page, which is indistinguishable from a crashed world
+and cost an hour of chasing a bug that did not exist. Read the frame through
+`window.__sf.snapshot()`, which is what `sf-live.mjs` and `sf-shot.mjs` do.
+
 **`npm run typecheck`, never bare `tsc --noEmit`.** The root `tsconfig.json` is
 a solution-style config — `"files": []` plus project references — so `tsc
 --noEmit` against it compiles *nothing* and exits 0 no matter what is broken.

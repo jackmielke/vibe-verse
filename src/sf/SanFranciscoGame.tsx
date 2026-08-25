@@ -183,6 +183,7 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
       vehicles: vehicleRuntime.stats.count,
       vehiclesSpawned: vehicleRuntime.stats.spawned,
       vehiclesPending: vehicleRuntime.stats.pending,
+      thirdPerson: frame.thirdPerson,
     });
     hook.teleport = (x, y, z, yaw) => {
       playerCtrl.respawn(x, y, z, yaw ?? frame.yaw);

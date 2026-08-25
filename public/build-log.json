@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-08-25T09:55:10.469Z",
+  "generated_at": "2026-08-25T10:11:45.818Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "fa63731d",
+      "date": "2026-08-25",
+      "subject": "Tame the lens, and two determinism bugs the fog change flushed out",
+      "lede": "**The lens.** With the post chain on, driving into the sun put a blown white blob and a rainbow arc across the car. That is not the sun — the flare's ghost image is the thresholded frame inverted through the optical axis, so a bright sky at the *top* of the screen lands at the *bottom* of it, which in a third-person game is exactly where the vehicle you are driving is. At the authored strength it read as a rendering ",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 11
+    },
     {
       "sha": "8876dd83",
       "date": "2026-08-25",
@@ -989,14 +999,6 @@
         "Vibe Island"
       ],
       "files": 4
-    },
-    {
-      "sha": "9d740b61",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: lamp posts, trolley wires, and nine hundred people",
-      "lede": "Standing on a pavement is where a city is judged, and until now the pavements had nothing on them. Now: lamp posts with their arms out over the road, traffic signals, hydrants, benches, bins, bus shelters, and the overhead trolley wires that are one of the most recognisable things about Market Street. Plus nine hundred people walking, a hundred and ninety cars, and fifteen boats.",
-      "places": [],
-      "files": 9
     }
   ]
 }

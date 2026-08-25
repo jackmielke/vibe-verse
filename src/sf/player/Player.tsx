@@ -22,7 +22,7 @@
  *    broadphase (which would silently return "nothing hit" to every query,
  *    including the grapple). Pass `drivePhysics={false}` to force it off.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type * as THREE from "three";
 import { frame } from "../state/store";
@@ -126,6 +126,22 @@ function PlayerSim({ enabled, drivePhysics }: { enabled: boolean; drivePhysics: 
   return null;
 }
 
+/**
+ * Watches for the camera key.
+ *
+ * Its own component so the `useFrame` subscribes after `PlayerSim`'s and reads
+ * an input snapshot the controller has already advanced this frame — polling
+ * before it would see the previous frame's presses and drop one every time the
+ * frame rate dipped.
+ */
+function ViewToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  useFrame(() => {
+    if (!enabled || frame.paused) return;
+    if (input.pressed("camera")) onToggle();
+  });
+  return null;
+}
+
 export default function Player({
   enabled = true,
   drivePhysics = "auto",
@@ -134,23 +150,28 @@ export default function Player({
   thirdPerson = true,
   charId = "vibey",
 }: PlayerProps) {
+  // The prop is the *starting* view; the player owns it from then on.
+  const [third, setThird] = useState(thirdPerson);
+  useEffect(() => setThird(thirdPerson), [thirdPerson]);
+
   // The rig owns the blend; this only states the intent. Setting it in an
   // effect rather than every frame leaves the camera free to crush the boom
   // against a wall without this fighting it back out.
   useEffect(() => {
-    cameraRig.setThirdPerson(thirdPerson);
-  }, [thirdPerson]);
+    cameraRig.setThirdPerson(third);
+  }, [third]);
 
   return (
     <>
       {/* Simulation first — see the header. */}
       <PlayerSim enabled={enabled} drivePhysics={drivePhysics} />
+      <ViewToggle enabled={enabled} onToggle={() => setThird((v) => !v)} />
       <Avatar charId={charId} visible={showVisuals} />
       <GrappleView visible={showVisuals} />
       <WingsuitView visible={showVisuals} />
       <ParachuteView visible={showVisuals} />
       {/* The arms belong to the eyes. In third person the body has its own. */}
-      <ViewModel visible={showVisuals && showViewmodel && !thirdPerson} />
+      <ViewModel visible={showVisuals && showViewmodel && !third} />
     </>
   );
 }
