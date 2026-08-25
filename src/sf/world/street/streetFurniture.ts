@@ -35,6 +35,7 @@ import {
   addBox,
   addCylinder,
   addPanel,
+  addQuad,
   addTube,
   rgb,
   type RGB,
@@ -408,55 +409,212 @@ const buildUtilityPole: Builder = (s) => {
   addBox(s, 0.16, 6.4, 0, 0.16, 0.03, 0.03, 0, DARK_GREY, 0.3);
 };
 
+/* ---------------- parked cars ---------------- *
+ *
+ * These are the cars you are not driving: the ones filling every kerb in the
+ * city, drawn as one instanced pool per body style. The *driveable* fleet is a
+ * different, much heavier renderer (`ai/vehicleMeshes`), streamed only within
+ * a couple of hundred metres — so past that ring, these are every car in San
+ * Francisco, and at the kerb you walk along they are the ones at arm's length.
+ *
+ * They used to be four stacked boxes. Boxes are what a car looks like if you
+ * only think about its bounding volume, and the result read as a Lego brick
+ * with wheels: a flat slab, a hard black cuboid on top, one colour, no
+ * silhouette. Nothing about it changed as you walked past.
+ *
+ * What actually makes a car read as a car, in rough order of value per
+ * triangle, is a *tapered* plan and a *raked* profile: it narrows toward both
+ * ends, the roof is inset from the sills (tumblehome), and the screens lie
+ * back. All three come free from lofting a longitudinal section instead of
+ * stacking cuboids, which is what `loftShell` does.
+ */
+
+/** One cross-section along the car's length. Local +X is forward. */
+interface Station {
+  /** Distance along the car, metres. */
+  x: number;
+  /** Half-width here. */
+  w: number;
+  /** Bottom of this tier. */
+  y0: number;
+  /** Top of this tier. */
+  y1: number;
+}
+
 /**
- * A generic sedan. Deliberately blocky in the way a real car is blocky once you
- * remove the highlights: a low body, a greenhouse set in from it, wheel arches
- * cut as darker recesses and glass baked in as near-black gloss. It is 4.5 m
- * long at unit scale; instances stretch it between 4.1 and 4.9.
+ * Loft a closed shell through a list of stations: two side walls, a top, and
+ * end caps. Stations must be ordered back-to-front.
+ *
+ * `capEnds` is off for the greenhouse, whose ends are the windscreen and rear
+ * screen and want to be glass rather than body colour.
+ */
+function loftShell(s: MeshSink, st: Station[], c: RGB, capEnds = true): void {
+  const n = st.length;
+  for (let i = 0; i < n - 1; i++) {
+    const a = st[i];
+    const b = st[i + 1];
+    for (const side of [-1, 1] as const) {
+      // Side wall. Wound so the outward normal faces away from the centreline.
+      const p0 = side > 0 ? [a.x, a.y0, a.w] : [a.x, a.y0, -a.w];
+      const p1 = side > 0 ? [b.x, b.y0, b.w] : [b.x, b.y0, -b.w];
+      const p2 = side > 0 ? [b.x, b.y1, b.w] : [b.x, b.y1, -b.w];
+      const p3 = side > 0 ? [a.x, a.y1, a.w] : [a.x, a.y1, -a.w];
+      if (side > 0) addQuad(s, p0, p1, p2, p3, 0, 0, 1, 0, 1, 1, 0, 1, c);
+      else addQuad(s, p3, p2, p1, p0, 0, 1, 1, 1, 1, 0, 0, 0, c);
+    }
+    // Roof / bonnet panel. Wound +Z→−Z so the normal comes out facing up;
+    // the mirror of this winding is the floor below. The car material is
+    // single-sided (it is painted metal, not foliage), so getting these two
+    // the wrong way round does not flip a shade — it makes the roof vanish
+    // and lets you see down into an empty shell.
+    addQuad(
+      s,
+      [a.x, a.y1, a.w], [b.x, b.y1, b.w], [b.x, b.y1, -b.w], [a.x, a.y1, -a.w],
+      0, 0, 1, 0, 1, 1, 0, 1, c,
+    );
+    // Floor pan. Only ever seen when the car is on its roof, but a hole there
+    // reads as a hole from any low angle.
+    addQuad(
+      s,
+      [a.x, a.y0, -a.w], [b.x, b.y0, -b.w], [b.x, b.y0, b.w], [a.x, a.y0, b.w],
+      0, 0, 1, 0, 1, 1, 0, 1, c,
+    );
+  }
+  if (capEnds) {
+    const f = st[n - 1];
+    addQuad(s, [f.x, f.y0, -f.w], [f.x, f.y0, f.w], [f.x, f.y1, f.w], [f.x, f.y1, -f.w], 0, 0, 1, 0, 1, 1, 0, 1, c);
+    const r = st[0];
+    addQuad(s, [r.x, r.y0, r.w], [r.x, r.y0, -r.w], [r.x, r.y1, -r.w], [r.x, r.y1, r.w], 0, 0, 1, 0, 1, 1, 0, 1, c);
+  }
+}
+
+/* Car-specific literals. `GLASS` above is the pale blue of a bus shelter;
+   a car's is nearly black, because it is tinted and you are looking into a
+   dark cabin rather than through a panel at the sky. */
+const CAR_GLASS = rgb(0x11151a);
+const ARCH_SHADOW = rgb(0x1c1e20);
+const LAMP_WHITE = rgb(0xd8d4c4);
+const LAMP_RED = rgb(0x8a2018);
+const CAR_TRIM = rgb(0x2a2c2e);
+
+/**
+ * Body and greenhouse for one car, parameterised so the sedan and the taller
+ * half of the fleet share a shape and differ in the numbers.
+ *
+ * `white` panels take the per-instance paint tint; the glass, trim and lamps
+ * are baked literals, so a red car has red doors and still has dark windows.
+ */
+function carShell(
+  s: MeshSink,
+  o: {
+    /** Half-length. 2.25 is a 4.5 m saloon. */
+    len: number;
+    /** Half-width at the sills. */
+    wide: number;
+    /** Sill bottom and beltline. */
+    sill: number;
+    belt: number;
+    /** Roof height and how far the greenhouse is inset from the sills. */
+    roof: number;
+    tumble: number;
+    /** Where the screens meet the beltline, as a fraction of half-length. */
+    screenBack: number;
+    screenFront: number;
+  },
+): void {
+  const paint = rgb(0xffffff);
+  const L = o.len;
+  const W = o.wide;
+
+  // Lower body: narrowed and dropped at both ends so the plan tapers and the
+  // bonnet falls away from the screen.
+  loftShell(s, [
+    { x: -L, w: W * 0.80, y0: o.sill, y1: o.belt - 0.10 },
+    { x: -L * 0.78, w: W * 0.96, y0: o.sill, y1: o.belt },
+    { x: -L * 0.28, w: W, y0: o.sill, y1: o.belt },
+    { x: L * 0.24, w: W, y0: o.sill, y1: o.belt },
+    { x: L * 0.70, w: W * 0.96, y0: o.sill, y1: o.belt - 0.04 },
+    { x: L, w: W * 0.78, y0: o.sill + 0.04, y1: o.belt - 0.13 },
+  ], paint);
+
+  // Greenhouse: inset, raked at both ends, roof crowned slightly.
+  const gb = -L * o.screenBack;
+  const gf = L * o.screenFront;
+  const gw = W - o.tumble;
+  loftShell(s, [
+    { x: gb, w: gw * 0.74, y0: o.belt - 0.02, y1: o.belt + 0.02 },
+    { x: gb + (gf - gb) * 0.22, w: gw, y0: o.belt - 0.02, y1: o.roof },
+    { x: gb + (gf - gb) * 0.68, w: gw, y0: o.belt - 0.02, y1: o.roof },
+    { x: gf, w: gw * 0.74, y0: o.belt - 0.02, y1: o.belt + 0.06 },
+  ], paint, false);
+
+  // Glass. One band per side plus the two screens, set a hair proud of the
+  // greenhouse so it never z-fights the pillars.
+  const gy0 = o.belt + 0.04;
+  const gy1 = o.roof - 0.05;
+  const gz = gw + 0.012;
+  const bx = gb + (gf - gb) * 0.20;
+  const fx = gb + (gf - gb) * 0.70;
+  for (const side of [-1, 1] as const) {
+    const z = gz * side;
+    const p0 = [bx, gy0, z];
+    const p1 = [fx, gy0, z];
+    const p2 = [fx, gy1, z];
+    const p3 = [bx, gy1, z];
+    if (side > 0) addQuad(s, p0, p1, p2, p3, 0, 0, 1, 0, 1, 1, 0, 1, CAR_GLASS);
+    else addQuad(s, p3, p2, p1, p0, 0, 1, 1, 1, 1, 0, 0, 0, CAR_GLASS);
+  }
+  // Windscreen and rear screen, raked back to the beltline.
+  addQuad(s,
+    [fx, gy1, -gw * 0.9], [fx, gy1, gw * 0.9], [gf, gy0, gw * 0.7], [gf, gy0, -gw * 0.7],
+    0, 1, 1, 1, 1, 0, 0, 0, CAR_GLASS);
+  addQuad(s,
+    [bx, gy1, gw * 0.9], [bx, gy1, -gw * 0.9], [gb, gy0, -gw * 0.7], [gb, gy0, gw * 0.7],
+    0, 1, 1, 1, 1, 0, 0, 0, CAR_GLASS);
+
+  /* ---- furniture ---- */
+  const midY = (o.sill + o.belt) * 0.5;
+  // Bumpers.
+  addBox(s, L + 0.03, midY, 0, 0.05, (o.belt - o.sill) * 0.30, W * 0.80, 0, CAR_TRIM, 0.4);
+  addBox(s, -L - 0.03, midY, 0, 0.05, (o.belt - o.sill) * 0.30, W * 0.80, 0, CAR_TRIM, 0.4);
+  for (const side of [-1, 1] as const) {
+    // Lamps, sunk into the corners rather than stuck on the nose.
+    addBox(s, L - 0.01, o.belt - 0.20, side * W * 0.62, 0.05, 0.09, W * 0.20, 0, LAMP_WHITE, 0.3);
+    addBox(s, -L + 0.01, o.belt - 0.20, side * W * 0.62, 0.05, 0.10, W * 0.18, 0, LAMP_RED, 0.3);
+    // Sill skirt: a dark line along the bottom is what visually lifts a car
+    // off the road instead of letting it melt into the asphalt.
+    addBox(s, 0, o.sill + 0.03, side * (W - 0.01), L * 0.88, 0.05, 0.03, 0, CAR_TRIM, 0.4);
+    // Door mirror.
+    addBox(s, gf - 0.10, o.belt + 0.10, side * (W + 0.05), 0.07, 0.05, 0.09, 0, CAR_TRIM, 0.3, true);
+    // Wheel arches: a dark recess behind each wheel so the arch reads even
+    // though the wheels are a separate instanced pool.
+    for (const fw of [1, -1] as const) {
+      addBox(s, fw * L * 0.62, o.sill + 0.06, side * (W - 0.02), 0.36, 0.10, 0.03, 0, ARCH_SHADOW, 0.3);
+    }
+  }
+}
+
+/**
+ * A generic saloon, 4.5 m long at unit scale; instances stretch it between
+ * 4.1 and 4.9.
  */
 const buildSedan: Builder = (s) => {
-  const bodyY = 0.66;
-  // Lower body.
-  addBox(s, 0, bodyY, 0, 2.25, 0.30, 0.86, 0, rgb(0xffffff), 0.7, true);
-  // Shoulder.
-  addBox(s, 0, bodyY + 0.28, 0, 2.20, 0.14, 0.88, 0, rgb(0xffffff), 0.7);
-  // Bonnet and boot.
-  addBox(s, 1.42, bodyY + 0.34, 0, 0.82, 0.06, 0.82, 0, rgb(0xffffff), 0.7);
-  addBox(s, -1.52, bodyY + 0.34, 0, 0.70, 0.06, 0.82, 0, rgb(0xffffff), 0.7);
-  // Greenhouse: dark glass, tapering.
-  addBox(s, -0.10, bodyY + 0.60, 0, 1.02, 0.30, 0.76, 0, rgb(0x14171a), 0.6);
-  addBox(s, -0.10, bodyY + 0.86, 0, 0.86, 0.05, 0.68, 0, rgb(0xffffff), 0.7);
-  // A-pillar / C-pillar wedges to break the box silhouette.
-  addBox(s, 0.86, bodyY + 0.56, 0, 0.24, 0.22, 0.66, 0, rgb(0x14171a), 0.6);
-  addBox(s, -1.02, bodyY + 0.56, 0, 0.22, 0.22, 0.66, 0, rgb(0x14171a), 0.6);
-  // Bumpers, lights, sills.
-  addBox(s, 2.22, 0.55, 0, 0.06, 0.16, 0.84, 0, rgb(0x3a3d40), 0.4);
-  addBox(s, -2.22, 0.55, 0, 0.06, 0.16, 0.84, 0, rgb(0x3a3d40), 0.4);
-  for (const side of [-1, 1] as const) {
-    addBox(s, 2.20, 0.80, side * 0.60, 0.05, 0.09, 0.20, 0, rgb(0xd8d4c4), 0.3);
-    addBox(s, -2.20, 0.80, side * 0.60, 0.05, 0.09, 0.20, 0, rgb(0x8a2018), 0.3);
-    addBox(s, 0, 0.40, side * 0.90, 2.05, 0.06, 0.04, 0, rgb(0x2a2c2e), 0.4);
-    // Mirror.
-    addBox(s, 0.80, 0.98, side * 0.96, 0.10, 0.06, 0.08, 0, rgb(0x2a2c2e), 0.3, true);
-  }
+  carShell(s, {
+    len: 2.25, wide: 0.86, sill: 0.34, belt: 1.00, roof: 1.46,
+    tumble: 0.13, screenBack: 0.70, screenFront: 0.34,
+  });
 };
 
 /** The taller, boxier half of the fleet: SUVs, vans and pickups. */
 const buildSuv: Builder = (s) => {
-  const bodyY = 0.82;
-  addBox(s, 0, bodyY, 0, 2.35, 0.40, 0.94, 0, rgb(0xffffff), 0.7, true);
-  addBox(s, 0, bodyY + 0.40, 0, 2.20, 0.14, 0.94, 0, rgb(0xffffff), 0.7);
-  addBox(s, 1.55, bodyY + 0.24, 0, 0.78, 0.10, 0.90, 0, rgb(0xffffff), 0.7);
-  addBox(s, -0.25, bodyY + 0.72, 0, 1.62, 0.34, 0.84, 0, rgb(0x14171a), 0.6);
-  addBox(s, -0.25, bodyY + 1.04, 0, 1.62, 0.05, 0.80, 0, rgb(0xffffff), 0.7);
-  addBox(s, 2.32, 0.72, 0, 0.07, 0.22, 0.92, 0, rgb(0x3a3d40), 0.4);
-  addBox(s, -2.32, 0.72, 0, 0.07, 0.22, 0.92, 0, rgb(0x3a3d40), 0.4);
+  carShell(s, {
+    len: 2.38, wide: 0.94, sill: 0.42, belt: 1.20, roof: 1.86,
+    tumble: 0.09, screenBack: 0.78, screenFront: 0.50,
+  });
+  // Roof rails — the cheapest tell that separates an estate from a saloon at
+  // the distance most of these are seen from.
   for (const side of [-1, 1] as const) {
-    addBox(s, 2.30, 1.02, side * 0.66, 0.05, 0.10, 0.22, 0, rgb(0xd8d4c4), 0.3);
-    addBox(s, -2.30, 1.10, side * 0.70, 0.05, 0.16, 0.14, 0, rgb(0x8a2018), 0.3);
-    addBox(s, 0, 0.50, side * 0.98, 2.10, 0.08, 0.05, 0, rgb(0x2a2c2e), 0.4);
-    // Roof rails.
-    addBox(s, -0.25, bodyY + 1.12, side * 0.62, 1.40, 0.03, 0.04, 0, rgb(0x2a2c2e), 0.3);
+    addBox(s, -0.25, 1.89, side * 0.62, 1.30, 0.03, 0.04, 0, CAR_TRIM, 0.3);
   }
 };
 

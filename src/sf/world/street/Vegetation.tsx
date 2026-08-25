@@ -31,7 +31,7 @@ import {
   terrainHeight,
   terrainSlope,
 } from "../../geo/sfGeo";
-import { MeshSink, addCrossQuads, addCylinder, addPanel, rgb, type RGB } from "./geom";
+import { MeshSink, addCrossQuads, addCylinder, addPanel, addQuad, rgb, type RGB } from "./geom";
 import {
   ChunkStreamer,
   InstancePool,
@@ -144,10 +144,79 @@ function canopyGeometry(sp: Species): THREE.BufferGeometry {
   return s.finalize()!;
 }
 
-/** A single crossed card, tinted per instance — the distance LOD. */
+/**
+ * The distance LOD: two crossed cards cut to the silhouette of a tree.
+ *
+ * This used to be a bare unit cross-quad — a full-height *rectangle* wearing
+ * the foliage texture. Two things made that the single most conspicuous
+ * artefact in the city. The card spans the whole tree including the trunk,
+ * because `pushTree` returns before it reaches the trunk pool and a distant
+ * tree therefore has no trunk instance at all; and the foliage alpha is pushed
+ * hard toward a clean cutout, so the middle of the card is solid. The result
+ * was a green rectangle standing on the pavement, and against a pale facade it
+ * read exactly like a slab floating in the air.
+ *
+ * Alpha cannot fix that — the texture is a leaf cluster, not a tree, and it
+ * tiles the same way at any size. The silhouette has to come from the
+ * geometry: a narrow stem at the bottom, a rounded crown above it. That is
+ * three extra quads per plane, no extra instances and no second draw call, and
+ * it is the difference between "tree" and "rectangle" at the distance where
+ * most of the nine thousand trees in this city are seen from.
+ *
+ * Local space is the unit cube the placement code expects: y runs −0.5 (the
+ * ground) to +0.5 (the crown), and the instance matrix scales it to metres.
+ */
 function billboardGeometry(): THREE.BufferGeometry {
-  const s = new MeshSink(64);
-  addCrossQuads(s, 0, 0, 0, 1, 1, 2, 0.3, rgb(0xffffff));
+  const s = new MeshSink(256);
+  const crown = rgb(0xffffff);
+  // Bark is dark and desaturated against the canopy tint the instance carries.
+  const bark = rgb(0x6f6354);
+  /** Where the crown takes over from the stem, in local height. */
+  const STEM_TOP = 0.10;
+  const STEM_W = 0.05;
+  const BANDS = 5;
+
+  /** Half-width of the crown at height `t` (0 at the stem, 1 at the top). */
+  const profile = (t: number): number =>
+    // A lobe that is widest a third of the way up and closes to a point:
+    // the shape of a pollarded street tree, and close enough for a cypress.
+    Math.pow(Math.sin(Math.PI * (0.12 + 0.88 * t)), 0.62) * 0.5 * (1 - t * 0.12);
+
+  for (let plane = 0; plane < 2; plane++) {
+    const ang = 0.3 + (plane / 2) * Math.PI;
+    const dx = Math.cos(ang);
+    const dz = Math.sin(ang);
+    /** A point on this plane, `u` half-widths out from the axis. */
+    const at = (u: number, y: number): [number, number, number] => [dx * u, y, dz * u];
+
+    // Stem, from the ground to where the crown starts.
+    const s0 = at(-STEM_W, -0.5);
+    const s1 = at(STEM_W, -0.5);
+    const s2 = at(STEM_W, -0.5 + STEM_TOP + 0.06);
+    const s3 = at(-STEM_W, -0.5 + STEM_TOP + 0.06);
+    addQuad(s, s0, s1, s2, s3, 0.46, 0, 0.54, 0, 0.54, 0.18, 0.46, 0.18, bark);
+    addQuad(s, s3, s2, s1, s0, 0.46, 0.18, 0.54, 0.18, 0.54, 0, 0.46, 0, bark);
+
+    // Crown, as a stack of bands following the profile.
+    for (let b = 0; b < BANDS; b++) {
+      const t0 = b / BANDS;
+      const t1 = (b + 1) / BANDS;
+      const y0 = -0.5 + STEM_TOP + (1 - STEM_TOP) * t0;
+      const y1 = -0.5 + STEM_TOP + (1 - STEM_TOP) * t1;
+      const w0 = profile(t0);
+      const w1 = profile(t1);
+      const p0 = at(-w0, y0);
+      const p1 = at(w0, y0);
+      const p2 = at(w1, y1);
+      const p3 = at(-w1, y1);
+      const v0 = STEM_TOP + (1 - STEM_TOP) * t0;
+      const v1 = STEM_TOP + (1 - STEM_TOP) * t1;
+      // Double-sided by hand: foliage is alpha-tested and read from both sides,
+      // and the material's DoubleSide does not survive the shadow pass.
+      addQuad(s, p0, p1, p2, p3, 0.5 - w0, v0, 0.5 + w0, v0, 0.5 + w1, v1, 0.5 - w1, v1, crown);
+      addQuad(s, p3, p2, p1, p0, 0.5 - w1, v1, 0.5 + w1, v1, 0.5 + w0, v0, 0.5 - w0, v0, crown);
+    }
+  }
   return s.finalize()!;
 }
 
