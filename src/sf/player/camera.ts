@@ -1,5 +1,5 @@
 /**
- * camera.ts — the first-person camera rig.
+ * camera.ts — the player camera rig, first and third person.
  *
  * The controller decides where the *body* is; this decides where the *eyes*
  * are, and it is where roughly half the perceived quality of a first-person
@@ -27,6 +27,7 @@
  *   rig.addTrauma(t)              damage shake, 0..1
  *   rig.landed(impactSpeed)       landing dip
  *   rig.setVehicle(on, eye?)      smooth blend into and out of a seat
+ *   rig.setThirdPerson(on, dist?) swing the boom out behind the shoulder
  *   rig.reset()
  */
 import * as THREE from "three";
@@ -108,6 +109,21 @@ const DIP_C = 12.5;
 /** Camera collision probe radius. A shade under the near plane's diagonal. */
 const PROBE_RADIUS = 0.24;
 
+/* ---- third person ------------------------------------------------ *
+ * The boom is over the right shoulder rather than dead centre. Centred
+ * looks tidy in a screenshot and is miserable to aim down: the character's
+ * own head sits exactly where the crosshair wants to be.
+ */
+const BOOM_DISTANCE = 4.9;
+/** How far in the boom may be crushed before the view switches to first person. */
+const BOOM_MIN = 0.9;
+/** Right-shoulder offset, metres, and how high above the feet the boom pivots. */
+const BOOM_SHOULDER = 0.62;
+const BOOM_PIVOT_Y = 1.42;
+/** Boom radius for the occlusion sweep — fatter than the eye probe so the
+ *  camera stops before a wall clips the near plane, not as it does. */
+const BOOM_RADIUS = 0.34;
+
 /* ------------------------------------------------------------------ *
  * Module scratch
  * ------------------------------------------------------------------ */
@@ -115,6 +131,11 @@ const PROBE_RADIUS = 0.24;
 const _eye = new THREE.Vector3();
 const _target = new THREE.Vector3();
 const _offset = new THREE.Vector3();
+const _pivot = new THREE.Vector3();
+const _boomDir = new THREE.Vector3();
+/* Separate from `_target`: the caller passes `_target` in as `eye`, so the
+   boom endpoint needs its own storage or the final lerp is a no-op. */
+const _boomEnd = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, "YXZ");
 const _hit: RayHit = makeRayHit();
 
@@ -153,6 +174,15 @@ export class CameraRig {
   private prevYaw = 0;
   private prevPitch = 0;
 
+  /* third person */
+  /** Target: 1 = over the shoulder, 0 = behind the eyes. */
+  private thirdWant = 0;
+  /** Smoothed blend, so toggling the view is a move rather than a cut. */
+  private thirdBlend = 0;
+  /** Boom length after occlusion, smoothed. Crushing instantly reads as a jolt. */
+  private boomLen = BOOM_DISTANCE;
+  private boomTarget = BOOM_DISTANCE;
+
   /* vehicle transition */
   private vehicleBlend = 0;
   private vehicleActive = false;
@@ -174,6 +204,8 @@ export class CameraRig {
     this.roll = 0;
     this.fov = PLAYER.fov;
     this.lookLagYaw = this.lookLagPitch = 0;
+    this.thirdBlend = this.thirdWant;
+    this.boomLen = this.boomTarget = BOOM_DISTANCE * this.thirdWant;
     this.vehicleBlend = this.vehicleActive ? 1 : 0;
     frame.viewKick.set(0, 0);
   }
@@ -209,6 +241,29 @@ export class CameraRig {
    * the eye slides from wherever it was into the seat over ~0.4 s, which is
    * the difference between "I got in a car" and "the screen teleported".
    */
+  /**
+   * Swing the boom out behind the shoulder, or pull it back to the eyes.
+   *
+   * `distance` is the *rest* length; the occlusion sweep is still free to
+   * crush it in a stairwell. The blend is smoothed rather than switched
+   * because a hard cut between two camera positions three metres apart is
+   * indistinguishable from a teleport.
+   */
+  setThirdPerson(on: boolean, distance = BOOM_DISTANCE): void {
+    this.thirdWant = on ? 1 : 0;
+    this.boomTarget = distance;
+  }
+
+  /** True once the boom is far enough out that the body should be drawn. */
+  get isThirdPerson(): boolean {
+    return this.thirdBlend > 0.5;
+  }
+
+  /** 0..1 boom blend. The avatar fades its own head in on this. */
+  get thirdPersonBlend(): number {
+    return this.thirdBlend;
+  }
+
   setVehicle(on: boolean, eyeX?: number, eyeY?: number, eyeZ?: number): void {
     this.vehicleActive = on;
     if (eyeX !== undefined) this.vehicleEye.set(eyeX, eyeY ?? 0, eyeZ ?? 0);
@@ -293,6 +348,25 @@ export class CameraRig {
       shakeRoll = valueNoise2(t * 23.7, 23.0) * 0.09 * shake;
     }
 
+    /* ---- orientation ----------------------------------------------- *
+     * Resolved before the eye, because in third person the boom swings along
+     * the look direction and needs the *final* angles — the ones the kick and
+     * the look-lag have already been folded into. Computing the eye first and
+     * the angles after was the first version of this, and the boom lagged the
+     * view by a frame in exactly the moments (recoil, a hard flick) where the
+     * lag is most visible.
+     */
+    const kickP = this.kickPitch + shakePitch;
+    const kickY = this.kickYaw + shakeYaw;
+    frame.viewKick.set(kickY, kickP);
+
+    const yaw = frame.yaw + kickY - this.lookLagYaw;
+    const pitch = clamp(
+      frame.pitch + kickP - this.lookLagPitch,
+      -Math.PI * 0.5 + 0.015,
+      Math.PI * 0.5 - 0.015,
+    );
+
     /* ---- assemble the eye ----------------------------------------- */
     _target.copy(frame.position);
     _target.y += this.eyeOffsetSmooth + this.dip;
@@ -311,21 +385,19 @@ export class CameraRig {
       _target.lerp(this.vehicleEye, smoothstep01(this.vehicleBlend));
     }
 
+    /* ---- third-person boom ---------------------------------------- */
+    this.thirdBlend = damp(this.thirdBlend, this.thirdWant, 8, dt);
+    // Publish before the boom runs, so anything reading it this frame agrees
+    // with the camera position this frame rather than the last one.
+    frame.thirdPerson = this.thirdBlend > 0.5;
+    if (this.thirdBlend > 1e-3) {
+      this.applyBoom(_target, yaw, pitch, dt);
+    }
+
     _eye.copy(_target);
     this.eye.copy(_eye);
     camera.position.copy(_eye);
 
-    /* ---- orientation ---------------------------------------------- */
-    const kickP = this.kickPitch + shakePitch;
-    const kickY = this.kickYaw + shakeYaw;
-    frame.viewKick.set(kickY, kickP);
-
-    const yaw = frame.yaw + kickY - this.lookLagYaw;
-    const pitch = clamp(
-      frame.pitch + kickP - this.lookLagPitch,
-      -Math.PI * 0.5 + 0.015,
-      Math.PI * 0.5 - 0.015,
-    );
     _euler.set(pitch, yaw, this.roll + this.kickRoll + shakeRoll);
     camera.quaternion.setFromEuler(_euler);
 
@@ -351,6 +423,62 @@ export class CameraRig {
       camera.fov = this.fov;
       camera.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * Swing the camera back off the pivot and keep it out of masonry.
+   *
+   * `eye` comes in as the first-person eye and goes out as the blended camera
+   * position. The pivot is deliberately *not* the eye: it sits at chest height
+   * on the body, so pitching down orbits the character instead of burying the
+   * lens in their scalp.
+   *
+   * San Francisco is the hard case for a chase camera — the streets are narrow,
+   * the hills are steep and there is almost always a facade a metre behind your
+   * shoulder. The sweep is a fat sphere so the boom stops *before* a wall
+   * crosses the near plane, and the recovery is damped much more slowly than
+   * the crush: snapping outward the instant a doorway clears reads as a shove.
+   */
+  private applyBoom(eye: THREE.Vector3, yaw: number, pitch: number, dt: number): void {
+    // Look direction from the final angles. Matches the convention the frame
+    // driver uses for `frame.forward`, so the boom and the view never disagree.
+    const cy = Math.cos(yaw);
+    const sy = Math.sin(yaw);
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    _boomDir.set(-sy * cp, sp, -cy * cp);
+
+    // Pivot: chest height on the body, pushed over the right shoulder.
+    _pivot.copy(frame.position);
+    _pivot.y += BOOM_PIVOT_Y - PLAYER.height * 0.5;
+    _pivot.addScaledVector(frame.right, BOOM_SHOULDER * this.thirdBlend);
+
+    // Sweep backward along the view for the rest length.
+    const want = this.boomTarget * this.thirdBlend;
+    let len = want;
+    if (
+      want > 1e-3 &&
+      sphereCast(
+        BOOM_RADIUS,
+        _pivot.x, _pivot.y, _pivot.z,
+        -_boomDir.x, -_boomDir.y, -_boomDir.z,
+        want,
+        _hit,
+        { groups: QUERY_STATIC, skipSurface: true },
+      )
+    ) {
+      len = Math.max(0, _hit.distance - 0.08);
+    }
+    // Crush now, recover slowly.
+    this.boomLen = len < this.boomLen ? len : damp(this.boomLen, len, 4.5, dt);
+    // Fully crushed means we are inside something: fall back to the eye rather
+    // than render the inside of the character's head.
+    const t = this.boomLen < BOOM_MIN ? this.boomLen / BOOM_MIN : 1;
+
+    _boomEnd.copy(_pivot).addScaledVector(_boomDir, -this.boomLen);
+    // Blend against the first-person eye by both the view blend and the crush,
+    // so ducking into a doorway slides forward instead of cutting.
+    eye.lerp(_boomEnd, smoothstep01(this.thirdBlend) * t);
   }
 
   /**

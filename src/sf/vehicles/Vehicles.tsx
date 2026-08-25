@@ -466,7 +466,13 @@ function streamParked(state: StreamState, cx: number, cz: number, tier: string, 
 function validParkingSpot(x: number, z: number): boolean {
   if (x < WORLD.minX + 40 || x > WORLD.maxX - 40 || z < WORLD.minZ + 40 || z > WORLD.maxZ - 40) return false;
   if (isWater(x, z)) return false;
-  if (landSDF(x, z) > -6) return false;
+  // At least 6 m inland. `landSDF` is positive inland and negative offshore
+  // (see sfGeo), so this is `< 6` — the neighbouring water checks in this file
+  // and in boats.ts want the opposite sign, and copying one of those here
+  // rejected every spot on dry land, which is to say all of them: the parking
+  // spawner ran on every frame from the day it was written and never once
+  // produced a car.
+  if (landSDF(x, z) < 6) return false;
   if (isExcluded(x, z)) return false;
   if (isPark(x, z)) return false;
   if (terrainHeight(x, z) < WORLD.seaLevel + 0.6) return false;

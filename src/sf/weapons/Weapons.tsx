@@ -843,7 +843,13 @@ export class WeaponSystem {
 
     if (!this.vm) return;
     const vm = this.vm;
-    vm.root.visible = pose.hide < 0.5;
+    // Hidden by the animator (holstered, mid-swap), or because the camera is
+    // out on the third-person boom — a viewmodel is posed 30 cm from the lens,
+    // so from behind the shoulder it is a black slab across half the frame.
+    // The group is still *placed* either way: the muzzle and ejection-port
+    // empties hang off it and the flash, smoke and casings are spawned from
+    // them whether or not the gun itself is drawn.
+    vm.root.visible = pose.hide < 0.5 && !frame.thirdPerson;
     // Reciprocating mass travels back along +Z in weapon space.
     const travel = this.weapon.cls === "sidearm" ? 0.03 : 0.022;
     vm.slide.position.z = pose.slide * travel;

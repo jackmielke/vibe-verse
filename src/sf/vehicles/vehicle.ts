@@ -1175,7 +1175,7 @@ class VehicleRuntime {
   /** Enable real spot lights on the player's headlamps. */
   realHeadlights = true;
 
-  readonly stats = { count: 0, hero: 0, wrecked: 0, spawned: 0, despawned: 0 };
+  readonly stats = { count: 0, pending: 0, hero: 0, wrecked: 0, spawned: 0, despawned: 0 };
 
   /* ---- integration hooks. All optional; all called at most once per event. */
   onDestroyed: ((v: VehicleInstance) => void) | null = null;
@@ -1330,6 +1330,13 @@ class VehicleRuntime {
           continue;
         }
       }
+      // `distance` starts at 1e9 and is only computed once the instance is
+      // `ready`, so a vehicle still waiting in `pending` reads as infinitely
+      // far away. Culling on that despawned every car on the frame after it
+      // spawned and made the retry queue above unreachable — the streets stayed
+      // empty and the slot stayed marked as occupied, so nothing ever refilled
+      // it. Not-yet-created is not far away.
+      if (!v.ready) continue;
       if (!v.persistent && !v.driverIsPlayer && v.distance > DESPAWN_RADIUS) {
         this.despawn(v.id);
       }
@@ -1339,6 +1346,7 @@ class VehicleRuntime {
     this.updateAudio(dt, camX, camY, camZ);
 
     this.stats.count = this.vehicles.length;
+    this.stats.pending = this.pending.length;
     this.stats.wrecked = wrecked;
   }
 

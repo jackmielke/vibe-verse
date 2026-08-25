@@ -1111,7 +1111,7 @@ class WorldAmbience {
     const agl = Math.max(0, p.y - terrainHeight(p.x, p.z));
     const district = districtAt(p.x, p.z);
     const street = nearestStreet(p.x, p.z);
-    const water = landSDF(p.x, p.z); // negative = inland
+    const water = landSDF(p.x, p.z); // positive inland, negative offshore; only |·| is used below
     const overWater = isWater(p.x, p.z);
     const park = isPark(p.x, p.z);
     const hour = frame.timeOfDay;

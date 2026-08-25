@@ -27,6 +27,8 @@ import { useFrame, useThree } from "@react-three/fiber";
 import type * as THREE from "three";
 import { frame } from "../state/store";
 import { initSfPhysics, isPhysicsReady, physics, updateSfPhysics } from "../physics";
+import Avatar from "./Avatar";
+import { cameraRig } from "./camera";
 import GrappleView from "./Grapple";
 import ParachuteView from "./Parachute";
 import ViewModel from "./viewmodel";
@@ -46,6 +48,15 @@ export interface PlayerProps {
   showViewmodel?: boolean;
   /** Hide every player-owned visual (photo mode). */
   showVisuals?: boolean;
+  /**
+   * Draw the body and swing the camera out behind it. This is the default:
+   * San Francisco is a place you are *in*, and a city you can see yourself
+   * standing in reads at its real scale in a way a floating pair of hands
+   * never does. First person is still a keypress away.
+   */
+  thirdPerson?: boolean;
+  /** Which Vibeverse character the body wears. */
+  charId?: string;
 }
 
 /**
@@ -120,15 +131,26 @@ export default function Player({
   drivePhysics = "auto",
   showViewmodel = true,
   showVisuals = true,
+  thirdPerson = true,
+  charId = "vibey",
 }: PlayerProps) {
+  // The rig owns the blend; this only states the intent. Setting it in an
+  // effect rather than every frame leaves the camera free to crush the boom
+  // against a wall without this fighting it back out.
+  useEffect(() => {
+    cameraRig.setThirdPerson(thirdPerson);
+  }, [thirdPerson]);
+
   return (
     <>
       {/* Simulation first — see the header. */}
       <PlayerSim enabled={enabled} drivePhysics={drivePhysics} />
+      <Avatar charId={charId} visible={showVisuals} />
       <GrappleView visible={showVisuals} />
       <WingsuitView visible={showVisuals} />
       <ParachuteView visible={showVisuals} />
-      <ViewModel visible={showVisuals && showViewmodel} />
+      {/* The arms belong to the eyes. In third person the body has its own. */}
+      <ViewModel visible={showVisuals && showViewmodel && !thirdPerson} />
     </>
   );
 }

@@ -76,6 +76,15 @@ export interface FrameState {
   tethers: TetherState[];
   /** Set by the vehicle system when the player is driving. */
   vehicleId: number | null;
+  /**
+   * True while the camera is out on the third-person boom.
+   *
+   * Written by the camera rig, which owns the blend; read by anything that
+   * draws differently depending on whether you can see your own body — the
+   * weapon viewmodel above all, which is a gun held 30 cm from the lens and
+   * reads as a black slab across the frame the moment the camera steps back.
+   */
+  thirdPerson: boolean;
   /** Time-of-day in hours, 0..24. */
   timeOfDay: number;
   /** 0..1 fog/marine-layer intensity — SF's signature weather. */
@@ -120,6 +129,7 @@ export const frame: FrameState = {
   viewKick: new THREE.Vector2(),
   tethers: [makeTether(), makeTether()],
   vehicleId: null,
+  thirdPerson: false,
   timeOfDay: 17.4,
   fogDensity: 0.35,
   windDirection: new THREE.Vector2(0.82, 0.57),

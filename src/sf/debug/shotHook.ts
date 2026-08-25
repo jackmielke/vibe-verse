@@ -70,6 +70,94 @@ export interface SfDebugHook {
    * plane the nudge has to be applied to, which is not the obvious one.
    */
   snapshot?: (depthNudge?: number) => string;
+  /**
+   * What is actually on screen at a normalised device coordinate.
+   *
+   * "Something is floating in the sky and I do not know what draws it" is a
+   * question a screenshot cannot answer and reading the scene graph answers
+   * far too slowly — nine thousand instanced trees all report the same mesh
+   * name. This casts a ray through the frame and names the mesh, its material
+   * and, for an InstancedMesh, the instance and its world transform, which is
+   * the part that identifies *which* of the nine thousand.
+   */
+  pick?: (ndcX: number, ndcY: number) => PickHit[];
+  /**
+   * The gameplay state a screenshot cannot show: is the sim paused, is input
+   * bound, are we in a car, what does the store think the phase is.
+   *
+   * "The character will not walk" has half a dozen causes that all look
+   * identical from outside — a menu holding `paused`, input never attached,
+   * pointer lock refused, a controller that thinks it is seated in a vehicle.
+   * Guessing between them from a frame is hopeless.
+   */
+  state?: () => SfRuntimeState;
+  /**
+   * Put the player somewhere, facing something.
+   *
+   * `setPose` moves the *camera*, which is a different thing and useless for
+   * testing anything the player's own position drives — you cannot walk up to
+   * a car by flying the lens at it. This respawns the capsule, so the physics
+   * controller, the camera rig and the avatar all agree afterwards.
+   */
+  teleport?: (x: number, y: number, z: number, yaw?: number) => void;
+  /** The closest simulated vehicle, for tests that need to reach one. */
+  nearestVehicle?: () => NearestVehicle | null;
+}
+
+export interface NearestVehicle {
+  id: number;
+  kind: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Metres from the player. */
+  distance: number;
+}
+
+export interface SfRuntimeState {
+  paused: boolean;
+  phase: string;
+  /** True once the input layer has bound its listeners to the canvas. */
+  inputEnabled: boolean;
+  /** Vehicle the player is seated in, or null on foot. */
+  vehicleId: number | null;
+  grounded: boolean;
+  speed: number;
+  /** Live move axes, so "the key never arrived" is distinguishable from
+   *  "the key arrived and the controller ignored it". */
+  moveX: number;
+  moveZ: number;
+  health: number;
+  /** False means every physics query is answering "nothing hit". */
+  physicsReady: boolean;
+  /** Advances once per stepped frame. Frozen means nobody is driving it. */
+  stepCount: number;
+  /** Live crowd and traffic populations near the player. */
+  pedestrians: number;
+  traffic: number;
+  /** Simulated vehicles — parked, drivable and hero rigs. */
+  vehicles: number;
+  /** Lifetime spawns. Zero means the spawner never fired, which is a
+   *  different bug from spawning and immediately culling. */
+  vehiclesSpawned: number;
+  /** Waiting on Rapier to accept a body. Should drain to 0. */
+  vehiclesPending: number;
+}
+
+export interface PickHit {
+  /** Distance from the camera, metres. */
+  distance: number;
+  /** `Object3D.name`, or the geometry's uuid tail when nothing named it. */
+  object: string;
+  material: string;
+  /** Instance index when the hit object is an InstancedMesh. */
+  instanceId?: number;
+  /** World-space hit point. */
+  point: [number, number, number];
+  /** World-space scale of the hit instance — a "Lego" is a big flat one. */
+  scale?: [number, number, number];
+  /** World-space centre of the hit instance. */
+  origin?: [number, number, number];
 }
 
 export interface PlayerPose {

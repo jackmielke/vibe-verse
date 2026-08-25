@@ -14,7 +14,6 @@ import { QUALITY, WORLD_SEED, type QualityTier } from "./config";
 import { frame, resetFrame, useSfStore } from "./state/store";
 import { SHOT_POSES, installShotHook, readShotRequest, resolvePose } from "./debug/shotHook";
 import { SPAWNS, terrainHeight, walkableHeight, WORLD } from "./geo/sfGeo";
-import Walker from "./player/Walker";
 import Terrain from "./world/Terrain";
 import Bay from "./world/Bay";
 import Sky from "./sky/Sky";
@@ -22,6 +21,16 @@ import Buildings from "./world/buildings/Buildings";
 import Landmarks from "./world/landmarks/Landmarks";
 import Streets from "./world/street";
 import Explorer from "./player/Explorer";
+import Player from "./player/Player";
+import { input as playerInput } from "./player/input";
+import { isPhysicsReady, physics } from "./physics";
+import { playerCtrl } from "./player/controller";
+import CityAI, { pedestrians, trafficSim } from "./ai";
+import Vehicles, { vehicleRuntime } from "./vehicles";
+import Weapons from "./weapons";
+import GameDirector from "./game";
+import SfAudio from "./audio";
+import SfUi from "./ui/SfUi";
 
 /* ------------------------------------------------------------------ *
  * Renderer configuration — the AAA baseline every other system assumes.
@@ -118,11 +127,81 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
       }
       return url;
     };
+    /* Name what is under a screen coordinate. See `pick` in the hook type for
+       why the instance transform is the interesting half of the answer. */
+    hook.pick = (ndcX, ndcY) => {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+      const mat = new THREE.Matrix4();
+      const pos = new THREE.Vector3();
+      const quat = new THREE.Quaternion();
+      const scl = new THREE.Vector3();
+      return ray.intersectObjects(scene.children, true).slice(0, 6).map((h) => {
+        const obj = h.object as THREE.Mesh & { isInstancedMesh?: boolean };
+        const m = obj.material as THREE.Material | THREE.Material[];
+        const hit: import("./debug/shotHook").PickHit = {
+          distance: Math.round(h.distance * 100) / 100,
+          object: obj.name || `«${obj.uuid.slice(-6)}»`,
+          material: Array.isArray(m) ? m.map((x) => x.name).join("+") : m?.name || "«unnamed»",
+          point: [h.point.x, h.point.y, h.point.z].map((n) => Math.round(n * 100) / 100) as
+            [number, number, number],
+        };
+        if (obj.isInstancedMesh && h.instanceId !== undefined) {
+          hit.instanceId = h.instanceId;
+          (obj as THREE.InstancedMesh).getMatrixAt(h.instanceId, mat);
+          mat.premultiply(obj.matrixWorld).decompose(pos, quat, scl);
+          hit.scale = [scl.x, scl.y, scl.z].map((n) => Math.round(n * 100) / 100) as
+            [number, number, number];
+          hit.origin = [pos.x, pos.y, pos.z].map((n) => Math.round(n * 100) / 100) as
+            [number, number, number];
+        }
+        return hit;
+      });
+    };
+    hook.state = () => ({
+      paused: frame.paused,
+      phase: useSfStore.getState().phase,
+      inputEnabled: playerInput.enabled,
+      vehicleId: frame.vehicleId,
+      grounded: frame.grounded,
+      speed: frame.speed,
+      moveX: playerInput.snapshot.moveX,
+      moveZ: playerInput.snapshot.moveZ,
+      health: playerCtrl.health,
+      physicsReady: isPhysicsReady(),
+      stepCount: physics.stepCount,
+      pedestrians: pedestrians.stats.count,
+      traffic: trafficSim.stats.count,
+      vehicles: vehicleRuntime.stats.count,
+      vehiclesSpawned: vehicleRuntime.stats.spawned,
+      vehiclesPending: vehicleRuntime.stats.pending,
+    });
+    hook.teleport = (x, y, z, yaw) => {
+      playerCtrl.respawn(x, y, z, yaw ?? frame.yaw);
+    };
+    hook.nearestVehicle = () => {
+      const v = vehicleRuntime.nearest(
+        frame.position.x, frame.position.y, frame.position.z, 400,
+      );
+      if (!v) return null;
+      return {
+        id: v.id,
+        kind: v.def.kind,
+        x: v.position.x,
+        y: v.position.y,
+        z: v.position.z,
+        distance: Math.round(v.distance * 100) / 100,
+      };
+    };
     return () => {
       delete hook.camPose;
       delete hook.setPose;
       delete hook.setWeather;
       delete hook.snapshot;
+      delete hook.pick;
+      delete hook.state;
+      delete hook.teleport;
+      delete hook.nearestVehicle;
     };
   }, [camera, gl, scene, hook]);
 
@@ -224,6 +303,9 @@ function ShotCamera({ shotKey, fov }: { shotKey: string; fov: number }) {
  * The world
  * ------------------------------------------------------------------ */
 
+/**
+ * The static city. Nothing here moves on its own or knows the player exists.
+ */
 function World() {
   return (
     <>
@@ -233,6 +315,25 @@ function World() {
       <Buildings />
       <Streets />
       <Landmarks />
+    </>
+  );
+}
+
+/**
+ * The city that moves: crowds, traffic, police, parked and drivable vehicles.
+ *
+ * Split out from `World` because the order matters and the reason is not
+ * obvious from the tags. `CityAI` reads vehicle positions as crowd obstacles,
+ * and `Vehicles` promotes an AI traffic car into a driveable one when you pull
+ * its door open — so they share a frame and the AI has to have run first.
+ * Mounting `Vehicles` above `CityAI` gets you pedestrians walking through cars
+ * for one frame after every hijack.
+ */
+function LivingCity() {
+  return (
+    <>
+      <CityAI />
+      <Vehicles />
     </>
   );
 }
@@ -304,15 +405,31 @@ export default function SanFranciscoGame({
         {shot ? (
           <ShotCamera shotKey={shot.key} fov={shot.fov} />
         ) : mode === "walk" ? (
-          <Walker charId={charId ?? "vibey"} />
+          <>
+            {/* The player owns the physics step; everything downstream — the
+                crowd's avoidance queries, the vehicles' suspension rays —
+                needs a world that has already been stepped this frame. */}
+            <Player charId={charId ?? "vibey"} thirdPerson drivePhysics />
+            <Weapons />
+          </>
         ) : (
           <Explorer />
         )}
         <Suspense fallback={null}>
           <World />
+          {/* Traffic and crowds are pointless under the shot harness, which
+              freezes the camera at a fixed pose — and expensive, because they
+              stream against a player who never moves. */}
+          {!shot && mode === "walk" ? <LivingCity /> : null}
         </Suspense>
+        {!shot ? <GameDirector /> : null}
+        {/* Nothing is ever heard in a screenshot, and priming the banks costs
+            a couple of seconds of load the harness would spend waiting. */}
+        <SfAudio prime={!shot} music={!shot} ambience={!shot} />
         <fog attach="fog" args={[0xb9c8d4, 400, Math.min(q.drawDistance, WORLD.skyCeiling * 4)]} />
       </Canvas>
+      {/* Outside the Canvas: the HUD, map, menus and pause screen are DOM. */}
+      <SfUi hidden={!!shot && !shot.hud} />
     </div>
   );
 }
