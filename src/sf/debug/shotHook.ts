@@ -105,6 +105,37 @@ export interface SfDebugHook {
   /** The closest pedestrian. A crowd of twelve spread over a 200 m radius is
    *  nearly impossible to point a camera at by hand. */
   nearestPedestrian?: () => NearestPedestrian | null;
+  /**
+   * How many remote players have an actual body in the scene graph.
+   *
+   * Distinct from the peer *count*: a peer can be tracked, named and in the
+   * roster while its character rig is still loading or while it is beyond the
+   * rig budget. "Tracked but never drawn" and "not there at all" look
+   * identical from outside and are very different bugs.
+   */
+  peerBodies?: () => number;
+  /** Where this page thinks the other players are. */
+  peerPositions?: () => [number, number, number][];
+  /**
+   * What this page is actually *drawing* for each peer.
+   *
+   * `driving` here is not "the peer said they were driving" — it is whether
+   * the car mesh is the visible one. Those come apart if the swap is wired
+   * wrongly, and a screenshot cannot tell a person standing next to a parked
+   * car from a person being drawn instead of their car.
+   */
+  peerInfo?: () => PeerDebug[];
+}
+
+export interface PeerDebug {
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  /** True when the car mesh is visible and the body is not. */
+  driving: boolean;
+  /** True once the character rig has loaded for this peer. */
+  rig: boolean;
 }
 
 export interface NearestPedestrian {
@@ -158,6 +189,9 @@ export interface SfRuntimeState {
   thirdPerson: boolean;
   /** Live render tier. Drops on its own if the frame rate will not hold. */
   quality: string;
+  /** Other players currently in this San Francisco. */
+  peers: number;
+  peerNames: string[];
 }
 
 export interface PickHit {

@@ -261,6 +261,9 @@ export interface SfState {
   toggleMap: () => void;
   toggleDebug: () => void;
   setStats: (fps: number, drawCalls: number, triangles: number) => void;
+  /** Display names of the other people in this San Francisco right now. */
+  peers: string[];
+  setPeers: (names: string[]) => void;
 }
 
 let notifyId = 0;
@@ -370,6 +373,18 @@ export const useSfStore = create<SfState>((set, get) => ({
   toggleDebug: () => set((s) => ({ showDebug: !s.showDebug })),
 
   setStats: (fps, drawCalls, triangles) => set({ fps, drawCalls, triangles }),
+
+  peers: [],
+  setPeers: (names) =>
+    set((s) => {
+      // The net layer offers this on a timer whether or not anything changed,
+      // and a new array identity every second and a half would re-render the
+      // roster — and anything else subscribed — forever.
+      if (s.peers.length === names.length && s.peers.every((n, i) => n === names[i])) {
+        return s;
+      }
+      return { peers: names };
+    }),
 }));
 
 /** Non-reactive read, for use inside the frame loop. */

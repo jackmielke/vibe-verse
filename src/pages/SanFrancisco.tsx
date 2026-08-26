@@ -12,6 +12,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { useActiveCharacter } from "@/hooks/use-active-character";
+import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { SPAWN_DEFS } from "@/sf/geo/spawnList";
 
 const SanFranciscoGame = lazy(() => import("@/sf/SanFranciscoGame"));
@@ -264,6 +265,14 @@ export default function SanFrancisco() {
       : undefined;
   const capturing = params.has("shot");
   const { charId, character } = useActiveCharacter();
+  // One door for who you are, however you signed in — see docs/social-sign-in.md.
+  const { displayName } = useVibeIdentity();
+  /* Multiplayer is on by default, because a city with nobody in it is the
+     thing we were trying to stop it being. `local` shares with other tabs of
+     this browser and needs no network at all; `off` opens no socket. */
+  const netParam = params.get("net");
+  const net = netParam === "off" || netParam === "local" ? netParam : "online";
+  const room = params.get("room") ?? "sf";
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -292,6 +301,9 @@ export default function SanFrancisco() {
         mode={mode}
         vibe={vibe}
         quality={quality}
+        net={net}
+        room={room}
+        playerName={displayName}
         charId={charId}
       />
       {capturing ? null : (

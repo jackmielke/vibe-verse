@@ -24,6 +24,7 @@ import Crosshair, { type CrosshairHandle } from "./hud/Crosshair";
 import Vitals, { LowHealthOverlay } from "./hud/Vitals";
 import Ammo from "./hud/Ammo";
 import ChaosHeat from "./hud/ChaosHeat";
+import Presence from "./hud/Presence";
 import Compass from "./hud/Compass";
 import Objectives from "./hud/Objectives";
 import Feed from "./hud/Feed";
@@ -136,7 +137,11 @@ export default function Hud({ visible = true, peaceful = false }: HudProps) {
 
       <div className="sf-cluster" data-anchor="tr">
         {peaceful ? null : <ChaosHeat />}
-        <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+        {/* Above the feed: who is here is a standing fact, not an event. */}
+        <div style={{ marginTop: peaceful ? 0 : 12, display: "flex", justifyContent: "flex-end" }}>
+          <Presence />
+        </div>
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
           <Feed />
         </div>
       </div>

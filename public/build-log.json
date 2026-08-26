@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-08-26T07:26:01.429Z",
+  "generated_at": "2026-08-26T08:51:32.481Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "68d1e745",
+      "date": "2026-08-26",
+      "subject": "Stroll is the default. The loud version is a button.",
+      "lede": "Four things came back from playing it and all four were right: blurry, chaotic, dead on mobile, and it took a machine down. Every one of them traces to the same mistake — I made the heaviest thing the *default* and left the calm thing nowhere.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 15
+    },
     {
       "sha": "9df38e07",
       "date": "2026-08-25",
@@ -991,14 +1001,6 @@
         "Vibe Island"
       ],
       "files": 10
-    },
-    {
-      "sha": "f9b34b06",
-      "date": "2026-08-17",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
-      "places": [],
-      "files": 3
     }
   ]
 }

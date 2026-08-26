@@ -123,6 +123,43 @@ files look like when nobody runs the last step.
   has turned into a smear, and the number is the part you want to believe.
 - Licences and provenance: `src/assets/glb/CREDITS.md`.
 
+## Playing together
+
+San Francisco is multiplayer, and it is the *fourth* netcode in this
+repository. That is worth a paragraph, because the obvious reaction is to
+delete three of them and it would be the wrong one.
+
+- `src/kart/net` is rollback netplay for a race — deterministic, input-driven,
+  latency is the whole problem.
+- `src/blob/net` has an authoritative host, because somebody has to decide who
+  ate whom.
+- `src/components/city/multiplayer.ts` is presence and chat for /city, and
+  loads its ghosts through `GLTFLoader` directly.
+- `src/sf/net` is presence-only interpolation with no authority at all: nobody
+  can affect anybody, so a lost packet costs a tenth of a second of somebody
+  else's animation and nothing else.
+
+They genuinely want different things. What *is* worth unifying one day is the
+transport — all four open a Supabase Realtime channel, and all four learned
+separately that joining has to be allowed to fail.
+
+Two things in `src/sf/net` are load-bearing:
+
+- **The wire's `p[1]` is the ground under the player, never their body.**
+  `frame.position` is the capsule's centre on foot and the *vehicle's chassis*
+  while driving, and the sender corrects for both before sending. Get it wrong
+  and you are fine and everybody else watches you sink into the road, which is
+  the worst possible distribution for a bug.
+- **`node scripts/sf-two.mjs` is how any of this gets verified.** Realtime is
+  blocked in the sandbox, so the `local` transport — a `BroadcastChannel`
+  shared by every tab of one browser — runs the identical protocol, peer table,
+  interpolator and renderer and differs only in the sixty lines that put bytes
+  on a wire. It also turned out to be worth shipping: two people on one laptop
+  is a real thing somebody will do. Both pages must live in **one** browser
+  context; `BroadcastChannel` is scoped to a browsing-context group, and two
+  contexts silently never see each other, which looks exactly like broken
+  netcode.
+
 ## Adding a world
 
 The shape every recent world follows (Seafair, San Palmas, The Long Silence):

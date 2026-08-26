@@ -31,6 +31,8 @@ import Weapons from "./weapons";
 import GameDirector from "./game";
 import SfAudio from "./audio";
 import SfUi from "./ui/SfUi";
+import Peers from "./net/Peers";
+import type { NetMode } from "./net/transport";
 import Pipeline from "./postfx/Pipeline";
 
 /* ------------------------------------------------------------------ *
@@ -187,6 +189,8 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
       vehiclesPending: vehicleRuntime.stats.pending,
       thirdPerson: frame.thirdPerson,
       quality: useSfStore.getState().quality,
+      peers: useSfStore.getState().peers.length,
+      peerNames: useSfStore.getState().peers,
     });
     hook.teleport = (x, y, z, yaw) => {
       playerCtrl.respawn(x, y, z, yaw ?? frame.yaw);
@@ -431,6 +435,16 @@ export interface SanFranciscoGameProps {
    * one you are on.
    */
   quality?: QualityTier;
+  /**
+   * Multiplayer transport. `online` shares the city with everybody on the
+   * internet in the same room, `local` with every tab of this browser, `off`
+   * opens no socket at all.
+   */
+  net?: NetMode;
+  /** Room id. Everybody in the same one is in the same San Francisco. */
+  room?: string;
+  /** Our display name over our own head, as everybody else sees it. */
+  playerName?: string;
   /** Spawn key from `SPAWNS`. */
   spawn?: string;
   /** `walk` puts your character on the pavement; `fly` is the free camera. */
@@ -442,6 +456,9 @@ export interface SanFranciscoGameProps {
 export default function SanFranciscoGame({
   vibe = "stroll",
   quality: forcedQuality,
+  net = "online",
+  room = "sf",
+  playerName = "Someone",
   spawn = "coit",
   mode = "walk",
   charId,
@@ -450,6 +467,7 @@ export default function SanFranciscoGame({
   const quality = useSfStore((s) => s.quality);
   const setQuality = useSfStore((s) => s.setQuality);
   const setPhase = useSfStore((s) => s.setPhase);
+  const setPeers = useSfStore((s) => s.setPeers);
 
   const shot = useMemo(
     () => (typeof window === "undefined" ? null : readShotRequest(window.location.search)),
@@ -513,6 +531,15 @@ export default function SanFranciscoGame({
             />
             {/* No gun in your hands unless you asked for one. */}
             {peaceful ? null : <Weapons />}
+            {/* Everybody else. Opens a socket, or quietly does not, and either
+                way San Francisco is the same city — see `transport.ts`. */}
+            <Peers
+              mode={net}
+              room={room}
+              name={playerName}
+              charId={charId ?? "vibey"}
+              onRoster={setPeers}
+            />
           </>
         ) : (
           <Explorer />

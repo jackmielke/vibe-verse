@@ -578,8 +578,8 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🌉",
     kind: "game",
     blurb:
-      "The real city, hill for hill, bridge for bridge, nine kilometres of it. Walk it as your own character past thirty-two landmarks, get into any parked car and drive off, and share the streets with a crowd cast by neighbourhood and by the hour — lanyards on Montgomery at nine, couriers on Market, tourists at the waterfront. Nothing is chasing you and nothing is keeping score. Flip it to Mayhem if you want the other kind of afternoon.",
-    status: "Open world — walk it, drive it, or fly it",
+      "The real city, hill for hill, bridge for bridge, nine kilometres of it — and other people are in it with you, as their own characters, with their names above their heads. Walk it past thirty-two landmarks, get into any parked car and drive off, and share the streets with a crowd cast by neighbourhood and by the hour: lanyards on Montgomery at nine, couriers on Market, tourists at the waterfront. Nothing is chasing you and nothing is keeping score. Flip it to Mayhem if you want the other kind of afternoon.",
+    status: "Multiplayer open world — walk it, drive it, or fly it",
     accent: "#ff6a2b",
     featured: true,
     source: "src/sf",
