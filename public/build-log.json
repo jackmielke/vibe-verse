@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-08-25T10:11:45.818Z",
+  "generated_at": "2026-08-26T07:26:01.429Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "9df38e07",
+      "date": "2026-08-25",
+      "subject": "A way back to first person, and a hint that says how to get in a car",
+      "lede": "Third person is the right default for this world and it was a one-way door: the boom went out on mount and nothing brought it back. `T` now swaps (not `V`, which every third-person game in the world uses and which the wingsuit already has here). The prop is the starting view; the player owns it after that. The viewmodel follows, so the arms come back with the eyes.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 7
+    },
     {
       "sha": "fa63731d",
       "date": "2026-08-25",
@@ -989,16 +999,6 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
       "places": [],
       "files": 3
-    },
-    {
-      "sha": "52261cff",
-      "date": "2026-08-17",
-      "subject": "A dance floor in the plaza, with regulars who join in",
-      "lede": "The music's layers are gated on how many people are dancing near you — hats at two, the lead at three, the stabs at five. Shipping that into a city that is usually empty meant almost everybody who ever pressed T heard layer one and nothing else, and would have concluded the whole thing was a loop. A mechanic that needs four strangers to be online at the same moment is a mechanic hardly anyone has.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 4
     }
   ]
 }

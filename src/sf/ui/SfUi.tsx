@@ -39,9 +39,16 @@ import Discovery from "./Discovery";
 export interface SfUiProps {
   /** Force the whole interface off — the screenshot harness uses this. */
   hidden?: boolean;
+  /**
+   * No opposition and no scoring, so no widgets about either. The interface
+   * should not promise a game that is not running: a chaos multiplier ticking
+   * away in the corner of a city you are only walking through is the single
+   * loudest way to say "this is a shooter" to somebody who came for a walk.
+   */
+  peaceful?: boolean;
 }
 
-export default function SfUi({ hidden }: SfUiProps) {
+export default function SfUi({ hidden, peaceful = false }: SfUiProps) {
   installUiStyles();
 
   const settings = useUiStore((s) => s.settings);
@@ -238,7 +245,7 @@ export default function SfUi({ hidden }: SfUiProps) {
       }
     >
       <LoadingScreen />
-      <Hud visible={hudVisible} />
+      <Hud visible={hudVisible} peaceful={peaceful} />
       <Discovery />
       <MapScreen />
       <PhotoMode />

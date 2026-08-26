@@ -41,9 +41,11 @@ export interface HudProps {
   /** Set false to suppress the gameplay HUD without unmounting the layer
    *  (photo mode, screenshot harness). */
   visible?: boolean;
+  /** Hide everything that only means something when something is shooting. */
+  peaceful?: boolean;
 }
 
-export default function Hud({ visible = true }: HudProps) {
+export default function Hud({ visible = true, peaceful = false }: HudProps) {
   const showHud = useSfStore((s) => s.showHud);
   const phase = useSfStore((s) => s.phase);
   const prune = useSfStore((s) => s.pruneNotifications);
@@ -116,14 +118,16 @@ export default function Hud({ visible = true }: HudProps) {
   return (
     <>
       <WorldMarkers />
-      <DamageIndicators handleRef={damage} />
-      <LowHealthOverlay />
+      {peaceful ? null : <DamageIndicators handleRef={damage} />}
+      {peaceful ? null : <LowHealthOverlay />}
 
       <div className="sf-cluster" data-anchor="tl">
         <Minimap />
-        <div style={{ marginTop: 14 }}>
-          <Objectives />
-        </div>
+        {peaceful ? null : (
+          <div style={{ marginTop: 14 }}>
+            <Objectives />
+          </div>
+        )}
       </div>
 
       <div className="sf-cluster" data-anchor="tc">
@@ -131,7 +135,7 @@ export default function Hud({ visible = true }: HudProps) {
       </div>
 
       <div className="sf-cluster" data-anchor="tr">
-        <ChaosHeat />
+        {peaceful ? null : <ChaosHeat />}
         <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
           <Feed />
         </div>
@@ -146,14 +150,18 @@ export default function Hud({ visible = true }: HudProps) {
         <VehicleHud />
       </div>
 
-      <div className="sf-cluster" data-anchor="br">
-        <Ammo />
-      </div>
+      {peaceful ? null : (
+        <div className="sf-cluster" data-anchor="br">
+          <Ammo />
+        </div>
+      )}
 
-      <Crosshair handleRef={crosshair} />
+      {/* A crosshair with no weapon behind it is an invitation to look for the
+          trigger. `Prompt` stays: it is what says "press F" next to a car. */}
+      {peaceful ? null : <Crosshair handleRef={crosshair} />}
       <Prompt />
       <Notifications />
-      <WeaponWheel />
+      {peaceful ? null : <WeaponWheel />}
       <Subtitles />
     </>
   );

@@ -302,11 +302,23 @@ const aiHitboxProvider: HitboxProvider = {
  * The driver
  * ================================================================== */
 
-function AiDriver() {
+function AiDriver({ peaceful }: { peaceful: boolean }) {
   const { camera } = useThree();
   const quality = useSfStore((s) => s.quality);
   const perf = useRef({ acc: 0, frames: 0, slow: 0 });
   const ammoWatch = useRef<Record<string, number>>({});
+
+  /* ---- peace ---- *
+   * Switching peace on has to *clear* the opposition, not merely stop ticking
+   * it. A squad that stops updating does not go away; it stands in the road
+   * forever, mid-stride, holding a rifle. Same for a pursuit already in
+   * progress and for the wanted level that started it. */
+  useEffect(() => {
+    if (!peaceful) return;
+    enemyForce.reset();
+    police.reset();
+    heat.reset();
+  }, [peaceful]);
 
   /* ---- wiring, once ---- */
   useEffect(() => {
@@ -445,15 +457,20 @@ function AiDriver() {
     const fz = frame.forward.z;
 
     perceptionTick(now);
-    detectPlayerFire(now);
+    if (!peaceful) detectPlayerFire(now);
     avoidance.begin();
 
     trafficSim.update(dt, now, px, pz);
     pedestrians.update(dt, now, px, pz);
-    enemyForce.update(dt, now, px, py, pz);
-    police.observe(now, px, pz);
-    heat.update(dt, now);
-    police.update(dt, now, px, py, pz);
+    // The hostile half of the city. Skipped wholesale rather than fed zeroes:
+    // these are the systems that walk every agent every frame, and the point
+    // of a peaceful world is that they are not running at all.
+    if (!peaceful) {
+      enemyForce.update(dt, now, px, py, pz);
+      police.observe(now, px, pz);
+      heat.update(dt, now);
+      police.update(dt, now, px, py, pz);
+    }
     spawner.update(dt, now, px, py, pz, fx, fz);
 
     /* ---- instance upload ---- */
@@ -461,7 +478,7 @@ function AiDriver() {
     const chars = characterBatch();
     chars.begin();
     pedestrians.render(chars, cam.x, cam.y, cam.z);
-    enemyForce.render(chars, cam.x, cam.y, cam.z);
+    if (!peaceful) enemyForce.render(chars, cam.x, cam.y, cam.z);
     chars.commit();
 
     const veh = vehicleBatch();
@@ -525,13 +542,32 @@ export interface CityAIProps {
   traffic?: boolean;
   /** Cast shadows from agents and vehicles. */
   shadows?: boolean;
+  /**
+   * No opposition, no police, no wanted level.
+   *
+   * The city still lives — crowds walk, traffic drives, horns go off, people
+   * get out of your way — but nothing in it is hunting you and nothing is
+   * keeping score. This is the default, and it is not a reduced version of the
+   * game so much as a different one: San Francisco as a place to be in rather
+   * than a place to be chased through.
+   *
+   * It is also most of the CPU. Perception, threat propagation, the heat model
+   * and the pursuit AI all run every frame whether or not anything has
+   * happened, and they run over every agent.
+   */
+  peaceful?: boolean;
 }
 
 /**
  * The whole living city. Mount once, inside the Canvas, after the street layer
  * so the road graph exists by the time the first spawn attempt runs.
  */
-export default function CityAI({ crowd = true, traffic = true, shadows }: CityAIProps) {
+export default function CityAI({
+  crowd = true,
+  traffic = true,
+  shadows,
+  peaceful = false,
+}: CityAIProps) {
   const quality = useSfStore((s) => s.quality);
   const castShadows = useMemo(
     () => (shadows === undefined ? QUALITY[quality].shadowCascades > 2 : shadows),
@@ -540,7 +576,7 @@ export default function CityAI({ crowd = true, traffic = true, shadows }: CityAI
 
   return (
     <>
-      <AiDriver />
+      <AiDriver peaceful={peaceful} />
       {crowd && <Pedestrians shadows={castShadows} />}
       {traffic && <Traffic shadows={castShadows} />}
     </>

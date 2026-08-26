@@ -66,6 +66,8 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
   const { gl, camera, scene } = useThree();
   const hook = useMemo(() => installShotHook(), []);
   const acc = useRef({ t: 0, frames: 0 });
+  /** Consecutive bad seconds, for the tier watchdog below. */
+  const degrade = useRef({ bad: 0 });
 
   /* The debug surface the offline harnesses drive the level through. Installed
      here because this is the one component that holds the renderer, the camera
@@ -184,6 +186,7 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
       vehiclesSpawned: vehicleRuntime.stats.spawned,
       vehiclesPending: vehicleRuntime.stats.pending,
       thirdPerson: frame.thirdPerson,
+      quality: useSfStore.getState().quality,
     });
     hook.teleport = (x, y, z, yaw) => {
       playerCtrl.respawn(x, y, z, yaw ?? frame.yaw);
@@ -247,7 +250,16 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
 
     // Stats once a second — cheap, and the critics need them to catch
     // "prettier but unplayable".
-    acc.current.t += dt;
+    //
+    // `delta`, not `dt`. `dt` is clamped to 1/20 so a tab restore cannot hand
+    // the controller a two-second step, and accumulating the clamp made this
+    // window stretch exactly when it mattered: below 20 fps every frame
+    // contributed at most 0.05 no matter how long it really took, so "one
+    // second" of stats took as long as it had to and the reported frame rate
+    // could not fall below 20. A world running at 3 fps measured itself at 20
+    // and reported it to the HUD, to the critic harnesses and to the watchdog
+    // below, which is why nothing ever stepped the quality down.
+    acc.current.t += delta;
     acc.current.frames++;
     if (acc.current.t >= 1) {
       const info = gl.info;
@@ -260,7 +272,36 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
         geometries: info.memory.geometries,
       };
       hook.stats = stats;
-      useSfStore.getState().setStats(stats.fps, stats.drawCalls, stats.triangles);
+      const store = useSfStore.getState();
+      store.setStats(stats.fps, stats.drawCalls, stats.triangles);
+
+      /* ---- the safety valve ----
+         Nothing used to lower the render tier, ever. The AI director sheds
+         crowd and traffic when it measures a bad frame rate, which helps with
+         CPU and does nothing at all about the thing that actually takes a
+         machine down: the post chain's render targets and the shadow cascades.
+         A laptop that guessed too high stayed too high until the tab died.
+
+         So: three consecutive bad seconds and we step down one tier. Only
+         down, and only ever once per step, because an automatic upgrade would
+         find the frame rate it just fixed and oscillate. Recovering is the
+         player's call, from the settings screen. */
+      if (!shotKey) {
+        const d = degrade.current;
+        // The *unrounded* rate. `stats.fps` is rounded for display, and a world
+        // limping along at a third of a frame per second rounds to zero — which
+        // a "greater than zero" guard reads as "no sample yet" and skips, so the
+        // watchdog sat out precisely the emergency it exists for.
+        const rate = acc.current.frames / acc.current.t;
+        if (acc.current.frames > 0 && rate < LIMP_FPS) d.bad++;
+        else d.bad = 0;
+        const next = LOWER_TIER[store.quality];
+        if (d.bad >= LIMP_SECONDS && next) {
+          d.bad = 0;
+          store.setQuality(next);
+          store.notify(`Graphics turned down to ${QUALITY[next].label} to keep up`, "info");
+        }
+      }
       acc.current.t = 0;
       acc.current.frames = 0;
     }
@@ -299,6 +340,17 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
 
   return null;
 }
+
+/** Below this, for `LIMP_SECONDS` running, the tier steps down. */
+const LIMP_FPS = 20;
+const LIMP_SECONDS = 3;
+
+/** Where each tier falls back to. `low` is the floor and has nowhere to go. */
+const LOWER_TIER: Partial<Record<QualityTier, QualityTier>> = {
+  ultra: "high",
+  high: "medium",
+  medium: "low",
+};
 
 /** In shot mode the camera is frozen at the requested pose. */
 function ShotCamera({ shotKey, fov }: { shotKey: string; fov: number }) {
@@ -352,16 +404,33 @@ function World() {
  * Mounting `Vehicles` above `CityAI` gets you pedestrians walking through cars
  * for one frame after every hijack.
  */
-function LivingCity() {
+function LivingCity({ peaceful }: { peaceful: boolean }) {
   return (
     <>
-      <CityAI />
+      <CityAI peaceful={peaceful} />
       <Vehicles />
     </>
   );
 }
 
 export interface SanFranciscoGameProps {
+  /**
+   * `stroll` is a city. `mayhem` is a game about a city.
+   *
+   * Stroll is the default and turns off the whole hostile stack — weapons,
+   * the opposition, police, the wanted level, the chaos director. What is
+   * left is the thing that was worth building: nine kilometres of San
+   * Francisco with people and traffic in it, a car you can get into, and
+   * nothing keeping score.
+   */
+  vibe?: "stroll" | "mayhem";
+  /**
+   * Force a quality tier, overriding what the device was guessed to be.
+   * `?quality=low` in the URL is the escape hatch for a machine the detector
+   * was too optimistic about, and the way to reproduce a tier that is not the
+   * one you are on.
+   */
+  quality?: QualityTier;
   /** Spawn key from `SPAWNS`. */
   spawn?: string;
   /** `walk` puts your character on the pavement; `fly` is the free camera. */
@@ -371,10 +440,13 @@ export interface SanFranciscoGameProps {
 }
 
 export default function SanFranciscoGame({
+  vibe = "stroll",
+  quality: forcedQuality,
   spawn = "coit",
   mode = "walk",
   charId,
 }: SanFranciscoGameProps) {
+  const peaceful = vibe !== "mayhem";
   const quality = useSfStore((s) => s.quality);
   const setQuality = useSfStore((s) => s.setQuality);
   const setPhase = useSfStore((s) => s.setPhase);
@@ -393,6 +465,7 @@ export default function SanFranciscoGame({
         setQuality(shot.quality as QualityTier);
       }
     }
+    if (forcedQuality) setQuality(forcedQuality);
     const sp = SPAWNS.find((s) => s.key === spawn) ?? SPAWNS[0];
     /* A spawn's `yOffset` is where a *flying* observer starts — 266 m up the
        Transamerica, on the Golden Gate's south tower. Dropping a walking
@@ -402,7 +475,7 @@ export default function SanFranciscoGame({
     const y = mode === "walk" ? walkableHeight(sp.x, sp.z) : terrainHeight(sp.x, sp.z) + sp.yOffset;
     resetFrame(sp.x, y, sp.z, sp.heading);
     setPhase("playing");
-  }, [shot, spawn, mode, setQuality, setPhase]);
+  }, [shot, spawn, mode, forcedQuality, setQuality, setPhase]);
 
   const q = QUALITY[quality];
 
@@ -432,8 +505,14 @@ export default function SanFranciscoGame({
             {/* The player owns the physics step; everything downstream — the
                 crowd's avoidance queries, the vehicles' suspension rays —
                 needs a world that has already been stepped this frame. */}
-            <Player charId={charId ?? "vibey"} thirdPerson drivePhysics />
-            <Weapons />
+            <Player
+              charId={charId ?? "vibey"}
+              thirdPerson
+              drivePhysics
+              simpleControls={peaceful}
+            />
+            {/* No gun in your hands unless you asked for one. */}
+            {peaceful ? null : <Weapons />}
           </>
         ) : (
           <Explorer />
@@ -443,23 +522,29 @@ export default function SanFranciscoGame({
           {/* Traffic and crowds are pointless under the shot harness, which
               freezes the camera at a fixed pose — and expensive, because they
               stream against a player who never moves. */}
-          {!shot && mode === "walk" ? <LivingCity /> : null}
+          {!shot && mode === "walk" ? <LivingCity peaceful={peaceful} /> : null}
         </Suspense>
-        {!shot ? <GameDirector /> : null}
+        {/* Missions, chaos scoring and the escalation clock. A city you are
+            just walking around does not need a director. */}
+        {!shot && !peaceful ? <GameDirector /> : null}
         {/* Nothing is ever heard in a screenshot, and priming the banks costs
             a couple of seconds of load the harness would spend waiting. */}
         <SfAudio prime={!shot} music={!shot} ambience={!shot} />
         {/* Last, and it takes over the render loop: `Pipeline` subscribes to
             the frame at priority 1, which is R3F's signal to stop rendering by
-            itself and let this own the presentation. Ambient occlusion, screen
-            space reflections, volumetrics, bloom and the grade all live behind
-            the quality tier, so a laptop that auto-detects Medium is not paying
-            for the passes it cannot afford. */}
-        <Pipeline />
+            itself and let this own the presentation.
+
+            Not mounted at all below Medium. Which passes run is already gated
+            per tier, but the composer's cost is mostly *allocation* — every
+            pass wants its own full-resolution half-float target — and a phone
+            at devicePixelRatio 3 cannot afford the buffers whether or not
+            anything draws into them. Unmounted, the scene renders straight to
+            the screen the way it did before any of this existed. */}
+        {q.postProcessing ? <Pipeline /> : null}
         <fog attach="fog" args={[0xb9c8d4, 400, Math.min(q.drawDistance, WORLD.skyCeiling * 4)]} />
       </Canvas>
       {/* Outside the Canvas: the HUD, map, menus and pause screen are DOM. */}
-      <SfUi hidden={!!shot && !shot.hud} />
+      <SfUi hidden={!!shot && !shot.hud} peaceful={peaceful} />
     </div>
   );
 }

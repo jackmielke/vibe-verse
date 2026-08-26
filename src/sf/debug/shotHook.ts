@@ -156,6 +156,8 @@ export interface SfRuntimeState {
   vehiclesPending: number;
   /** True while the camera is out on the boom. */
   thirdPerson: boolean;
+  /** Live render tier. Drops on its own if the frame rate will not hold. */
+  quality: string;
 }
 
 export interface PickHit {

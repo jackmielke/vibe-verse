@@ -253,13 +253,22 @@ interface TouchButtonSpec {
 
 const TOUCH_BUTTONS: TouchButtonSpec[] = [
   { slot: "jump", action: "jump", label: "JUMP", gx: 0, gy: 0, size: 82, accent: true },
-  { slot: "grapple", action: "grapple", label: "HOOK", gx: 1, gy: 0.55, size: 74 },
-  { slot: "link", action: "tetherLink", label: "LINK", gx: 2, gy: 1.05, size: 62 },
+  // The one button the open world is *for*. There was no touch control bound to
+  // `interact` at all, so on a phone every car in San Francisco was scenery.
+  { slot: "interact", action: "interact", label: "GET IN", gx: 1, gy: 0.55, size: 74, accent: true },
+  { slot: "grapple", action: "grapple", label: "HOOK", gx: 2, gy: 1.05, size: 62 },
   { slot: "cut", action: "cut", label: "CUT", gx: 0.15, gy: 1.1, size: 62 },
   { slot: "fire", action: "fire", label: "FIRE", gx: 1.15, gy: 1.65, size: 68 },
-  { slot: "boost", action: "boost", label: "BOOST", gx: 2.1, gy: 2.15, size: 58 },
+  { slot: "link", action: "tetherLink", label: "LINK", gx: 2.1, gy: 2.15, size: 58 },
   { slot: "crouch", action: "crouch", label: "DUCK", gx: 0.3, gy: 2.2, size: 58 },
 ];
+
+/**
+ * Which buttons a peaceful city needs. Seven controls on a phone screen is a
+ * cockpit; these four are jump, get in a car, duck, and the grapple, which is
+ * the one traversal toy that is pure fun and threatens nobody.
+ */
+export const STROLL_TOUCH_SLOTS = ["jump", "interact", "crouch", "grapple"];
 
 /* ------------------------------------------------------------------ *
  * The manager
@@ -310,6 +319,15 @@ class InputManager {
   private touchLookX = 0;
   private touchLookY = 0;
   private touchHeld = new Set<ActionName>();
+  /**
+   * Which on-screen buttons to build, by slot. Null means all of them.
+   *
+   * Set before `attach()`; the cluster is built once, on attach, so changing
+   * this afterwards does nothing until the layer is rebound. The composition
+   * root sets it from the vibe, and the vibe is part of the React key, so a
+   * change tears the whole player down and back up anyway.
+   */
+  touchSlots: string[] | null = null;
   private touchTapped = new Set<ActionName>();
   private touchRoot: HTMLDivElement | null = null;
   private touchKnob: HTMLDivElement | null = null;
@@ -872,7 +890,9 @@ class InputManager {
     const cluster = document.createElement("div");
     cluster.style.cssText =
       "position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));width:250px;height:250px;pointer-events:none;";
+    const allowed = this.touchSlots;
     for (const spec of TOUCH_BUTTONS) {
+      if (allowed && !allowed.includes(spec.slot)) continue;
       const el = document.createElement("div");
       const x = spec.gx * 78;
       const y = spec.gy * 62;

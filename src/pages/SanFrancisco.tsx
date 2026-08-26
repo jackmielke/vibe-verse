@@ -126,12 +126,16 @@ function SpawnSheet({
  */
 function Overlay({
   mode,
+  vibe,
   onMode,
+  onVibe,
   onSpawn,
   charLabel,
 }: {
   mode: "walk" | "fly";
+  vibe: "stroll" | "mayhem";
   onMode: (m: "walk" | "fly") => void;
+  onVibe: (v: "stroll" | "mayhem") => void;
   onSpawn: (key: string) => void;
   charLabel: string;
 }) {
@@ -190,6 +194,20 @@ function Overlay({
           >
             📍 Go
           </button>
+          {mode === "walk" ? (
+            <button
+              onClick={() => onVibe(vibe === "stroll" ? "mayhem" : "stroll")}
+              className={CHIP}
+              style={{ WebkitTapHighlightColor: "transparent" }}
+              title={
+                vibe === "stroll"
+                  ? "Just the city: people, traffic, cars you can drive"
+                  : "Weapons, police and a wanted level"
+              }
+            >
+              {vibe === "stroll" ? "🌤 Stroll" : "🚨 Mayhem"}
+            </button>
+          ) : null}
         </div>
 
         <div
@@ -203,7 +221,7 @@ function Overlay({
           >
             {mode === "walk"
               ? touch
-                ? "Left thumb to walk · right thumb to look"
+                ? "Left thumb to walk · right thumb to look · GET IN for a car"
                 : // F is the whole open world: it is how you get into a car, and
                   // nothing on screen says so otherwise.
                   "Click to capture the mouse · WASD to walk · Shift to run · Space to jump · F to get in a car · T to change camera · M for the map"
@@ -235,6 +253,15 @@ export default function SanFrancisco() {
   const [params, setParams] = useSearchParams();
   const spawn = params.get("spawn") ?? "market";
   const mode = params.get("mode") === "fly" ? "fly" : "walk";
+  // Stroll unless somebody asked for the other thing, and they have to ask by
+  // name — no remembered preference, no "last time you played". Opening a link
+  // to San Francisco should never drop you into a firefight.
+  const vibe = params.get("vibe") === "mayhem" ? "mayhem" : "stroll";
+  const forced = params.get("quality");
+  const quality =
+    forced === "low" || forced === "medium" || forced === "high" || forced === "ultra"
+      ? forced
+      : undefined;
   const capturing = params.has("shot");
   const { charId, character } = useActiveCharacter();
 
@@ -257,11 +284,22 @@ export default function SanFrancisco() {
       {/* Keyed on mode and character so switching either one rebuilds the
           controller and the rig from a clean slate rather than trying to hand
           a half-simulated player between two of them. */}
-      <SanFranciscoGame key={`${mode}:${charId}`} spawn={spawn} mode={mode} charId={charId} />
+      {/* Keyed on the vibe too: switching it tears down the weapon stack, the
+          opposition and the director rather than leaving half of each behind. */}
+      <SanFranciscoGame
+        key={`${mode}:${charId}:${vibe}`}
+        spawn={spawn}
+        mode={mode}
+        vibe={vibe}
+        quality={quality}
+        charId={charId}
+      />
       {capturing ? null : (
         <Overlay
           mode={mode}
+          vibe={vibe}
           onMode={(m) => setParam("mode", m)}
+          onVibe={(v) => setParam("vibe", v)}
           onSpawn={(k) => setParam("spawn", k)}
           charLabel={`${character.emoji} ${character.label}`}
         />

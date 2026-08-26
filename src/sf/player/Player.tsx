@@ -34,7 +34,7 @@ import ParachuteView from "./Parachute";
 import ViewModel from "./viewmodel";
 import WingsuitView from "./Wingsuit";
 import { playerCtrl } from "./controller";
-import { input } from "./input";
+import { input, STROLL_TOUCH_SLOTS } from "./input";
 
 export interface PlayerProps {
   /** Turn the whole player off (shot harness, cutscenes, menus). */
@@ -57,13 +57,26 @@ export interface PlayerProps {
   thirdPerson?: boolean;
   /** Which Vibeverse character the body wears. */
   charId?: string;
+  /**
+   * Trim the on-screen touch cluster to the buttons a peaceful city needs.
+   * Read once, when input binds.
+   */
+  simpleControls?: boolean;
 }
 
 /**
  * The simulation half. Kept as its own component purely so that its
  * `useFrame` subscribes before the visual components' do.
  */
-function PlayerSim({ enabled, drivePhysics }: { enabled: boolean; drivePhysics: boolean | "auto" }) {
+function PlayerSim({
+  enabled,
+  drivePhysics,
+  simpleControls,
+}: {
+  enabled: boolean;
+  drivePhysics: boolean | "auto";
+  simpleControls: boolean;
+}) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
 
@@ -71,13 +84,15 @@ function PlayerSim({ enabled, drivePhysics }: { enabled: boolean; drivePhysics: 
   useEffect(() => {
     if (!enabled) return;
     const canvas = gl.domElement;
+    // Before attach: the cluster is built once, on bind.
+    input.touchSlots = simpleControls ? STROLL_TOUCH_SLOTS : null;
     input.attach(canvas);
     input.enabled = true;
     return () => {
       input.enabled = false;
       input.detach();
     };
-  }, [enabled, gl]);
+  }, [enabled, gl, simpleControls]);
 
   /* ---- spawn ---- */
   useEffect(() => {
@@ -149,6 +164,7 @@ export default function Player({
   showVisuals = true,
   thirdPerson = true,
   charId = "vibey",
+  simpleControls = false,
 }: PlayerProps) {
   // The prop is the *starting* view; the player owns it from then on.
   const [third, setThird] = useState(thirdPerson);
@@ -164,7 +180,11 @@ export default function Player({
   return (
     <>
       {/* Simulation first — see the header. */}
-      <PlayerSim enabled={enabled} drivePhysics={drivePhysics} />
+      <PlayerSim
+        enabled={enabled}
+        drivePhysics={drivePhysics}
+        simpleControls={simpleControls}
+      />
       <ViewToggle enabled={enabled} onToggle={() => setThird((v) => !v)} />
       <Avatar charId={charId} visible={showVisuals} />
       <GrappleView visible={showVisuals} />

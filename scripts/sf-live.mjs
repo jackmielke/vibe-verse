@@ -29,6 +29,7 @@
  *   node scripts/sf-live.mjs --drive                          get in the nearest car
  *   node scripts/sf-live.mjs --ped --out shots/crowd.png      look at the nearest person
  *   node scripts/sf-live.mjs --look 44,11,60,-20,11,-40       pose the camera
+ *   node scripts/sf-live.mjs --vibe mayhem                     the loud version
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -109,10 +110,16 @@ page.on("console", (m) => {
   if (m.type() === "error" && !/net::/.test(m.text())) problems.push(`console: ${m.text()}`);
 });
 
-const url = `${base}/sf?spawn=${args.spawn}&quality=${args.quality}`;
+const url =
+  `${base}/sf?spawn=${args.spawn}&quality=${args.quality}` +
+  (args.vibe ? `&vibe=${args.vibe}` : "");
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
 
-const state = () => page.evaluate(() => (window.__sf?.state ? window.__sf.state() : null));
+const state = () =>
+  page.evaluate(() => {
+    const s = window.__sf?.state ? window.__sf.state() : null;
+    return s;
+  });
 
 // Boot. Sampled in thirds so a population that is still filling is visibly
 // still filling rather than looking like a plateau.

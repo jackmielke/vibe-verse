@@ -53,8 +53,41 @@ export interface QualitySettings {
   foliageDensity: number;
   /** Anisotropic filtering level. */
   anisotropy: number;
+  /**
+   * Run the post-processing composer at all.
+   *
+   * Off means the scene is rendered straight to the screen: no HDR
+   * intermediates, no render targets, no grade. That is not a downgrade you
+   * negotiate pass by pass — a phone cannot afford several full-resolution
+   * half-float targets at devicePixelRatio 3 no matter which effects are
+   * ticked, and the cost is paid on allocation rather than on use.
+   */
+  postProcessing: boolean;
 }
 
+/**
+ * High — what a normal desktop gets, and therefore what most people see.
+ *
+ * This used to be the whole feature list switched on: screen-space
+ * reflections, forty-eight-step volumetrics, temporal AA, per-object motion
+ * blur, depth of field and lens effects, all at once, for anyone with eight
+ * cores. Two things came back from that, and both were right:
+ *
+ *  - **It was blurry.** TAA resolves by blending the last frame into this one,
+ *    which is close to free and looks superb at a locked 60 — and smears into
+ *    a soft, ghosting mess the moment the frame rate is uneven, which in a
+ *    streaming open world in a browser tab it always is. Motion blur then
+ *    smears the smear. SMAA costs a little more per frame and is *sharp*, and
+ *    sharp is worth more here than perfect edges.
+ *  - **It crashed machines.** The expensive passes are expensive on
+ *    allocation, not just per pixel: every one wants its own full-resolution
+ *    half-float target, and a 1.5× pixel ratio on a 4K display is a lot of
+ *    video memory before a single triangle is drawn.
+ *
+ * So High is now a *light* chain — ambient occlusion, bloom, the grade, SMAA —
+ * and the full one lives at Ultra, which nothing auto-detects into. If you
+ * want the whole thing you can ask for it, and asking is the point.
+ */
 const BASE: QualitySettings = {
   tier: "high",
   label: "High",
@@ -62,25 +95,26 @@ const BASE: QualitySettings = {
   drawDistance: 9000,
   detailRadius: 900,
   impostorRadius: 4200,
-  shadowCascades: 4,
+  shadowCascades: 3,
   shadowMapSize: 2048,
   shadowDistance: 900,
   textureSize: 1024,
   ssao: true,
-  ssaoSamples: 16,
-  ssr: true,
-  volumetrics: true,
-  volumetricSteps: 48,
-  taa: true,
-  motionBlur: true,
+  ssaoSamples: 12,
+  ssr: false,
+  volumetrics: false,
+  volumetricSteps: 24,
+  taa: false,
+  motionBlur: false,
   bloom: true,
-  depthOfField: true,
-  lensEffects: true,
-  maxParticles: 24000,
-  maxRigidBodies: 260,
+  depthOfField: false,
+  lensEffects: false,
+  maxParticles: 18000,
+  maxRigidBodies: 200,
   crowdDensity: 1,
   foliageDensity: 1,
   anisotropy: 8,
+  postProcessing: true,
 };
 
 export const QUALITY: Record<QualityTier, QualitySettings> = {
@@ -111,6 +145,8 @@ export const QUALITY: Record<QualityTier, QualitySettings> = {
     crowdDensity: 0.35,
     foliageDensity: 0.35,
     anisotropy: 2,
+    // Straight to the screen. This is the tier every phone gets.
+    postProcessing: false,
   },
   medium: {
     ...BASE,
@@ -124,22 +160,37 @@ export const QUALITY: Record<QualityTier, QualitySettings> = {
     shadowMapSize: 1536,
     shadowDistance: 560,
     textureSize: 512,
+    ssao: false,
     ssaoSamples: 10,
     ssr: false,
+    volumetrics: false,
     volumetricSteps: 24,
+    taa: false,
     motionBlur: false,
     depthOfField: false,
+    lensEffects: false,
     maxParticles: 9000,
     maxRigidBodies: 130,
     crowdDensity: 0.6,
     foliageDensity: 0.6,
     anisotropy: 4,
+    postProcessing: true,
   },
   high: BASE,
+  /**
+   * Everything, for a machine you have decided can take it. Nothing
+   * auto-detects into this tier — see `detectQualityTier`.
+   */
   ultra: {
     ...BASE,
     tier: "ultra",
     label: "Ultra",
+    ssr: true,
+    volumetrics: true,
+    taa: true,
+    motionBlur: true,
+    depthOfField: true,
+    lensEffects: true,
     maxPixelRatio: 2,
     drawDistance: 12000,
     detailRadius: 1400,
@@ -164,15 +215,32 @@ export const QUALITY: Record<QualityTier, QualitySettings> = {
  * it up than to open at Ultra and stutter through the first ten seconds.
  */
 export function detectQualityTier(): QualityTier {
-  if (typeof navigator === "undefined") return "high";
-  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  if (typeof navigator === "undefined") return "medium";
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
   const cores = navigator.hardwareConcurrency ?? 4;
-  const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-  if (mobile) return mem >= 6 && cores >= 6 ? "medium" : "low";
-  if (cores >= 12 && mem >= 16) return "ultra";
-  if (cores >= 8 && mem >= 8) return "high";
-  if (cores >= 4) return "medium";
+  if (isTouchDevice()) return "low";
+  if (cores >= 12 && mem >= 16) return "high";
+  if (cores >= 8 && mem >= 8) return "medium";
   return "low";
+}
+
+/**
+ * A phone or a tablet, by input rather than by user-agent string.
+ *
+ * iPadOS reports itself as a Mac and has for years, so a UA sniff hands the
+ * heaviest tier to a tablet; `maxTouchPoints` is the thing that has always
+ * been true. Desktops with touchscreens get a cheaper tier than they can
+ * afford, which is the failure that costs nothing.
+ *
+ * `navigator.deviceMemory` is Chromium-only, so Safari answers `undefined`
+ * for the whole cast — every iPhone, every iPad, every Mac. Defaulting that
+ * to 8 GB meant Safari fell through to the top desktop tier by *omission*.
+ * It defaults to 4 now: unknown hardware is modest hardware.
+ */
+export function isTouchDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (navigator.maxTouchPoints > 1) return true;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
 /* ------------------------------------------------------------------ *

@@ -578,7 +578,7 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🌉",
     kind: "game",
     blurb:
-      "FREE FALL — the real city, hill for hill, bridge for bridge, nine kilometres of it. Walk it as your own character past thirty-two landmarks, hail a parked car and drive it, and share the streets with a crowd that is cast by neighbourhood and by the hour: lanyards on Montgomery at nine, couriers on Market, tourists at the waterfront, the Tenderloin at three in the morning. Traffic, police and a wanted level. Or take the free camera and fly the whole thing.",
+      "The real city, hill for hill, bridge for bridge, nine kilometres of it. Walk it as your own character past thirty-two landmarks, get into any parked car and drive off, and share the streets with a crowd cast by neighbourhood and by the hour — lanyards on Montgomery at nine, couriers on Market, tourists at the waterfront. Nothing is chasing you and nothing is keeping score. Flip it to Mayhem if you want the other kind of afternoon.",
     status: "Open world — walk it, drive it, or fly it",
     accent: "#ff6a2b",
     featured: true,
