@@ -214,6 +214,68 @@ export const QUALITY: Record<QualityTier, QualitySettings> = {
  * conservative — it is far better to start at Medium and let the player push
  * it up than to open at Ultra and stutter through the first ten seconds.
  */
+/* ================================================================== *
+ * The clock
+ * ================================================================== */
+
+/**
+ * How long a full day takes, in real minutes.
+ *
+ * Every system in this world already reads `frame.timeOfDay` — the sky, the
+ * nine thousand window lights, the street lamps, the neon, headlights, the
+ * ambience mix, how many people are on the pavement and which people they are
+ * — and for a long time nothing ever moved it. San Francisco was permanently
+ * 5:24 in the afternoon. Turning the clock on does not add a feature so much
+ * as connect eighteen files that were already waiting for it.
+ *
+ * Forty-eight minutes is Grand Theft Auto V's number and it is a good one: an
+ * in-game hour every two minutes, so a sunset is something you sit and watch
+ * rather than something that happens between glances, and you will still see
+ * one inside a single visit.
+ */
+export const DAY_MINUTES = 48;
+
+/** In-game hours per real second. */
+export const CLOCK_RATE = 24 / (DAY_MINUTES * 60);
+
+/**
+ * What time it is in San Francisco, right now, as a fractional hour.
+ *
+ * The world opens on the real city's clock. Load it over breakfast and the
+ * sun is coming up over the East Bay; load it at midnight and Market Street is
+ * empty and lit. It costs nothing and it is the difference between a level and
+ * a place.
+ *
+ * Via `Intl` rather than a fixed UTC offset, so this is right on both sides of
+ * a daylight-saving change without anybody having to remember it.
+ */
+export function sanFranciscoHour(now: Date = new Date()): number {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+    }).formatToParts(now);
+    const h = Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
+    const m = Number(parts.find((p) => p.type === "minute")?.value ?? NaN);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return 17.4;
+    // `hour12: false` yields 24 for midnight in some engines rather than 0.
+    return (h % 24) + m / 60;
+  } catch {
+    // An environment without the time-zone database. Late afternoon is the
+    // hour this world was art-directed at, so it is the right thing to fall
+    // back to.
+    return 17.4;
+  }
+}
+
+/** Advance a clock, wrapping at midnight. */
+export function advanceClock(hour: number, dtSeconds: number): number {
+  const next = hour + dtSeconds * CLOCK_RATE;
+  return ((next % 24) + 24) % 24;
+}
+
 export function detectQualityTier(): QualityTier {
   if (typeof navigator === "undefined") return "medium";
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;

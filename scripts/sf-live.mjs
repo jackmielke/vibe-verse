@@ -30,6 +30,7 @@
  *   node scripts/sf-live.mjs --ped --out shots/crowd.png      look at the nearest person
  *   node scripts/sf-live.mjs --look 44,11,60,-20,11,-40       pose the camera
  *   node scripts/sf-live.mjs --vibe mayhem                     the loud version
+ *   node scripts/sf-live.mjs --tod 18.6                        set the hour
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -44,6 +45,7 @@ function parseArgs(argv) {
     if (!a.startsWith("--")) continue;
     const key = a.slice(2);
     if (key === "drive") out.drive = true;
+    else if (key === "wave") out.wave = true;
     else if (key === "ped") out.ped = true;
     else {
       const val = argv[++i];
@@ -131,6 +133,19 @@ for (let i = 0; i < 3; i++) {
 // Clicking the canvas is what binds pointer lock and focuses the input layer.
 await page.mouse.click(800, 450);
 await page.waitForTimeout(600);
+
+if (args.tod !== undefined) {
+  // Jump the clock. The day keeps running from wherever it is put, which is
+  // what you want for a screenshot and harmless for anything else.
+  await page.evaluate((h) => window.__sf.setWeather(h, 0.2), Number(args.tod));
+  await page.waitForTimeout(7000);
+}
+
+if (args.wave) {
+  await page.keyboard.press("z");
+  await page.waitForTimeout(3000);
+  console.log(`self emotes    ${await page.evaluate(() => window.__sf.selfEmotes?.() ?? -1)}`);
+}
 
 if (args.look) {
   const [px, py, pz, lx, ly, lz] = String(args.look).split(",").map(Number);

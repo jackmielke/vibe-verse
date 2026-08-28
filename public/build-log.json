@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-08-26T08:51:32.481Z",
+  "generated_at": "2026-08-28T08:17:47.650Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "620ba8b3",
+      "date": "2026-08-26",
+      "subject": "Other people are in San Francisco now",
+      "lede": "Open /sf and you are in it with everybody else who has it open: as your own Vibeverse character, with your name over your head, walking the same Market Street. If somebody gets into a car, you see a car.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 18
+    },
     {
       "sha": "68d1e745",
       "date": "2026-08-26",
@@ -991,16 +1001,6 @@
       "lede": "Dawn, midday, golden hour, dusk and night, on a button in the top bar. Each one moves the sun, its colour and intensity, both ends of the sky gradient, the hemisphere fill, and the clouds — which matters more than it sounds, because unlit white cloud geometry staying bright white is the single most obvious tell that a \"night mode\" is a colour filter rather than a time of day.",
       "places": [],
       "files": 9
-    },
-    {
-      "sha": "5a0721d9",
-      "date": "2026-08-17",
-      "subject": "The jetpack is on your back now, and the sea stops following you home",
-      "lede": "Two things Jack caught, and one of them was not what it looked like.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 10
     }
   ]
 }

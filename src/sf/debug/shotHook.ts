@@ -125,6 +125,8 @@ export interface SfDebugHook {
    * car from a person being drawn instead of their car.
    */
   peerInfo?: () => PeerDebug[];
+  /** Emotes playing over our own head. */
+  selfEmotes?: () => number;
 }
 
 export interface PeerDebug {
@@ -136,6 +138,8 @@ export interface PeerDebug {
   driving: boolean;
   /** True once the character rig has loaded for this peer. */
   rig: boolean;
+  /** Emotes currently playing over this peer's head. */
+  emotes: number;
 }
 
 export interface NearestPedestrian {
@@ -189,6 +193,8 @@ export interface SfRuntimeState {
   thirdPerson: boolean;
   /** Live render tier. Drops on its own if the frame rate will not hold. */
   quality: string;
+  /** Fractional hour, 0..24. Advances unless held. */
+  timeOfDay: number;
   /** Other players currently in this San Francisco. */
   peers: number;
   peerNames: string[];

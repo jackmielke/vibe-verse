@@ -180,6 +180,25 @@ for (let i = 0; i < 12; i++) {
 }
 check("B's copy of A followed A across town", moved > 50, `moved ${Math.round(moved)} m`);
 
+// A waves. B should see it — this is the only input in the game whose entire
+// purpose is that somebody else notices it.
+// Generously polled. A wave has to cross four frame loops before it is
+// visible here — A's, to notice the key; A's send tick; B's receive; B's, to
+// build the sprite — and a frame in a software rasteriser running two cities
+// can be three seconds long. The first version of this polled for three
+// seconds and passed only by luck.
+await a.keyboard.press("z");
+let waved = false;
+for (let i = 0; i < 15; i++) {
+  const info = await b.evaluate(() => window.__sf.peerInfo?.() ?? []);
+  if (info?.[0]?.emotes > 0) {
+    waved = true;
+    break;
+  }
+  await b.waitForTimeout(2500);
+}
+check("B saw A wave", waved);
+
 if (args.drive) {
   // A gets into a car; B should see a car, not a person in a seated pose
   // skating down Market. This is the only way that path gets looked at.

@@ -46,6 +46,9 @@ interface Sample {
 
 /** What the renderer needs to draw one peer this frame. */
 export interface PeerPose {
+  /** An emote to fire *this frame*, or null. Cleared once read — see
+   *  `takeEmote`. A moment, not a state. */
+  emote: number | null;
   id: string;
   name: string;
   char: string;
@@ -80,6 +83,10 @@ export class Peer {
   /** Arrival time of the newest sample, for the timeout sweep. */
   lastSeen = 0;
   private buf: Sample[] = [];
+  /** Highest emote sequence seen. `-1` so a peer's very first emote fires. */
+  private emoteSeq = -1;
+  /** Set when a new sequence arrives, consumed by the renderer. */
+  private pendingEmote: number | null = null;
 
   constructor(id: string) {
     this.id = id;
@@ -90,6 +97,14 @@ export class Peer {
     this.name = cleanName(msg.n);
     this.char = msg.c;
     this.lastSeen = now;
+
+    // Fire on the counter going up, not on the field being present: the same
+    // wave arrives in every packet for as long as the sender keeps repeating
+    // it, and may arrive twice or out of order.
+    if (msg.es !== undefined && msg.es > this.emoteSeq) {
+      this.emoteSeq = msg.es;
+      this.pendingEmote = msg.e ?? 0;
+    }
 
     // Out of order or duplicated: the transport gives no ordering guarantee,
     // and a sample older than one we already hold can only make the playback
@@ -178,6 +193,13 @@ export class Peer {
     return out;
   }
 
+  /** Take the emote waiting to be played, if any. Clears it. */
+  takeEmote(): number | null {
+    const e = this.pendingEmote;
+    this.pendingEmote = null;
+    return e;
+  }
+
   /** Drop buffered history, keeping identity — used when a peer teleports. */
   clearHistory(): void {
     this.buf.length = 0;
@@ -222,6 +244,7 @@ export class PeerTable {
     yaw: 0,
     motion: MOTION_IDLE,
     vehicle: null,
+    emote: null,
   };
 
   get size(): number {
@@ -267,7 +290,12 @@ export class PeerTable {
   forEach(now: number, fn: (pose: PeerPose) => void): void {
     for (const p of this.peers) {
       const pose = p[1].sample(now, this.scratch);
-      if (pose) fn(pose);
+      if (!pose) continue;
+      // Read once per frame, and only when there is somewhere to draw it. A
+      // peer whose body is beyond the rig budget drops its wave rather than
+      // banking it for whenever you next walk over.
+      pose.emote = p[1].takeEmote();
+      fn(pose);
     }
   }
 

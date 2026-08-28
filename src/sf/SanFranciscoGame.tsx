@@ -10,7 +10,13 @@
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { QUALITY, WORLD_SEED, type QualityTier } from "./config";
+import {
+  QUALITY,
+  WORLD_SEED,
+  advanceClock,
+  sanFranciscoHour,
+  type QualityTier,
+} from "./config";
 import { frame, resetFrame, useSfStore } from "./state/store";
 import { SHOT_POSES, installShotHook, readShotRequest, resolvePose } from "./debug/shotHook";
 import { SPAWNS, terrainHeight, walkableHeight, WORLD } from "./geo/sfGeo";
@@ -189,6 +195,7 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
       vehiclesPending: vehicleRuntime.stats.pending,
       thirdPerson: frame.thirdPerson,
       quality: useSfStore.getState().quality,
+      timeOfDay: Math.round(frame.timeOfDay * 1000) / 1000,
       peers: useSfStore.getState().peers.length,
       peerNames: useSfStore.getState().peers,
     });
@@ -251,6 +258,14 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
     frame.up.crossVectors(frame.right, frame.forward).normalize();
     frame.speed = frame.velocity.length();
     frame.altitudeAGL = frame.position.y - terrainHeight(frame.position.x, frame.position.z);
+
+    // The day passes. `delta`, not `dt`: the clock is wall-clock time and has
+    // no business being clamped to the simulation's step ceiling — a tab that
+    // was hidden for a minute should come back a minute later in the day, not
+    // a twentieth of a second later.
+    if (!frame.paused && !frame.clockHeld && !shotKey) {
+      frame.timeOfDay = advanceClock(frame.timeOfDay, delta);
+    }
 
     // Stats once a second — cheap, and the critics need them to catch
     // "prettier but unplayable".
@@ -484,6 +499,8 @@ export default function SanFranciscoGame({
       }
     }
     if (forcedQuality) setQuality(forcedQuality);
+    // Open on the real city's clock, unless the harness asked for an hour.
+    if (!shot) frame.timeOfDay = sanFranciscoHour();
     const sp = SPAWNS.find((s) => s.key === spawn) ?? SPAWNS[0];
     /* A spawn's `yOffset` is where a *flying* observer starts — 266 m up the
        Transamerica, on the Golden Gate's south tower. Dropping a walking

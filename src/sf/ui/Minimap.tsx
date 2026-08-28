@@ -27,6 +27,7 @@ import {
 import { COLORS, cvdColor, rgba } from "./theme";
 import { cardinal, yawToBearing, distance as fmtDistance } from "./format";
 import { districtAt } from "../geo/sfGeo";
+import { streetAt } from "../world/street/roadNetwork";
 
 const SIZE = 178;
 /** Metres per pixel at each zoom step. Index 1 is the default. */
@@ -42,6 +43,7 @@ export default function Minimap() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const districtRef = useRef<HTMLSpanElement>(null);
+  const streetRef = useRef<HTMLSpanElement>(null);
   const northRef = useRef<HTMLDivElement>(null);
   const objRef = useRef<HTMLSpanElement>(null);
   const view = useRef<MapView>({ cx: 0, cz: 0, ppm: ZOOMS[1], rot: 0, w: SIZE, h: SIZE });
@@ -124,6 +126,13 @@ export default function Minimap() {
         slow = 0;
         const d = districtAt(frame.position.x, frame.position.z);
         setText(districtRef.current, d.name.toUpperCase());
+        // The street you are standing on. `streetAt` has existed, exported and
+        // documented as "used by the HUD", since the road network was written;
+        // nothing had ever called it. Knowing you are on Grant rather than
+        // somewhere in Chinatown is most of the difference between a map and a
+        // place you know your way around.
+        const st = streetAt(frame.position.x, frame.position.z);
+        setText(streetRef.current, st ? st.name.toUpperCase() : "");
         const tracked =
           s.objectives.find((o) => o.id === ui.trackedObjective && !o.complete) ??
           s.objectives.find((o) => !o.complete);
@@ -201,17 +210,32 @@ export default function Minimap() {
         </div>
       </div>
 
-      {/* Footer rail */}
-      <div className="flex items-center gap-2 mt-1.5" style={{ width: SIZE }}>
+      {/* Footer rail: the street you are on, then the neighbourhood it is in —
+          the order you would say them out loud. */}
+      <div style={{ width: SIZE }}>
+        <div className="flex items-center gap-2 mt-1.5">
+          <span
+            ref={streetRef}
+            className="sf-label sf-text"
+            style={{
+              fontSize: 9,
+              letterSpacing: "0.16em",
+              color: "rgba(255,255,255,0.95)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          />
+          <div className="flex-1" />
+          <span ref={objRef} className="sf-num sf-text" style={{ fontSize: 9, color: COLORS.signal }} />
+        </div>
         <span
           ref={districtRef}
-          className="sf-label sf-text"
-          style={{ fontSize: 8, letterSpacing: "0.2em", color: "rgba(255,255,255,0.78)" }}
+          className="sf-label sf-text block"
+          style={{ fontSize: 8, letterSpacing: "0.2em", color: "rgba(255,255,255,0.55)" }}
         >
           —
         </span>
-        <div className="flex-1" />
-        <span ref={objRef} className="sf-num sf-text" style={{ fontSize: 9, color: COLORS.signal }} />
       </div>
 
       <div className="flex items-center gap-1 mt-1">

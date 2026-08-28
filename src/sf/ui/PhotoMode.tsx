@@ -41,6 +41,18 @@ const ASPECTS = [
 
 export default function PhotoMode() {
   const route = useUiStore((s) => s.route);
+
+  // Hold the clock while photo mode is *open*, not while this component is
+  // mounted — `SfUi` mounts it unconditionally and lets the route decide what
+  // it draws, so keying this on mount froze the day permanently.
+  const active = route === "photo";
+  useEffect(() => {
+    if (!active) return;
+    frame.clockHeld = true;
+    return () => {
+      frame.clockHeld = false;
+    };
+  }, [active]);
   const go = useUiStore((s) => s.go);
   const setPhase = useSfStore((s) => s.setPhase);
   const open = route === "photo";

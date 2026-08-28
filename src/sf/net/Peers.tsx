@@ -51,6 +51,8 @@ import {
 } from "./protocol";
 import { openTransport, type NetMode } from "./transport";
 import { makeNameTag } from "./nameTag";
+import { EMOTE_WAVE, disposeEmote, startEmote, stepEmote, type Emote } from "./emote";
+import { input } from "../player/input";
 import { propGeometry } from "../world/street/streetFurniture";
 import { getMaterial } from "../materials";
 import { getShotHook } from "../debug/shotHook";
@@ -82,6 +84,8 @@ interface Body {
   tagName: string;
   /** Smoothed gait, so a peer crossing a packet boundary does not twitch. */
   locomotion: number;
+  /** Emotes currently playing above this body. */
+  emotes: Emote[];
   disposed: boolean;
 }
 
@@ -130,6 +134,17 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
   ident.current.charId = charId;
 
   const clock = useRef({ sendAt: 0, pruneAt: 0, rosterAt: 0 });
+  /**
+   * Our own emote counter and the id it last raised.
+   *
+   * Repeated in every packet for a short window rather than sent once: a
+   * single-packet event is a wave that half the street never sees. The counter
+   * is what stops the repeats from being nine separate waves.
+   */
+  const emote = useRef({ seq: 0, id: EMOTE_WAVE, until: 0 });
+  /** Emotes playing over our own head, so you can see your own wave. */
+  const selfEmotes = useRef<Emote[]>([]);
+  const selfGroup = useRef<THREE.Group>(null);
 
   /* ---------------- the socket ---------------- */
   useEffect(() => {
@@ -197,6 +212,7 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
       }
       return out;
     };
+    hook.selfEmotes = () => selfEmotes.current.length;
     hook.peerInfo = () =>
       [...bodies].map(([, b]) => ({
         name: b.tagName,
@@ -205,25 +221,59 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
         z: b.group.position.z,
         driving: !!b.car?.visible && !(b.rig?.object.visible ?? false),
         rig: !!b.rig,
+        emotes: b.emotes.length,
       }));
     return () => {
       delete hook.peerBodies;
       delete hook.peerPositions;
       delete hook.peerInfo;
+      delete hook.selfEmotes;
     };
   }, [bodies]);
 
   /* ---------------- the frame ---------------- */
-  useFrame(() => {
+  useFrame((_, delta) => {
     const g = root.current;
     if (!g) return;
     const now = performance.now();
+    // Clamped: a tab restored after a minute hands this a minute, and a wave
+    // is 1.8 seconds long.
+    const dt = Math.min(delta, 1 / 10);
+
+    /* ---- waving ---- */
+    // Read every frame, not on a send tick: a key press between two sends
+    // would otherwise be dropped, and this is the one input in the game whose
+    // whole purpose is that somebody else notices it.
+    if (!frame.paused && input.pressed("emote")) {
+      emote.current.seq++;
+      emote.current.id = EMOTE_WAVE;
+      // Repeat it for half a second of packets, so a single dropped one does
+      // not eat the wave.
+      emote.current.until = now + 500;
+      const own = startEmote(EMOTE_WAVE);
+      if (own && selfGroup.current) {
+        selfGroup.current.add(own.sprite);
+        selfEmotes.current.push(own);
+      }
+    }
 
     /* ---- say where we are ---- */
     const t = net.current;
     if (t && now >= clock.current.sendAt) {
       clock.current.sendAt = now + SEND_INTERVAL_MS;
-      t.send(localState(selfId, ident.current.name, ident.current.charId));
+      const msg = localState(selfId, ident.current.name, ident.current.charId);
+      if (now < emote.current.until) {
+        msg.e = emote.current.id;
+        msg.es = emote.current.seq;
+      }
+      t.send(msg);
+    }
+
+    /* ---- our own emotes ---- */
+    const sg = selfGroup.current;
+    if (sg) {
+      sg.position.set(frame.position.x, frame.position.y - PLAYER.height * 0.5, frame.position.z);
+      stepEmotes(selfEmotes.current, PLAYER.height, dt);
     }
 
     /* ---- forget the departed ---- */
@@ -259,7 +309,7 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
         if (i >= MAX_RIGS) continue;
         body = makeBody(g, p, bodies);
       }
-      placeBody(body, p, Math.sqrt(p.d2));
+      placeBody(body, p, Math.sqrt(p.d2), dt);
     }
 
     /* ---- the roster ---- */
@@ -269,7 +319,15 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
     }
   });
 
-  return <group ref={root} name="sf-peers" />;
+  return (
+    <>
+      <group ref={root} name="sf-peers" />
+      {/* Our own emotes live in world space at our feet rather than parented
+          to the avatar, which is only drawn in third person — a wave you
+          cannot see because you happen to be in first person is a bug. */}
+      <group ref={selfGroup} name="sf-self-emotes" />
+    </>
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -326,6 +384,7 @@ function makeBody(
     tag: null,
     tagName: "",
     locomotion: 0,
+    emotes: [],
     disposed: false,
   };
   bodies.set(p.id, body);
@@ -353,7 +412,7 @@ function makeBody(
   return body;
 }
 
-function placeBody(body: Body, p: PeerPose, distance: number): void {
+function placeBody(body: Body, p: PeerPose, distance: number, dt: number): void {
   body.group.position.set(p.x, p.y, p.z);
   body.group.rotation.y = p.yaw;
 
@@ -369,12 +428,24 @@ function placeBody(body: Body, p: PeerPose, distance: number): void {
   if (body.rig && !driving) {
     const want =
       p.motion === MOTION_RUN ? 1.25 : p.motion === MOTION_WALK ? 0.85 : 0;
-    // A fixed blend rate rather than a dt-scaled one: this runs off whatever
-    // frame rate the viewer has, and the gait only has to look unstartled.
-    body.locomotion = damp(body.locomotion, want, 9, 1 / 60);
+    // Real elapsed time. `damp` is only frame-rate independent if it is given
+    // the frame's actual length; handing it a constant makes the blend — and
+    // the rig's own animation below — run at whatever speed the viewer's
+    // machine happens to manage.
+    body.locomotion = damp(body.locomotion, want, 9, dt);
     body.rig.setLocomotion(clamp01(body.locomotion));
-    body.rig.update(1 / 60);
+    body.rig.update(dt);
   }
+
+  /* ---- emotes ---- */
+  if (p.emote !== null) {
+    const e = startEmote(p.emote);
+    if (e) {
+      body.group.add(e.sprite);
+      body.emotes.push(e);
+    }
+  }
+  stepEmotes(body.emotes, driving ? 1.9 : PLAYER.height, dt);
 
   /* ---- name ---- */
   const wantTag = distance < TAG_RANGE;
@@ -399,8 +470,28 @@ function placeBody(body: Body, p: PeerPose, distance: number): void {
   }
 }
 
+/**
+ * Advance a list of emotes in place, dropping the finished ones.
+ *
+ * Real elapsed time, not a fixed step. The first version passed a constant
+ * 1/60 per *frame*, which is exactly the thing that makes an animation run at
+ * different speeds on different machines: a wave lasted 108 frames, so it was
+ * 1.8 seconds at 60 Hz, 0.75 at 144, and the better part of six minutes in a
+ * software rasteriser.
+ */
+function stepEmotes(list: Emote[], baseY: number, dt: number): void {
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (!stepEmote(list[i], dt, baseY)) {
+      disposeEmote(list[i]);
+      list.splice(i, 1);
+    }
+  }
+}
+
 function disposeBody(b: Body): void {
   b.disposed = true;
+  for (const e of b.emotes) disposeEmote(e);
+  b.emotes.length = 0;
   if (b.rig) {
     b.group.remove(b.rig.object);
     b.rig.dispose();

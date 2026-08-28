@@ -162,6 +162,52 @@ describe("peer table", () => {
     expect(p!.x).toBeLessThan(4.5);
   });
 
+  it("fires a wave once, however many packets carry it", () => {
+    const t = new PeerTable();
+    // The sender repeats an emote for half a second of packets so a single
+    // drop cannot eat it. That must not become five waves.
+    t.ingest(state("a", 0, 0, { e: 0, es: 1 }), 1000);
+    let fired = 0;
+    for (let i = 0; i < 5; i++) {
+      t.ingest(state("a", i, 0, { e: 0, es: 1 }), 1010 + i * 10);
+      t.forEach(1200, (p) => {
+        if (p.emote !== null) fired++;
+      });
+    }
+    expect(fired).toBe(1);
+  });
+
+  it("fires again when the counter goes up, and never for an older one", () => {
+    const t = new PeerTable();
+    const drain = (now: number) => {
+      let e: number | null = null;
+      t.forEach(now, (p) => {
+        if (p.emote !== null) e = p.emote;
+      });
+      return e;
+    };
+    t.ingest(state("a", 0, 0, { e: 0, es: 4 }), 1000);
+    expect(drain(1100)).toBe(0);
+    // A straggler carrying an older sequence must not replay the wave.
+    t.ingest(state("a", 1, 0, { e: 0, es: 2 }), 1050);
+    expect(drain(1150)).toBeNull();
+    t.ingest(state("a", 2, 0, { e: 0, es: 5 }), 1100);
+    expect(drain(1200)).toBe(0);
+  });
+
+  it("does not bank a wave from somebody with no body to draw it over", () => {
+    // Read once per frame whether or not it is used: a peer beyond the render
+    // budget drops the wave rather than saving it for whenever you walk over.
+    const t = new PeerTable();
+    t.ingest(state("a", 0, 0, { e: 0, es: 1 }), 1000);
+    t.forEach(1100, () => {});
+    let later: number | null = null;
+    t.forEach(1200, (p) => {
+      later = p.emote;
+    });
+    expect(later).toBeNull();
+  });
+
   it("forgets a peer that stops talking, and one that says goodbye", () => {
     const t = new PeerTable();
     t.ingest(state("a", 0, 0), 1000);

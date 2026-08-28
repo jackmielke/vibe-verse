@@ -87,6 +87,11 @@ export interface FrameState {
   thirdPerson: boolean;
   /** Time-of-day in hours, 0..24. */
   timeOfDay: number;
+  /**
+   * Freeze the clock. Photo mode and the screenshot harness set this so a
+   * chosen hour stays chosen; nothing else should touch it.
+   */
+  clockHeld: boolean;
   /** 0..1 fog/marine-layer intensity — SF's signature weather. */
   fogDensity: number;
   windDirection: THREE.Vector2;
@@ -131,6 +136,7 @@ export const frame: FrameState = {
   vehicleId: null,
   thirdPerson: false,
   timeOfDay: 17.4,
+  clockHeld: false,
   /* Karl is real, but he is not this thick every day. 0.35 was chosen when
      nothing consumed it but the distance fog and the sky; the volumetric pass
      reads the same number and multiplies it through the whole depth range, so

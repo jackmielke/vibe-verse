@@ -92,6 +92,8 @@ export const ACTIONS = [
   "hud",
   /** Swap between over-the-shoulder and down-the-sights. */
   "camera",
+  /** Wave at somebody. */
+  "emote",
 ] as const;
 
 export type ActionName = (typeof ACTIONS)[number];
@@ -152,6 +154,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   // Not `KeyV`, which every third-person game in the world uses and which the
   // wingsuit already has here.
   camera: ["KeyT", "Pad13"],
+  emote: ["KeyZ", "Pad6"],
 };
 
 /* ------------------------------------------------------------------ *
@@ -261,6 +264,11 @@ const TOUCH_BUTTONS: TouchButtonSpec[] = [
   { slot: "fire", action: "fire", label: "FIRE", gx: 1.15, gy: 1.65, size: 68 },
   { slot: "link", action: "tetherLink", label: "LINK", gx: 2.1, gy: 2.15, size: 58 },
   { slot: "crouch", action: "crouch", label: "DUCK", gx: 0.3, gy: 2.2, size: 58 },
+  // On a phone this is the only thing you can say to anybody, so it gets a
+  // thumb-reachable slot rather than the far corner.
+  // Its own cell: `cut` already owns (0.15, 1.1), and the two overlapped
+  // exactly in Mayhem, where every button is shown at once.
+  { slot: "wave", action: "emote", label: "WAVE", gx: 1.2, gy: 2.72, size: 54 },
 ];
 
 /**
@@ -268,7 +276,7 @@ const TOUCH_BUTTONS: TouchButtonSpec[] = [
  * cockpit; these four are jump, get in a car, duck, and the grapple, which is
  * the one traversal toy that is pure fun and threatens nobody.
  */
-export const STROLL_TOUCH_SLOTS = ["jump", "interact", "crouch", "grapple"];
+export const STROLL_TOUCH_SLOTS = ["jump", "interact", "wave", "crouch"];
 
 /* ------------------------------------------------------------------ *
  * The manager

@@ -222,10 +222,11 @@ function Overlay({
           >
             {mode === "walk"
               ? touch
-                ? "Left thumb to walk · right thumb to look · GET IN for a car"
+                ? "Left thumb to walk · right thumb to look · GET IN for a car · WAVE to say hello"
                 : // F is the whole open world: it is how you get into a car, and
-                  // nothing on screen says so otherwise.
-                  "Click to capture the mouse · WASD to walk · Shift to run · Space to jump · F to get in a car · T to change camera · M for the map"
+                  // nothing on screen says so otherwise. Z is the only thing you
+                  // can say to another person, so it belongs here too.
+                  "Click to capture the mouse · WASD to walk · Shift to run · Space to jump · F to get in a car · Z to wave · T to change camera · M for the map"
               : touch
                 ? "Left thumb to move · right thumb to look"
                 : "Click to capture the mouse · WASD to fly · Shift to boost · Space / C for altitude"}

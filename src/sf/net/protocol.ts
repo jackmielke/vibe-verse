@@ -77,6 +77,19 @@ export interface StateMsg {
   m: Motion;
   /** Vehicle kind when driving, absent on foot. */
   v?: string;
+  /** Emote id, meaningful only alongside `es`. */
+  e?: number;
+  /**
+   * Emote sequence number, monotonic per sender.
+   *
+   * An emote is a *moment*, and every other field here is a *level* — which is
+   * the whole reason this needs its own counter. Sending "I am waving" as a
+   * flag would either repeat the wave nine times a second or be lost with the
+   * one packet that carried it. A receiver fires the emote when this number
+   * goes up, which is robust to both duplication and loss and needs no clocks
+   * to agree.
+   */
+  es?: number;
 }
 
 /** A clean goodbye, so nobody waits out the timeout for somebody who left. */
@@ -134,6 +147,8 @@ export function isWire(v: unknown): v is Wire {
   if (typeof m.a !== "number" || !Number.isFinite(m.a)) return false;
   if (typeof m.m !== "number") return false;
   if (m.v !== undefined && typeof m.v !== "string") return false;
+  if (m.e !== undefined && (typeof m.e !== "number" || !Number.isFinite(m.e))) return false;
+  if (m.es !== undefined && (typeof m.es !== "number" || !Number.isFinite(m.es))) return false;
   return true;
 }
 

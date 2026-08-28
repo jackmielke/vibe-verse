@@ -77,6 +77,14 @@ export function sunColor(hour: number, out = new THREE.Color()): THREE.Color {
   return out.copy(warm).lerp(noon, smoothstep(0.02, 0.42, elev));
 }
 
+/**
+ * The colour a lit city throws back up off its own streets after dark.
+ *
+ * Warm and dim: sodium and low-CCT LED, well under the brightness of anything
+ * in daylight, but far from the near-black a physical night sky would give.
+ */
+const SODIUM_BOUNCE = new THREE.Color(0.19, 0.145, 0.10);
+
 /** Key-light intensity in arbitrary-but-consistent units. */
 export function sunIntensity(hour: number): number {
   const elev = sunDirection(hour).y;
@@ -382,8 +390,29 @@ export default function Sky() {
     if (hemiRef.current) {
       const fill = skyFillColor(hour, scratch.fill);
       hemiRef.current.color.copy(fill);
-      hemiRef.current.groundColor.copy(fill).multiplyScalar(0.35);
-      hemiRef.current.intensity = 0.55 + frame.fogDensity * 0.9 + (1 - night) * 0.35;
+      /**
+       * Ground colour: cool by day, sodium by night.
+       *
+       * A hemisphere light's ground term is what lights the *underside* of
+       * things, so it stands in for bounce. By day that is grey pavement
+       * reflecting a blue sky, which is what the plain multiply gives. At
+       * night it is nothing of the sort — it is ten thousand street lamps,
+       * shop windows and headlights throwing warm light back up off the
+       * asphalt, and a city with none of that is a city where you cannot see
+       * the road you are standing on.
+       *
+       * This is the one term that made night playable rather than merely
+       * atmospheric. Nobody had ever looked at this world after dark, because
+       * until the clock started running it was permanently twenty past five.
+       */
+      hemiRef.current.groundColor
+        .copy(fill)
+        .multiplyScalar(0.35)
+        .lerp(SODIUM_BOUNCE, night);
+      // And the fill itself lifts off the floor at night: sky glow over a city
+      // this size is real, and pitch black reads as a bug rather than as late.
+      hemiRef.current.intensity =
+        0.55 + frame.fogDensity * 0.9 + (1 - night) * 0.35 + night * 0.85;
     }
 
     /**
