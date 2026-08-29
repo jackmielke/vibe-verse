@@ -809,7 +809,10 @@ export type LandmarkKind =
   | "castro-theatre"
   | "mission-dolores"
   | "fort-point"
-  | "chase-center";
+  | "chase-center"
+  /* Not a real building, and the only landmark here that is not. See
+     `world/terraces/`. */
+  | "watercolour-terraces";
 
 export interface LandmarkDef {
   key: string;
@@ -877,6 +880,13 @@ export const LANDMARKS: LandmarkDef[] = [
   landmark("mission-dolores", "mission-dolores", "Mission Dolores", 37.7645, -122.4268, 0.0, 43, 60),
   landmark("fort-point", "fort-point", "Fort Point", 37.8106, -122.4770, 0.0, 19, 70),
   landmark("chase-center", "chase-center", "Chase Center", 37.7680, -122.3877, 0.0, 45, 150),
+
+  /* The Terraces. On the Twin Peaks plateau, which the real city left empty
+     and this one has not. 148 m of stepped garden above a 292 m summit puts
+     the pavilion at 440 m — the tallest thing in San Francisco after Sutro
+     Tower, and deliberately so: it is meant to be a shape on the skyline from
+     the Embarcadero, not a surprise you find by walking into it. */
+  landmark("terraces", "watercolour-terraces", "The Terraces", 37.7544, -122.4477, 0.0, 150, 230),
 ];
 
 export const LANDMARK_BY_KEY: Record<string, LandmarkDef> = Object.fromEntries(
@@ -940,6 +950,8 @@ export interface SpawnPoint {
   z: number;
   /** Height above terrain, metres. Rooftop spawns use large values. */
   yOffset: number;
+  /** Height above terrain for a walking spawn — see `SpawnDef.walkY`. */
+  walkY?: number;
   heading: number;
   blurb: string;
 }
@@ -961,6 +973,7 @@ export const SPAWNS: SpawnPoint[] = SPAWN_DEFS.map((d) => {
     x: p.x,
     z: p.z,
     yOffset: d.yOffset,
+    walkY: d.walkY,
     heading: d.heading,
     blurb: d.blurb,
   };

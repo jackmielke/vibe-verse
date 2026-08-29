@@ -40,9 +40,24 @@ import { Batch, disposeLandmark } from "./kit";
 import { builderFor } from "./registry";
 import {
   clearLandmarkColliders,
+  landmarkColliders,
   makeLandmarkCtx,
   type LandmarkModule,
 } from "./types";
+
+/**
+ * Key the landmark hulls are registered under in the physics world.
+ *
+ * They were not registered anywhere at all until the Terraces needed them.
+ * `landmarkSurfaceHeight()` has always answered "what am I standing on" for
+ * the kinematic walker, but `Player` drives Rapier, and nothing had ever
+ * handed Rapier a landmark — so under the physics controller the Golden
+ * Gate's deck, Lombard's switchbacks, Union Square's plinth and Pier 39's
+ * boardwalk were all scenery you fall through. `registerStaticBoxes()`
+ * existed, exported and documented ("landmark hulls, bridge decks, jersey
+ * barriers, the Alcatraz cliffs"), and had never been called with one.
+ */
+const PHYSICS_KEY = "sf-landmarks";
 
 /** Milliseconds of landmark building allowed per frame. */
 const BUDGET_MS = 6;
@@ -158,6 +173,8 @@ export default function Landmarks({ tier }: LandmarksProps = {}) {
   const slots = useRef<Slot[]>([]);
   const lastScan = useRef(new THREE.Vector3(1e9, 1e9, 1e9));
   const queue = useRef<Slot[]>([]);
+  /** Set once the silhouettes are built; cleared once Rapier has taken them. */
+  const physicsPending = useRef(false);
 
   /* ---- build every silhouette once ---- */
   useEffect(() => {
@@ -183,6 +200,9 @@ export default function Landmarks({ tier }: LandmarksProps = {}) {
     }
     slots.current = made;
     lastScan.current.set(1e9, 1e9, 1e9);
+    // Rapier may not exist yet — it loads on its own schedule — so this is a
+    // request, retried in the frame loop until it takes.
+    physicsPending.current = true;
 
     return () => {
       for (const s of made) {
@@ -196,6 +216,8 @@ export default function Landmarks({ tier }: LandmarksProps = {}) {
       slots.current = [];
       queue.current = [];
       clearLandmarkColliders();
+      physicsPending.current = false;
+      void import("../../physics").then((m) => m.removeStaticBoxes(PHYSICS_KEY));
     };
   }, [root]);
 
@@ -203,6 +225,26 @@ export default function Landmarks({ tier }: LandmarksProps = {}) {
   useFrame((state) => {
     const list = slots.current;
     if (list.length === 0) return;
+
+    /* Hand the hulls to Rapier as soon as there is a Rapier to hand them to.
+       Dynamic, so a build that never boots physics does not pull it in; and
+       `registerStaticBoxes` reports whether the world was there, so this is a
+       poll rather than a guess about load order. */
+    if (physicsPending.current) {
+      physicsPending.current = false;
+      const boxes = landmarkColliders().map((c) => ({
+        cx: c.x, cy: c.y, cz: c.z,
+        hx: c.hx, hy: c.hy, hz: c.hz,
+        // Same sign convention as `landmarkSurfaceHeight` and the ribbon sink:
+        // a box whose long axis points along bearing `a` is stored at `-a`,
+        // and a three/Rapier yaw about +Y takes local +X to that same place.
+        yaw: c.yaw,
+        surface: "concrete" as const,
+      }));
+      void import("../../physics").then((m) => {
+        if (!m.registerStaticBoxes(PHYSICS_KEY, boxes)) physicsPending.current = true;
+      });
+    }
     const cam = state.camera.position;
     const t = state.clock.elapsedTime;
 

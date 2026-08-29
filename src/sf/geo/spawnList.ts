@@ -22,6 +22,17 @@ export interface SpawnDef {
   z?: number;
   /** Height above terrain for the FLYING camera, metres. On foot it is ignored. */
   yOffset: number;
+  /**
+   * Height above terrain for a WALKING spawn, metres. Almost always absent:
+   * on foot you start on the ground, and `yOffset` is deliberately ignored so
+   * that "Transamerica" does not drop a character 266 m onto a roof.
+   *
+   * The exception is a place whose floor is not the terrain. The Terraces put
+   * a hundred and ten metres of built structure over the Twin Peaks plateau,
+   * so the ground under that spawn is inside the mountain; this is how a spawn
+   * says "the deck, not the dirt".
+   */
+  walkY?: number;
   heading: number;
   blurb: string;
 }
@@ -145,13 +156,34 @@ export const SPAWN_DEFS: SpawnDef[] = [
     blurb: "Top of Telegraph Hill. The whole city under your boots.",
   },
   {
+    /* At the foot of the switchback, not on the summit: the point of arriving
+       here is seeing the thing before you climb it. */
     key: "twinpeaks",
     name: "Twin Peaks",
-    lat: 37.7544,
-    lon: -122.4477,
+    x: -3878,
+    z: 4207,
     yOffset: 4,
+    heading: -2.5,
+    blurb: "The foot of the Terraces. Seven levels and a long walk up.",
+  },
+  {
+    /* Over the pavilion, which is 52 m back from the landmark's anchor: the
+       terraces step away from downtown as they rise, so the summit is not
+       above the point the mountain is registered at. World metres rather than
+       lat/lon because it is a position in a *building*, not a place.
+
+       `walkY` is 151 against a deck at anchor-terrain + 148, and the terrain
+       under this point is 1.25 m lower than under the anchor — so it is a
+       two-metre drop onto the pavilion floor, which is the right side of
+       exact. `terraces.test.ts` checks the deck is really there. */
+    key: "terraces",
+    name: "The Terraces · Summit",
+    x: -4113,
+    z: 4396,
+    yOffset: 165,
+    walkY: 151,
     heading: 0.6,
-    blurb: "282 metres up, looking straight down Market Street.",
+    blurb: "440 metres up a painted mountain. Snow, a pavilion, and the whole city under it.",
   },
   {
     key: "transamerica",

@@ -296,12 +296,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1e", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "9fd6cfa", iso: "2026-08-28T08:23:33+00:00", subject: "The day passes now, and you can wave at people" },
     { sha: "620ba8b", iso: "2026-08-26T08:54:18+00:00", subject: "Other people are in San Francisco now" },
     { sha: "68d1e74", iso: "2026-08-26T07:28:25+00:00", subject: "Stroll is the default. The loud version is a button." },
     { sha: "9df38e0", iso: "2026-08-25T10:13:39+00:00", subject: "A way back to first person, and a hint that says how to get in a car" },
     { sha: "fa63731", iso: "2026-08-25T09:57:18+00:00", subject: "Tame the lens, and two determinism bugs the fog change flushed out" },
     { sha: "8876dd8", iso: "2026-08-25T09:20:29+00:00", subject: "Turn the post chain on, and thin Karl out" },
-    { sha: "3f39ce5", iso: "2026-08-25T09:08:52+00:00", subject: "The crowd is from San Francisco now, not from nowhere" },
   ],
   "shop": [
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },

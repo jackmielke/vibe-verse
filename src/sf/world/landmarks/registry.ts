@@ -39,6 +39,7 @@ import {
   missionDolores,
   unionSquare,
 } from "./neighbourhoods";
+import { watercolourTerraces } from "../terraces/terraces";
 
 export const LANDMARK_BUILDERS: Record<LandmarkKind, LandmarkModule> = {
   "golden-gate-bridge": goldenGateBridge,
@@ -73,6 +74,7 @@ export const LANDMARK_BUILDERS: Record<LandmarkKind, LandmarkModule> = {
   "mission-dolores": missionDolores,
   "fort-point": fortPoint,
   "chase-center": chaseCenter,
+  "watercolour-terraces": watercolourTerraces,
 };
 
 /** The module for a kind, or `null` if nothing has been written for it yet. */

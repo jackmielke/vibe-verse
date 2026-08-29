@@ -194,14 +194,29 @@ class RainSystem {
       uniforms: {
         uTime: { value: 0 },
         uCam: { value: new THREE.Vector3() },
-        uBox: { value: new THREE.Vector3(38, 26, 38) },
+        /* The wrap volume the drops live in.
+         *
+         * 38 m was the original and it is far too generous: the shader fades
+         * drops out beyond 62 % of the box half-width, so the *visible* shell
+         * was a sphere 24 m across containing a couple of hundred of the
+         * 1 800 streaks a low-tier machine gets — which in a frame is about
+         * forty of them, spread over a 74° field of view. Rain you have to
+         * look for is not rain. Halving the box multiplies the density by
+         * eight for exactly the same cost, because the count is fixed and the
+         * per-instance work is the same. */
+        uBox: { value: new THREE.Vector3(19, 15, 19) },
         uWind: { value: new THREE.Vector3() },
         uFall: { value: 17 },
         uAmount: { value: 0 },
         uLength: { value: 0.75 },
-        uWidth: { value: 0.035 },
+        // Wider than a real raindrop by a long way, and it has to be: a streak
+        // under a pixel wide is resolved away to nothing at any distance.
+        uWidth: { value: 0.055 },
         uMap: { value: particleAtlas(tilePxForTier(tier)) },
-        uTint: { value: new THREE.Color(0.78, 0.85, 0.95) },
+        // Rain reads as *light* against a dark street and against a grey sky
+        // alike, because what you are seeing is a lit column of water, not the
+        // water. Brighter than one expects, on purpose.
+        uTint: { value: new THREE.Color(1.05, 1.12, 1.25) },
         uOpacity: { value: 0.5 },
       },
       transparent: true,
@@ -224,6 +239,11 @@ class RainSystem {
     this.started = true;
   }
 
+  /** True when the streak field is actually being drawn this frame. */
+  get drawing(): boolean {
+    return this.mesh?.visible === true;
+  }
+
   update(camPos: THREE.Vector3): void {
     if (!this.mat || !this.mesh) return;
     const amount = weather.rain;
@@ -241,8 +261,10 @@ class RainSystem {
     );
     u.uAmount.value = amount;
     u.uFall.value = 14 + amount * 9;
-    u.uLength.value = 0.5 + amount * 0.7;
-    u.uOpacity.value = 0.28 + amount * 0.42;
+    // Faster rain draws longer streaks, which is what a camera and an eye both
+    // do — the length is motion blur, not the drop.
+    u.uLength.value = 0.9 + amount * 1.5;
+    u.uOpacity.value = 0.34 + amount * 0.5;
   }
 
   dispose(): void {

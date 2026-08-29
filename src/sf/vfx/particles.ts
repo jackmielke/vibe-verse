@@ -547,6 +547,13 @@ class ParticleSystem {
     return this.started;
   }
 
+  /** Live particles across every layer. For the debug hook. */
+  get liveCount(): number {
+    let n = 0;
+    for (const layer of this.layers.values()) n += layer.liveCount;
+    return n;
+  }
+
   /** Build every layer for a tier. Safe to call again to change tier. */
   init(tier: QualityTier): void {
     if (this.started && this.tier === tier) return;

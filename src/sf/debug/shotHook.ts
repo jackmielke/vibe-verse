@@ -9,6 +9,7 @@
  * better because it now runs at 4 fps".
  */
 import * as THREE from "three";
+import type { WeatherReport } from "../weather/report";
 
 export interface ShotRequest {
   key: string;
@@ -127,6 +128,52 @@ export interface SfDebugHook {
   peerInfo?: () => PeerDebug[];
   /** Emotes playing over our own head. */
   selfEmotes?: () => number;
+  /**
+   * Override the weather report, bypassing the network.
+   *
+   * The live fetch cannot be exercised where this is developed — the sandbox's
+   * egress proxy answers 403 to CONNECT for every weather host — so this is
+   * the only way to see what a given forecast actually *renders as*. Push a
+   * July morning in and photograph what the city does with it.
+   */
+  forceReport?: (over: Partial<WeatherReport>) => void;
+  /** What the weather system currently believes, and what it applied. */
+  weather?: () => WeatherDebug | null;
+  /**
+   * Whether the VFX layer is mounted, and what it is drawing.
+   *
+   * Absent means `<Vfx />` is not in the tree — which was the state of this
+   * repository for the whole life of the file until the weather needed it.
+   */
+  vfx?: () => VfxDebug;
+}
+
+export interface VfxDebug {
+  tier: string;
+  rain: number;
+  wetness: number;
+  groundFog: number;
+  haze: number;
+  /** The rain streak field is visible this frame, not merely configured. */
+  rainDrawn: boolean;
+  /** Live pooled particles. */
+  particles: number;
+}
+
+export interface WeatherDebug {
+  /** `live` if it came off the wire, `estimate` if it is climatology. */
+  source: "live" | "estimate";
+  /** What the HUD is calling it. */
+  label: string;
+  tempC: number;
+  /** WMO present-weather code. */
+  code: number;
+  rain: number;
+  /** Read back off `frame`, not off the target — so easing shows up here. */
+  fogDensity: number;
+  groundFog: number;
+  windSpeed: number;
+  windDir: [number, number];
 }
 
 export interface PeerDebug {

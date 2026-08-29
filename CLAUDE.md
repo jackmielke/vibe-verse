@@ -47,10 +47,19 @@ spot on dry land and had never produced a single car, and vehicles were culled
 on the frame after they spawned. Both were one line, and no amount of testing
 would have found them, because nothing ran them.
 
+That was not the last of them, and the pattern is worth naming rather than
+rediscovering. Since then: `streetAt()` was exported and never called;
+`frame.timeOfDay` was read by eighteen files and advanced by none; and
+`<Vfx />` — rain, gulls, ground fog, manhole steam, blowing litter, wet
+asphalt, nine hundred lines with a smoke test — had never been mounted
+anywhere, while `frame.windDirection` and `frame.windSpeed` were read in nine
+places and written in zero, so the entire city was becalmed at whatever the
+initial value happened to be.
+
 If you are about to build something, check whether it is already here and
 merely unplugged. `node scripts/sf-live.mjs` reports what is actually alive —
-crowd, traffic, vehicles, pending spawns — and is the fastest way to tell "not
-built" from "built, never mounted".
+crowd, traffic, vehicles, pending spawns, and now the weather — and is the
+fastest way to tell "not built" from "built, never mounted".
 
 **There is no GPU in the sandbox, and it lies to you in two specific ways.**
 Chromium falls back to SwiftShader and /sf renders at well under one frame per
@@ -159,6 +168,58 @@ Two things in `src/sf/net` are load-bearing:
   context; `BroadcastChannel` is scoped to a browsing-context group, and two
   contexts silently never see each other, which looks exactly like broken
   netcode.
+
+## The weather is the real weather
+
+`/sf` opens in whatever San Francisco is actually doing right now. Open-Meteo,
+no key, one GET; `src/sf/weather/report.ts` turns the reply into rain, ground
+fog, haze, `frame.fogDensity` and the wind vector, and `Weather.tsx` eases the
+world onto it.
+
+- **Everything that decides how it looks is pure, because none of it could be
+  run.** The sandbox's egress proxy answers 403 to CONNECT for
+  `api.open-meteo.com`, `api.weather.gov` and `wttr.in` alike, so the fetch
+  itself has never executed here. What is checked instead is
+  `worldWeather()` — 28 tests, including the wind bearing, which is the one
+  thing here that is invisible in a still frame and obviously wrong the moment
+  a tree moves. Meteorological degrees are where the wind comes *from*; the
+  renderer wants where it goes.
+- **`window.__sf.forceReport({...})` is how you see a forecast render**, and
+  `node scripts/sf-live.mjs --weather fog|rain|storm|wind|clear` wraps it.
+  There is no other way to look at rain in this repository.
+- **Failure is a first-class path, not an error screen.** Offline, blocked or
+  timed out falls back to a stale cached reading, then to climatology from
+  `NORMALS` — and the HUD says ESTIMATED. Presenting a guess as an observation
+  is the one thing that would make the honest version worthless.
+- The fog is inferred, not looked up. A 13 °C, 95 %-humidity, overcast, calm
+  morning in the Sunset gets reported as plain "overcast" about half the time,
+  and that reading *is* the marine layer. `MAX_FOG` caps the total at 0.93: the
+  terms are independent and a thunderstorm inside a marine layer sums past 1.0,
+  which is a flat white screen.
+
+## The Terraces
+
+`src/sf/world/terraces/` is a landmark that is not a building: seven stepped
+garden levels on the Twin Peaks plateau, painted rather than rendered. It is
+the one place in this world that is deliberately not photographic, and the
+thing that makes it work is `watercolour.ts` — a patch on
+`MeshStandardMaterial` that quantises the wash, lifts the lights toward one
+paper tone, granulates in world space and pools pigment at the edges.
+
+Two traps in that file, both of which cost a render:
+
+- **Use the local `normal`, never the `vNormal` varying.**
+  `normal_pars_fragment` wraps the varying in `#ifndef FLAT_SHADED`, so it does
+  not exist on exactly the materials that wanted faceting most — and a fragment
+  shader that fails to compile in three is a silently black mesh with the
+  reason only in the browser console.
+- **No backticks inside the GLSL.** It is a template literal. A backtick in a
+  shader comment ends the string, and the error you get is a JS syntax error
+  four lines away from anything to do with shaders.
+
+Also: a spawn's floor is not always the terrain. `SpawnDef.walkY` exists
+because the summit here is 148 m of structure above the hill `walkableHeight`
+knows about, and without it "Twin Peaks" drops you inside the mountain.
 
 ## Adding a world
 

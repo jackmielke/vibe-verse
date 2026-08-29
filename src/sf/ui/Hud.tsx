@@ -35,6 +35,7 @@ import DamageIndicators, { type DamageHandle } from "./hud/DamageIndicators";
 import WeaponWheel from "./hud/WeaponWheel";
 import Prompt from "./hud/Prompt";
 import Minimap from "./Minimap";
+import WeatherChip from "./hud/WeatherChip";
 import Notifications from "./Notifications";
 import { postFx } from "../postfx/state";
 
@@ -124,6 +125,9 @@ export default function Hud({ visible = true, peaceful = false }: HudProps) {
 
       <div className="sf-cluster" data-anchor="tl">
         <Minimap />
+        {/* Under the map, because "where am I" and "what is it like here" are
+            the same question asked twice. */}
+        <WeatherChip />
         {peaceful ? null : (
           <div style={{ marginTop: 14 }}>
             <Objectives />

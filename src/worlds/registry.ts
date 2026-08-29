@@ -578,7 +578,7 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🌉",
     kind: "game",
     blurb:
-      "The real city, hill for hill, bridge for bridge, nine kilometres of it — and other people are in it with you, as their own characters, with their names above their heads. Walk it past thirty-two landmarks, get into any parked car and drive off, and share the streets with a crowd cast by neighbourhood and by the hour: lanyards on Montgomery at nine, couriers on Market, tourists at the waterfront. Nothing is chasing you and nothing is keeping score. Flip it to Mayhem if you want the other kind of afternoon.",
+      "The real city, hill for hill, bridge for bridge, nine kilometres of it — in the weather San Francisco is actually having right now, fetched live: if Karl is in off the Pacific this afternoon, he is in here too. Other people are in it with you, as their own characters, with their names above their heads. Walk it past thirty-three landmarks, get into any parked car and drive off, and share the streets with a crowd cast by neighbourhood and by the hour. Then climb the Terraces on Twin Peaks — seven watercolour levels, a pagoda, a vineyard and a snow line, ending in a pavilion at 440 metres. Nothing is chasing you and nothing is keeping score.",
     status: "Multiplayer open world — walk it, drive it, or fly it",
     accent: "#ff6a2b",
     featured: true,

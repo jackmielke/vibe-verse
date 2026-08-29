@@ -30,6 +30,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { QualityTier } from "../config";
 import { frame, useSfStore } from "../state/store";
+import { getShotHook } from "../debug/shotHook";
 import { walkableHeight } from "../geo/sfGeo";
 
 import {
@@ -511,6 +512,30 @@ export default function Vfx({ quality, physics = true }: VfxProps) {
     g.add(explosions.group);
     g.add(environment.group);
     return g;
+  }, [tier]);
+
+  useEffect(() => {
+    /* Say, from outside, that this exists and what it is doing.
+     *
+     * Worth its eight lines: this component was written, tested, documented
+     * and never mounted, and the only symptom of that was the absence of
+     * things nobody was looking for. "Is the rain drawing" and "is there any
+     * rain to draw" are different questions and neither is answerable from a
+     * screenshot at a third of a frame per second. */
+    const hook = getShotHook();
+    const r = (n: number) => Math.round(n * 1000) / 1000;
+    hook.vfx = () => ({
+      tier,
+      rain: r(weather.rain),
+      wetness: r(weather.wetness),
+      groundFog: r(weather.groundFog),
+      haze: r(weather.haze),
+      rainDrawn: environment.rain.drawing,
+      particles: particles.liveCount,
+    });
+    return () => {
+      delete hook.vfx;
+    };
   }, [tier]);
 
   useEffect(() => {

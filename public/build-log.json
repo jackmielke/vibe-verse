@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-08-28T08:17:47.650Z",
+  "generated_at": "2026-08-29T06:59:49.904Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "9fd6cfae",
+      "date": "2026-08-28",
+      "subject": "The day passes now, and you can wave at people",
+      "lede": "Four small things, and one of them was hiding behind the others.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 20
+    },
     {
       "sha": "620ba8b3",
       "date": "2026-08-26",
@@ -993,14 +1003,6 @@
       "lede": "The Market Street Run has two siblings — a Waterfront Dash up the Embarcadero from the Bay Bridge to Pier 39, and a Hill Climb from the Ferry Building over Nob Hill to Lombard — plus the Grand Tour, which times you touching all twelve landmarks with no rings and no route. Best times are kept per challenge, and the single Market time from before is carried forward rather than quietly reset.",
       "places": [],
       "files": 7
-    },
-    {
-      "sha": "9a60d84f",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco after dark, and four other times of day",
-      "lede": "Dawn, midday, golden hour, dusk and night, on a button in the top bar. Each one moves the sun, its colour and intensity, both ends of the sky gradient, the hemisphere fill, and the clouds — which matters more than it sounds, because unlit white cloud geometry staying bright white is the single most obvious tell that a \"night mode\" is a colour filter rather than a time of day.",
-      "places": [],
-      "files": 9
     }
   ]
 }

@@ -31,6 +31,13 @@
  *   node scripts/sf-live.mjs --look 44,11,60,-20,11,-40       pose the camera
  *   node scripts/sf-live.mjs --vibe mayhem                     the loud version
  *   node scripts/sf-live.mjs --tod 18.6                        set the hour
+ *   node scripts/sf-live.mjs --weather fog                     force conditions
+ *
+ * `--weather` takes `clear`, `fog`, `rain`, `storm` or `wind` and pushes a
+ * synthetic report straight into the weather system, bypassing the network.
+ * That is not a convenience: no weather API is reachable from the sandbox —
+ * the egress proxy answers 403 to CONNECT for every one of them — so this is
+ * the only way to see what a given forecast actually renders as.
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -134,10 +141,44 @@ for (let i = 0; i < 3; i++) {
 await page.mouse.click(800, 450);
 await page.waitForTimeout(600);
 
+/** Synthetic reports. Real values, from real San Francisco days. */
+const WEATHER = {
+  clear: { code: 0, humidity: 42, cloudCover: 4, tempC: 21, precipMm: 0, windKph: 14, gustKph: 22, windFromDeg: 285 },
+  fog:   { code: 3, humidity: 96, cloudCover: 100, tempC: 12.4, precipMm: 0, windKph: 10, gustKph: 16, windFromDeg: 265 },
+  rain:  { code: 63, humidity: 92, cloudCover: 100, tempC: 12, precipMm: 2.2, windKph: 26, gustKph: 44, windFromDeg: 165 },
+  storm: { code: 82, humidity: 95, cloudCover: 100, tempC: 11, precipMm: 9, windKph: 52, gustKph: 88, windFromDeg: 175 },
+  wind:  { code: 1, humidity: 55, cloudCover: 20, tempC: 16, precipMm: 0, windKph: 58, gustKph: 92, windFromDeg: 290 },
+};
+
+if (args.weather) {
+  const spec = WEATHER[args.weather];
+  if (!spec) {
+    console.error(`unknown --weather ${args.weather}; try ${Object.keys(WEATHER).join(", ")}`);
+  } else {
+    await page.evaluate((w) => window.__sf.forceReport(w), spec);
+    /* The applied state eases toward a new report over ~30 s of wall clock,
+       and this is wall clock, not frames — so a minute here is a minute of
+       easing however few frames the software rasteriser manages in it.
+       Twenty seconds got about half way and rain at half strength over a
+       white terrace is invisible. */
+    await page.waitForTimeout(70000);
+  }
+}
+
+console.log(`weather        ${JSON.stringify(await page.evaluate(() => window.__sf.weather?.() ?? null))}`);
+console.log(`vfx            ${JSON.stringify(await page.evaluate(() => window.__sf.vfx?.() ?? "NOT MOUNTED"))}`);
+
 if (args.tod !== undefined) {
-  // Jump the clock. The day keeps running from wherever it is put, which is
-  // what you want for a screenshot and harmless for anything else.
-  await page.evaluate((h) => window.__sf.setWeather(h, 0.2), Number(args.tod));
+  /* Jump the clock. The day keeps running from wherever it is put, which is
+     what you want for a screenshot and harmless for anything else.
+
+     The fog argument is handed back whatever the weather system has already
+     applied: `setWeather` writes `frame.fogDensity` directly, and passing a
+     constant here would fight the real weather for one frame and then lose. */
+  await page.evaluate(
+    (h) => window.__sf.setWeather(h, window.__sf.weather?.()?.fogDensity ?? 0.2),
+    Number(args.tod),
+  );
   await page.waitForTimeout(7000);
 }
 

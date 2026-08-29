@@ -40,6 +40,10 @@ import SfUi from "./ui/SfUi";
 import Peers from "./net/Peers";
 import type { NetMode } from "./net/transport";
 import Pipeline from "./postfx/Pipeline";
+import Vfx from "./vfx/Vfx";
+import Weather from "./weather/Weather";
+import { currentReport, setReport } from "./weather/service";
+import { describeWeather, worldWeather } from "./weather/report";
 
 /* ------------------------------------------------------------------ *
  * Renderer configuration — the AAA baseline every other system assumes.
@@ -176,6 +180,36 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
         return hit;
       });
     };
+    /* Force a report, bypassing the network. The live fetch cannot be
+       exercised in the sandbox at all — the egress proxy answers 403 to
+       CONNECT for every weather host — so this is how the *rendered* result of
+       a given forecast gets looked at: push a July morning in and photograph
+       what the city does with it. */
+    hook.forceReport = (over) => {
+      const base = currentReport() ?? {
+        tempC: 15, apparentC: 14, humidity: 78, cloudCover: 50, precipMm: 0,
+        code: 3, windKph: 18, gustKph: 28, windFromDeg: 270, isDay: true,
+        at: Date.now(), source: "live" as const,
+      };
+      setReport({ ...base, ...over, at: Date.now() });
+    };
+    hook.weather = () => {
+      const r = currentReport();
+      if (!r) return null;
+      const w = worldWeather(r);
+      const round = (n: number) => Math.round(n * 1000) / 1000;
+      return {
+        source: r.source,
+        label: describeWeather(r, w),
+        tempC: round(r.tempC),
+        code: r.code,
+        rain: round(w.rain),
+        fogDensity: round(frame.fogDensity),
+        groundFog: round(w.groundFog),
+        windSpeed: round(frame.windSpeed),
+        windDir: [round(frame.windDirection.x), round(frame.windDirection.y)] as [number, number],
+      };
+    };
     hook.state = () => ({
       paused: frame.paused,
       phase: useSfStore.getState().phase,
@@ -239,6 +273,8 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
       delete hook.teleport;
       delete hook.nearestVehicle;
       delete hook.nearestPedestrian;
+      delete hook.forceReport;
+      delete hook.weather;
     };
   }, [camera, gl, scene, hook]);
 
@@ -507,7 +543,12 @@ export default function SanFranciscoGame({
        character in at the same place is a long fall onto a roof they did not
        ask for, so on foot the offset is ignored and you start on the ground
        under it, which is the interesting place to be standing anyway. */
-    const y = mode === "walk" ? walkableHeight(sp.x, sp.z) : terrainHeight(sp.x, sp.z) + sp.yOffset;
+    /* `walkY` is for a spawn whose floor is built rather than terrain — the
+       summit of the Terraces is 113 m of structure above the hill it stands
+       on, and the hill is what `walkableHeight` knows about. */
+    const y = mode === "walk"
+      ? walkableHeight(sp.x, sp.z) + (sp.walkY ?? 0)
+      : terrainHeight(sp.x, sp.z) + sp.yOffset;
     resetFrame(sp.x, y, sp.z, sp.heading);
     setPhase("playing");
   }, [shot, spawn, mode, forcedQuality, setQuality, setPhase]);
@@ -568,6 +609,16 @@ export default function SanFranciscoGame({
               stream against a player who never moves. */}
           {!shot && mode === "walk" ? <LivingCity peaceful={peaceful} /> : null}
         </Suspense>
+        {/* The real weather in the real San Francisco, right now. Not mounted
+            under the shot harness, which sets its own fog and expects it to
+            stay set. */}
+        {!shot ? <Weather /> : null}
+        {/* Rain, gulls, ground fog, manhole steam, blowing litter, wet
+            asphalt. Every one of those was written, tested and documented, and
+            this component had never been mounted anywhere in the repository —
+            so none of it had drawn a single pixel. `physics` is the explosion
+            and destruction bridge, which only mayhem has anything to hand it. */}
+        {!shot ? <Vfx physics={!peaceful} /> : null}
         {/* Missions, chaos scoring and the escalation clock. A city you are
             just walking around does not need a director. */}
         {!shot && !peaceful ? <GameDirector /> : null}
