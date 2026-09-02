@@ -401,6 +401,7 @@ const GROUND_TRUTH = `(() => {
          from and the one to measure. */
       let b;
       if (o.isSkinnedMesh) {
+        o.skeleton && o.skeleton.update();
         o.computeBoundingBox();
         b = o.boundingBox;
       } else {
@@ -644,7 +645,9 @@ if (booted) {
         return m.phase === "live" && p.state !== "bus" && p.state !== "skydive" && p.state !== "glide";
       })()`,
       null,
-      { timeout: 60000 },
+      // Poll on a timer, not on rAF: under SwiftShader a heavy world can go
+      // a minute between frames and a rAF poll never fires at all.
+      { timeout: 60000, polling: 500 },
     )
     .then(() => true)
     .catch(() => false);

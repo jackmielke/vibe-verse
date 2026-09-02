@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-09-02T06:37:30.508Z",
+  "generated_at": "2026-09-02T08:12:12.989Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f34a3411",
+      "date": "2026-09-02",
+      "subject": "Locker: posed bounds for skinned previews, harness telemetry for skins",
+      "lede": "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_014MznGs5co7YzKaZ7E216h3",
+      "places": [],
+      "files": 8
+    },
     {
       "sha": "2b7b92ac",
       "date": "2026-09-02",
@@ -997,14 +1005,6 @@
         "Vibe Island"
       ],
       "files": 8
-    },
-    {
-      "sha": "151c50cf",
-      "date": "2026-08-18",
-      "subject": "Crossings, shopfronts, roof clutter — and the camera that would not move",
-      "lede": "Three things the city was missing at the two scales you actually look at it.",
-      "places": [],
-      "files": 7
     }
   ]
 }

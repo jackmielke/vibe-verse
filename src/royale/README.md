@@ -113,6 +113,18 @@ it. It drives the skin's clips off the same state the body animates from
 plants a node named `dz-hand-r` on the skin's right hand, which is how the
 third-person weapon finds a hand on a skeleton it has never seen.
 
+**The fit is measured off a render, not a bounding box.** No box is honest
+for every rig in the catalog: the Quaternius armatures draw from their bones
+at twice their bind box and standing on the origin, the Esmeralda pirates
+box at twice their drawn size, and fitting either from geometry put the
+first family's boots at the top of the turntable and the second at half
+height. `refitByRender` in `src/lib/characterRig.ts` draws the rig once,
+flat white, into a 96×128 offscreen target and reads the alpha back; the
+skin and the locker preview both rescale and re-plant from that. Under
+SwiftShader that first frame can take forty seconds to show; the harness
+waits for it, and a blank turntable in a capture is the wait, not the fit —
+`window.__previewFit` says what the fit decided.
+
 Bots and remote players still wear the drop-suit. The pick does not travel
 over the wire yet.
 

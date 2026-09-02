@@ -137,6 +137,132 @@ function proceduralRig(opts: Required<RigOptions>, designId?: string): Character
   };
 }
 
+/**
+ * Measure a rig the way the GPU sees it.
+ *
+ * No CPU bounding box is right for every rig in the catalog. The Quaternius
+ * models carry an armature at scale 100 and their skinned box matches what
+ * renders; the Esmeralda pirates sit at scale 1 and their skinned box is twice
+ * the render, so fitting from it left Anne half-size and floating forty
+ * centimetres off the floor. Both were measured against an alpha readback of
+ * an actual render, which is the only ruler that agrees with the screen.
+ *
+ * So: draw the rig alone, orthographically, into a small target that covers
+ * a generous box around it, read the alpha back, and hand back the rendered
+ * extent in the rig's parent space. ~1 ms once per load. The caller is what
+ * has a renderer; this module still does not create one.
+ */
+export function measureRenderedBounds(
+  renderer: THREE.WebGLRenderer,
+  object: THREE.Object3D,
+  guess: THREE.Box3,
+): { minY: number; maxY: number; halfWidth: number } | null {
+  const size = new THREE.Vector3();
+  const centre = new THREE.Vector3();
+  guess.getSize(size);
+  guess.getCenter(centre);
+  // Room on every side: the guess can be half or double the truth.
+  const span = Math.max(size.x, size.y, size.z, 0.1) * 2.4;
+  const W = 96;
+  const H = 128;
+  const cam = new THREE.OrthographicCamera(-span / 2, span / 2, span / 2, -span / 2, 0.01, span * 4);
+  cam.position.set(centre.x, centre.y, centre.z + span * 1.5);
+  cam.lookAt(centre.x, centre.y, centre.z);
+  cam.updateMatrixWorld(true);
+
+  const scene = new THREE.Scene();
+  const parent = object.parent;
+  const savedPos = object.position.clone();
+  const savedRot = object.rotation.clone();
+  const savedScale = object.scale.clone();
+  // Render the object exactly as it is, alone. Reparenting keeps every local
+  // transform; the world matrix is rebuilt from the empty scene.
+  scene.add(object);
+  object.updateMatrixWorld(true);
+  // Coverage is the only thing read back, so draw flat white: one cheap
+  // program instead of a lit variant of every material on the rig, which on
+  // a software renderer is the difference between a blink and ten seconds
+  // before the turntable shows anything. Skinning and morphs still apply;
+  // the renderer takes those from the mesh, not the material.
+  const flat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  scene.overrideMaterial = flat;
+
+  const target = new THREE.WebGLRenderTarget(W, H, { depthBuffer: true, stencilBuffer: false });
+  const prevTarget = renderer.getRenderTarget();
+  const prevClear = renderer.getClearAlpha();
+  const prevAuto = renderer.autoClear;
+  const pixels = new Uint8Array(W * H * 4);
+  let out: { minY: number; maxY: number; halfWidth: number } | null = null;
+  try {
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0x000000, 0);
+    renderer.autoClear = true;
+    renderer.clear();
+    renderer.render(scene, cam);
+    renderer.readRenderTargetPixels(target, 0, 0, W, H, pixels);
+    let top = -1;
+    let bottom = -1;
+    let left = W;
+    let right = -1;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (pixels[(y * W + x) * 4 + 3] > 16) {
+          if (bottom < 0) bottom = y;
+          top = y;
+          if (x < left) left = x;
+          if (x > right) right = x;
+        }
+      }
+    }
+    if (top >= 0 && right >= 0) {
+      // Rows are bottom-up in a readback. Half a pixel of slack each way.
+      const unit = span / H;
+      const bottomY = centre.y - span / 2 + (bottom - 0.5) * unit;
+      const topY = centre.y - span / 2 + (top + 1.5) * unit;
+      const halfWidth = Math.max(Math.abs(left - W / 2), Math.abs(right - W / 2)) * (span / W);
+      out = { minY: bottomY, maxY: topY, halfWidth };
+    }
+  } catch {
+    out = null;
+  } finally {
+    renderer.setRenderTarget(prevTarget);
+    renderer.setClearAlpha(prevClear);
+    renderer.autoClear = prevAuto;
+    target.dispose();
+    flat.dispose();
+    scene.remove(object);
+    if (parent) parent.add(object);
+    object.position.copy(savedPos);
+    object.rotation.copy(savedRot);
+    object.scale.copy(savedScale);
+    object.updateMatrixWorld(true);
+  }
+  return out;
+}
+
+/**
+ * Correct a fitted rig against its render: scale so the drawn character is
+ * `height` tall and plant the drawn feet at y=0. Safe to call on any rig; a
+ * rig whose box was already honest moves by nothing.
+ */
+export function refitByRender(renderer: THREE.WebGLRenderer, rig: CharacterRig, height: number): boolean {
+  const object = rig.object;
+  object.updateMatrixWorld(true);
+  const guess = new THREE.Box3().setFromObject(object);
+  if (guess.isEmpty()) return false;
+  const m = measureRenderedBounds(renderer, object, guess);
+  if (!m) return false;
+  const drawn = m.maxY - m.minY;
+  if (!(drawn > 0.05)) return false;
+  const k = height / drawn;
+  // Scale about the object's origin, then move the drawn feet to the floor.
+  object.scale.multiplyScalar(k);
+  object.position.y = object.position.y * k - m.minY * k;
+  object.updateMatrixWorld(true);
+  rig.size.set(m.halfWidth * 2 * k, height, m.halfWidth * 2 * k);
+  return true;
+}
+
 const sharedLoader = new GLTFLoader();
 
 export function loadCharacterRig(

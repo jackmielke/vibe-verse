@@ -7,6 +7,7 @@ import type { CharacterOption } from "./characters";
 import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
 import { DEFAULT_POSE, poseById, type PoseId } from "./previewPose";
 import { HAT_CATALOG } from "@/components/city/cosmetics";
+import { measureRenderedBounds } from "@/lib/characterRig";
 
 function findClip(clips: THREE.AnimationClip[], names: string[]): THREE.AnimationClip | null {
   for (const n of names) {
@@ -25,22 +26,9 @@ function visibleMeshBounds(object: THREE.Object3D): THREE.Box3 {
   object.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh || !mesh.geometry) return;
-    /* A skinned mesh's geometry box is the BIND pose, wherever the modeller
-       left it. On the Quaternius rigs that box is centred on the origin while
-       the posed character stands on it, so planting "the feet" at y=0 lifted
-       the model by half its height and the turntable framed a pair of boots.
-       `SkinnedMesh` keeps a box of the posed vertices; use that. */
-    const skinned = mesh as THREE.SkinnedMesh;
-    let box: THREE.Box3 | null;
-    if (skinned.isSkinnedMesh) {
-      skinned.computeBoundingBox();
-      box = skinned.boundingBox;
-    } else {
-      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-      box = mesh.geometry.boundingBox;
-    }
-    if (!box) return;
-    meshBox.copy(box).applyMatrix4(mesh.matrixWorld);
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    if (!mesh.geometry.boundingBox) return;
+    meshBox.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
     if (!Number.isFinite(meshBox.min.x) || !Number.isFinite(meshBox.max.x)) return;
     if (meshBox.isEmpty()) return;
     if (!found) {
@@ -68,6 +56,7 @@ function PreviewModel({
   onFit: (size: THREE.Vector3) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const { gl } = useThree();
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const procRef = useRef<ProceduralPilot | null>(null);
   const [scene, setScene] = useState<THREE.Group | null>(null);
@@ -153,6 +142,41 @@ function PreviewModel({
       const clip = findClip(gltf.animations, ["idle", "stand", "breath"]);
       if (clip) mixer.clipAction(clip).play();
       mixerRef.current = mixer;
+
+      /* The box above is the bind pose, and for half the catalog that is not
+         where the character draws: the Quaternius rigs render from their
+         bones, twice the size of their bind box and standing on the origin,
+         so the bind-box anchor lifted them by a full body height and the
+         turntable framed a pair of boots. Measure the render instead, and
+         rescale and re-plant from that. One tiny offscreen pass. */
+      mixer.update(0);
+      cloned.updateMatrixWorld(true);
+      let drawn: ReturnType<typeof measureRenderedBounds> = null;
+      let refitError: string | null = null;
+      try {
+        drawn = measureRenderedBounds(gl, cloned, new THREE.Box3().setFromObject(cloned));
+      } catch (err) {
+        refitError = err instanceof Error ? err.message : String(err);
+      }
+      if (drawn && drawn.maxY - drawn.minY > 0.05) {
+        const k = 2.2 / (drawn.maxY - drawn.minY);
+        cloned.scale.multiplyScalar(k);
+        cloned.position.y = cloned.position.y * k - drawn.minY * k + character.yOffset;
+        cloned.updateMatrixWorld(true);
+        fitSize.set(drawn.halfWidth * 2 * k, 2.2, drawn.halfWidth * 2 * k);
+      }
+      /* Debug telemetry for the capture harness: what the fit decided, per
+         load. A blank turntable is indistinguishable from a tiny or a
+         far-away one, and this is how the harness tells them apart. */
+      (window as unknown as { __previewFit?: unknown }).__previewFit = {
+        id: character.id,
+        drawn,
+        refitError,
+        scale: cloned.scale.x,
+        posY: cloned.position.y,
+        fitSize: fitSize.toArray(),
+        canvas: [gl.domElement.width, gl.domElement.height],
+      };
       setScene(cloned);
       onFit(fitSize);
     }).catch(() => {});

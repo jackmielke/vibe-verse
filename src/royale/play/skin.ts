@@ -22,7 +22,7 @@
  */
 import type { SystemFactory } from "../types";
 import { findCharacter } from "@/lib/characters";
-import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
+import { loadCharacterRig, refitByRender, type CharacterRig } from "@/lib/characterRig";
 import { readActiveCharacterId, ROYALE_SUIT_KEY } from "./skinChoice";
 
 /** Which animation the skin should be playing, from the actor's state. */
@@ -38,6 +38,23 @@ export function skinActionFor(state: string, grounded: boolean): SkinAction {
   if (state === "skydive" || state === "glide" || state === "bus") return "air";
   if (!grounded || state === "air") return "air";
   return "locomotion";
+}
+
+/**
+ * Pure: which node of a rig the third-person weapon should hang from, given
+ * every node name in it. Hand, fist or wrist first; failing that the forearm,
+ * because the Esmeralda pirates stop at the lower arm and skin the fingers to
+ * it. Right side only.
+ *
+ * The names are what three hands back, not what the file says: GLTFLoader
+ * strips dots, colons and brackets, so Quaternius's `Fist.R` arrives as
+ * `FistR`. A side test that wants a separator before the R matches nothing in
+ * this catalog — and matched nothing, for a whole afternoon.
+ */
+export function handBoneName(names: readonly string[]): string | null {
+  const right = (n: string) => /(^|[^A-Za-z])[Rr](ight)?($|[^A-Za-z])|[Rr]ight|[a-z]R$/.test(n);
+  const pass = (re: RegExp) => names.find((n) => re.test(n) && right(n)) ?? null;
+  return pass(/hand|wrist|fist/i) ?? pass(/lower[._ -]?arm|forearm|fore[._ -]?arm/i);
 }
 
 interface PlayerWithSkin {
@@ -90,6 +107,9 @@ const createSkin: SystemFactory = (ctx) => {
           rig.dispose();
           return;
         }
+        // The loader fits from a bounding box, and no box is honest for every
+        // rig in the catalog — see `refitByRender`. Measure the render.
+        refitByRender(ctx.renderer, rig, 1.78);
         current?.dispose();
         current = rig;
         currentId = id;

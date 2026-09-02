@@ -2,7 +2,7 @@
  * The skin's two pure decisions, without a renderer.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { skinActionFor } from "@/royale/play/skin";
+import { handBoneName, skinActionFor } from "@/royale/play/skin";
 import {
   ROYALE_SUIT_KEY,
   SUIT_ID,
@@ -53,5 +53,26 @@ describe("who the island dresses you as", () => {
     setWearsSuit(false);
     expect(lockerSelection()).toBe("Wizard");
     expect(localStorage.getItem(ROYALE_SUIT_KEY)).toBeNull();
+  });
+});
+
+describe("where the weapon hangs on a skin", () => {
+  // Names as three's GLTFLoader hands them back: dots stripped.
+  const wizard = ["CharacterArmature", "Root", "UpperArmL", "LowerArmL", "FistL", "UpperArmR", "LowerArmR", "FistR", "Head"];
+  const anne = ["Pirate_Anne", "Root", "LowerArmL", "UpperArmL", "LowerArmR", "UpperArmR", "Cube117", "Weapon_DoubleAxe"];
+
+  it("takes the right fist on a Quaternius rig", () => {
+    expect(handBoneName(wizard)).toBe("FistR");
+  });
+
+  it("falls back to the right forearm when a rig has no hand bone", () => {
+    expect(handBoneName(anne)).toBe("LowerArmR");
+  });
+
+  it("never picks the left side, the armature, or nothing at all by accident", () => {
+    expect(handBoneName(["FistL", "LowerArmL", "CharacterArmature"])).toBeNull();
+    expect(handBoneName(["mixamorig:RightHand".replace(":", "")])).toBe("mixamorigRightHand");
+    expect(handBoneName(["Hand_R", "Hand_L"])).toBe("Hand_R");
+    expect(handBoneName(["Fist.R"])).toBe("Fist.R");
   });
 });

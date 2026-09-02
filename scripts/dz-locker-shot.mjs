@@ -49,9 +49,10 @@ try {
   await page.click("text=Dropping as");
   await page.waitForSelector("text=Choose your character", { timeout: 60000 });
   // The preview is its own WebGL canvas under SwiftSHADER; give it a few frames.
-  await page.waitForTimeout(15000);
+  await page.waitForTimeout(Number(process.env.DZ_OPEN_WAIT ?? 45000));
   await page.screenshot({ path: `${OUT}/locker.png`, timeout: 600000 });
   console.log(`wrote ${OUT}/locker.png`);
+  console.log("preview fit after open:", JSON.stringify(await page.evaluate("window.__previewFit ?? null")));
 
   await page.click(`button:has-text("${pick.replace(/_/g, " ")}")`);
   /* The preview swaps its model on a pick: a GLB fetch and a first frame on a
@@ -61,6 +62,7 @@ try {
   await page.waitForTimeout(Number(process.env.DZ_PICK_WAIT ?? 30000));
   await page.screenshot({ path: `${OUT}/locker-pick.png`, timeout: 600000 });
   console.log(`wrote ${OUT}/locker-pick.png`);
+  console.log("preview fit after pick:", JSON.stringify(await page.evaluate("window.__previewFit ?? null")));
 
   await page.click("text=Done");
   await page.waitForTimeout(1500);

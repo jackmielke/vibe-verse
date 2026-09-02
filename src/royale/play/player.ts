@@ -60,7 +60,7 @@
  */
 import * as THREE from "three";
 import type { CharacterRig as SkinRig } from "@/lib/characterRig";
-import { skinActionFor } from "./skin";
+import { handBoneName, skinActionFor } from "./skin";
 import type {
   DamageSource,
   DamageTarget,
@@ -2685,11 +2685,14 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       }
       // The weapon anchor: a node on whatever bone reads as the right hand.
       // Named, so the weapon system can find it without knowing the skeleton.
-      let hand: THREE.Object3D | null = null;
+      // Which bone is `handBoneName`'s call — pure, and tested against the
+      // names three actually produces for the rigs in the catalog.
+      const names: string[] = [];
       rigIn.object.traverse((o) => {
-        if (hand) return;
-        if (/(^|[^a-z])(hand|wrist|fist)[._ -]?r(ight)?($|[^a-z])|right[._ -]?(hand|wrist)/i.test(o.name)) hand = o;
+        if (o.name) names.push(o.name);
       });
+      const handName = handBoneName(names);
+      const hand = handName ? rigIn.object.getObjectByName(handName) ?? null : null;
       if (hand) {
         const anchor = new THREE.Object3D();
         anchor.name = "dz-hand-r";
