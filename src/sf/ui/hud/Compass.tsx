@@ -164,7 +164,10 @@ export default function Compass() {
   if (!show) return null;
 
   return (
-    <div className="relative flex flex-col items-center" style={{ width: WIDTH }}>
+    // The strip is WIDTH wide by design and narrower by CSS on a phone: the
+    // ticks hang off the centre, so a narrower window simply shows fewer of
+    // them. `--sf-compass-w` is set in styles.ts.
+    <div className="relative flex flex-col items-center" style={{ width: "var(--sf-compass-w, 560px)", maxWidth: WIDTH }}>
       {/* Heading readout */}
       <div className="flex items-baseline gap-2 mb-1">
         <span
@@ -186,7 +189,8 @@ export default function Compass() {
       <div
         className="relative"
         style={{
-          width: WIDTH,
+          width: "var(--sf-compass-w, 560px)",
+          maxWidth: WIDTH,
           height: 34,
           overflow: "hidden",
           maskImage: "linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%)",

@@ -50,6 +50,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 import type { BuildKind, WorldCtx } from "../types";
 import type { StickState, TouchDriver } from "../engine/input";
 import { WATER } from "../mode/water";
+import { useScreen } from "@/lib/screen";
 
 /* ------------------------------------------------------------------------ *
  * Mounting
@@ -324,6 +325,17 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
   const better = ctx.mode === "better";
   const skin = water ? WATER_SKIN : CLASSIC_SKIN;
 
+  /**
+   * A phone on its side has 430 px of height and the HUD's minimap in the
+   * top-right corner; the cluster shrinks a notch and the build pad lays its
+   * pieces out in one row of four so the whole thing stays under the map.
+   * Portrait keeps the tall layout, because the inventory strip reaches
+   * under the cluster there and the cluster has to sit above it.
+   */
+  const screen = useScreen();
+  const short = screen.short;
+  const sz = (n: number) => Math.round(n * (short ? 0.88 : 1));
+
   const [engaged, setEngaged] = useState(driver.engaged);
   /** The end card owns the screen; controls get out of its way. */
   const [over, setOver] = useState(false);
@@ -500,8 +512,12 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
       : MAT_LABEL[build.material].classic
     : build.material.toUpperCase();
 
-  /** Bottom of the action clusters: clear of the inventory strip + notch. */
-  const bottom = "calc(env(safe-area-inset-bottom, 0px) + 62px)";
+  /**
+   * Bottom of the action clusters. Clear of the inventory strip in portrait,
+   * where the strip runs under them; on the floor in landscape, where the
+   * strip is centred and the cluster is off to the right of it.
+   */
+  const bottom = `calc(env(safe-area-inset-bottom, 0px) + ${short ? 10 : 62}px)`;
 
   return (
     <div
@@ -554,7 +570,8 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
         style={{
           position: "absolute",
           left: "calc(env(safe-area-inset-left, 0px) + 26px)",
-          bottom: `calc(${bottom} + 26px)`,
+          // Above the vitals, which sit on the strip in portrait.
+          bottom: `calc(${bottom} + ${short ? 40 : 70}px)`,
           width: 108,
           height: 108,
           borderRadius: 9999,
@@ -595,60 +612,36 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
                 skin={skin}
                 label="MAT"
                 sub={matLabel}
-                size={50}
-                width={74}
+                size={sz(50)}
+                width={sz(74)}
                 round={false}
                 onDown={() => driver.press("KeyT")}
               />
-              <Pad skin={skin} label="ROT" size={50} onDown={() => driver.rotate()} />
-              <Pad skin={skin} label="EDIT" size={50} on={build.editing} onDown={() => driver.press("KeyG")} />
+              <Pad skin={skin} label="ROT" size={sz(50)} onDown={() => driver.rotate()} />
+              <Pad skin={skin} label="EDIT" size={sz(50)} on={build.editing} onDown={() => driver.press("KeyG")} />
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Pad
-                skin={skin}
-                icon={<PieceIcon kind="wall" />}
-                label="WALL"
-                size={62}
-                round={false}
-                on={build.kind === "wall"}
-                onDown={() => pickPiece("wall")}
-              />
-              <Pad
-                skin={skin}
-                icon={<PieceIcon kind="floor" />}
-                label="FLOOR"
-                size={62}
-                round={false}
-                on={build.kind === "floor"}
-                onDown={() => pickPiece("floor")}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Pad
-                skin={skin}
-                icon={<PieceIcon kind="ramp" />}
-                label="RAMP"
-                size={62}
-                round={false}
-                on={build.kind === "ramp"}
-                onDown={() => pickPiece("ramp")}
-              />
-              <Pad
-                skin={skin}
-                icon={<PieceIcon kind="cone" />}
-                label="CONE"
-                size={62}
-                round={false}
-                on={build.kind === "cone"}
-                onDown={() => pickPiece("cone")}
-              />
+            {/* The four pieces: a 2×2 block when there is height for it, one
+                row of four when there is not. */}
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, width: short ? undefined : 132 }}>
+              {KINDS.map((kind) => (
+                <Pad
+                  key={kind}
+                  skin={skin}
+                  icon={<PieceIcon kind={kind} />}
+                  label={kind.toUpperCase()}
+                  size={short ? 56 : 62}
+                  round={false}
+                  on={build.kind === kind}
+                  onDown={() => pickPiece(kind)}
+                />
+              ))}
             </div>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-              <Pad skin={skin} label="JUMP" size={54} onDown={jump} onUp={() => driver.setFlag("jump", false)} />
-              <Pad skin={skin} label="EXIT" sub="build" size={54} on onDown={toggleBuild} />
+              <Pad skin={skin} label="JUMP" size={sz(54)} onDown={jump} onUp={() => driver.setFlag("jump", false)} />
+              <Pad skin={skin} label="EXIT" sub="build" size={sz(54)} on onDown={toggleBuild} />
               {/* Held, not tapped: holding it is how you spam ramps up a
                   hill, which is the whole point of building on the move. */}
-              <Pad skin={skin} label="PLACE" size={84} fontSize={13} {...hold("fire")} />
+              <Pad skin={skin} label="PLACE" size={sz(84)} fontSize={13} {...hold("fire")} />
             </div>
           </>
         ) : (
@@ -657,15 +650,15 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
               {/* BETTER FORTNITE: the grapple is a tap, and it is the same
                   edge-triggered press the Q key is, so the grapple system has
                   one input path rather than two. */}
-              {better && <Pad skin={skin} label="HOOK" size={46} fontSize={9} onDown={() => driver.press("KeyQ")} />}
-              <Pad skin={skin} label="RELOAD" size={46} fontSize={9} {...hold("reload")} />
-              <Pad skin={skin} label="AIM" size={46} fontSize={9} {...hold("aim")} />
-              <Pad skin={skin} label="SPRINT" size={46} fontSize={9} {...hold("sprint")} />
+              {better && <Pad skin={skin} label="HOOK" size={sz(46)} fontSize={9} onDown={() => driver.press("KeyQ")} />}
+              <Pad skin={skin} label="RELOAD" size={sz(46)} fontSize={9} {...hold("reload")} />
+              <Pad skin={skin} label="AIM" size={sz(46)} fontSize={9} {...hold("aim")} />
+              <Pad skin={skin} label="SPRINT" size={sz(46)} fontSize={9} {...hold("sprint")} />
             </div>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-              <Pad skin={skin} label="BUILD" size={58} onDown={toggleBuild} />
-              <Pad skin={skin} label="JUMP" size={58} onDown={jump} onUp={() => driver.setFlag("jump", false)} />
-              <Pad skin={skin} label="FIRE" size={84} fontSize={13} {...hold("fire")} />
+              <Pad skin={skin} label="BUILD" size={sz(58)} onDown={toggleBuild} />
+              <Pad skin={skin} label="JUMP" size={sz(58)} onDown={jump} onUp={() => driver.setFlag("jump", false)} />
+              <Pad skin={skin} label="FIRE" size={sz(84)} fontSize={13} {...hold("fire")} />
             </div>
           </>
         )}

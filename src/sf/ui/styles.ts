@@ -348,11 +348,38 @@ ${cvdBlock("tritan")}
 /* Cleared past the vibeverse's home button, which sits in this corner in
    every world. It hides itself under pointer lock, but the minimap is on
    screen in menus too, and on a phone there is no pointer lock at all. */
-.sf-cluster[data-anchor="tl"] { left: calc(var(--sf-edge) + var(--vv-home-clear, 0px)); top: var(--sf-edge); transform-origin: top left; transform: scale(var(--sf-hud-scale)); }
-.sf-cluster[data-anchor="tr"] { right: var(--sf-edge); top: var(--sf-edge); transform-origin: top right; transform: scale(var(--sf-hud-scale)); }
-.sf-cluster[data-anchor="tc"] { left: 50%; top: var(--sf-edge); transform-origin: top center; transform: translateX(-50%) scale(var(--sf-hud-scale)); }
+.sf-cluster[data-anchor="tl"] { left: calc(var(--sf-edge) + var(--vv-home-clear, 0px)); top: calc(var(--sf-edge) + var(--sf-top-clear, 0px)); transform-origin: top left; transform: scale(var(--sf-hud-scale)); }
+.sf-cluster[data-anchor="tr"] { right: var(--sf-edge); top: calc(var(--sf-edge) + var(--sf-top-clear, 0px)); transform-origin: top right; transform: scale(var(--sf-hud-scale)); }
+.sf-cluster[data-anchor="tc"] { left: 50%; top: calc(var(--sf-edge) + var(--sf-top-clear, 0px)); transform-origin: top center; transform: translateX(-50%) scale(var(--sf-hud-scale)); }
 .sf-cluster[data-anchor="bc"] { left: 50%; bottom: var(--sf-edge); transform-origin: bottom center; transform: translateX(-50%) scale(var(--sf-hud-scale)); }
 .sf-cluster[data-anchor="c"]  { left: 50%; top: 50%; transform-origin: center; transform: translate(-50%,-50%) scale(var(--sf-hud-scale)); }
+
+/* A phone, either way up: tighter edges, a compass that fits the width, and
+   the bottom corners a notch smaller so the thumb controls own them. */
+@media (max-width: 640px), (max-height: 520px) {
+  .sf-ui { --sf-edge: 12px; --sf-compass-w: 260px; }
+  .sf-cluster[data-anchor="bl"] { transform: scale(calc(var(--sf-hud-scale) * 0.8)); }
+  .sf-cluster[data-anchor="br"] { transform: scale(calc(var(--sf-hud-scale) * 0.8)); }
+}
+/* On its side there are 430 px, and the minimap column (disc, street, zoom
+   chips, weather) ran into the vitals at the bottom. Smaller, same place. */
+@media (max-height: 520px) {
+  .sf-cluster[data-anchor="tl"] { transform: scale(calc(var(--sf-hud-scale) * 0.7)); }
+}
+/* Upright, the compass takes the whole top edge and the map goes under it —
+   side by side they overlapped in 393 px. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .sf-ui { --sf-compass-w: calc(100vw - 24px); }
+  .sf-cluster[data-anchor="tl"], .sf-cluster[data-anchor="tr"] { top: calc(var(--sf-edge) + var(--sf-top-clear, 0px) + 76px); }
+}
+/* The thumb buttons are built into the bottom-right corner by input.ts;
+   the ammo block moves up out of them. */
+@media (pointer: coarse) and (max-width: 640px) {
+  .sf-cluster[data-anchor="br"] { bottom: calc(var(--sf-edge) + 250px); }
+}
+@media (pointer: coarse) and (max-height: 520px) {
+  .sf-cluster[data-anchor="br"] { bottom: calc(var(--sf-edge) + 250px); }
+}
 
 /* --- Subtitles -------------------------------------------------------- */
 

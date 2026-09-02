@@ -65,6 +65,7 @@ import type { Engine } from "../engine/core";
 import { RARITY_COLOR, type Rarity } from "../types";
 import { WATER, drynessBand, fmt } from "../mode/water";
 import { BETTER } from "../mode/better";
+import { useScreen } from "@/lib/screen";
 // Type-only, but it also carries the module augmentation that puts `net` on
 // `WorldServices` — without this import `ctx.services.net` does not typecheck.
 import type { ChatLine, PeerState } from "../net/types";
@@ -754,6 +755,16 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
   const water = engine.ctx.mode === "water";
   /** BETTER FORTNITE. Same rule. */
   const better = engine.ctx.mode === "better";
+  /**
+   * The phone layout. Everything below branches on two facts from
+   * `lib/screen.ts` and nothing else: `compact` (a phone, either way up)
+   * moves and shrinks panels so the thumbs have the corners; `touch` drops
+   * every keycap, because a key hint on a screen with no keys is a lie.
+   */
+  const screen = useScreen();
+  const compact = screen.phone;
+  const touch = screen.touch;
+  const safeBottom = (px: number) => `calc(env(safe-area-inset-bottom, 0px) + ${px}px)`;
 
   const [slots, setSlots] = useState<SlotMeta[]>(emptySlots);
   const [phase, setPhase] = useState("warmup");
@@ -1385,7 +1396,26 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
           <DamageArcs arcs={arcs} water={water} />
           <AnimatePresence>{scoped && <ScopeOverlay key="scope" water={water} />}</AnimatePresence>
 
-          <div className="absolute bottom-6 left-6 flex flex-col gap-2">
+          {/* Vitals. On a phone they shrink and sit tight in the corner —
+              above the touch inventory strip in portrait, where the strip
+              reaches under them, and on the floor in landscape, where it
+              does not. The move stick draws wherever the left thumb lands,
+              so nothing here has to leave it room. */}
+          <div
+            className={
+              compact
+                ? `absolute flex origin-bottom-left flex-col gap-2 ${screen.portrait ? "scale-[0.6]" : "scale-[0.72]"}`
+                : "absolute bottom-6 left-6 flex flex-col gap-2"
+            }
+            style={
+              compact
+                ? {
+                    left: "calc(env(safe-area-inset-left, 0px) + 8px)",
+                    bottom: safeBottom(touch && screen.portrait ? 60 : 8),
+                  }
+                : undefined
+            }
+          >
             {water ? (
               <DrynessMeter clock={clock} live={live} />
             ) : (
@@ -1393,25 +1423,75 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
             )}
           </div>
 
-          <div className="absolute bottom-6 right-6 flex flex-col items-end gap-2">
-            <ConsumeBar clock={clock} live={live} consume={consume} />
-            {water && <TankStatus clock={clock} live={live} slots={slots} />}
-            <MaterialsRow clock={clock} live={live} water={water} />
-            <InventoryBar clock={clock} live={live} slots={slots} water={water} />
-          </div>
+          {compact ? (
+            <>
+              {/* The touch layer draws its own, tappable, inventory strip
+                  along the bottom; a second read-only copy of it here was
+                  the loudest thing on the phone build. Materials go under
+                  the home button, where nothing else lives; the consume bar
+                  sits over the strip, centred, where the eye already is. */}
+              <div className="absolute inset-x-0 flex justify-center" style={{ bottom: safeBottom(touch ? 66 : 8) }}>
+                <ConsumeBar clock={clock} live={live} consume={consume} />
+              </div>
+              <div
+                className="absolute origin-top-left scale-[0.8]"
+                style={{ left: "calc(env(safe-area-inset-left, 0px) + 8px)", top: 54 }}
+              >
+                <MaterialsRow clock={clock} live={live} water={water} />
+              </div>
+              {!touch && (
+                <div className="absolute bottom-2 right-2 flex origin-bottom-right scale-[0.8] flex-col items-end gap-2">
+                  {water && <TankStatus clock={clock} live={live} slots={slots} />}
+                  <InventoryBar clock={clock} live={live} slots={slots} water={water} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="absolute bottom-6 right-6 flex flex-col items-end gap-2">
+              <ConsumeBar clock={clock} live={live} consume={consume} />
+              {water && <TankStatus clock={clock} live={live} slots={slots} />}
+              <MaterialsRow clock={clock} live={live} water={water} />
+              <InventoryBar clock={clock} live={live} slots={slots} water={water} />
+            </div>
+          )}
 
-          <div className="absolute right-6 top-5 flex w-[236px] flex-col items-stretch gap-2">
-            <Minimap clock={clock} live={live} map={map} water={water} />
-            <StormPanel clock={clock} live={live} water={water} />
-            <AliveBlock clock={clock} live={live} water={water} />
-            <KillFeed feed={feed} water={water} />
-          </div>
+          {compact ? (
+            <>
+              {/* A phone's minimap is a glance, not a chart: 112 px, the
+                  zone clock and the alive count folded into one strip
+                  under it, and the feed moved to the top centre so the
+                  right edge stays the action cluster's. */}
+              <div
+                className="absolute flex w-[112px] flex-col items-stretch gap-1"
+                style={{ right: "calc(env(safe-area-inset-right, 0px) + 8px)", top: 8 }}
+              >
+                <Minimap clock={clock} live={live} map={map} water={water} size={112} />
+                <StatusStrip clock={clock} live={live} water={water} />
+              </div>
+              <div className="absolute left-1/2 top-2 w-[260px] origin-top -translate-x-1/2 scale-[0.85]">
+                <KillFeed feed={feed} water={water} />
+              </div>
+            </>
+          ) : (
+            <div className="absolute right-6 top-5 flex w-[236px] flex-col items-stretch gap-2">
+              <Minimap clock={clock} live={live} map={map} water={water} />
+              <StormPanel clock={clock} live={live} water={water} />
+              <AliveBlock clock={clock} live={live} water={water} />
+              <KillFeed feed={feed} water={water} />
+            </div>
+          )}
 
           {/* Clear of the app's HomeButton, which is pinned at left-3 top-3
               and is 40 px tall — the one piece of global chrome a chromeless
               world still gets. */}
           {water && (
-            <div className="absolute left-6 top-[58px] flex w-[228px] flex-col items-stretch gap-2">
+            <div
+              className={
+                compact
+                  ? "absolute left-2 top-[92px] flex w-[228px] origin-top-left scale-[0.72] flex-col items-stretch gap-2"
+                  : "absolute left-6 top-[58px] flex w-[228px] flex-col items-stretch gap-2"
+              }
+            >
               <RoomCode engine={engine} />
               <SquadPanel clock={clock} live={live} engine={engine} />
             </div>
@@ -1421,13 +1501,13 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
           <PickupLog pickups={pickups} water={water} />
           <InteractPrompt clock={clock} live={live} prompt={prompt} />
           {water && <GluePrompt clock={clock} live={live} />}
-          {dropping && <DropOverlay clock={clock} live={live} phase={phase} playerState={playerState} />}
+          {dropping && <DropOverlay clock={clock} live={live} phase={phase} playerState={playerState} touch={touch} />}
           <StormBanner inStorm={inStorm} clock={clock} live={live} water={water} />
           {better && (
             <>
-              <GrapplePip clock={clock} live={live} />
-              <AugmentTray owned={owned} />
-              <AugmentPicker offer={offer} onChoose={(i) => engine.emit("dz:augment-choose", { index: i })} />
+              <GrapplePip clock={clock} live={live} keycap={!touch} />
+              <AugmentTray owned={owned} compact={compact} />
+              <AugmentPicker offer={offer} compact={compact} onChoose={(i) => engine.emit("dz:augment-choose", { index: i })} />
               <EventBanner event={event} />
               <SecondWindCard state={secondWind} />
             </>
@@ -1438,7 +1518,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       {/* Chat lives OUTSIDE the `locked` gate on purpose. The page unmounts
           the rest of the HUD the moment pointer lock drops, and a chat box
           that vanishes when you look away from the game is not a chat box. */}
-      {water && !ending && <ChatPanel engine={engine} />}
+      {water && !ending && <ChatPanel engine={engine} compact={compact} />}
 
       <AnimatePresence>
         {ending && (
@@ -2707,7 +2787,7 @@ function GluePrompt({ clock, live }: PanelProps) {
  */
 const CHAT_LINES = 6;
 
-function ChatPanel({ engine }: { engine: Engine }) {
+function ChatPanel({ engine, compact = false }: { engine: Engine; compact?: boolean }) {
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -2807,7 +2887,13 @@ function ChatPanel({ engine }: { engine: Engine }) {
   if (visible.length === 0 && !open) return null;
 
   return (
-    <div className="pointer-events-none absolute bottom-[124px] left-6 z-[35] w-[336px] select-none font-body">
+    <div
+      className={
+        compact
+          ? "pointer-events-none absolute bottom-[176px] left-2 z-[35] w-[240px] select-none font-body"
+          : "pointer-events-none absolute bottom-[124px] left-6 z-[35] w-[336px] select-none font-body"
+      }
+    >
       <div className="flex flex-col gap-[3px]" style={{ opacity: open ? 1 : 0.78 }}>
         {visible.map((line) => (
           <div
@@ -2893,22 +2979,25 @@ function Minimap({
   live,
   map,
   water = false,
-}: PanelProps & { map: MapModel | null; water?: boolean }) {
+  size = MAP_SIZE,
+}: PanelProps & { map: MapModel | null; water?: boolean; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const compass = useRef<HTMLDivElement | null>(null);
   const acc = useRef(0);
+  // The compass strip scrolls 150° across the map's width, whatever that is.
+  const pxPerDeg = size / 150;
 
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    cv.width = Math.round(MAP_SIZE * dpr);
-    cv.height = Math.round(MAP_SIZE * dpr);
+    cv.width = Math.round(size * dpr);
+    cv.height = Math.round(size * dpr);
     const g = cv.getContext("2d");
     // Draw in CSS pixels; the backing store carries the device ratio so the
     // POI labels stay crisp on a retina panel.
     if (g) g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }, []);
+  }, [size]);
 
   usePainter(clock, (dt) => {
     const l = live.current;
@@ -2917,7 +3006,7 @@ function Minimap({
     const el = compass.current;
     if (el) {
       const heading = ((-l.yaw * 180) / Math.PI + 720) % 360;
-      el.style.transform = `translateX(${-heading * COMPASS_PX_PER_DEG}px)`;
+      el.style.transform = `translateX(${-heading * pxPerDeg}px)`;
     }
     acc.current += dt;
     if (acc.current < 1 / 30) return;
@@ -2926,7 +3015,7 @@ function Minimap({
     if (!cv) return;
     const g = cv.getContext("2d");
     if (!g) return;
-    drawMinimap(g, l, map, MAP_SIZE, water);
+    drawMinimap(g, l, map, size, water);
   });
 
   return (
@@ -2942,7 +3031,7 @@ function Minimap({
               key={m.key}
               className="absolute -translate-x-1/2 font-heading text-[9px] font-black uppercase tracking-[0.1em]"
               style={{
-                left: m.deg * COMPASS_PX_PER_DEG,
+                left: m.deg * pxPerDeg,
                 color: m.major ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.42)",
               }}
             >
@@ -2963,9 +3052,9 @@ function Minimap({
       {/* The map */}
       <div
         className="relative overflow-hidden rounded-[5px]"
-        style={{ ...modePlate(water), width: MAP_SIZE, height: MAP_SIZE, padding: 0 }}
+        style={{ ...modePlate(water), width: size, height: size, padding: 0 }}
       >
-        <canvas ref={canvasRef} style={{ width: MAP_SIZE, height: MAP_SIZE, display: "block" }} />
+        <canvas ref={canvasRef} style={{ width: size, height: size, display: "block" }} />
         {/* Inner shading + corner ticks: the frame is what makes a canvas read
             as an instrument rather than a screenshot. */}
         <div
@@ -2985,7 +3074,6 @@ function Minimap({
   );
 }
 
-const COMPASS_PX_PER_DEG = MAP_SIZE / 150;
 const COMPASS_MARKS = (() => {
   const out: { key: string; label: string; deg: number; major: boolean }[] = [];
   const names: Record<number, string> = { 0: "N", 45: "NE", 90: "E", 135: "SE", 180: "S", 225: "SW", 270: "W", 315: "NW" };
@@ -3136,6 +3224,78 @@ function AliveBlock({ clock, live, water = false }: PanelProps & { water?: boole
           className="font-heading text-[15px] font-black leading-none tabular-nums"
           style={{ color: water ? "#bfeaff" : "#fde68a" }}
         >
+          <span ref={elimNum}>0</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The phone's zone clock and alive count, as one strip the width of the small
+ * minimap. Same numbers as `StormPanel` and `AliveBlock`, a third of the
+ * height: on a 430 px screen the right edge belongs to the action buttons,
+ * and two stacked panels reached down into them.
+ */
+function StatusStrip({ clock, live, water = false }: PanelProps & { water?: boolean }) {
+  const zone = useRef<HTMLSpanElement | null>(null);
+  const timer = useRef<HTMLSpanElement | null>(null);
+  const bar = useRef<HTMLDivElement | null>(null);
+  const dot = useRef<HTMLDivElement | null>(null);
+  const aliveNum = useRef<HTMLSpanElement | null>(null);
+  const elimNum = useRef<HTMLSpanElement | null>(null);
+  const tStore = useRef<string[]>(["", "", "", ""]);
+  const wStore = useRef<number[]>([-1]);
+  const beadColor = water ? DOWN.wall : 0xa45cf0;
+
+  usePainter(clock, () => {
+    const l = live.current;
+    setText(zone.current, water ? `${W.stormName.slice(0, 1)}${l.circle}` : `Z${l.circle}`, tStore.current, 0);
+    setText(timer.current, clockText(l.stormTimer), tStore.current, 1);
+    setText(aliveNum.current, `${Math.max(0, Math.round(l.alive))}`, tStore.current, 2);
+    setText(elimNum.current, `${Math.round(l.eliminations)}`, tStore.current, 3);
+    setWidth(bar.current, (1 - clamp01(l.stormTimer / Math.max(1, l.stormTimerMax))) * 100, wStore.current, 0);
+    const t = timer.current;
+    if (t) t.style.color = l.closing ? (water ? hex(DOWN.rim) : "#ff8a8a") : "#ffffff";
+    const d = dot.current;
+    if (d) d.style.opacity = `${l.closing ? 0.6 + 0.4 * Math.sin(l.t * 6.2) : 0.85}`;
+  });
+
+  return (
+    <div className="rounded-[4px] px-1.5 py-1" style={modePlate(water)}>
+      <div className="flex items-center gap-1.5">
+        <div
+          ref={dot}
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ background: hex(beadColor), border: "1px solid rgba(255,255,255,0.5)" }}
+        />
+        <span ref={zone} className="font-heading text-[10px] font-black uppercase tracking-[0.12em]" style={{ color: water ? hex(DOWN.rim) : "#ddd6fe" }}>
+          Z1
+        </span>
+        <span ref={timer} className="ml-auto font-heading text-[14px] font-black leading-none tabular-nums text-white">
+          0:00
+        </span>
+      </div>
+      <div className="mt-1 h-[2px] overflow-hidden rounded-full bg-black/60">
+        <div
+          ref={bar}
+          className="h-full w-0"
+          style={{
+            backgroundImage: water
+              ? `linear-gradient(90deg, ${hex(DOWN.wall)}, ${hex(DOWN.rim)})`
+              : `linear-gradient(90deg, ${STORM_PURPLE}, #e0a8ff)`,
+          }}
+        />
+      </div>
+      <div className="mt-1 flex items-center gap-1">
+        <svg viewBox="0 0 16 16" className="h-3 w-3 opacity-80">
+          <circle cx="8" cy="4.6" r="2.9" fill="#dbe6f0" />
+          <path d="M2.6 14c0-3 2.4-5.2 5.4-5.2S13.4 11 13.4 14z" fill="#dbe6f0" />
+        </svg>
+        <span ref={aliveNum} className="font-heading text-[13px] font-black leading-none tabular-nums text-white">
+          100
+        </span>
+        <span className="ml-auto font-heading text-[11px] font-black leading-none tabular-nums" style={{ color: water ? "#bfeaff" : "#fde68a" }}>
           <span ref={elimNum}>0</span>
         </span>
       </div>
@@ -4102,7 +4262,15 @@ function asCard(v: unknown): AugmentCard {
  * the picker is the ONE panel that takes pointer events — it emits into the
  * engine and never reaches into a system.
  */
-function AugmentPicker({ offer, onChoose }: { offer: AugmentCard[]; onChoose: (i: number) => void }) {
+function AugmentPicker({
+  offer,
+  onChoose,
+  compact = false,
+}: {
+  offer: AugmentCard[];
+  onChoose: (i: number) => void;
+  compact?: boolean;
+}) {
   return (
     <AnimatePresence>
       {offer.length > 0 && (
@@ -4112,7 +4280,11 @@ function AugmentPicker({ offer, onChoose }: { offer: AugmentCard[]; onChoose: (i
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 18, transition: { duration: 0.22 } }}
           transition={{ type: "spring", stiffness: 380, damping: 30 }}
-          className="pointer-events-auto absolute inset-x-0 bottom-[19%] flex flex-col items-center gap-2"
+          className={
+            compact
+              ? "pointer-events-auto absolute inset-x-0 bottom-[22%] flex origin-bottom scale-[0.78] flex-col items-center gap-2"
+              : "pointer-events-auto absolute inset-x-0 bottom-[19%] flex flex-col items-center gap-2"
+          }
         >
           <div className="flex items-center gap-3 rounded-[4px] px-3 py-1" style={{ ...plate, background: INK_SOLID }}>
             <span className="font-heading text-[12px] font-black uppercase tracking-[0.22em] text-amber-200">
@@ -4165,10 +4337,16 @@ function AugmentPicker({ offer, onChoose }: { offer: AugmentCard[]; onChoose: (i
 }
 
 /** What you have taken, as a row of glyphs under the home button. */
-function AugmentTray({ owned }: { owned: AugmentCard[] }) {
+function AugmentTray({ owned, compact = false }: { owned: AugmentCard[]; compact?: boolean }) {
   if (owned.length === 0) return null;
   return (
-    <div className="absolute left-6 top-[58px] flex items-center gap-1.5">
+    <div
+      className={
+        compact
+          ? "absolute left-2 top-[92px] flex origin-top-left scale-[0.8] items-center gap-1.5"
+          : "absolute left-6 top-[58px] flex items-center gap-1.5"
+      }
+    >
       {owned.map((c) => (
         <motion.div
           key={c.id}
@@ -4262,7 +4440,7 @@ function SecondWindCard({ state }: { state: SecondWindState }) {
  * recharges, and a key cap that lights when it is ready. Painted, not
  * rendered: the cooldown changes every frame.
  */
-function GrapplePip({ clock, live }: PanelProps) {
+function GrapplePip({ clock, live, keycap = true }: PanelProps & { keycap?: boolean }) {
   const ring = useRef<SVGCircleElement | null>(null);
   const cap = useRef<HTMLSpanElement | null>(null);
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -4302,13 +4480,17 @@ function GrapplePip({ clock, live }: PanelProps) {
           transform="rotate(-90 11 11)"
         />
       </svg>
-      <span
-        ref={cap}
-        className="rounded-[3px] px-1 font-heading text-[9px] font-black leading-[14px] text-black"
-        style={{ background: "#fbbf24", boxShadow: "0 0 6px rgba(0,0,0,0.6)" }}
-      >
-        {B.grappleKey}
-      </span>
+      {/* No keycap on a phone: the ring alone says "ready", and the HOOK
+          pad is the key. */}
+      {keycap && (
+        <span
+          ref={cap}
+          className="rounded-[3px] px-1 font-heading text-[9px] font-black leading-[14px] text-black"
+          style={{ background: "#fbbf24", boxShadow: "0 0 6px rgba(0,0,0,0.6)" }}
+        >
+          {B.grappleKey}
+        </span>
+      )}
     </div>
   );
 }
@@ -4381,7 +4563,11 @@ function DropOverlay({
   live,
   phase,
   playerState,
-}: PanelProps & { phase: string; playerState: string }) {
+  touch = false,
+}: PanelProps & { phase: string; playerState: string; touch?: boolean }) {
+  // The key that drops you. On a phone it is the JUMP pad, and the overlay
+  // says so rather than naming a key that is not there.
+  const dropKey = touch ? "Jump" : "Space";
   const busClock = useRef<HTMLSpanElement | null>(null);
   const busBar = useRef<HTMLDivElement | null>(null);
   const altNum = useRef<HTMLSpanElement | null>(null);
@@ -4420,7 +4606,7 @@ function DropOverlay({
               className="rounded-[3px] px-2 py-0.5 font-heading text-[11px] font-black uppercase tracking-[0.18em] text-slate-900"
               style={{ background: "linear-gradient(180deg,#fff,#bcd0e0)" }}
             >
-              Space
+              {dropKey}
             </span>
             <span className="font-heading text-[15px] font-black uppercase tracking-[0.16em] text-white">
               Drop
@@ -4462,7 +4648,7 @@ function DropOverlay({
               className="rounded-[3px] px-2 py-0.5 font-heading text-[11px] font-black uppercase tracking-[0.26em] text-sky-200"
               style={{ background: "rgba(6,10,20,0.6)", textShadow: "0 1px 4px rgba(0,0,0,0.95)" }}
             >
-              Space — deploy glider
+              {dropKey} — deploy glider
             </motion.span>
           ) : (
             <span

@@ -9,7 +9,7 @@
  * world itself is `@/sf`, lazily.
  */
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { useActiveCharacter } from "@/hooks/use-active-character";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
@@ -35,7 +35,7 @@ function Loader() {
 }
 
 const CHIP =
-  "pointer-events-auto inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-black/45 px-3.5 " +
+  "pointer-events-auto inline-flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-black/45 px-3.5 " +
   "text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur-sm " +
   "ring-1 ring-white/15 transition active:scale-95 hover:text-white";
 
@@ -143,11 +143,33 @@ function Overlay({
   const [hint, setHint] = useState(true);
   const [touch, setTouch] = useState(false);
   const [sheet, setSheet] = useState<"char" | "spawn" | null>(null);
+  /* The world's own screens — the map, the pause menu — own the whole
+     viewport while they are up, and this strip used to float over them.
+     `SfUi` announces its route; the strip steps aside for anything but
+     play. */
+  const [covered, setCovered] = useState(false);
 
   useEffect(() => {
     setTouch(window.matchMedia("(hover: none), (pointer: coarse)").matches);
     const t = window.setTimeout(() => setHint(false), 9000);
     return () => window.clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const onRoute = (e: Event) => setCovered((e as CustomEvent<string>).detail !== "none");
+    window.addEventListener("sf:route", onRoute);
+    return () => window.removeEventListener("sf:route", onRoute);
+  }, []);
+
+  /* This strip is 44 px of chrome across the top of the HUD's corners. The
+     HUD reads `--sf-top-clear` and starts below it — on a phone the minimap
+     used to sit exactly under these buttons. */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--sf-top-clear", "56px");
+    return () => {
+      root.style.removeProperty("--sf-top-clear");
+    };
   }, []);
 
   // The hint is about the controls, so it comes back when the controls change.
@@ -168,10 +190,19 @@ function Overlay({
           paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
         }}
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <Link to="/worlds" className={CHIP} style={{ WebkitTapHighlightColor: "transparent" }}>
-            ← Worlds
-          </Link>
+        {/* One row, scrolling sideways when the phone is too narrow for
+            all of it, starting after the home button's corner. The way
+            back to the hub is that button — a second "Worlds" chip sat
+            underneath it on every screen. */}
+        <div
+          className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 transition-opacity duration-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{
+            paddingLeft: "var(--vv-home-clear, 56px)",
+            WebkitOverflowScrolling: "touch",
+            opacity: covered ? 0 : 1,
+            pointerEvents: covered ? "none" : undefined,
+          }}
+        >
           <button
             onClick={() => onMode(mode === "walk" ? "fly" : "walk")}
             className={CHIP}

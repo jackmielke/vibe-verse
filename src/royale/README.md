@@ -128,6 +128,28 @@ waits for it, and a blank turntable in a capture is the wait, not the fit —
 Bots and remote players still wear the drop-suit. The pick does not travel
 over the wire yet.
 
+## On a phone
+
+`lib/screen.ts` is the one answer to "is this a phone" — the shorter side
+under 520 px — and `HUD.tsx`, `TouchControls.tsx` and the entry veil all
+branch on it, plus `touch` for keycaps. On a phone the HUD is a different
+layout, not the desktop one scaled: a 112 px minimap with the zone clock and
+the alive count folded into one strip under it, materials under the home
+button, vitals shrunk into the bottom-left corner, the kill feed top-centre,
+and no read-only inventory bar at all — the touch layer's strip is the
+inventory. Every keycap becomes the pad it stands for ("JUMP · DROP", no Q).
+
+The action cluster sits on the floor in landscape and above the strip in
+portrait, because the strip is centred and only reaches under the cluster
+when the screen is 430 px wide. The build pad lays its four pieces in one
+row on a short screen so it stays under the map.
+
+`node scripts/mobile-shot.mjs --route /better-fortnite --orient landscape
+--build` is how any of this is checked: a touch-emulating Chromium at phone
+size that taps its way past the veil and screenshots the HUD. Run one at a
+time — three at once under SwiftShader gave a white frame and no error,
+which is the renderer dying, not a bug.
+
 ## The lido
 
 `world/lido.ts` is a water park on the east coast — slide tower, wave pool, a

@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-09-02T08:12:12.989Z",
+  "generated_at": "2026-09-02T15:43:55.756Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "999d2a42",
+      "date": "2026-09-02",
+      "subject": "Locker: fit skins off a render, hang the weapon on the bone three actually names",
+      "lede": "The locker preview and the in-game skin both fitted characters from a bounding box, and no box is honest for every rig in the catalog: the Quaternius armatures draw from their bones at twice their bind box, the Esmeralda pirates box at twice their drawn size. `refitByRender` draws the rig once, flat white, into a small offscreen target and reads the alpha back; both the preview and `play/skin.ts` rescale and re-plant",
+      "places": [],
+      "files": 12
+    },
     {
       "sha": "f34a3411",
       "date": "2026-09-02",
@@ -995,16 +1003,6 @@
         "the machinery underneath"
       ],
       "files": 18
-    },
-    {
-      "sha": "12441046",
-      "date": "2026-08-18",
-      "subject": "Made the dancers people rather than four copies of one person",
-      "lede": "Everything about the dancing was perfectly quantised, which is exactly right for keeping a room in time and exactly wrong for making it look like people. Four regulars on the floor hit every beat on the same frame, at the same size, with every joint arriving at once, facing whichever way they were built. Three changes, and they compound:",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
     }
   ]
 }

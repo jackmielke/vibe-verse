@@ -21,6 +21,7 @@ import { characterArt } from "@/lib/characterArt";
 import { SUIT_ID, lockerSelection } from "@/royale/play/skinChoice";
 import type { GameMode } from "@/royale/types";
 import { modeForLocation } from "@/royale/mode/route";
+import { useScreen } from "@/lib/screen";
 
 const CONTROLS: [string, string][] = [
   ["WASD", "move"],
@@ -79,6 +80,8 @@ export function RoyalePage() {
   const [error, setError] = useState<string | null>(null);
   /** The locker overlay, over the entry veil. */
   const [lockerOpen, setLockerOpen] = useState(false);
+  /** Phone or not, finger or not — the veil reads both. See lib/screen.ts. */
+  const screen = useScreen();
   const [who, setWho] = useState<string>(() => lockerSelection());
   useEffect(() => {
     const sync = () => setWho(lockerSelection());
@@ -184,13 +187,24 @@ export function RoyalePage() {
 
       {ready && engine && <HUD engine={engine} locked={locked || shotMode} />}
 
-      {/* Loading / pause veil */}
+      {/* Loading / pause veil. Scrolls rather than centres when it has to:
+          on a phone held sideways there are 430 px, and a column that is
+          centred in less room than it needs loses its title off the top and
+          its button off the bottom. */}
       {(!ready || !locked) && !shotMode && !error && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-gradient-to-b from-[#0b1230]/95 via-[#141a3a]/90 to-[#05060f]/96 backdrop-blur-sm">
+        <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-gradient-to-b from-[#0b1230]/95 via-[#141a3a]/90 to-[#05060f]/96 backdrop-blur-sm">
+        <div
+          className="flex min-h-full flex-col items-center justify-center px-6 pb-8 pt-14"
+          style={{ paddingTop: "max(env(safe-area-inset-top), 56px)", paddingBottom: "max(env(safe-area-inset-bottom), 32px)" }}
+        >
           <p className="text-xs uppercase tracking-[0.5em] text-indigo-300/70">
             The Vibeverse presents
           </p>
-          <h1 className="mt-3 bg-gradient-to-b from-white via-sky-200 to-indigo-400 bg-clip-text text-6xl font-black tracking-tight text-transparent drop-shadow-[0_2px_28px_rgba(99,102,241,0.45)] sm:text-8xl">
+          <h1
+            className={`mt-3 bg-gradient-to-b from-white via-sky-200 to-indigo-400 bg-clip-text text-center font-black leading-none tracking-tight text-transparent drop-shadow-[0_2px_28px_rgba(99,102,241,0.45)] ${
+              screen.short ? "text-4xl" : "text-[40px] sm:text-6xl md:text-8xl"
+            }`}
+          >
             {better ? BETTER.strings.modeName : water ? "SPLASH ROYALE" : "DROP ZERO"}
           </h1>
           <p className="mt-2 max-w-md text-center text-sm text-indigo-100/70">
@@ -254,22 +268,35 @@ export function RoyalePage() {
               >
                 {better ? BETTER.strings.enter : water ? "Get soaked" : "Drop in"}
               </button>
-              <div className="mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 font-mono text-[11px] text-indigo-100/50 sm:grid-cols-3">
-                {(better ? BETTER_CONTROLS : water ? WATER_CONTROLS : CONTROLS).map(([key, action]) => (
-                  <span key={key}>
-                    <b className="text-sky-200/80">{key}</b> {action}
-                  </span>
-                ))}
-              </div>
+              {screen.touch ? (
+                // A key list on a screen with no keys. The thumb layout is
+                // the one thing a phone player needs to know before the bus.
+                <p className="mt-6 max-w-sm text-center font-mono text-[11px] leading-relaxed text-indigo-100/55">
+                  Left thumb moves · right thumb looks, tap to fire · the pads on the right{" "}
+                  {better ? "hook, build, jump and fire" : "build, jump and fire"} · the strip along the bottom is your bag
+                  {screen.portrait ? (
+                    <span className="mt-2 block text-sky-200/70">Turn the phone sideways for the full view</span>
+                  ) : null}
+                </p>
+              ) : (
+                <div className="mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 font-mono text-[11px] text-indigo-100/50 sm:grid-cols-3">
+                  {(better ? BETTER_CONTROLS : water ? WATER_CONTROLS : CONTROLS).map(([key, action]) => (
+                    <span key={key}>
+                      <b className="text-sky-200/80">{key}</b> {action}
+                    </span>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
           <Link
             to="/"
-            className="absolute bottom-6 text-[11px] uppercase tracking-[0.3em] text-white/30 transition hover:text-white/60"
+            className="mt-8 text-[11px] uppercase tracking-[0.3em] text-white/30 transition hover:text-white/60"
           >
             ← back to the vibeverse
           </Link>
+        </div>
         </div>
       )}
 

@@ -112,6 +112,16 @@ export default function SfUi({ hidden, peaceful = false }: SfUiProps) {
     if (!photoRig.active) frame.fov = settings.fov;
   }, [settings.fov]);
 
+  /* --- tell the page which screen is up ---------------------------- */
+  // The page's chrome floats over this whole tree and has no store to read;
+  // an event is the narrowest thing that lets it get out of the map's way.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("sf:route", { detail: route }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("sf:route", { detail: "none" }));
+    };
+  }, [route]);
+
   /* --- pause bookkeeping ------------------------------------------- */
   useEffect(() => {
     const modal = route === "pause" || route === "settings" || route === "controls" || route === "credits" || route === "main";

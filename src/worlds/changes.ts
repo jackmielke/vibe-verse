@@ -46,12 +46,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
   "better-fortnite": [
+    { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a341", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92a", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad32", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
     { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
     { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
-    { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
   ],
   "blob": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -115,12 +115,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
   "drop-zero": [
+    { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a341", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92a", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad32", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
     { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
     { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
-    { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
   ],
   "dunes": [
     { sha: "271da81", iso: "2026-08-16T20:40:40+00:00", subject: "The Dune Sea was drawing the sky where the ground should be" },
@@ -219,12 +219,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "023e4d3", iso: "2026-07-29T03:41:33+00:00", subject: "Vibe Island II — first light: the archipelago, the sky, the carved lagoon" },
   ],
   "island-explorer": [
+    { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a341", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "e506684", iso: "2026-08-10T02:54:21+00:00", subject: "Tapping a character opens that character, and you can dress it" },
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "e6d6df5", iso: "2026-08-06T17:19:43+00:00", subject: "🦇 Four new code-built characters, and the heist stops nagging" },
     { sha: "262ce61", iso: "2026-08-01T19:03:01+00:00", subject: "The character picker was rendering everyone as a silhouette" },
-    { sha: "d8bd9f9", iso: "2026-08-01T19:03:00+00:00", subject: "Flux: a pilot with no model file, animated from its own motion" },
   ],
   "kart": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -334,12 +334,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "45648c1", iso: "2026-05-14T04:33:38+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a341", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92a", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad32", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
     { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
     { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
-    { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },

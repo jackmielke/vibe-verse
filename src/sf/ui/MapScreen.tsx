@@ -30,6 +30,7 @@ import {
 import { buildHillshade, getHillshade, hillshadeProgress } from "./map/hillshade";
 import { COLORS, cvdColor, rgba } from "./theme";
 import { distance as fmtDistance, cardinal, bearingTo } from "./format";
+import { useScreen } from "@/lib/screen";
 
 const MIN_PPM = 0.028;
 const MAX_PPM = 1.1;
@@ -54,6 +55,21 @@ export default function MapScreen() {
   const reliefRef = useRef<HTMLSpanElement>(null);
   const [relief, setRelief] = useState(true);
   const [hover, setHover] = useState<{ x: number; z: number } | null>(null);
+  /* A phone stacks the map over the list instead of putting them side by
+     side, and loses the readouts and the legend: 393 px is not wide enough
+     for a sidebar, and the legend was three words in seven-point type. */
+  const screen = useScreen();
+  const phone = screen.phone;
+  const touch = screen.touch;
+  /* Upright, the list goes under the map; on its side there is width for the
+     sidebar and no height for a stack — one landmark showed. */
+  const stack = phone && screen.portrait;
+  const SIDEBAR = phone ? 250 : 300;
+  const HEADER = phone ? 52 : 70;
+  const FOOTER = 46;
+  /* The landmark you tapped last. On a phone there is no double-click; the
+     second tap on the same name is the waypoint. */
+  const lastTap = useRef<string | null>(null);
 
   // The live camera. Kept in a ref so dragging does not re-render React 60
   // times a second; the store is only written when the gesture ends.
@@ -188,39 +204,82 @@ export default function MapScreen() {
     const wrap = wrapRef.current;
     if (!wrap) return;
 
-    let dragging = false;
+    /* Every pointer that is down, by id. One finger pans; two pinch — the
+       zoom is about the midpoint and the midpoint's drift pans, which is the
+       gesture every map on a phone has taught everybody. A mouse is one
+       pointer and gets the pan. */
+    const pointers = new Map<number, { x: number; y: number }>();
     let moved = 0;
-    let lastX = 0;
-    let lastY = 0;
+    let pinchDist = 0;
+    let pinchMidX = 0;
+    let pinchMidY = 0;
+
+    const zoomAbout = (sx: number, sy: number, k: number) => {
+      const before = s2w(view.current, sx, sy);
+      const bx = before.x;
+      const bz = before.z;
+      view.current.ppm = Math.max(MIN_PPM, Math.min(MAX_PPM, view.current.ppm * k));
+      // Keep the world point under the cursor pinned — the only zoom that
+      // does not feel like fighting the map.
+      const after = s2w(view.current, sx, sy);
+      view.current.cx += bx - after.x;
+      view.current.cz += bz - after.z;
+      dirty.current = true;
+    };
 
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 0) return;
-      dragging = true;
-      moved = 0;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (pointers.size === 0) moved = 0;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       wrap.setPointerCapture(e.pointerId);
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        pinchMidX = (a.x + b.x) / 2;
+        pinchMidY = (a.y + b.y) / 2;
+      }
     };
     const onMove = (e: PointerEvent) => {
       const rect = wrap.getBoundingClientRect();
       const p = s2w(view.current, e.clientX - rect.left, e.clientY - rect.top);
-      setHover({ x: p.x, z: p.z });
-      if (!dragging) return;
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      if (e.pointerType === "mouse") setHover({ x: p.x, z: p.z });
+      const t = pointers.get(e.pointerId);
+      if (!t) return;
+      const dx = e.clientX - t.x;
+      const dy = e.clientY - t.y;
+      t.x = e.clientX;
+      t.y = e.clientY;
       moved += Math.abs(dx) + Math.abs(dy);
+      if (pointers.size >= 2) {
+        const [a, b] = [...pointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        if (pinchDist > 0) zoomAbout(midX - rect.left, midY - rect.top, dist / pinchDist);
+        view.current.cx -= (midX - pinchMidX) / view.current.ppm;
+        view.current.cz -= (midY - pinchMidY) / view.current.ppm;
+        pinchDist = dist;
+        pinchMidX = midX;
+        pinchMidY = midY;
+        dirty.current = true;
+        return;
+      }
       view.current.cx -= dx / view.current.ppm;
       view.current.cz -= dy / view.current.ppm;
       dirty.current = true;
     };
     const onUp = (e: PointerEvent) => {
-      if (!dragging) return;
-      dragging = false;
+      if (!pointers.has(e.pointerId)) return;
+      const wasPinch = pointers.size >= 2;
+      pointers.delete(e.pointerId);
       wrap.releasePointerCapture?.(e.pointerId);
-      // A click, not a drag: drop a waypoint where they clicked.
-      if (moved < 5) {
+      if (pointers.size > 0) {
+        // The other finger carries on as a pan from where it is now.
+        pinchDist = 0;
+        return;
+      }
+      // A click or a tap, not a drag or a pinch: drop a waypoint there.
+      if (moved < 5 && !wasPinch) {
         const rect = wrap.getBoundingClientRect();
         const p = s2w(view.current, e.clientX - rect.left, e.clientY - rect.top);
         const d = districtAt(p.x, p.z);
@@ -230,19 +289,7 @@ export default function MapScreen() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = wrap.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      const before = s2w(view.current, sx, sy);
-      const bx = before.x;
-      const bz = before.z;
-      const k = Math.exp(-e.deltaY * 0.0016);
-      view.current.ppm = Math.max(MIN_PPM, Math.min(MAX_PPM, view.current.ppm * k));
-      // Keep the world point under the cursor pinned — the only zoom that
-      // does not feel like fighting the map.
-      const after = s2w(view.current, sx, sy);
-      view.current.cx += bx - after.x;
-      view.current.cz += bz - after.z;
-      dirty.current = true;
+      zoomAbout(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.0016));
     };
     const onContext = (e: MouseEvent) => {
       e.preventDefault();
@@ -252,12 +299,14 @@ export default function MapScreen() {
     wrap.addEventListener("pointerdown", onDown);
     wrap.addEventListener("pointermove", onMove);
     wrap.addEventListener("pointerup", onUp);
+    wrap.addEventListener("pointercancel", onUp);
     wrap.addEventListener("wheel", onWheel, { passive: false });
     wrap.addEventListener("contextmenu", onContext);
     return () => {
       wrap.removeEventListener("pointerdown", onDown);
       wrap.removeEventListener("pointermove", onMove);
       wrap.removeEventListener("pointerup", onUp);
+      wrap.removeEventListener("pointercancel", onUp);
       wrap.removeEventListener("wheel", onWheel);
       wrap.removeEventListener("contextmenu", onContext);
     };
@@ -285,16 +334,22 @@ export default function MapScreen() {
     >
       {/* Header */}
       <div
-        className="absolute left-0 right-0 top-0 flex items-center gap-4 px-8"
-        style={{ height: 70, borderBottom: "1px solid rgba(255,255,255,0.09)" }}
+        className="absolute left-0 right-0 top-0 flex items-center gap-4"
+        style={{
+          height: HEADER,
+          borderBottom: "1px solid rgba(255,255,255,0.09)",
+          // Past the home button, which keeps its corner over this screen.
+          paddingLeft: phone ? "calc(max(env(safe-area-inset-left), 8px) + var(--vv-home-clear, 56px))" : 32,
+          paddingRight: phone ? "max(env(safe-area-inset-right), 14px)" : 32,
+        }}
       >
         <div className="flex items-center gap-3">
           <div style={{ width: 3, height: 26, background: COLORS.signal }} />
           <div className="flex flex-col">
-            <span className="sf-display" style={{ fontSize: 17, letterSpacing: "0.05em" }}>
+            <span className="sf-display" style={{ fontSize: phone ? 14 : 17, letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
               SAN FRANCISCO
             </span>
-            <span className="sf-label" style={{ fontSize: 8, letterSpacing: "0.32em" }}>
+            <span className="sf-label" style={{ fontSize: 8, letterSpacing: "0.32em", whiteSpace: "nowrap" }}>
               TACTICAL MAP
             </span>
           </div>
@@ -302,13 +357,17 @@ export default function MapScreen() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-4">
+        {phone ? (
           <Readout label="DISTRICT" value={here.name} />
-          <Readout label="POSITION" value={`${ll.lat.toFixed(4)}, ${ll.lon.toFixed(4)}`} />
-          <Readout label="ALT" value={`${Math.round(frame.position.y)} M`} />
-        </div>
+        ) : (
+          <div className="flex items-center gap-4">
+            <Readout label="DISTRICT" value={here.name} />
+            <Readout label="POSITION" value={`${ll.lat.toFixed(4)}, ${ll.lon.toFixed(4)}`} />
+            <Readout label="ALT" value={`${Math.round(frame.position.y)} M`} />
+          </div>
+        )}
 
-        <button className="sf-chip" onClick={back} style={{ marginLeft: 12 }}>
+        <button className="sf-chip" onClick={back} style={{ marginLeft: 12, minHeight: phone ? 36 : undefined }}>
           CLOSE
         </button>
       </div>
@@ -317,14 +376,11 @@ export default function MapScreen() {
       <div
         ref={wrapRef}
         className="absolute"
-        style={{
-          left: 0,
-          right: 300,
-          top: 70,
-          bottom: 46,
-          cursor: "crosshair",
-          touchAction: "none",
-        }}
+        style={
+          stack
+            ? { left: 0, right: 0, top: HEADER, height: "46%", cursor: "crosshair", touchAction: "none" }
+            : { left: 0, right: SIDEBAR, top: HEADER, bottom: FOOTER, cursor: "crosshair", touchAction: "none" }
+        }
       >
         <canvas ref={canvasRef} style={{ display: "block" }} />
 
@@ -358,17 +414,34 @@ export default function MapScreen() {
 
       {/* Sidebar */}
       <div
-        className="absolute right-0 sf-scroll"
-        style={{
-          top: 70,
-          bottom: 46,
-          width: 300,
-          borderLeft: "1px solid rgba(255,255,255,0.09)",
-          background: "rgba(6,8,12,0.6)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-          padding: "18px 20px",
-        }}
+        className="absolute right-0 sf-scroll sf-pe"
+        style={
+          stack
+            ? {
+                left: 0,
+                top: `calc(${HEADER}px + 46%)`,
+                bottom: FOOTER,
+                borderTop: "1px solid rgba(255,255,255,0.09)",
+                background: "rgba(6,8,12,0.72)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                padding: "12px 16px",
+                overflowY: "auto",
+                WebkitOverflowScrolling: "touch",
+              }
+            : {
+                top: HEADER,
+                bottom: FOOTER,
+                width: SIDEBAR,
+                overflowY: "auto",
+                WebkitOverflowScrolling: "touch",
+                borderLeft: "1px solid rgba(255,255,255,0.09)",
+                background: "rgba(6,8,12,0.6)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                padding: "18px 20px",
+              }
+        }
       >
         <SectionLabel>WAYPOINT</SectionLabel>
         {waypoint ? (
@@ -387,7 +460,9 @@ export default function MapScreen() {
           </div>
         ) : (
           <p className="sf-text mb-4" style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
-            Click anywhere on the map to drop a waypoint. Right-click to clear it.
+            {touch
+              ? "Tap the map to drop a waypoint. Tap a landmark twice to send it there."
+              : "Click anywhere on the map to drop a waypoint. Right-click to clear it."}
           </p>
         )}
 
@@ -430,7 +505,7 @@ export default function MapScreen() {
                 key={lm.key}
                 className="flex items-center gap-2 sf-pe text-left"
                 style={{
-                  padding: "5px 6px",
+                  padding: touch ? "9px 6px" : "5px 6px",
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
@@ -441,6 +516,10 @@ export default function MapScreen() {
                   view.current.cz = lm.z;
                   view.current.ppm = Math.max(view.current.ppm, 0.32);
                   dirty.current = true;
+                  // The second tap on the same name is the waypoint — the
+                  // touch equivalent of the double-click below.
+                  if (touch && lastTap.current === lm.key) setWaypoint({ x: lm.x, z: lm.z, label: lm.name });
+                  lastTap.current = lm.key;
                 }}
                 onDoubleClick={() => setWaypoint({ x: lm.x, z: lm.z, label: lm.name })}
               >
@@ -488,8 +567,15 @@ export default function MapScreen() {
 
       {/* Footer toolbar */}
       <div
-        className="absolute left-0 right-0 bottom-0 flex items-center gap-2 px-8"
-        style={{ height: 46, borderTop: "1px solid rgba(255,255,255,0.09)" }}
+        className="absolute left-0 right-0 bottom-0 flex items-center gap-2 sf-pe"
+        style={{
+          height: FOOTER,
+          borderTop: "1px solid rgba(255,255,255,0.09)",
+          paddingLeft: phone ? "max(env(safe-area-inset-left), 12px)" : 32,
+          paddingRight: phone ? "max(env(safe-area-inset-right), 12px)" : 32,
+          whiteSpace: "nowrap",
+          overflowX: phone ? "auto" : undefined,
+        }}
       >
         <button
           className="sf-chip"
@@ -516,15 +602,28 @@ export default function MapScreen() {
         <button className="sf-chip" data-on={relief ? "1" : "0"} onClick={() => { setRelief((r) => !r); dirty.current = true; }}>
           <span ref={reliefRef}>RELIEF</span>
         </button>
-        <div className="flex-1" />
-        <Legend color={COLORS.signal} label="OBJECTIVE" />
-        <Legend color={cvdColor("info", cvd)} label="WAYPOINT" />
-        <Legend color={cvdColor("danger", cvd)} label="HOSTILE" />
-        <Legend color={COLORS.roadBoulevard} label="BOULEVARD" />
-        <div className="flex-1" />
-        <span className="sf-label" style={{ fontSize: 8, letterSpacing: "0.2em" }}>
-          DRAG PAN · WHEEL ZOOM · CLICK WAYPOINT
-        </span>
+        {phone ? (
+          <>
+            <div className="flex-1" />
+            {waypoint && (
+              <button className="sf-chip" onClick={() => setWaypoint(null)}>
+                CLEAR PIN
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex-1" />
+            <Legend color={COLORS.signal} label="OBJECTIVE" />
+            <Legend color={cvdColor("info", cvd)} label="WAYPOINT" />
+            <Legend color={cvdColor("danger", cvd)} label="HOSTILE" />
+            <Legend color={COLORS.roadBoulevard} label="BOULEVARD" />
+            <div className="flex-1" />
+            <span className="sf-label" style={{ fontSize: 8, letterSpacing: "0.2em" }}>
+              {touch ? "DRAG PAN · PINCH ZOOM · TAP WAYPOINT" : "DRAG PAN · WHEEL ZOOM · CLICK WAYPOINT"}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );
