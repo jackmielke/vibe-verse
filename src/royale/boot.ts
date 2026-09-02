@@ -44,12 +44,36 @@ import createGhostsSystem from "./net/ghosts";
 import createCommentarySystem from "./audio/commentary";
 import createLido from "./world/lido";
 import createAmbience from "./world/ambience";
+import createAugments from "./play/augments";
+import createGrapple from "./play/grapple";
+import createSecondWind from "./play/secondwind";
+import createEvents from "./play/events";
 
 export interface BootResult {
   engine: Engine;
 }
 
 export type BootProgress = (stage: string, fraction: number) => void;
+
+/**
+ * BETTER FORTNITE's four systems. They boot straight after input and before
+ * everything else in the frame, on purpose:
+ *
+ *   augments   eats the digit keys for 1..3 while an offer is open, so it must
+ *              run before the inventory reads `input.slot`;
+ *   grapple    writes the pull into `player.velocity` in `fixed`, so it must
+ *              run before the player integrates.
+ *
+ * All four read the services they need lazily and publish their own; none of
+ * the other 24 systems knows they exist, which is what lets `classic` and
+ * `water` skip them entirely and stay exactly the games they were.
+ */
+const BETTER_STAGES = [
+  { label: "Dealing the augments", factory: createAugments },
+  { label: "Coiling the grapple", factory: createGrapple },
+  { label: "Arming second wind", factory: createSecondWind },
+  { label: "Waking the island's events", factory: createEvents },
+] as const;
 
 /** Ordered boot list. The single source of truth for load order. */
 const STAGES = [
@@ -92,9 +116,12 @@ export async function boot(opts: EngineOptions, onProgress?: BootProgress): Prom
     engine.renderOverride = typeof fn === "function" ? (fn as (dt: number) => void) : null;
   });
 
-  for (let i = 0; i < STAGES.length; i++) {
-    const stage = STAGES[i];
-    onProgress?.(stage.label, i / STAGES.length);
+  const stages: readonly { label: string; factory: (typeof STAGES)[number]["factory"] }[] =
+    opts.mode === "better" ? [STAGES[0], ...BETTER_STAGES, ...STAGES.slice(1)] : STAGES;
+
+  for (let i = 0; i < stages.length; i++) {
+    const stage = stages[i];
+    onProgress?.(stage.label, i / stages.length);
     try {
       await engine.add(stage.factory);
     } catch (err) {

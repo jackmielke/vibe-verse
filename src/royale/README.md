@@ -65,6 +65,36 @@ each with a roof-colour identity and a loot tier. Roads connect them. The
 terrain is authored so POI floors land on multiples of `GRID` (4 m), because
 players build off them.
 
+## The third game: BETTER FORTNITE
+
+Route: `/better-fortnite` (aliases `/better`, `/bf`). Page: `src/pages/BetterFortnite.tsx`,
+which stamps its passport and renders the same `RoyalePage` as the other two.
+
+`ctx.mode === "better"` is Drop Zero's bullets and health plus four systems the
+other two games never load. They boot straight after input (see `BETTER_STAGES`
+in `boot.ts` for why that position is load-bearing), and every number for all
+four lives in `mode/better.ts`:
+
+- **Augments** (`play/augments.ts`) — a hand of three perks a few times a
+  match, taken with 1/2/3 or a tap. Nothing applies them: weapons, building,
+  the storm and the player each multiply their own constant by
+  `augments.factor(key)` at the moment they use it, and read 1 when the
+  service is absent. That is the whole reason the other modes are unchanged.
+- **The grapple** (`play/grapple.ts`) — F. A velocity you are steered onto, not
+  a pendulum. It boots before the player so its pull is integrated.
+- **Second wind** (`play/secondwind.ts`) — the first down is a countdown and a
+  redeploy over the circle, once. The player system asks `claim()` at the
+  moment it would start the bleed-out and, if taken, stops counting; this
+  system counts, and calls `player.redeploy()` at zero. One clock.
+- **Island events** (`play/events.ts`) — one per circle: a supply storm, low
+  gravity, nightfall, shield rain, sudden death. Every effect is a one-liner
+  against a service that already existed.
+
+`npm run dz:play` with `DZ_ROUTE=/better-fortnite` runs four extra beats that
+drive each of these with real input where a player can and the documented
+debug entry points (`augments.offerNow()`, `events.trigger()`) where the
+schedule would otherwise cost minutes of simulated time.
+
 ## The lido
 
 `world/lido.ts` is a water park on the east coast — slide tower, wave pool, a

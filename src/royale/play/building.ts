@@ -145,6 +145,16 @@ const SWING_IMPACT = 0.17;
 const PIECE_COST = 10;
 
 /**
+ * The cost right now. Mason (BETTER FORTNITE) halves it; in every other mode
+ * there is no augments service and this is `PIECE_COST`. Read at the moment
+ * of the spend and of the affordability check, never cached — the augment can
+ * be taken mid-build.
+ */
+function pieceCostFor(services: { augments?: { factor(key: "buildCost"): number } }): number {
+  return Math.max(1, Math.round(PIECE_COST * (services.augments?.factor("buildCost") ?? 1)));
+}
+
+/**
  * Seconds from placement to full HP. 0.4 s is the number the whole mechanic
  * hangs off: long enough that pushing through a fresh wall is a real option,
  * short enough that a wall you threw up to block a shotgun actually blocks it.
@@ -2202,7 +2212,7 @@ const createBuilding: SystemFactory = (ctx: WorldCtx): System => {
     validity.ok = false;
     validity.reason = "";
     const inv = ctx.services.inventory;
-    validity.afford = !inv || inv[service.material] >= PIECE_COST;
+    validity.afford = !inv || inv[service.material] >= pieceCostFor(ctx.services);
 
     if (pieces.has(locKey(l))) {
       validity.reason = "occupied";
@@ -2281,7 +2291,7 @@ const createBuilding: SystemFactory = (ctx: WorldCtx): System => {
       const inv = ctx.services.inventory;
       if (inv) {
         for (const m of order) {
-          if (m !== service.material && inv[m] >= PIECE_COST) {
+          if (m !== service.material && inv[m] >= pieceCostFor(ctx.services)) {
             service.material = m;
             v = validate(previewLoc, MASK_FULL);
             break;
@@ -2297,13 +2307,14 @@ const createBuilding: SystemFactory = (ctx: WorldCtx): System => {
     }
 
     const inv = ctx.services.inventory;
-    if (inv && !inv.spendMaterial(service.material, PIECE_COST)) return null;
+    const cost = pieceCostFor(ctx.services);
+    if (inv && !inv.spendMaterial(service.material, cost)) return null;
 
     const piece = spawnPiece({ ...previewLoc }, service.material, MASK_FULL, "player");
     if (!piece) {
       // Refund: charging for a piece that never appeared is the worst possible
       // failure mode in a game where materials are the resource you fight over.
-      inv?.addMaterial(service.material, PIECE_COST);
+      inv?.addMaterial(service.material, cost);
       return null;
     }
     lastPlacedKey = key;
@@ -3007,7 +3018,7 @@ const createBuilding: SystemFactory = (ctx: WorldCtx): System => {
       wood: inv?.wood ?? 0,
       stone: inv?.stone ?? 0,
       metal: inv?.metal ?? 0,
-      cost: PIECE_COST,
+      cost: pieceCostFor(ctx.services),
     });
   }
 

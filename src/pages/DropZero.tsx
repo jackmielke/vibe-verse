@@ -13,6 +13,9 @@ import type { Engine } from "@/royale/engine/core";
 import { detectQuality } from "@/royale/engine/core";
 import HUD from "@/royale/ui/HUD";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
+import { BETTER } from "@/royale/mode/better";
+import type { GameMode } from "@/royale/types";
+import { modeForLocation } from "@/royale/mode/route";
 
 const CONTROLS: [string, string][] = [
   ["WASD", "move"],
@@ -34,13 +37,32 @@ const WATER_CONTROLS: [string, string][] = CONTROLS.map(([k, a]) =>
   k === "Mouse" ? [k, "look / soak"] : k === "R" ? [k, "pump tank"] : [k, a],
 ) as [string, string][];
 
+/** BETTER FORTNITE adds the grapple and the augment keys. */
+const BETTER_CONTROLS: [string, string][] = [
+  ...CONTROLS.slice(0, 5),
+  [BETTER.strings.grappleKey, "grapple"],
+  ...CONTROLS.slice(5, 10),
+  ["1 2 3", "pick augment"],
+  ...CONTROLS.slice(10),
+];
+
+
 export default function DropZero() {
   // Passport: every world records that you were here. See lib/passport.ts.
   /* This route boots SPLASH ROYALE by default, so it stamps its passport entry.
      `?mode=classic` still plays the original build, but the classic mode is a
      variant of one world rather than a second world, and giving a variant its
-     own stamp would make the passport count the same island twice. */
+     own stamp would make the passport count the same island twice. BETTER
+     FORTNITE is a second world and stamps from its own page. */
   useWorldStamp("/splash-royale", "Splash Royale");
+  return <RoyalePage />;
+}
+
+/**
+ * The page itself, without a passport stamp. Three worlds share it; each
+ * default-exported page stamps its own route and renders this.
+ */
+export function RoyalePage() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
@@ -74,14 +96,11 @@ export default function DropZero() {
    * water game like everything else, and `?mode=classic` is the way back to
    * the original bullets-and-health build for anyone who wants it.
    */
-  const mode = (() => {
-    if (typeof window === "undefined") return "water" as const;
-    return new URLSearchParams(window.location.search).get("mode") === "classic"
-      ? ("classic" as const)
-      : ("water" as const);
-  })();
+  const mode: GameMode =
+    typeof window === "undefined" ? "water" : modeForLocation(window.location.pathname, window.location.search);
 
   const water = mode === "water";
+  const better = mode === "better";
 
   const forcedQuality = (() => {
     if (typeof window === "undefined") return null;
@@ -151,12 +170,14 @@ export default function DropZero() {
             The Vibeverse presents
           </p>
           <h1 className="mt-3 bg-gradient-to-b from-white via-sky-200 to-indigo-400 bg-clip-text text-6xl font-black tracking-tight text-transparent drop-shadow-[0_2px_28px_rgba(99,102,241,0.45)] sm:text-8xl">
-            {water ? "SPLASH ROYALE" : "DROP ZERO"}
+            {better ? BETTER.strings.modeName : water ? "SPLASH ROYALE" : "DROP ZERO"}
           </h1>
           <p className="mt-2 max-w-md text-center text-sm text-indigo-100/70">
-            {water
-              ? "One island. One downpour. Soakers, water balloons and a glue gun — harvest, build, and be the last one dry when the rain closes in."
-              : "One island. One storm. Harvest anything, build faster than they can shoot, and be the last one breathing when the circle closes."}
+            {better
+              ? BETTER.strings.tagline
+              : water
+                ? "One island. One downpour. Soakers, water balloons and a glue gun — harvest, build, and be the last one dry when the rain closes in."
+                : "One island. One storm. Harvest anything, build faster than they can shoot, and be the last one breathing when the circle closes."}
           </p>
 
           {!ready ? (
@@ -177,10 +198,10 @@ export default function DropZero() {
                 onClick={enter}
                 className="mt-10 rounded-full bg-gradient-to-r from-sky-400 to-violet-500 px-10 py-3 text-sm font-bold uppercase tracking-[0.2em] text-white shadow-[0_0_44px_rgba(129,140,248,0.5)] transition hover:brightness-110"
               >
-                {water ? "Get soaked" : "Drop in"}
+                {better ? BETTER.strings.enter : water ? "Get soaked" : "Drop in"}
               </button>
               <div className="mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 font-mono text-[11px] text-indigo-100/50 sm:grid-cols-3">
-                {(water ? WATER_CONTROLS : CONTROLS).map(([key, action]) => (
+                {(better ? BETTER_CONTROLS : water ? WATER_CONTROLS : CONTROLS).map(([key, action]) => (
                   <span key={key}>
                     <b className="text-sky-200/80">{key}</b> {action}
                   </span>

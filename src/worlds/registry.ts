@@ -36,7 +36,8 @@
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
-  "splash-royale",       // …and then the water fight, which is the one you send to a friend
+  "better-fortnite",     // …then the battle royale with everything in it
+  "splash-royale",       // …and the water fight, which is the one you send to a friend
   "blob",                // …and the one you can explain in four words
   "blob-battle",         // …and the guest game that plays the same way
   "coil",                // …and its twin, where being big is the problem
@@ -252,6 +253,26 @@ const WORLDS_RAW: WorldEntry[] = [
        ctx.mode flipped, and one game deserves one card — this entry exists so
        the older build stays reachable, not so it competes for attention. */
     source: "src/royale",
+    chromeless: true,
+  },
+  {
+    key: "better-fortnite",
+    route: "/better-fortnite",
+    aliases: ["/better", "/bf", "/better-royale"],
+    name: "Better Fortnite",
+    emoji: "🪝",
+    kind: "game",
+    blurb:
+      "The island, the storm and the build loop — plus augments you pick mid-match, a grapple on every hip, a second wind after your first down, and an island that does things while the circle closes.",
+    status: "Playable — solo vs 99 with everything on",
+    accent: "#f59e0b",
+    backdrop: "#1b1035",
+    featured: true,
+    /* Same engine as Drop Zero and Splash Royale, third mode. Shares their
+       source path for the stamper, for the reason on the water entry. */
+    source: "src/royale",
+    nav: true,
+    passport: true,
     chromeless: true,
   },
   {

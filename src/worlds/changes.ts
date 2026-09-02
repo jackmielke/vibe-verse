@@ -45,6 +45,14 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
+  "better-fortnite": [
+    { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
+    { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
+    { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
+    { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
+    { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
+    { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
+  ],
   "blob": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "64140cc", iso: "2026-08-10T23:09:13+00:00", subject: "BLOB: a phone sets a course, and a room code shares the dish" },
@@ -296,12 +304,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1e", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "52d6e22", iso: "2026-08-29T07:01:41+00:00", subject: "The real weather, and a painted mountain on Twin Peaks" },
     { sha: "9fd6cfa", iso: "2026-08-28T08:23:33+00:00", subject: "The day passes now, and you can wave at people" },
     { sha: "620ba8b", iso: "2026-08-26T08:54:18+00:00", subject: "Other people are in San Francisco now" },
     { sha: "68d1e74", iso: "2026-08-26T07:28:25+00:00", subject: "Stroll is the default. The loud version is a button." },
     { sha: "9df38e0", iso: "2026-08-25T10:13:39+00:00", subject: "A way back to first person, and a hint that says how to get in a car" },
     { sha: "fa63731", iso: "2026-08-25T09:57:18+00:00", subject: "Tame the lens, and two determinism bugs the fog change flushed out" },
-    { sha: "8876dd8", iso: "2026-08-25T09:20:29+00:00", subject: "Turn the post chain on, and thin Karl out" },
   ],
   "shop": [
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },

@@ -95,6 +95,7 @@ const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 const Conservatory = lazy(() => import("./pages/Conservatory.tsx"));
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
+const BetterFortnite = lazy(() => import("./pages/BetterFortnite.tsx"));
 const VibeKart = lazy(() => import("./pages/VibeKart.tsx"));
 const TheDeep = lazy(() => import("./pages/TheDeep.tsx"));
 const FiveNights = lazy(() => import("./pages/FiveNights.tsx"));
@@ -405,6 +406,12 @@ const App = () => (
               (?room=SPLASH-4B2) drops a friend straight into your match. */}
           {["/splash-royale", "/splash", "/soaked", "/water-fight", "/soak"].map((path) => (
             <Route key={path} path={path} element={<SplashRoyale />} />
+          ))}
+          {/* BETTER FORTNITE — the third game on the island. Same page, same
+              systems, `mode: "better"`, which the page reads off the path:
+              augments, a grapple, a second wind, island events. */}
+          {["/better-fortnite", "/better", "/bf", "/better-royale"].map((path) => (
+            <Route key={path} path={path} element={<BetterFortnite />} />
           ))}
           {/* FIVE NIGHTS AT VIBEY'S — midnight to 6 AM, two doors, one battery.
               Four animatronics walk a real twelve-room building; the security

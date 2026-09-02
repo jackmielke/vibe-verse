@@ -64,6 +64,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { Engine } from "../engine/core";
 import { RARITY_COLOR, type Rarity } from "../types";
 import { WATER, drynessBand, fmt } from "../mode/water";
+import { BETTER } from "../mode/better";
 // Type-only, but it also carries the module augmentation that puts `net` on
 // `WorldServices` — without this import `ctx.services.net` does not typecheck.
 import type { ChatLine, PeerState } from "../net/types";
@@ -250,6 +251,10 @@ interface MaterialGain {
 }
 
 interface Live {
+  // ---- BETTER FORTNITE (dz:grapple) --------------------------------------
+  grappleCd: number;
+  grappleMax: number;
+  grappleHooked: boolean;
   // ---- player (dz:hud) --------------------------------------------------
   health: number;
   maxHealth: number;
@@ -393,6 +398,9 @@ function makeLive(): Live {
   const slotAmmo: SlotAmmo[] = [];
   for (let i = 0; i < 6; i++) slotAmmo.push({ ammo: 0, magSize: 0, reserve: 0, count: 0 });
   return {
+    grappleCd: 0,
+    grappleMax: 1,
+    grappleHooked: false,
     health: 100,
     maxHealth: 100,
     shield: 0,
@@ -744,6 +752,8 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
 
   /** SPLASH ROYALE or Drop Zero. Fixed at boot, so it is safe to read once. */
   const water = engine.ctx.mode === "water";
+  /** BETTER FORTNITE. Same rule. */
+  const better = engine.ctx.mode === "better";
 
   const [slots, setSlots] = useState<SlotMeta[]>(emptySlots);
   const [phase, setPhase] = useState("warmup");
@@ -759,6 +769,11 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
   const [ending, setEnding] = useState<Ending | null>(null);
   const [canRestart, setCanRestart] = useState(false);
   const [map, setMap] = useState<MapModel | null>(null);
+  // ---- BETTER FORTNITE ---------------------------------------------------
+  const [offer, setOffer] = useState<AugmentCard[]>([]);
+  const [owned, setOwned] = useState<AugmentCard[]>([]);
+  const [event, setEvent] = useState<IslandBanner | null>(null);
+  const [secondWind, setSecondWind] = useState<SecondWindState>({ phase: "none", seconds: 0, remaining: 0 });
 
 
   /* ---- the frame loop -------------------------------------------------- */
@@ -790,6 +805,7 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       setToasts((t) => (t.some((e) => now - e.born > 3400) ? t.filter((e) => now - e.born <= 3400) : t));
       setPickups((p) => (p.some((e) => now - e.born > 3800) ? p.filter((e) => now - e.born <= 3800) : p));
       setArcs((a) => (a.some((e) => now - e.born > 1400) ? a.filter((e) => now - e.born <= 1400) : a));
+      setEvent((e) => (e && now - e.born > 5200 ? null : e));
     }, 300);
     return () => window.clearInterval(id);
   }, []);
@@ -1250,6 +1266,44 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
       setMap(buildMapModel(num(d.worldSize, 1500), pads));
     });
 
+    // ---- BETTER FORTNITE -------------------------------------------------------
+    // All four are emitted only by systems that boot in that mode, so in the
+    // other two these handlers never run.
+    on("dz:augment", (p) => {
+      const d = rec(p);
+      setOffer(list(d.offer).map(asCard));
+      setOwned(list(d.owned).map(asCard));
+    });
+    on("dz:augment-picked", (p) => {
+      const d = rec(p);
+      pushToast(str(d.name, "Augment"), B.augmentTaken, "elim");
+    });
+    on("dz:event", (p) => {
+      const d = rec(p);
+      if (str(d.phase) === "start") {
+        setEvent({
+          id: str(d.id),
+          name: str(d.name, "Event"),
+          sub: str(d.sub),
+          accent: Math.round(num(d.accent, 0xffffff)),
+          born: performance.now(),
+        });
+      }
+    });
+    on("dz:second-wind", (p) => {
+      const d = rec(p);
+      const ph = str(d.phase, "none") as SecondWindState["phase"];
+      setSecondWind({ phase: ph, seconds: num(d.seconds, 0), remaining: Math.round(num(d.remaining, 0)) });
+      if (ph === "armed") pushToast(B.secondWindArmed, "", "info");
+      if (ph === "launch") pushToast(B.secondWindTitle, B.secondWindGone, "urgent");
+    });
+    on("dz:grapple", (p) => {
+      const d = rec(p);
+      l.grappleCd = num(d.cooldown, 0);
+      l.grappleMax = Math.max(0.01, num(d.cooldownMax, 1));
+      l.grappleHooked = bool(d.hooked);
+    });
+
     // ---- SPLASH ROYALE ---------------------------------------------------------
     // Dormant in classic: `dz:glue` is never emitted there, so the prompt
     // never mounts and this handler never runs.
@@ -1369,6 +1423,15 @@ export default function HUD({ engine, locked }: { engine: Engine; locked: boolea
           {water && <GluePrompt clock={clock} live={live} />}
           {dropping && <DropOverlay clock={clock} live={live} phase={phase} playerState={playerState} />}
           <StormBanner inStorm={inStorm} clock={clock} live={live} water={water} />
+          {better && (
+            <>
+              <GrapplePip clock={clock} live={live} />
+              <AugmentTray owned={owned} />
+              <AugmentPicker offer={offer} onChoose={(i) => engine.emit("dz:augment-choose", { index: i })} />
+              <EventBanner event={event} />
+              <SecondWindCard state={secondWind} />
+            </>
+          )}
         </div>
       )}
 
@@ -3990,6 +4053,263 @@ function Vignettes({ clock, live, water = false }: PanelProps & { water?: boolea
           the glass, not in the image. */}
       {water && <WetScreen clock={clock} live={live} />}
     </>
+  );
+}
+
+/* ------------------------------------------------------------------------ *
+ * BETTER FORTNITE
+ * ------------------------------------------------------------------------ */
+
+const B = BETTER.strings;
+
+interface AugmentCard {
+  id: string;
+  name: string;
+  blurb: string;
+  icon: string;
+  accent: number;
+}
+
+interface IslandBanner {
+  id: string;
+  name: string;
+  sub: string;
+  accent: number;
+  born: number;
+}
+
+interface SecondWindState {
+  phase: "none" | "armed" | "countdown" | "launch";
+  seconds: number;
+  remaining: number;
+}
+
+function asCard(v: unknown): AugmentCard {
+  const d = rec(v);
+  return {
+    id: str(d.id),
+    name: str(d.name, "?"),
+    blurb: str(d.blurb),
+    icon: str(d.icon, "✦"),
+    accent: Math.round(num(d.accent, 0xffffff)),
+  };
+}
+
+/**
+ * Three cards, bottom centre, above the inventory. They do not pause the game
+ * and they do not block the crosshair: the offer sits where the eye already
+ * goes for the hotbar, and the keys are the hotbar's keys. Taps work because
+ * the picker is the ONE panel that takes pointer events — it emits into the
+ * engine and never reaches into a system.
+ */
+function AugmentPicker({ offer, onChoose }: { offer: AugmentCard[]; onChoose: (i: number) => void }) {
+  return (
+    <AnimatePresence>
+      {offer.length > 0 && (
+        <motion.div
+          key="augments"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 18, transition: { duration: 0.22 } }}
+          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+          className="pointer-events-auto absolute inset-x-0 bottom-[19%] flex flex-col items-center gap-2"
+        >
+          <div className="flex items-center gap-3 rounded-[4px] px-3 py-1" style={{ ...plate, background: INK_SOLID }}>
+            <span className="font-heading text-[12px] font-black uppercase tracking-[0.22em] text-amber-200">
+              {B.augmentTitle}
+            </span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/50">{B.augmentHint}</span>
+          </div>
+          <div className="flex items-stretch gap-2">
+            {offer.map((c, i) => (
+              <motion.button
+                key={c.id}
+                type="button"
+                onClick={() => onChoose(i)}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.06 * i, type: "spring", stiffness: 420, damping: 28 }}
+                whileHover={{ y: -3 }}
+                whileTap={{ scale: 0.97 }}
+                className="flex w-[168px] flex-col items-start gap-1 rounded-[6px] px-3 py-2.5 text-left"
+                style={{
+                  ...plate,
+                  background: INK_SOLID,
+                  borderColor: rgba(c.accent, 0.6),
+                  boxShadow: `${BEVEL}, 0 0 22px ${rgba(c.accent, 0.22)}`,
+                }}
+              >
+                <div className="flex w-full items-center justify-between">
+                  <span className="text-[20px] leading-none">{c.icon}</span>
+                  <span
+                    className="rounded-[3px] px-1.5 py-0.5 font-heading text-[10px] font-black leading-none"
+                    style={{ background: rgba(c.accent, 0.22), color: hex(c.accent) }}
+                  >
+                    {i + 1}
+                  </span>
+                </div>
+                <span
+                  className="font-heading text-[13px] font-black uppercase tracking-[0.06em]"
+                  style={{ color: hex(c.accent) }}
+                >
+                  {c.name}
+                </span>
+                <span className="text-[10.5px] leading-snug text-white/70">{c.blurb}</span>
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** What you have taken, as a row of glyphs under the home button. */
+function AugmentTray({ owned }: { owned: AugmentCard[] }) {
+  if (owned.length === 0) return null;
+  return (
+    <div className="absolute left-6 top-[58px] flex items-center gap-1.5">
+      {owned.map((c) => (
+        <motion.div
+          key={c.id}
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 500, damping: 26 }}
+          title={`${c.name} — ${c.blurb}`}
+          className="flex h-8 w-8 items-center justify-center rounded-[5px] text-[16px]"
+          style={{ ...plate, background: INK_SOLID, borderColor: rgba(c.accent, 0.55) }}
+        >
+          {c.icon}
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+/** ISLAND EVENT — big, centred, five seconds, then gone. */
+function EventBanner({ event }: { event: IslandBanner | null }) {
+  return (
+    <AnimatePresence>
+      {event && (
+        <motion.div
+          key={event.id + event.born}
+          initial={{ opacity: 0, scale: 0.92, y: -10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.98, y: -14, transition: { duration: 0.35 } }}
+          transition={{ type: "spring", stiffness: 300, damping: 24 }}
+          className="absolute inset-x-0 top-[24%] flex flex-col items-center gap-1"
+        >
+          <span
+            className="rounded-[3px] px-2 py-0.5 font-heading text-[10px] font-black uppercase tracking-[0.34em]"
+            style={{ ...plate, background: INK_SOLID, color: hex(event.accent), borderColor: rgba(event.accent, 0.5) }}
+          >
+            {B.eventPrefix}
+          </span>
+          <span
+            className="font-heading text-[44px] font-black uppercase leading-none tracking-[0.04em] sm:text-[56px]"
+            style={{
+              color: "#fff",
+              textShadow: `0 2px 0 ${rgba(event.accent, 0.9)}, 0 0 28px ${rgba(event.accent, 0.55)}, 0 4px 18px rgba(0,0,0,0.8)`,
+            }}
+          >
+            {event.name}
+          </span>
+          <span
+            className="text-[12px] font-bold uppercase tracking-[0.2em] text-white/75"
+            style={{ textShadow: "0 2px 8px rgba(0,0,0,0.9)" }}
+          >
+            {event.sub}
+          </span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** The countdown while you are face-down waiting to go back up. */
+function SecondWindCard({ state }: { state: SecondWindState }) {
+  const show = state.phase === "countdown";
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          key="second-wind"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 1.06, transition: { duration: 0.25 } }}
+          className="absolute inset-x-0 top-[36%] flex flex-col items-center gap-2"
+        >
+          <span
+            className="font-heading text-[40px] font-black uppercase leading-none tracking-[0.08em] text-amber-200"
+            style={{ textShadow: "0 0 28px rgba(245,158,11,0.6), 0 4px 18px rgba(0,0,0,0.85)" }}
+          >
+            {B.secondWindTitle}
+          </span>
+          <div className="flex items-center gap-3 rounded-[4px] px-4 py-1.5" style={{ ...plate, background: INK_SOLID }}>
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/65">{B.secondWindSub}</span>
+            <span className="font-heading text-[26px] font-black tabular-nums leading-none text-white">
+              {Math.max(1, Math.ceil(state.seconds))}
+            </span>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/**
+ * A small ring to the right of the crosshair that fills as the grapple
+ * recharges, and a key cap that lights when it is ready. Painted, not
+ * rendered: the cooldown changes every frame.
+ */
+function GrapplePip({ clock, live }: PanelProps) {
+  const ring = useRef<SVGCircleElement | null>(null);
+  const cap = useRef<HTMLSpanElement | null>(null);
+  const wrap = useRef<HTMLDivElement | null>(null);
+  const R = 9;
+  const CIRC = 2 * Math.PI * R;
+  const oStore = useRef<number[]>([-1, -1]);
+
+  usePainter(clock, () => {
+    const l = live.current;
+    const frac = l.grappleMax > 0 ? 1 - Math.min(1, l.grappleCd / l.grappleMax) : 1;
+    const rc = ring.current;
+    if (rc) rc.style.strokeDashoffset = `${CIRC * (1 - frac)}`;
+    const ready = l.grappleCd <= 0 && !l.grappleHooked;
+    setOpacity(cap.current, ready ? 1 : 0.35, oStore.current, 0);
+    setOpacity(wrap.current, l.crossHidden || l.scoped ? 0 : 1, oStore.current, 1);
+  });
+
+  return (
+    <div
+      ref={wrap}
+      className="absolute left-1/2 top-1/2 flex items-center gap-1"
+      style={{ transform: "translate(34px, -11px)" }}
+    >
+      <svg width={22} height={22} viewBox="0 0 22 22" className="drop-shadow-[0_0_3px_rgba(0,0,0,0.9)]">
+        <circle cx={11} cy={11} r={R} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth={2} />
+        <circle
+          ref={ring}
+          cx={11}
+          cy={11}
+          r={R}
+          fill="none"
+          stroke="#fbbf24"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeDasharray={CIRC}
+          strokeDashoffset={0}
+          transform="rotate(-90 11 11)"
+        />
+      </svg>
+      <span
+        ref={cap}
+        className="rounded-[3px] px-1 font-heading text-[9px] font-black leading-[14px] text-black"
+        style={{ background: "#fbbf24", boxShadow: "0 0 6px rgba(0,0,0,0.6)" }}
+      >
+        {B.grappleKey}
+      </span>
+    </div>
   );
 }
 

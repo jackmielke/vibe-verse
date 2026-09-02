@@ -1806,6 +1806,92 @@ const CUES: Record<string, Cue> = {
     },
   },
   /** Someone else died to you. The single most important cue in the game. */
+  // --- BETTER FORTNITE -----------------------------------------------------
+  // Everything here is a UI cue: it has to read through a firefight, so it
+  // bypasses the world filters and sits an octave above the guns.
+  "augment-offer": {
+    dur: 1.1, gain: 0.7, bus: "ui", prio: 0.9, stereo: true,
+    render: (o, sr, rnd) => {
+      // Three notes for three cards, rising, unresolved: a question.
+      chime(o, sr, rnd, [660, 830, 990], 0, 0.11, 0.5, 0.22);
+      noiseLayer(o, sr, rnd, { dur: 0.35, amp: 0.12, cut0: 2400, cut1: 5200, tau: 0.12, atk: 0.02 });
+    },
+  },
+  "augment-pick": {
+    dur: 0.9, gain: 0.8, bus: "ui", prio: 0.95, stereo: true,
+    render: (o, sr, rnd) => {
+      // The answer: the fourth note lands on the octave.
+      chime(o, sr, rnd, [990, 1320], 0, 0.07, 0.6, 0.24);
+      toneLayer(o, sr, rnd, { dur: 0.22, amp: 0.3, f0: 240, f1: 130, tau: 0.07, atk: 0.001 });
+    },
+  },
+  "grapple-fire": {
+    dur: 0.45, gain: 0.75, bus: "ui", prio: 0.7, jitter: 0.05,
+    render: (o, sr, rnd) => {
+      // Pneumatic launcher: a chuff and the line paying out.
+      noiseLayer(o, sr, rnd, { dur: 0.09, amp: 0.9, cut0: 1800, cut1: 400, tau: 0.03, res: 0.9, atk: 0.0006 });
+      noiseLayer(o, sr, rnd, { t0: 0.05, dur: 0.38, amp: 0.35, cut0: 3200, cut1: 5600, tau: 0.2, atk: 0.01 });
+      toneLayer(o, sr, rnd, { dur: 0.12, amp: 0.3, f0: 140, f1: 70, tau: 0.04, atk: 0.001 });
+    },
+  },
+  "grapple-hit": {
+    dur: 0.5, gain: 0.7, ref: 6, max: 90, prio: 0.7, jitter: 0.06,
+    render: (o, sr, rnd) => {
+      // Claw biting metal: a clank with a short ring.
+      noiseLayer(o, sr, rnd, { dur: 0.05, amp: 0.8, cut0: 5200, cut1: 1600, tau: 0.02, res: 1.1, atk: 0.0005 });
+      chime(o, sr, rnd, [1480], 0.01, 0, 0.35, 0.14);
+    },
+  },
+  "grapple-miss": {
+    dur: 0.35, gain: 0.5, bus: "ui", prio: 0.5,
+    render: (o, sr, rnd) => {
+      noiseLayer(o, sr, rnd, { dur: 0.08, amp: 0.6, cut0: 1400, cut1: 300, tau: 0.03, atk: 0.0006 });
+      toneLayer(o, sr, rnd, { t0: 0.04, dur: 0.25, amp: 0.25, f0: 320, f1: 180, tau: 0.09, atk: 0.003 });
+    },
+  },
+  "grapple-release": {
+    dur: 0.3, gain: 0.45, bus: "ui", prio: 0.5,
+    render: (o, sr, rnd) => {
+      noiseLayer(o, sr, rnd, { dur: 0.22, amp: 0.5, cut0: 2600, cut1: 900, tau: 0.08, atk: 0.004 });
+    },
+  },
+  "event-sting": {
+    dur: 1.8, gain: 0.85, bus: "ui", prio: 1, stereo: true,
+    render: (o, sr, rnd) => {
+      // Two low hits and a shimmer over them: something is happening to the
+      // island, and it is bigger than you.
+      toneLayer(o, sr, rnd, { dur: 0.7, amp: 0.7, f0: 110, f1: 55, tau: 0.22, atk: 0.003, shape: "tri" });
+      toneLayer(o, sr, rnd, { t0: 0.32, dur: 0.9, amp: 0.7, f0: 82, f1: 41, tau: 0.3, atk: 0.003, shape: "tri" });
+      chime(o, sr, rnd, [1760, 2200, 2640], 0.36, 0.09, 0.28, 0.5);
+      noiseLayer(o, sr, rnd, { t0: 0.3, dur: 1.4, amp: 0.18, cut0: 900, cut1: 4200, tau: 0.6, atk: 0.2 });
+      fadeOut(o, sr, 120);
+    },
+  },
+  "second-wind": {
+    dur: 1.4, gain: 0.85, bus: "ui", prio: 1, stereo: true,
+    render: (o, sr, rnd) => {
+      // A heartbeat under a rising pad: down, but not out.
+      toneLayer(o, sr, rnd, { dur: 0.18, amp: 0.8, f0: 70, f1: 50, tau: 0.06, atk: 0.002 });
+      toneLayer(o, sr, rnd, { t0: 0.26, dur: 0.18, amp: 0.65, f0: 70, f1: 50, tau: 0.06, atk: 0.002 });
+      toneLayer(o, sr, rnd, { t0: 0.4, dur: 1.0, amp: 0.3, f0: 330, f1: 660, tau: 0.5, atk: 0.3 });
+      fadeOut(o, sr, 100);
+    },
+  },
+  "second-wind-tick": {
+    dur: 0.25, gain: 0.6, bus: "ui", prio: 0.8,
+    render: (o, sr, rnd) => {
+      chime(o, sr, rnd, [1320], 0, 0, 0.5, 0.09);
+    },
+  },
+  "second-wind-launch": {
+    dur: 1.3, gain: 0.9, bus: "ui", prio: 1, stereo: true,
+    render: (o, sr, rnd) => {
+      // The elim chime's arpeggio, inverted and faster: you are BACK.
+      chime(o, sr, rnd, [660, 880, 1108, 1318, 1760], 0, 0.05, 0.55, 0.2);
+      noiseLayer(o, sr, rnd, { t0: 0.1, dur: 1.1, amp: 0.4, cut0: 400, cut1: 3200, tau: 0.5, atk: 0.06 });
+      fadeOut(o, sr, 90);
+    },
+  },
   "elim-confirm": {
     dur: 0.85, gain: 0.8, bus: "ui", prio: 1, gap: 0.05,
     render: (o, sr, rnd) => {

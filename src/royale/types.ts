@@ -327,6 +327,12 @@ export interface PlayerService {
   teleport(pos: THREE.Vector3): void;
   /** True while the player owns the pointer and the match is live. */
   readonly controllable: boolean;
+  /**
+   * Multiplier on every gravity constant the player integrates under. 1 is
+   * the tuned game; BETTER FORTNITE's low-gravity event sets it lower for a
+   * while. Cosmetic systems that fake weight should read it too.
+   */
+  gravityScale: number;
 }
 
 // ---------------------------------------------------------------- build
@@ -487,6 +493,89 @@ export interface WorldServices {
   loot?: LootService;
   /** Named places, registered by the POI system. */
   pois?: Poi[];
+
+  // ---- BETTER FORTNITE ---------------------------------------------------
+  // All four boot only in that mode. A consumer reads them lazily and treats
+  // `undefined` as the classic answer: factor 1, no hook, no second wind.
+  augments?: AugmentsService;
+  grapple?: GrappleService;
+  secondWind?: SecondWindService;
+  events?: EventsService;
+}
+
+// ---------------------------------------------------------------- better
+
+/**
+ * Which knob an augment turns. Every consumer multiplies its own constant by
+ * `augments.factor(key)`, which is 1 until something says otherwise, so a
+ * system that has never heard of augments keeps its numbers exactly.
+ */
+export type AugmentKey =
+  | "reload"        // reload time multiplier (<1 is faster)
+  | "damage"        // weapon damage multiplier
+  | "buildCost"     // material cost per piece multiplier
+  | "stormDamage"   // storm damage multiplier
+  | "speed"         // walk/sprint multiplier
+  | "fallDamage"    // fall damage multiplier (0 = none)
+  | "airJumps"      // ADDITIVE: extra jumps available in the air
+  | "maxShield"     // ADDITIVE: extra shield capacity
+  | "grappleCooldown" // grapple cooldown multiplier
+  | "healOnElim";   // ADDITIVE: health restored per elimination
+
+export interface AugmentsService {
+  /** Product of every owned augment's multiplier for a key; 1 when none. */
+  factor(key: AugmentKey): number;
+  /** Sum of every owned augment's additive value for a key; 0 when none. */
+  bonus(key: AugmentKey): number;
+  /** Ids the player has taken, in the order they took them. */
+  readonly owned: readonly string[];
+  /** The ids on offer right now, or an empty list. */
+  readonly offer: readonly string[];
+  /** Take one of the current offer by index. Returns false if there is none. */
+  choose(index: number): boolean;
+  /**
+   * Deal a hand now, ahead of the schedule. Debug/test entry point, the
+   * sibling of `match.skipToLive()`: a harness that wants to prove a pick
+   * changes a reload time cannot wait seventy simulated seconds for the clock.
+   * Returns false if a hand is already open or the pool is exhausted.
+   */
+  offerNow(): boolean;
+}
+
+export interface GrappleService {
+  /** Seconds until the hook can fire again; 0 when ready. */
+  readonly cooldown: number;
+  readonly cooldownMax: number;
+  /** True while the rope is attached and pulling. */
+  readonly hooked: boolean;
+  /** Fire at the current look. Returns true if the hook attached. */
+  fire(): boolean;
+  release(): void;
+}
+
+export interface SecondWindService {
+  /** True while the once-per-match redeploy is still unspent. */
+  readonly available: boolean;
+  /** Seconds left in the countdown, or 0. */
+  readonly countdown: number;
+  /**
+   * The player just went down. Returns true if second wind takes the death —
+   * the caller should then wait for `redeploy` to fire instead of dying.
+   */
+  claim(): boolean;
+}
+
+export type IslandEventId = "supply-storm" | "low-gravity" | "nightfall" | "shield-rain" | "sudden-death";
+
+export interface EventsService {
+  /** The event in progress, or null. */
+  readonly active: IslandEventId | null;
+  /** Seconds left on the active event, or 0. */
+  readonly remaining: number;
+  /** Storm damage multiplier — 1 until sudden death, then it stays up. */
+  readonly stormDamage: number;
+  /** Start one now. Debug/test entry point; the schedule calls it too. */
+  trigger(id: IslandEventId): boolean;
 }
 
 /** Live input snapshot, refreshed before every system update. */
@@ -550,7 +639,15 @@ export interface WorldCtx {
 
 export type QualityTier = "low" | "medium" | "high" | "ultra";
 
-export type GameMode = "classic" | "water";
+/**
+ * `classic` is Drop Zero. `water` is SPLASH ROYALE. `better` is BETTER FORTNITE:
+ * classic's bullets and health, plus everything the classic game is missing —
+ * augments you pick mid-match, a grapple hook, a second wind after your first
+ * down, and an island that does things while the circle closes. Its numbers
+ * live in `mode/better.ts`; its systems boot only when this is the mode, and
+ * every other system reads them lazily and treats their absence as "no".
+ */
+export type GameMode = "classic" | "water" | "better";
 
 /** A subsystem instance. All hooks are optional. */
 export interface System {

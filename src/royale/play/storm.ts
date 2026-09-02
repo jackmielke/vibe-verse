@@ -2735,6 +2735,9 @@ const createStorm: SystemFactory = (ctx: WorldCtx): System => {
 
   function applyStormDamage(amount: number): void {
     if (amount <= 0) return;
+    // BETTER FORTNITE: Storm Walker cuts it, sudden death doubles it. Both
+    // read 1 when their systems are absent, which is every other mode.
+    amount *= (ctx.services.augments?.factor("stormDamage") ?? 1) * (ctx.services.events?.stormDamage ?? 1);
 
     const source = water ? DOWNPOUR_SOURCE : STORM_SOURCE;
     const player = services.player;

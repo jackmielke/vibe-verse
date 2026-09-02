@@ -4231,17 +4231,19 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
         dz: _dir.z,
       });
     } else if (def.ballistic === "hitscan") {
+      // Hollow Point (BETTER FORTNITE). 1 in every other mode.
+      const dmg = stats.damage * (ctx.services.augments?.factor("damage") ?? 1);
       for (let p = 0; p < def.pellets; p++) {
         _dir.copy(FORWARD).applyQuaternion(aimQuat);
         // The first pellet of a shotgun goes down the middle: a spread that
         // can miss at point-blank reads as a broken gun, not as randomness.
         coneJitter(_dir, p === 0 && def.pellets > 1 ? cone * 0.2 : cone);
-        hitscan(_origin, _dir, def, stats.damage);
+        hitscan(_origin, _dir, def, dmg);
       }
     } else {
       _dir.copy(FORWARD).applyQuaternion(aimQuat);
       coneJitter(_dir, cone);
-      launchProjectile(_origin, _dir, def, stats.damage);
+      launchProjectile(_origin, _dir, def, stats.damage * (ctx.services.augments?.factor("damage") ?? 1));
     }
 
     // ---- reaction --------------------------------------------------------
@@ -4339,7 +4341,8 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
     if ((reserve[def.ammoType] ?? 0) <= 0) return;
 
     shellMode = def.shellReload > 0;
-    reloadTotal = shellMode ? stats.shellReload : stats.reload;
+    // Quick Hands (BETTER FORTNITE). 1 in every other mode.
+    reloadTotal = (shellMode ? stats.shellReload : stats.reload) * (ctx.services.augments?.factor("reload") ?? 1);
     reloadT = reloadTotal;
     burstLeft = 0;
     ctx.services.audio?.play(shellMode ? "shell-drop" : "mag-out", { volume: 0.5 });

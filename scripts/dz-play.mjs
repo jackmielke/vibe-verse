@@ -43,6 +43,13 @@ const OUT = process.env.DZ_PLAY_OUT ?? "shots/play";
  * job, not this file's.
  */
 const QUALITY = process.env.DZ_QUALITY ?? "low";
+/**
+ * Which game to boot. `/drop-zero` is SPLASH ROYALE (the default there),
+ * `/drop-zero?mode=classic` is Drop Zero, `/better-fortnite` is BETTER
+ * FORTNITE. A route rather than a mode flag, because the route is what a
+ * player has and the page is what turns it into a mode.
+ */
+const ROUTE = process.env.DZ_ROUTE ?? "/drop-zero";
 
 async function up(url, ms) {
   const t0 = Date.now();
@@ -102,7 +109,7 @@ page.on("console", (m) => {
   if (m.type() === "warning" && /drop zero/i.test(m.text())) note("warn", m.text());
 });
 
-await page.goto(`${BASE}/drop-zero?shot=1&q=${QUALITY}`, {
+await page.goto(`${BASE}${ROUTE}?shot=1&q=${QUALITY}`, {
   waitUntil: "domcontentloaded",
   timeout: 120000,
 });
@@ -719,6 +726,29 @@ await step("storm-damage", "standing outside the circle costs health", async () 
 });
 
 await step("survive", "returning inside the circle stops the damage", async () => {
+  /*
+   * This is a STORM beat, and in a bullets mode it was failing as a bots beat:
+   * the previous step shrank the zone to sixty metres, which pulled eleven
+   * rivals into it, and the player standing at its exact centre lost 57 shield
+   * in three simulated seconds with `safe=true` and `alive` dropping by two.
+   * That is a firefight, not the storm, and the storm being off is the thing
+   * being asserted. So the rivals inside the circle are taken out of it first
+   * — `bots.eliminate` is the same call the match uses to force a victory —
+   * and the pool measurement below is once again about one thing.
+   */
+  const cleared = await page.evaluate(`(() => {
+    const s = window.__dz.ctx.services;
+    const st = s.storm, b = s.bots;
+    if (!b || !st) return 0;
+    let n = 0;
+    for (const info of b.bots) {
+      if (!info.alive) continue;
+      const d = Math.hypot(info.position.x - st.center.x, info.position.z - st.center.z);
+      if (d < st.radius + 80) { b.eliminate(info.id, { by: "harness", name: "the harness", weapon: "test" }); n++; }
+    }
+    return n;
+  })()`);
+  note("survive", `cleared ${cleared} rivals from the circle so the storm is the only thing that can hurt`);
   await page.evaluate(`(() => {
     const s = window.__dz.ctx.services;
     const st = s.storm, p = s.player, t = s.terrain;
@@ -742,6 +772,118 @@ await step("survive", "returning inside the circle stops the damage", async () =
     detail: `safe=${s.safe} hp ${s.hp} shield ${s.shield} pool ${pool0} -> ${pool1}`,
   };
 });
+
+/* ---------------------------------------------------------------- BETTER FORTNITE
+ * Four beats that only run when the page booted `mode: "better"`. Each drives
+ * the feature the way a player would where a player can (F for the grapple, a
+ * digit for the augment) and uses the documented debug entry points where
+ * the schedule would otherwise cost minutes of simulated time (`offerNow`,
+ * `events.trigger`, a lethal `damage()` for second wind). The assertions are
+ * on the outcome in the world — position, factor, state — never on the
+ * event having been emitted.
+ */
+const betterMode = await page.evaluate('window.__dz?.ctx?.mode === "better"');
+if (betterMode) {
+  await step("grapple", "F fires a hook at a surface and the rope pulls the player toward it", async () => {
+    /* Face something. The drop point is open ground, so find the nearest
+       collider box and turn to its centre, exactly as the harvest beat does. */
+    const aimed = await page.evaluate(`(() => {
+      const s = window.__dz.ctx.services;
+      const p = s.player;
+      const hits = s.collision.query(p.position, 40).filter((h) => !h.opts?.built);
+      if (!hits.length) return null;
+      let best = null, bd = Infinity;
+      for (const h of hits) {
+        const c = h.box.getCenter(new (p.position.constructor)());
+        const d = Math.hypot(c.x - p.position.x, c.z - p.position.z);
+        if (d > 4 && d < bd) { bd = d; best = c; }
+      }
+      if (!best) return null;
+      p.yaw = Math.atan2(-(best.x - p.position.x), -(best.z - p.position.z));
+      p.pitch = Math.atan2(best.y - p.position.y - 1.5, bd) ;
+      return { d: bd, at: [Math.round(best.x), Math.round(best.y), Math.round(best.z)] };
+    })()`);
+    if (!aimed) return { ok: false, detail: "nothing within 40 m to hook" };
+    const a = (await state()).pos;
+    await press("KeyF", 120);
+    const hooked = await until("hooked", "s.grapple && s.grapple.hooked === true", 120000);
+    await waitSim(1.6);
+    const b = (await state()).pos;
+    const moved = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const cd = await page.evaluate("window.__dz.ctx.services.grapple?.cooldown ?? -1");
+    return {
+      ok: hooked && moved > 2.5 && cd > 0,
+      detail: `target ${aimed.d.toFixed(1)}m away at ${JSON.stringify(aimed.at)} hooked=${hooked} moved ${moved.toFixed(2)}m cooldown ${(+cd).toFixed(1)}s`,
+    };
+  });
+
+  await step("augment", "a dealt hand is taken with a digit key and the factor changes", async () => {
+    const dealt = await page.evaluate("window.__dz.ctx.services.augments?.offerNow() ?? false");
+    const hand = await page.evaluate("JSON.stringify(window.__dz.ctx.services.augments?.offer ?? [])");
+    if (!dealt) return { ok: false, detail: `offerNow=${dealt} hand=${hand}` };
+    // Pick the card whose effect is easiest to read back.
+    const ids = JSON.parse(hand);
+    const want = ids.findIndex((id) => id === "quickhands" || id === "sprinter" || id === "mason" || id === "stormwalker" || id === "hollowpoint");
+    const idx = want >= 0 ? want : 0;
+    await press(`Digit${idx + 1}`, 120);
+    const taken = await until("taken", "s.augments && s.augments.owned.length === 1", 60000);
+    const after = await page.evaluate(`(() => {
+      const a = window.__dz.ctx.services.augments;
+      return { owned: a.owned.slice(), offer: a.offer.length, reload: a.factor("reload"), speed: a.factor("speed"),
+               build: a.factor("buildCost"), storm: a.factor("stormDamage"), dmg: a.factor("damage"), jumps: a.bonus("airJumps"), shield: a.bonus("maxShield") };
+    })()`);
+    // Whatever was taken, at least one knob must have moved off its default.
+    const moved = after.reload !== 1 || after.speed !== 1 || after.build !== 1 || after.storm !== 1 || after.dmg !== 1 || after.jumps !== 0 || after.shield !== 0;
+    const slot = await page.evaluate("window.__dz.ctx.services.inventory?.activeSlot ?? null");
+    return {
+      ok: taken && after.offer === 0 && moved,
+      detail: `hand ${hand} pressed ${idx + 1} -> owned ${JSON.stringify(after.owned)} factors ${JSON.stringify(after)} activeSlot ${slot}`,
+    };
+  });
+
+  await step("event", "an island event changes the world and undoes itself", async () => {
+    const g0 = await page.evaluate("window.__dz.ctx.services.player.gravityScale");
+    const fired = await page.evaluate('window.__dz.ctx.services.events?.trigger("low-gravity") ?? false');
+    const g1 = await page.evaluate("window.__dz.ctx.services.player.gravityScale");
+    const active = await page.evaluate("window.__dz.ctx.services.events?.active ?? null");
+    // Do not wait forty simulated seconds; a second event ends the first.
+    const drops0 = await page.evaluate('window.__dz.ctx.scene.getObjectByName("dz:loot")?.children.length ?? 0');
+    await page.evaluate('window.__dz.ctx.services.events?.trigger("supply-storm")');
+    const g2 = await page.evaluate("window.__dz.ctx.services.player.gravityScale");
+    await waitSim(3.5);
+    const drops1 = await page.evaluate('window.__dz.ctx.scene.getObjectByName("dz:loot")?.children.length ?? 0');
+    return {
+      ok: fired && g1 < g0 && g2 === 1 && drops1 > drops0,
+      detail: `gravity ${g0} -> ${g1} (active=${active}) -> ${g2} after supply storm; loot children ${drops0} -> ${drops1}`,
+    };
+  });
+
+  await step("second-wind", "the first down redeploys the player instead of ending the match", async () => {
+    /* Not `alive`: this is a live lobby and rivals keep eliminating each
+       other through the beat (it dropped by two on the first run while every
+       other assertion held). What second wind promises is that the PLAYER was
+       never reported dead — and `placement` is written exactly once, by that
+       report. */
+    const place0 = await page.evaluate("window.__dz.ctx.services.match.placement");
+    const avail = await page.evaluate("window.__dz.ctx.services.secondWind?.available ?? null");
+    await page.evaluate(`(() => {
+      const p = window.__dz.ctx.services.player;
+      p.damage(10000, undefined, { by: "harness", name: "the harness", weapon: "test" });
+    })()`);
+    const down = await until("down", 's.player.state === "down"', 60000);
+    const counting = await until("counting", "s.secondWind && s.secondWind.countdown > 0", 60000);
+    // Six simulated seconds of countdown, plus a step.
+    const back = await until("redeployed", 's.player.state === "skydive" || s.player.state === "glide"', 400000);
+    const s1 = await state();
+    const place1 = await page.evaluate("window.__dz.ctx.services.match.placement");
+    const phase = await page.evaluate("window.__dz.ctx.services.match.phase");
+    const spent = await page.evaluate("window.__dz.ctx.services.secondWind?.available ?? null");
+    return {
+      ok: avail === true && down && counting && back && s1.hp > 0 && phase === "live" && place1 === place0 && spent === false,
+      detail: `available=${avail} down=${down} counting=${counting} back=${back} state=${s1.pstate} hp=${s1.hp} phase=${phase} placement ${place0} -> ${place1} spent=${spent === false}`,
+    };
+  });
+}
 
 await step("clock", "the match clock actually advances", async () => {
   const a = await page.evaluate("window.__dz.ctx.services.storm?.timer ?? null");

@@ -2084,6 +2084,15 @@ export interface DropZeroPlayerService extends PlayerService {
    */
   placeOnGround(p: THREE.Vector3): void;
 
+  /**
+   * BETTER FORTNITE: put the player back in the sky over the safe zone, alive,
+   * with the bag they have. Called by the second-wind system when its
+   * countdown ends; it is the one path from `down` that is not `dead` and not
+   * a heal, and it is here rather than there because only this module can
+   * end the slump and restart the drop machine.
+   */
+  redeploy(altitude: number, health: number): void;
+
   // ------------------------------------------------------------- SPLASH ROYALE
   // These exist in both modes. In `classic` they read off health/shield and
   // the mutators are no-ops, so a caller never has to ask what mode it is.
@@ -2163,6 +2172,10 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     maxShield: 100,
     state: "ground",
     rig: rigRoot,
+    gravityScale: 1,
+    redeploy(altitude, health) {
+      redeploy(altitude, health);
+    },
     eye(out) {
       const o = out ?? _eye;
       if (firstPerson) return o.copy(camera.position);
@@ -2447,6 +2460,10 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
   // ---- health ------------------------------------------------------------
   let downTimer = 0;
   const DOWN_TIME = 45;
+  /** BETTER FORTNITE: a down the second-wind system has taken. No bleed-out. */
+  let secondWindPending = false;
+  /** Jumps taken since the last time the feet touched anything. */
+  let airJumpsUsed = 0;
 
   // ---- SPLASH ROYALE state ------------------------------------------------------
 
@@ -2687,7 +2704,35 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     else {
       ctx.emit("dz:down", { by: source?.name ?? source?.by ?? "the storm" });
       ctx.services.audio?.play("down", { volume: 0.8 });
+      // BETTER FORTNITE: the first down is not a death. The second-wind
+      // system owns the countdown; this module only promises not to bleed out
+      // underneath it. Absent in every other mode, so `claim` is never asked.
+      if (ctx.services.secondWind?.claim()) {
+        secondWindPending = true;
+        downTimer = DOWN_TIME;
+      }
     }
+  }
+
+  /** See `DropZeroPlayerService.redeploy`. */
+  function redeploy(altitude: number, health: number): void {
+    secondWindPending = false;
+    endSlump();
+    soakedOut = false;
+    service.health = Math.max(1, health);
+    damageTarget.hp = service.health;
+    damageTarget.alive = true;
+    const storm = ctx.services.storm as unknown as { sampleSafePoint?(): THREE.Vector3 } | undefined;
+    const at = storm?.sampleSafePoint?.() ?? position;
+    position.set(at.x, terrainY(at.x, at.z) + altitude, at.z);
+    velocity.set(0, -5, 0);
+    downTimer = 0;
+    dropStage = "skydive";
+    service.state = "skydive";
+    diveTime = 0;
+    glideT = 0;
+    ctx.emit("dz:skydive", null);
+    ctx.services.audio?.play("dive-out", { volume: 0.7 });
   }
 
   /**
@@ -3944,7 +3989,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
         service.state = "ground";
         soakedOut = false;
         endSlump();
-      } else if (downTimer <= 0) {
+      } else if (downTimer <= 0 && !secondWindPending) {
         enterDead();
       }
       return;
@@ -4029,7 +4074,9 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     }
 
     // --- speed target -------------------------------------------------------
-    let speed = crouching ? CROUCH_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;
+    let speed =
+      (crouching ? CROUCH_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED) *
+      (ctx.services.augments?.factor("speed") ?? 1);
     if (mz < -0.2) speed *= BACK_SCALE;
     if (input.aim && !sprinting) speed *= 0.62;
 
@@ -4080,6 +4127,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
       // launching off every crest.
       velocity.y = Math.max(velocity.y, -2.5);
       coyote = COYOTE_TIME;
+      airJumpsUsed = 0;
     } else if (grounded && sliding) {
       // Too steep to stand: accelerate downhill, keep a little steering.
       tmp.copy(groundNormal).projectOnPlane(up);
@@ -4089,23 +4137,29 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
         velocity.z += tmp.z * SLIDE_ACCEL * dt;
       }
       accelerate(wish, speed * wishLen * 0.5, ACCEL_AIR, dt);
-      velocity.y += GRAVITY_DOWN * dt;
+      velocity.y += GRAVITY_DOWN * service.gravityScale * dt;
       coyote = 0;
     } else {
       accelerate(wish, speed * wishLen, ACCEL_AIR, dt);
       const g = velocity.y > 0 ? (jumpHeld ? GRAVITY_UP : GRAVITY_RELEASE) : GRAVITY_DOWN;
-      velocity.y += g * dt;
+      velocity.y += g * service.gravityScale * dt;
       if (velocity.y < FALL_TERMINAL) velocity.y = FALL_TERMINAL;
       coyote = Math.max(0, coyote - dt);
     }
 
     // --- jump ---------------------------------------------------------------
-    if (jumpBuffered > 0 && coyote > 0 && !sliding && active) {
+    // Spring Boots (BETTER FORTNITE) hand out extra jumps in the air; the
+    // count comes back when the feet touch anything. Zero everywhere else.
+    const airJumps = ctx.services.augments?.bonus("airJumps") ?? 0;
+    if (jumpBuffered > 0 && (coyote > 0 || airJumpsUsed < airJumps) && !sliding && active) {
+      const midair = coyote <= 0;
+      if (midair) airJumpsUsed++;
       velocity.y = JUMP_SPEED * (crouching ? 0.82 : 1);
       grounded = false;
       coyote = 0;
       jumpBuffered = 0;
-      ctx.services.audio?.play("jump", { volume: 0.4, position });
+      ctx.services.audio?.play("jump", { volume: midair ? 0.5 : 0.4, rate: midair ? 1.18 : 1, position });
+      if (midair) ctx.services.vfx?.smoke(position, 0.4);
     }
 
     stepUp();
@@ -4127,8 +4181,9 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
           position,
         });
       }
-      if (fallSpeed < FALL_SAFE && sinceLanding > 0.4) {
-        applyDamage((FALL_SAFE - fallSpeed) * FALL_DAMAGE_PER_MS, undefined, {
+      const fallMul = ctx.services.augments?.factor("fallDamage") ?? 1;
+      if (fallSpeed < FALL_SAFE && sinceLanding > 0.4 && fallMul > 0) {
+        applyDamage((FALL_SAFE - fallSpeed) * FALL_DAMAGE_PER_MS * fallMul, undefined, {
           by: "world",
           name: "gravity",
         });

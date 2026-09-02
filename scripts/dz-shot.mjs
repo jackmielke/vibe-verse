@@ -40,6 +40,14 @@ const WAIT = Number(process.env.DZ_WAIT ?? 30000);
 const SETTLE = Number(process.env.DZ_SETTLE ?? 25000);
 /** Force the tier a real visitor gets. See the note in DropZero.tsx. */
 const QUALITY = process.env.DZ_QUALITY ?? "high";
+/**
+ * Which game to boot. `/drop-zero` is SPLASH ROYALE (the default there),
+ * `/drop-zero?mode=classic` is Drop Zero, `/better-fortnite` is BETTER
+ * FORTNITE. A route rather than a mode flag, because the route is what a
+ * player has and the page is what turns it into a mode.
+ */
+const ROUTE = process.env.DZ_ROUTE ?? "/drop-zero";
+const PRIME = process.env.DZ_PRIME ?? "";
 
 /**
  * Vantage points. `pose` runs in the page with the live engine, so a shot can
@@ -487,7 +495,7 @@ page.on("console", (m) => {
   if (t.includes("failed to boot")) errors.push(t);
 });
 
-await page.goto(`${BASE}/drop-zero?shot=1&q=${QUALITY}`, { waitUntil: "domcontentloaded", timeout: 120000 });
+await page.goto(`${BASE}${ROUTE}?shot=1&q=${QUALITY}`, { waitUntil: "domcontentloaded", timeout: 120000 });
 
 let booted = true;
 try {
@@ -599,6 +607,25 @@ for (const name of names) {
       errors.push(`pose "${name}" threw: ${err.message}`);
     }
     await page.waitForTimeout(shot.settle);
+    /*
+     * DZ_PRIME: a JavaScript expression evaluated in the page after the pose
+     * has settled and before the frame is taken, with `e` (the engine) and `s`
+     * (its services) in scope. It exists for state the world only reaches on
+     * its own clock — an augment hand, an island event, the second-wind
+     * countdown — which at SwiftSHADER's rate is minutes of wall time away.
+     * The frame is still composed exactly as it ships; only the game state is
+     * moved, through the same debug entry points the playtest uses.
+     *
+     *   DZ_PRIME='s.augments.offerNow(); s.events.trigger("supply-storm")'
+     */
+    if (PRIME) {
+      try {
+        await page.evaluate(`(() => { const e = window.__dz; const s = e.ctx.services; ${PRIME} })()`);
+        await page.waitForTimeout(Number(process.env.DZ_PRIME_SETTLE ?? 4000));
+      } catch (err) {
+        errors.push(`prime threw: ${err.message}`);
+      }
+    }
     // Ask the engine what it thinks this frame is, immediately before taking
     // it. A shot whose telemetry says "phase: bus" is not evidence of
     // anything, and printing that next to the filename is the only reason the
