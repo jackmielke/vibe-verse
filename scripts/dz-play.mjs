@@ -109,7 +109,7 @@ page.on("console", (m) => {
   if (m.type() === "warning" && /drop zero/i.test(m.text())) note("warn", m.text());
 });
 
-await page.goto(`${BASE}${ROUTE}?shot=1&q=${QUALITY}`, {
+await page.goto(`${BASE}${ROUTE}${ROUTE.includes("?") ? "&" : "?"}shot=1&q=${QUALITY}`, {
   waitUntil: "domcontentloaded",
   timeout: 120000,
 });

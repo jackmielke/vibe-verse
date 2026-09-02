@@ -495,7 +495,7 @@ page.on("console", (m) => {
   if (t.includes("failed to boot")) errors.push(t);
 });
 
-await page.goto(`${BASE}${ROUTE}?shot=1&q=${QUALITY}`, { waitUntil: "domcontentloaded", timeout: 120000 });
+await page.goto(`${BASE}${ROUTE}${ROUTE.includes("?") ? "&" : "?"}shot=1&q=${QUALITY}`, { waitUntil: "domcontentloaded", timeout: 120000 });
 
 let booted = true;
 try {
