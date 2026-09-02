@@ -31,6 +31,7 @@ import sanPalmasArt from "@/assets/worlds/san-palmas.jpg";
 import firstLightArt from "@/assets/worlds/first-light.jpg";
 import dropZeroArt from "@/assets/worlds/drop-zero.jpg";
 import splashRoyaleArt from "@/assets/worlds/splash-royale.jpg";
+import betterFortniteArt from "@/assets/worlds/better-fortnite.jpg";
 import skiArt from "@/assets/worlds/ski.jpg";
 import spaceArt from "@/assets/worlds/space.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
@@ -108,6 +109,9 @@ export const WORLD_ART: Record<string, string> = {
   "first-light": firstLightArt,
   "drop-zero": dropZeroArt,
   "splash-royale": splashRoyaleArt,
+  /* A real frame from the running world: Neon Heights plaza with a hand of
+     augments dealt and the grapple pip beside the crosshair. */
+  "better-fortnite": betterFortniteArt,
   ski: skiArt,
   space: spaceArt,
   terminal: terminalArt,

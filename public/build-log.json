@@ -1,7 +1,25 @@
 {
-  "generated_at": "2026-08-29T06:59:49.904Z",
+  "generated_at": "2026-09-02T04:54:37.974Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "6ed0d1c7",
+      "date": "2026-09-02",
+      "subject": "BETTER FORTNITE: a third game on the island (checkpoint)",
+      "lede": "Drop Zero's bullets and health plus the four things a battle royale is missing — augments picked mid-match, a grapple on every hip, a second wind after the first down, and an island that does things while the circle closes. One page, one engine, `mode: \"better\"`; four new systems that boot only there, and every other system reads their services lazily and treats absence as the classic answer.",
+      "places": [],
+      "files": 25
+    },
+    {
+      "sha": "52d6e227",
+      "date": "2026-08-29",
+      "subject": "The real weather, and a painted mountain on Twin Peaks",
+      "lede": "/sf now opens in whatever San Francisco is actually doing. Open-Meteo, no key, one GET; `src/sf/weather/report.ts` turns the reply into rain, ground fog, haze, fog density and a wind vector, and `Weather.tsx` eases the world onto it over half a minute. If Karl is in off the Pacific this afternoon, he is in here too.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 24
+    },
     {
       "sha": "9fd6cfae",
       "date": "2026-08-28",
@@ -987,22 +1005,6 @@
       "lede": "The fog banks have been in `sky.ts` since the beginning and nothing ever set `fogAmount`, so they have never once been visible. Now there is a button, and the effect is two mechanisms because San Francisco fog is two things at once and only one of them is cheap.",
       "places": [],
       "files": 6
-    },
-    {
-      "sha": "b4ba187a",
-      "date": "2026-08-17",
-      "subject": "Bay windows, which is the most San Francisco thing there is",
-      "lede": "Every low-rise house in Chinatown, North Beach, Russian Hill, the Wharf, the Mission, Hayes Valley and Civic Center now has a projecting bay window with its own little roof, a cornice across the front, and a stoop off to one side — because a door in the middle of a bay window is the one arrangement no Victorian has.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "f1392746",
-      "date": "2026-08-17",
-      "subject": "Vibe Francisco: three courses and a Grand Tour",
-      "lede": "The Market Street Run has two siblings — a Waterfront Dash up the Embarcadero from the Bay Bridge to Pier 39, and a Hill Climb from the Ferry Building over Nob Hill to Lombard — plus the Grand Tour, which times you touching all twelve landmarks with no rings and no route. Best times are kept per challenge, and the single Market time from before is carried forward rather than quietly reset.",
-      "places": [],
-      "files": 7
     }
   ]
 }

@@ -171,7 +171,19 @@ async function until(label, fn, timeoutMs = 90000) {
 }
 
 const results = [];
+/**
+ * DZ_PLAY_ONLY=augment,second-wind — run just those beats, plus the three
+ * that put the world in a state where any beat can run (boot, drop, lock).
+ * A full run is forty minutes of wall clock; re-verifying one fix should not
+ * cost that.
+ */
+const ONLY = (process.env.DZ_PLAY_ONLY ?? "")
+  .split(",")
+  .map((x) => x.trim())
+  .filter(Boolean);
+const ALWAYS = new Set(["boot", "drop", "lock", "teardown"]);
 async function step(name, description, run) {
+  if (ONLY.length && !ONLY.includes(name) && !ALWAYS.has(name)) return true;
   beat = name;
   const before = await state();
   let ok = false;
@@ -818,6 +830,7 @@ if (betterMode) {
   });
 
   await step("augment", "a dealt hand is taken with a digit key and the factor changes", async () => {
+    const slot0 = await page.evaluate("window.__dz.ctx.services.inventory?.activeSlot ?? null");
     const dealt = await page.evaluate("window.__dz.ctx.services.augments?.offerNow() ?? false");
     const hand = await page.evaluate("JSON.stringify(window.__dz.ctx.services.augments?.offer ?? [])");
     if (!dealt) return { ok: false, detail: `offerNow=${dealt} hand=${hand}` };
@@ -835,9 +848,11 @@ if (betterMode) {
     // Whatever was taken, at least one knob must have moved off its default.
     const moved = after.reload !== 1 || after.speed !== 1 || after.build !== 1 || after.storm !== 1 || after.dmg !== 1 || after.jumps !== 0 || after.shield !== 0;
     const slot = await page.evaluate("window.__dz.ctx.services.inventory?.activeSlot ?? null");
+    // The digit must be EATEN: a pick that also swaps your weapon is a pick
+    // that costs you the fight you were in. Caught on the second full run.
     return {
-      ok: taken && after.offer === 0 && moved,
-      detail: `hand ${hand} pressed ${idx + 1} -> owned ${JSON.stringify(after.owned)} factors ${JSON.stringify(after)} activeSlot ${slot}`,
+      ok: taken && after.offer === 0 && moved && slot === slot0,
+      detail: `hand ${hand} pressed ${idx + 1} -> owned ${JSON.stringify(after.owned)} factors ${JSON.stringify(after)} activeSlot ${slot0} -> ${slot}`,
     };
   });
 

@@ -11,8 +11,8 @@
  * a factor nobody publishes is 1.
  *
  * Choosing is a key or a tap. The digit keys already mean "inventory slot",
- * so while an offer is open this system boots FIRST in the frame, eats
- * `input.slot` for 1..3, and the inventory sees null — the same trick the
+ * so while an offer is open this system, which runs first, eats
+ * `input.slot` for 1..3 in its fixed step, and the inventory's sees null — the same trick the
  * build hotkeys play with the number row. Touch and mouse arrive as
  * `dz:augment-choose` from the HUD, which is the one direction the HUD is
  * allowed to talk (it emits, it never reaches into a system).
@@ -151,6 +151,22 @@ const createAugments: SystemFactory = (ctx) => {
   return {
     name: "augments",
 
+    /**
+     * The digit keys are eaten HERE, in `fixed`, not in `update`. The
+     * inventory latches edge input in its own `fixed()`, and the engine runs
+     * every system's fixed pass before any update — so an `update`-side
+     * consume was always one step too late, and the first playtest recorded
+     * a pick that also switched the player to the pickaxe. This system is
+     * first in the boot list precisely so this runs before the inventory's.
+     */
+    fixed() {
+      const slot = ctx.input.slot;
+      if (offer.length > 0 && slot !== null && slot >= 1 && slot <= offer.length) {
+        choose(slot - 1);
+        ctx.input.slot = null;
+      }
+    },
+
     update(dt) {
       const match = ctx.services.match;
       const live = match?.phase === "live";
@@ -160,13 +176,6 @@ const createAugments: SystemFactory = (ctx) => {
       }
       wasLive = live;
       if (!live) return;
-
-      // Only the digit keys we mean. Anything past 3 is a slot as usual.
-      const slot = ctx.input.slot;
-      if (offer.length > 0 && slot !== null && slot >= 1 && slot <= offer.length) {
-        choose(slot - 1);
-        ctx.input.slot = null;
-      }
 
       // Match time, not `ctx.elapsed`: the drop is a minute and a half, and
       // an augment offered on the bus is an augment nobody has landed for.

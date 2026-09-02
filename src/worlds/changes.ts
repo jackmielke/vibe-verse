@@ -46,12 +46,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
   "better-fortnite": [
+    { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
     { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
     { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
     { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
     { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
-    { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
   ],
   "blob": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -115,12 +115,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
   "drop-zero": [
+    { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
     { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
     { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
     { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
     { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
-    { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
   ],
   "dunes": [
     { sha: "271da81", iso: "2026-08-16T20:40:40+00:00", subject: "The Dune Sea was drawing the sky where the ground should be" },
@@ -334,12 +334,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "45648c1", iso: "2026-05-14T04:33:38+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
     { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
     { sha: "5085095", iso: "2026-08-19T04:21:18+00:00", subject: "Document the lido and the ground probe; refresh stamps" },
     { sha: "7b67b96", iso: "2026-08-19T03:12:52+00:00", subject: "THE LIDO, a realism pass, and one bot out of two" },
     { sha: "92c749d", iso: "2026-08-17T08:14:47+00:00", subject: "The water soundscape, and an ending nobody had ever reached" },
     { sha: "819ed12", iso: "2026-08-16T00:41:18-07:00", subject: "The teammate stopped standing in a field, and started keeping score" },
-    { sha: "18bc6e8", iso: "2026-08-09T21:12:47-07:00", subject: "A voice in the booth calls the match" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
