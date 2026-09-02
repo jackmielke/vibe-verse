@@ -21,6 +21,9 @@ import type { Engine } from "@/royale/engine/core";
 import { detectQuality } from "@/royale/engine/core";
 import HUD from "@/royale/ui/HUD";
 import Lobby from "@/royale/ui/Lobby";
+import Locker from "@/royale/ui/Locker";
+import { findCharacter } from "@/lib/characters";
+import { SUIT_ID, lockerSelection } from "@/royale/play/skinChoice";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
@@ -37,6 +40,19 @@ export default function SplashRoyale() {
   const [ready, setReady] = useState(false);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lockerOpen, setLockerOpen] = useState(false);
+  const [who, setWho] = useState<string>(() => lockerSelection());
+  useEffect(() => {
+    const sync = () => setWho(lockerSelection());
+    window.addEventListener("vibe:character-changed", sync);
+    window.addEventListener("royale:suit-changed", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("vibe:character-changed", sync);
+      window.removeEventListener("royale:suit-changed", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
   /**
    * True once the player has dropped in at least once.
    *
@@ -170,7 +186,13 @@ export default function SplashRoyale() {
           progress={progress}
           onDropIn={enter}
           defaultName={displayName}
+          onCharacter={() => setLockerOpen(true)}
+          characterLabel={who === SUIT_ID ? "Drop Suit" : findCharacter(who).label}
         />
+      )}
+
+      {lockerOpen && !entered && !error && (
+        <Locker game="Splash Royale" cta="Done" onDone={() => setLockerOpen(false)} onClose={() => setLockerOpen(false)} />
       )}
 
       {/* Pause veil. Escape is the only way a browser hands the mouse back, so

@@ -3726,6 +3726,11 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
     const p = payload as { firstPerson?: boolean } | undefined;
     if (typeof p?.firstPerson === "boolean") firstPerson = p.firstPerson;
   });
+  // A skin changes which node is the hand. Search again next frame.
+  const offSkin = ctx.on("dz:skin", () => {
+    handSearched = false;
+    handNode = null;
+  });
 
   // ---- helpers -----------------------------------------------------------
 
@@ -5743,6 +5748,10 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
    * a weapon parented to the wrong joint is worse than one held at the chest.
    */
   function findHand(root: THREE.Object3D): THREE.Object3D | null {
+    // A vibeverse skin plants a named node on its own right hand, because a
+    // GLB's bones are named and the drop-suit's joints are not. Prefer it.
+    const named = root.getObjectByName("dz-hand-r");
+    if (named) return named;
     let shoulder: THREE.Object3D | null = null;
     root.traverse((o) => {
       if (shoulder) return;
@@ -6199,6 +6208,7 @@ const createWeapons: SystemFactory = (ctx: WorldCtx): System => {
       ctx.emit("dz:postfx", innerRender);
       offCamera();
       offHud();
+      offSkin();
 
       ctx.scene.remove(tpRoot, brassShells.mesh, hullShells.mesh);
       for (const p of projectiles) {

@@ -12,8 +12,8 @@
  *     lottery into a decision, and it means two players who found the same
  *     gun are not the same player.
  *
- *  2. THE GRAPPLE. Everyone has one, always. Mobility is fun and waiting to
- *     find mobility is not.
+ *  2. THE GRAPPLE. Everyone has one, always, on Q (F is the camera). Mobility
+ *     is fun and waiting to find mobility is not.
  *
  *  3. SECOND WIND. Your first down of the match is not the end of it: a short
  *     countdown and you are back on the glider over the circle, with your
@@ -339,7 +339,7 @@ export const STRINGS = Object.freeze({
   secondWindSub: "Back on the glider in",
   secondWindGone: "That was your one",
   grappleReady: "Grapple ready",
-  grappleKey: "F",
+  grappleKey: "Q",
   eventPrefix: "ISLAND EVENT",
 });
 

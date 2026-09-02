@@ -48,6 +48,7 @@ import createAugments from "./play/augments";
 import createGrapple from "./play/grapple";
 import createSecondWind from "./play/secondwind";
 import createEvents from "./play/events";
+import createSkin from "./play/skin";
 
 export interface BootResult {
   engine: Engine;
@@ -94,6 +95,7 @@ const STAGES = [
   { label: "Mixing audio", factory: createAudio },
   { label: "Issuing loadout", factory: createInventory },
   { label: "Boarding the bus", factory: createPlayer },
+  { label: "Getting dressed", factory: createSkin },
   { label: "Dressing the rivals", factory: createGhostsSystem },
   { label: "Pouring concrete", factory: createBuilding },
   { label: "Racking the guns", factory: createWeapons },

@@ -655,9 +655,9 @@ export default function TouchControls({ ctx, driver }: { ctx: WorldCtx; driver: 
           <>
             <div style={{ display: "flex", gap: 8 }}>
               {/* BETTER FORTNITE: the grapple is a tap, and it is the same
-                  edge-triggered press the F key is, so the grapple system has
+                  edge-triggered press the Q key is, so the grapple system has
                   one input path rather than two. */}
-              {better && <Pad skin={skin} label="HOOK" size={46} fontSize={9} onDown={() => driver.press("KeyF")} />}
+              {better && <Pad skin={skin} label="HOOK" size={46} fontSize={9} onDown={() => driver.press("KeyQ")} />}
               <Pad skin={skin} label="RELOAD" size={46} fontSize={9} {...hold("reload")} />
               <Pad skin={skin} label="AIM" size={46} fontSize={9} {...hold("aim")} />
               <Pad skin={skin} label="SPRINT" size={46} fontSize={9} {...hold("sprint")} />

@@ -94,6 +94,66 @@ import webslingerArt from "@/assets/characters/webslinger.png";
 import nightcapeArt from "@/assets/characters/nightcape.png";
 import whiskersArt from "@/assets/characters/whiskers.png";
 import emberwingArt from "@/assets/characters/emberwing.png";
+/* The GLB half of the roster, photographed by the same script through
+   `loadCharacterRig` — see `src/dev/characterShot.ts`. */
+import glb_BlueSoldier_Female from "@/assets/characters/BlueSoldier_Female.png";
+import glb_BlueSoldier_Male from "@/assets/characters/BlueSoldier_Male.png";
+import glb_Casual2_Female from "@/assets/characters/Casual2_Female.png";
+import glb_Casual2_Male from "@/assets/characters/Casual2_Male.png";
+import glb_Casual3_Female from "@/assets/characters/Casual3_Female.png";
+import glb_Casual3_Male from "@/assets/characters/Casual3_Male.png";
+import glb_Casual_Bald from "@/assets/characters/Casual_Bald.png";
+import glb_Casual_Female from "@/assets/characters/Casual_Female.png";
+import glb_Casual_Male from "@/assets/characters/Casual_Male.png";
+import glb_Chef_Female from "@/assets/characters/Chef_Female.png";
+import glb_Chef_Male from "@/assets/characters/Chef_Male.png";
+import glb_Cow from "@/assets/characters/Cow.png";
+import glb_Cowboy_Female from "@/assets/characters/Cowboy_Female.png";
+import glb_Cowboy_Male from "@/assets/characters/Cowboy_Male.png";
+import glb_Doctor_Female_Old from "@/assets/characters/Doctor_Female_Old.png";
+import glb_Doctor_Female_Young from "@/assets/characters/Doctor_Female_Young.png";
+import glb_Doctor_Male_Old from "@/assets/characters/Doctor_Male_Old.png";
+import glb_Doctor_Male_Young from "@/assets/characters/Doctor_Male_Young.png";
+import glb_Elf from "@/assets/characters/Elf.png";
+import glb_Goblin_Female from "@/assets/characters/Goblin_Female.png";
+import glb_Goblin_Male from "@/assets/characters/Goblin_Male.png";
+import glb_Kimono_Female from "@/assets/characters/Kimono_Female.png";
+import glb_Kimono_Male from "@/assets/characters/Kimono_Male.png";
+import glb_Knight_Golden_Female from "@/assets/characters/Knight_Golden_Female.png";
+import glb_Knight_Golden_Male from "@/assets/characters/Knight_Golden_Male.png";
+import glb_Knight_Male from "@/assets/characters/Knight_Male.png";
+import glb_Ninja_Female from "@/assets/characters/Ninja_Female.png";
+import glb_Ninja_Male from "@/assets/characters/Ninja_Male.png";
+import glb_Ninja_Sand from "@/assets/characters/Ninja_Sand.png";
+import glb_Ninja_Sand_Female from "@/assets/characters/Ninja_Sand_Female.png";
+import glb_OldClassy_Female from "@/assets/characters/OldClassy_Female.png";
+import glb_OldClassy_Male from "@/assets/characters/OldClassy_Male.png";
+import glb_Pirate_Anne from "@/assets/characters/Pirate_Anne.png";
+import glb_Pirate_Captain_Barbarossa from "@/assets/characters/Pirate_Captain_Barbarossa.png";
+import glb_Pirate_Female from "@/assets/characters/Pirate_Female.png";
+import glb_Pirate_Henry from "@/assets/characters/Pirate_Henry.png";
+import glb_Pirate_Mako from "@/assets/characters/Pirate_Mako.png";
+import glb_Pirate_Male from "@/assets/characters/Pirate_Male.png";
+import glb_Pirate_Shark from "@/assets/characters/Pirate_Shark.png";
+import glb_Pirate_Sharky from "@/assets/characters/Pirate_Sharky.png";
+import glb_Pirate_Skeleton from "@/assets/characters/Pirate_Skeleton.png";
+import glb_Pirate_Skeleton_Headless from "@/assets/characters/Pirate_Skeleton_Headless.png";
+import glb_Pirate_Tentacle from "@/assets/characters/Pirate_Tentacle.png";
+import glb_Pug from "@/assets/characters/Pug.png";
+import glb_Soldier_Female from "@/assets/characters/Soldier_Female.png";
+import glb_Soldier_Male from "@/assets/characters/Soldier_Male.png";
+import glb_Suit_Female from "@/assets/characters/Suit_Female.png";
+import glb_Suit_Male from "@/assets/characters/Suit_Male.png";
+import glb_Viking_Female from "@/assets/characters/Viking_Female.png";
+import glb_Viking_Male from "@/assets/characters/Viking_Male.png";
+import glb_Witch from "@/assets/characters/Witch.png";
+import glb_Wizard from "@/assets/characters/Wizard.png";
+import glb_Worker_Female from "@/assets/characters/Worker_Female.png";
+import glb_Worker_Male from "@/assets/characters/Worker_Male.png";
+import glb_Zombie_Female from "@/assets/characters/Zombie_Female.png";
+import glb_Zombie_Male from "@/assets/characters/Zombie_Male.png";
+import glb_alien from "@/assets/characters/alien.png";
+import glb_vibey from "@/assets/characters/vibey.png";
 
 export const CHARACTER_ART: Record<string, string> = {
   aurora: auroraArt,
@@ -159,6 +219,65 @@ export const CHARACTER_ART: Record<string, string> = {
   nightcape: nightcapeArt,
   whiskers: whiskersArt,
   emberwing: emberwingArt,
+  // ---- the GLB roster --------------------------------------------------
+  BlueSoldier_Female: glb_BlueSoldier_Female,
+  BlueSoldier_Male: glb_BlueSoldier_Male,
+  Casual2_Female: glb_Casual2_Female,
+  Casual2_Male: glb_Casual2_Male,
+  Casual3_Female: glb_Casual3_Female,
+  Casual3_Male: glb_Casual3_Male,
+  Casual_Bald: glb_Casual_Bald,
+  Casual_Female: glb_Casual_Female,
+  Casual_Male: glb_Casual_Male,
+  Chef_Female: glb_Chef_Female,
+  Chef_Male: glb_Chef_Male,
+  Cow: glb_Cow,
+  Cowboy_Female: glb_Cowboy_Female,
+  Cowboy_Male: glb_Cowboy_Male,
+  Doctor_Female_Old: glb_Doctor_Female_Old,
+  Doctor_Female_Young: glb_Doctor_Female_Young,
+  Doctor_Male_Old: glb_Doctor_Male_Old,
+  Doctor_Male_Young: glb_Doctor_Male_Young,
+  Elf: glb_Elf,
+  Goblin_Female: glb_Goblin_Female,
+  Goblin_Male: glb_Goblin_Male,
+  Kimono_Female: glb_Kimono_Female,
+  Kimono_Male: glb_Kimono_Male,
+  Knight_Golden_Female: glb_Knight_Golden_Female,
+  Knight_Golden_Male: glb_Knight_Golden_Male,
+  Knight_Male: glb_Knight_Male,
+  Ninja_Female: glb_Ninja_Female,
+  Ninja_Male: glb_Ninja_Male,
+  Ninja_Sand: glb_Ninja_Sand,
+  Ninja_Sand_Female: glb_Ninja_Sand_Female,
+  OldClassy_Female: glb_OldClassy_Female,
+  OldClassy_Male: glb_OldClassy_Male,
+  Pirate_Anne: glb_Pirate_Anne,
+  Pirate_Captain_Barbarossa: glb_Pirate_Captain_Barbarossa,
+  Pirate_Female: glb_Pirate_Female,
+  Pirate_Henry: glb_Pirate_Henry,
+  Pirate_Mako: glb_Pirate_Mako,
+  Pirate_Male: glb_Pirate_Male,
+  Pirate_Shark: glb_Pirate_Shark,
+  Pirate_Sharky: glb_Pirate_Sharky,
+  Pirate_Skeleton: glb_Pirate_Skeleton,
+  Pirate_Skeleton_Headless: glb_Pirate_Skeleton_Headless,
+  Pirate_Tentacle: glb_Pirate_Tentacle,
+  Pug: glb_Pug,
+  Soldier_Female: glb_Soldier_Female,
+  Soldier_Male: glb_Soldier_Male,
+  Suit_Female: glb_Suit_Female,
+  Suit_Male: glb_Suit_Male,
+  Viking_Female: glb_Viking_Female,
+  Viking_Male: glb_Viking_Male,
+  Witch: glb_Witch,
+  Wizard: glb_Wizard,
+  Worker_Female: glb_Worker_Female,
+  Worker_Male: glb_Worker_Male,
+  Zombie_Female: glb_Zombie_Female,
+  Zombie_Male: glb_Zombie_Male,
+  alien: glb_alien,
+  vibey: glb_vibey,
 };
 
 /**

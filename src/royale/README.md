@@ -95,6 +95,27 @@ drive each of these with real input where a player can and the documented
 debug entry points (`augments.offerNow()`, `events.trigger()`) where the
 schedule would otherwise cost minutes of simulated time.
 
+## Playing as somebody
+
+All three games open on a locker (`ui/Locker.tsx`): the vibeverse roster —
+the Quaternius GLBs, Vibey, the code-built cast — plus the island's own Drop
+Suit. Picking is `setActiveCharacter`, the same pick the city and the profile
+use, so who you are here is who you are everywhere. The one exception is the
+suit, which is a flag of this world's (`skinChoice.ts`) rather than a roster
+id, so choosing it never turns you into somebody random elsewhere.
+
+`play/skin.ts` loads the pick through `loadCharacterRig` — the loader every
+other world uses — and hands it to `player.setSkin()`. The player keeps
+SIMULATING the drop-suit (every step, the foot plant, the glider) and only
+hides its meshes: the skin is a costume over an actor, not a replacement for
+it. It drives the skin's clips off the same state the body animates from
+(idle↔walk by speed, the jump clip in the air, the death clip when down) and
+plants a node named `dz-hand-r` on the skin's right hand, which is how the
+third-person weapon finds a hand on a skeleton it has never seen.
+
+Bots and remote players still wear the drop-suit. The pick does not travel
+over the wire yet.
+
 ## The lido
 
 `world/lido.ts` is a water park on the east coast — slide tower, wave pool, a

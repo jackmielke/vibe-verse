@@ -382,10 +382,34 @@ const GROUND_TRUTH = `(() => {
     const d = Math.hypot(poi.center.x - p.position.x, poi.center.z - p.position.z);
     if (d < Math.max(poi.radius, 40) * 1.4 && d < best) { best = d; where = poi.name; }
   }
+  /* The camera and the skin, because a frame that looks "too close" can be
+     a bigger character or a shorter boom, and the picture cannot say which. */
+  const cam = e.ctx.camera.position;
+  const camDist = Math.round(Math.hypot(cam.x - p.position.x, cam.y - p.position.y, cam.z - p.position.z) * 100) / 100;
+  const skinObj = e.ctx.scene.getObjectByName("dz-skin");
+  let skin = null;
+  if (skinObj && skinObj.children.length) {
+    let mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9], n = 0;
+    skinObj.updateWorldMatrix(true, true);
+    skinObj.traverse((o) => {
+      if (!o.isMesh || !o.visible) return;
+      n++;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox;
+      for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+        const w = o.localToWorld(new (p.position.constructor)(x, y, z));
+        mn = [Math.min(mn[0], w.x), Math.min(mn[1], w.y), Math.min(mn[2], w.z)];
+        mx = [Math.max(mx[0], w.x), Math.max(mx[1], w.y), Math.max(mx[2], w.z)];
+      }
+    });
+    skin = n ? { meshes: n, size: mx.map((v, i) => Math.round((v - mn[i]) * 100) / 100), feetY: Math.round(mn[1] * 100) / 100 } : { meshes: 0 };
+  }
   return {
     ok: m.phase === "live" && p.state !== "bus" && p.state !== "skydive" && p.state !== "glide",
     phase: m.phase,
     state: p.state,
+    camDist,
+    skin,
     altitude: Math.round((p.position.y - gy) * 100) / 100,
     where,
     x: Math.round(p.position.x),
@@ -486,6 +510,21 @@ await page.addInitScript(() => {
     },
   });
 });
+
+/**
+ * DZ_LOCAL: JSON of localStorage entries to seed before any page script runs.
+ * The character you play as is read at boot from `lobby.character`, so a
+ * capture of a skin has to plant the pick before the world comes up —
+ * DZ_PRIME is too late, the rig is already built by then.
+ *
+ *   DZ_LOCAL='{"lobby.character":"Wizard"}'
+ */
+if (process.env.DZ_LOCAL) {
+  const seed = JSON.parse(process.env.DZ_LOCAL);
+  await page.addInitScript((entries) => {
+    for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, String(v));
+  }, seed);
+}
 
 const errors = [];
 page.on("pageerror", (e) => errors.push(`PAGEERROR: ${e.message}`));

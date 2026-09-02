@@ -59,6 +59,8 @@
  * are out — which is why the beat is called SPLASH ROYALE and not "eliminated".
  */
 import * as THREE from "three";
+import type { CharacterRig as SkinRig } from "@/lib/characterRig";
+import { skinActionFor } from "./skin";
 import type {
   DamageSource,
   DamageTarget,
@@ -2093,6 +2095,16 @@ export interface DropZeroPlayerService extends PlayerService {
    */
   redeploy(altitude: number, health: number): void;
 
+  /**
+   * Wear a vibeverse character over the drop-suit. `null` takes it off. The
+   * skin system loads the rig; this module mounts it, hides its own body
+   * meshes (the glider stays — it is the drop-suit's, and it is yours), drives
+   * the skin's clips off the same state the body animates from, and plants a
+   * node named `dz-hand-r` on the skin's right hand so the third-person
+   * weapon can find it. See `play/skin.ts`.
+   */
+  setSkin(rig: SkinRig | null, characterId: string | null): void;
+
   // ------------------------------------------------------------- SPLASH ROYALE
   // These exist in both modes. In `classic` they read off health/shield and
   // the mutators are no-ops, so a caller never has to ask what mode it is.
@@ -2175,6 +2187,9 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     gravityScale: 1,
     redeploy(altitude, health) {
       redeploy(altitude, health);
+    },
+    setSkin(rigIn, characterId) {
+      setSkin(rigIn, characterId);
     },
     eye(out) {
       const o = out ?? _eye;
@@ -2609,6 +2624,120 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     console.error("[Drop Zero] player character failed to build:", err);
   }
   ctx.scene.add(rigRoot);
+
+  // ---- skin ---------------------------------------------------------------
+  /** The vibeverse character worn over the body, or null for the drop-suit. */
+  let skin: SkinRig | null = null;
+  let skinId: string | null = null;
+  /** Wraps the skin so it can be turned to face the way the body faces. */
+  const skinHolder = new THREE.Group();
+  skinHolder.name = "dz-skin";
+  // Every model in the catalog faces +Z; the body faces -Z (see `bodyYaw`).
+  skinHolder.rotation.y = Math.PI;
+  rigRoot.add(skinHolder);
+  /** Clip actions the skin may have, found once per skin by name. */
+  let skinAir: THREE.AnimationAction | null = null;
+  let skinDown: THREE.AnimationAction | null = null;
+  let skinIdle: THREE.AnimationAction | null = null;
+  let skinWalk: THREE.AnimationAction | null = null;
+  let skinAction = "locomotion";
+
+  function findClip(clips: THREE.AnimationClip[], re: RegExp, not?: RegExp): THREE.AnimationClip | null {
+    return clips.find((c) => re.test(c.name) && !(not && not.test(c.name))) ?? null;
+  }
+
+  function setSkin(rigIn: SkinRig | null, characterId: string | null): void {
+    // Take the old one off. The skin system owns disposal; we only unmount.
+    while (skinHolder.children.length) skinHolder.remove(skinHolder.children[0]);
+    skin = rigIn;
+    skinId = rigIn ? characterId : null;
+    skinAir = skinDown = skinIdle = skinWalk = null;
+    skinAction = "locomotion";
+
+    // The body: shown for the drop-suit, hidden under a skin. `rig.body` is
+    // everything between the root and the pelvis, which is every mesh of the
+    // character and none of the glider.
+    if (rig) rig.body.visible = !rigIn;
+
+    if (rigIn) {
+      skinHolder.add(rigIn.object);
+      if (rigIn.mixer && rigIn.clips.length) {
+        const m = rigIn.mixer;
+        const idle = findClip(rigIn.clips, /idle|breath|stand/i) ?? rigIn.clips[0];
+        const walk = findClip(rigIn.clips, /run|walk/i);
+        skinIdle = m.clipAction(idle);
+        skinWalk = walk && walk !== idle ? m.clipAction(walk) : null;
+        // A jump *loop* over a jump *land*: the airborne clip has to hold.
+        const air = findClip(rigIn.clips, /jump_idle|fall|jump/i, /land/i);
+        const down = findClip(rigIn.clips, /death|die|defeat/i);
+        if (air) {
+          skinAir = m.clipAction(air);
+          skinAir.setLoop(THREE.LoopRepeat, Infinity);
+          skinAir.weight = 0;
+          skinAir.play();
+        }
+        if (down) {
+          skinDown = m.clipAction(down);
+          skinDown.setLoop(THREE.LoopOnce, 1);
+          skinDown.clampWhenFinished = true;
+          skinDown.weight = 0;
+        }
+      }
+      // The weapon anchor: a node on whatever bone reads as the right hand.
+      // Named, so the weapon system can find it without knowing the skeleton.
+      let hand: THREE.Object3D | null = null;
+      rigIn.object.traverse((o) => {
+        if (hand) return;
+        if (/(^|[^a-z])(hand|wrist|fist)[._ -]?r(ight)?($|[^a-z])|right[._ -]?(hand|wrist)/i.test(o.name)) hand = o;
+      });
+      if (hand) {
+        const anchor = new THREE.Object3D();
+        anchor.name = "dz-hand-r";
+        (hand as THREE.Object3D).add(anchor);
+      }
+    }
+    ctx.emit("dz:skin", { id: skinId });
+  }
+
+  /**
+   * Drive the skin off the actor. Locomotion from horizontal speed, the air
+   * clip while off the ground, the death clip once while down or dead —
+   * weights cross-faded rather than switched, because a GLB that snaps
+   * between clips reads as a broken GLB.
+   */
+  function updateSkin(dt: number, hSpeed: number): void {
+    if (!skin) return;
+    skinHolder.visible = !firstPerson;
+    const want = skinActionFor(service.state, grounded);
+    if (want !== skinAction) {
+      skinAction = want;
+      if ((want === "down" || want === "dead") && skinDown) {
+        skinDown.reset();
+        skinDown.play();
+      }
+    }
+    const k = 1 - Math.exp(-10 * dt);
+    const airW = want === "air" && skinAir ? 1 : 0;
+    const downW = (want === "down" || want === "dead") && skinDown ? 1 : 0;
+    const baseW = 1 - Math.max(airW, downW);
+    if (skinAir) skinAir.weight += (airW - skinAir.weight) * k;
+    if (skinDown) skinDown.weight += (downW - skinDown.weight) * k;
+    // Locomotion inside whatever is left for the ground pair.
+    const loco = clamp01(hSpeed / WALK_SPEED);
+    if (skinWalk && skinIdle) {
+      skinWalk.weight += (baseW * loco - skinWalk.weight) * k;
+      skinIdle.weight += (baseW * (1 - loco) - skinIdle.weight) * k;
+      if (skinWalk.weight > 0.01 && !skinWalk.isRunning()) skinWalk.play();
+      // Sprinting plays the walk faster rather than looking for a run clip
+      // that half the catalog does not have.
+      skinWalk.timeScale = 0.9 + clamp01(hSpeed / SPRINT_SPEED) * 0.7;
+    } else if (skinIdle) {
+      skinIdle.weight += (baseW - skinIdle.weight) * k;
+    }
+    // Procedural characters (Flux and friends) take speed instead of weights.
+    skin.setLocomotion(want === "locomotion" ? loco : 0);
+    skin.update(dt);
+  }
 
   // ---- damage ------------------------------------------------------------
 
@@ -5135,6 +5264,7 @@ const createPlayer: SystemFactory = (ctx: WorldCtx): System => {
     // In first person the head would fill the screen, so it goes — but the
     // body stays, because looking down and seeing your own boots is free.
     rig.headGroup.visible = !firstPerson;
+    updateSkin(dt, Math.hypot(velocity.x, velocity.z));
 
     // --- glider ------------------------------------------------------------
     if (dropStage !== "glide" && glideT > 0) glideT = Math.max(0, glideT - dt / 0.3);

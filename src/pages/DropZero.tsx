@@ -14,6 +14,11 @@ import { detectQuality } from "@/royale/engine/core";
 import HUD from "@/royale/ui/HUD";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { BETTER } from "@/royale/mode/better";
+import Locker from "@/royale/ui/Locker";
+import { CharacterPreview } from "@/island/CharacterPreview";
+import { findCharacter } from "@/lib/characters";
+import { characterArt } from "@/lib/characterArt";
+import { SUIT_ID, lockerSelection } from "@/royale/play/skinChoice";
 import type { GameMode } from "@/royale/types";
 import { modeForLocation } from "@/royale/mode/route";
 
@@ -40,8 +45,9 @@ const WATER_CONTROLS: [string, string][] = CONTROLS.map(([k, a]) =>
 /** BETTER FORTNITE adds the grapple and the augment keys. */
 const BETTER_CONTROLS: [string, string][] = [
   ...CONTROLS.slice(0, 5),
-  [BETTER.strings.grappleKey, "grapple"],
-  ...CONTROLS.slice(5, 10),
+  [BETTER.strings.grappleKey, "grapple / rotate piece"],
+  ...CONTROLS.slice(5, 7),
+  ...CONTROLS.slice(8, 10),
   ["1 2 3", "pick augment"],
   ...CONTROLS.slice(10),
 ];
@@ -71,6 +77,21 @@ export function RoyalePage() {
   const [ready, setReady] = useState(false);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The locker overlay, over the entry veil. */
+  const [lockerOpen, setLockerOpen] = useState(false);
+  const [who, setWho] = useState<string>(() => lockerSelection());
+  useEffect(() => {
+    const sync = () => setWho(lockerSelection());
+    window.addEventListener("vibe:character-changed", sync);
+    window.addEventListener("royale:suit-changed", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("vibe:character-changed", sync);
+      window.removeEventListener("royale:suit-changed", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  const whoSpec = who === SUIT_ID ? null : findCharacter(who);
 
   // `?shot=1` drops the entry veil and exposes the engine on `window` so the
   // automated capture harness can pose the camera and grab frames.
@@ -180,6 +201,39 @@ export function RoyalePage() {
                 : "One island. One storm. Harvest anything, build faster than they can shoot, and be the last one breathing when the circle closes."}
           </p>
 
+          {/* Who drops. The card is the current pick, a tap opens the locker. */}
+          {ready && (
+            <button
+              type="button"
+              onClick={() => setLockerOpen(true)}
+              className="mt-8 flex items-center gap-4 rounded-2xl border border-white/12 bg-white/5 px-4 py-3 text-left transition hover:bg-white/10"
+            >
+              <div
+                className="relative h-20 w-16 overflow-hidden rounded-xl"
+                style={{
+                  background: `linear-gradient(180deg, ${whoSpec?.accent ?? "#e07a3c"}33, rgba(255,255,255,0.04))`,
+                }}
+              >
+                {whoSpec ? (
+                  characterArt(whoSpec.id) ? (
+                    <img src={characterArt(whoSpec.id)} alt="" className="absolute inset-x-0 top-1 mx-auto h-[90%] w-auto object-contain" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-3xl">{whoSpec.emoji}</div>
+                  )
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-3xl">🪂</div>
+                )}
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/45">Dropping as</div>
+                <div className="font-heading text-xl font-black uppercase" style={{ color: whoSpec?.accent ?? "#e07a3c" }}>
+                  {whoSpec?.label ?? "Drop Suit"}
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-sky-200/70">Change character →</div>
+              </div>
+            </button>
+          )}
+
           {!ready ? (
             <div className="mt-10 w-72">
               <div className="h-1 overflow-hidden rounded-full bg-white/10">
@@ -196,7 +250,7 @@ export function RoyalePage() {
             <>
               <button
                 onClick={enter}
-                className="mt-10 rounded-full bg-gradient-to-r from-sky-400 to-violet-500 px-10 py-3 text-sm font-bold uppercase tracking-[0.2em] text-white shadow-[0_0_44px_rgba(129,140,248,0.5)] transition hover:brightness-110"
+                className="mt-6 rounded-full bg-gradient-to-r from-sky-400 to-violet-500 px-10 py-3 text-sm font-bold uppercase tracking-[0.2em] text-white shadow-[0_0_44px_rgba(129,140,248,0.5)] transition hover:brightness-110"
               >
                 {better ? BETTER.strings.enter : water ? "Get soaked" : "Drop in"}
               </button>
@@ -217,6 +271,15 @@ export function RoyalePage() {
             ← back to the vibeverse
           </Link>
         </div>
+      )}
+
+      {lockerOpen && !locked && !error && (
+        <Locker
+          game={better ? BETTER.strings.modeName : water ? "Splash Royale" : "Drop Zero"}
+          cta="Done"
+          onDone={() => setLockerOpen(false)}
+          onClose={() => setLockerOpen(false)}
+        />
       )}
 
       {error && (

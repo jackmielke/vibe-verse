@@ -1,7 +1,7 @@
 /**
  * BETTER FORTNITE — the grapple.
  *
- * Everyone has one, from the first second. F fires a hook along the look; if
+ * Everyone has one, from the first second. Q fires a hook along the look; if
  * it finds a surface inside `GRAPPLE.range` the rope attaches and pulls you
  * toward it until you arrive, let go, or the rope times out. It is not a
  * physics rope — it is a velocity you are steered onto — because a real
@@ -199,7 +199,10 @@ const createGrapple: SystemFactory = (ctx) => {
       if (hooked && jump && !wasJump) release("manual");
       wasJump = jump;
 
-      if (player.controllable && (input.pressed.has("KeyF") || input.pressed.has("dz:grapple"))) fire();
+      // Q — and not F, which is the first-person camera toggle. In build mode
+      // Q rotates the piece, so the hook only answers when no piece is up.
+      const building = !!ctx.services.build?.selected;
+      if (player.controllable && !building && (input.pressed.has("KeyQ") || input.pressed.has("dz:grapple"))) fire();
 
       if (hooked) {
         player.eye(_eye);

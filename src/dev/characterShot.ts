@@ -24,7 +24,9 @@
  * all have to be recaptured to change one colour.
  */
 import * as THREE from "three";
-import { buildProceduralPilot } from "@/components/city/proceduralPilot";
+import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
+import { findCharacter } from "@/lib/characters";
+import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 
 export interface ShotOptions {
   width?: number;
@@ -77,34 +79,56 @@ export async function shootCharacter(
 
   const scene = new THREE.Scene();
 
-  const pilot = buildProceduralPilot(undefined, designId);
-  scene.add(pilot.group);
+  /**
+   * Two kinds of subject. A design id from `PILOT_DESIGNS` builds the
+   * procedural rig, as it always has. An id from the GLB half of the roster
+   * (`findCharacter(id).url` is set) loads the model through the same
+   * `loadCharacterRig` the worlds use, so the locker's tile is the thing you
+   * play as. The face crop needs `pilot.head` and so stays procedural-only.
+   */
+  const spec = findCharacter(designId);
+  const isGlb = spec.id === designId && !!spec.url;
+  let pilot: ProceduralPilot | null = null;
+  let rig: CharacterRig | null = null;
+  let subject: THREE.Object3D;
+  if (isGlb) {
+    rig = await loadCharacterRig(spec, { height: 1.8, center: true, castShadow: false });
+    subject = rig.object;
+    scene.add(subject);
+    // Into the idle: a frame's worth so the bind pose does not photograph.
+    const step = 1 / 60;
+    for (let t = 0; t < settle; t += step) rig.update(step);
+  } else {
+    pilot = buildProceduralPilot(undefined, designId);
+    subject = pilot.group;
+    scene.add(subject);
 
-  // Settle the springs before the shutter. Straight out of the constructor
-  // every joint is at rest and the crest, cape and tail hang dead straight —
-  // the one pose that makes the secondary motion look like it isn't there.
-  // A second and a bit of standing still leaves them where an idle actually
-  // holds them.
-  const step = 1 / 60;
-  for (let t = 0; t < settle; t += step) {
-    pilot.update(step, {
-      speed: 0,
-      grounded: true,
-      verticalVel: 0,
-      yawRate: 0,
-      thrusting: false,
-    });
+    // Settle the springs before the shutter. Straight out of the constructor
+    // every joint is at rest and the crest, cape and tail hang dead straight —
+    // the one pose that makes the secondary motion look like it isn't there.
+    // A second and a bit of standing still leaves them where an idle actually
+    // holds them.
+    const step = 1 / 60;
+    for (let t = 0; t < settle; t += step) {
+      pilot.update(step, {
+        speed: 0,
+        grounded: true,
+        verticalVel: 0,
+        yawRate: 0,
+        thrusting: false,
+      });
+    }
   }
 
   // Three-quarter view. Dead-on is the worst angle for a rig whose whole
   // argument is silhouette — a tail, a cape and a snout all vanish into the
-  // body from the front.
-  pilot.group.rotation.y = -0.42;
+  // body from the front. GLBs face +Z, so their quarter turn goes the other way.
+  subject.rotation.y = isGlb ? 0.42 : -0.42;
 
   // Frame from the real bounds rather than a constant, because `chunk` makes
   // Pixel two thirds of Bumble's height and a fixed camera crops one or floats
   // the other.
-  const box = new THREE.Box3().setFromObject(pilot.group);
+  const box = new THREE.Box3().setFromObject(subject);
   const size = new THREE.Vector3();
   const centre = new THREE.Vector3();
   box.getSize(size);
@@ -126,7 +150,7 @@ export async function shootCharacter(
   let fitH = windowH * 1.1;
   let fitW = (size.x * (opts.crop === "full" ? 1.3 : 1.05)) / camera.aspect;
 
-  if (opts.crop === "face") {
+  if (opts.crop === "face" && pilot) {
     /**
      * The head, from the rig, rather than a fraction of the bounding box.
      *
@@ -190,7 +214,8 @@ export async function shootCharacter(
 
   // The tool renders sixty-odd characters in one page, so leaking a context
   // per shot would run the browser out before it finished.
-  pilot.dispose();
+  pilot?.dispose();
+  rig?.dispose();
   renderer.dispose();
   renderer.forceContextLoss();
 

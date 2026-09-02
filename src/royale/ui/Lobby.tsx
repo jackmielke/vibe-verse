@@ -177,13 +177,17 @@ export interface LobbyProps {
   onDropIn: () => void;
   /** Seed for the name field — the vibe identity's display name. */
   defaultName?: string;
+  /** Opens the locker. The page renders it over this lobby. */
+  onCharacter?: () => void;
+  /** What the locker currently says you are, for the button. */
+  characterLabel?: string;
 }
 
 type NetStatus = "idle" | "connecting" | "online" | "solo";
 
 // ---------------------------------------------------------------- component
 
-export default function Lobby({ engine, ready, progress, onDropIn, defaultName }: LobbyProps) {
+export default function Lobby({ engine, ready, progress, onDropIn, defaultName, onCharacter, characterLabel }: LobbyProps) {
   const net = engine?.ctx.services.net ?? null;
 
   const [name, setName] = useState(
@@ -454,6 +458,21 @@ export default function Lobby({ engine, ready, progress, onDropIn, defaultName }
             <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#0b6a94]">
               The room
             </h2>
+
+            {/* Who you drop as. The locker itself is the page's, over this. */}
+            {onCharacter && (
+              <button
+                type="button"
+                onClick={onCharacter}
+                className="mt-3 flex w-full items-center justify-between rounded-2xl border border-sky-300/50 bg-white/40 px-4 py-2.5 text-left transition hover:bg-white/55"
+              >
+                <span>
+                  <span className="block text-[10px] font-black uppercase tracking-[0.3em] text-[#04456b]/70">Dropping as</span>
+                  <span className="block font-heading text-lg font-black uppercase text-[#04456b]">{characterLabel ?? "Drop Suit"}</span>
+                </span>
+                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-700">Change →</span>
+              </button>
+            )}
 
             {room ? (
               <>

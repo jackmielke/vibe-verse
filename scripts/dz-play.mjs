@@ -796,7 +796,7 @@ await step("survive", "returning inside the circle stops the damage", async () =
  */
 const betterMode = await page.evaluate('window.__dz?.ctx?.mode === "better"');
 if (betterMode) {
-  await step("grapple", "F fires a hook at a surface and the rope pulls the player toward it", async () => {
+  await step("grapple", "Q fires a hook at a surface and the rope pulls the player toward it", async () => {
     /* Face something. The drop point is open ground, so find the nearest
        collider box and turn to its centre, exactly as the harvest beat does. */
     const aimed = await page.evaluate(`(() => {
@@ -817,7 +817,7 @@ if (betterMode) {
     })()`);
     if (!aimed) return { ok: false, detail: "nothing within 40 m to hook" };
     const a = (await state()).pos;
-    await press("KeyF", 120);
+    await press("KeyQ", 120);
     const hooked = await until("hooked", "s.grapple && s.grapple.hooked === true", 120000);
     await waitSim(1.6);
     const b = (await state()).pos;
