@@ -1,7 +1,31 @@
 {
-  "generated_at": "2026-09-02T04:54:37.974Z",
+  "generated_at": "2026-09-02T06:37:30.508Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "2b7b92ac",
+      "date": "2026-09-02",
+      "subject": "Play the island as anybody in the vibeverse (checkpoint)",
+      "lede": "A locker on every royale entry screen — the roster shared with the city and the profile, the shop's tiers and locks, the island's own drop suit first — and a skin system that loads the pick through the same `loadCharacterRig` every other world uses and mounts it over the drop-suit actor, which keeps simulating underneath. Portraits for the GLB half of the roster, photographed by the same script that shoots the code-b",
+      "places": [],
+      "files": 78
+    },
+    {
+      "sha": "3ab438b1",
+      "date": "2026-09-02",
+      "subject": "dz-play/dz-shot: join DZ_ROUTE's query correctly",
+      "lede": "A route that already carries a query (`/drop-zero?mode=classic`) was getting `?shot=1` appended after it, so `shot` became part of the previous value and the page never signalled ready. The classic regression run sat for three minutes and exited. Join with `&` when there is already a `?`.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "666ad323",
+      "date": "2026-09-02",
+      "subject": "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art",
+      "lede": "The inventory latches edge input in its own `fixed()`, and the engine runs every system's fixed pass before any update — so consuming `input.slot` in `update` was always one step late, and the playtest recorded a pick that also switched the player to the pickaxe. The consume moves to `fixed`; augments is first in the boot list precisely so it runs before the inventory's. The beat now asserts the active slot did not m",
+      "places": [],
+      "files": 7
+    },
     {
       "sha": "6ed0d1c7",
       "date": "2026-09-02",
@@ -981,30 +1005,6 @@
       "lede": "Three things the city was missing at the two scales you actually look at it.",
       "places": [],
       "files": 7
-    },
-    {
-      "sha": "7ec4acfe",
-      "date": "2026-08-17",
-      "subject": "The frame counter was lying, and now the world can act on the truth",
-      "lede": "`handle.fps` was computed from the CLAMPED simulation step rather than from real elapsed time. The clamp exists so a backgrounded tab does not resume with a two-second step and fling the player through the map, and it caps at 1/15 — so the frame rate it produced saturated at fifteen. A world running at one and a half frames a second reported \"17 fps\", in the HUD, in every screenshot this repo has taken of it, and in ",
-      "places": [],
-      "files": 7
-    },
-    {
-      "sha": "2c4cd3e7",
-      "date": "2026-08-17",
-      "subject": "The Powell Street cable car, and you can ride it",
-      "lede": "Two cars run a fixed track from Market up over Nob Hill to the water, back and forth, forever. Rails and the cable slot are laid into the road — the waypoints are the real corners of the line, each snapped onto the nearest asphalt, so they sit in a street grid that has never heard of Powell Street. Standing on the running board carries you.",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "ba32f69d",
-      "date": "2026-08-17",
-      "subject": "Karl comes in",
-      "lede": "The fog banks have been in `sky.ts` since the beginning and nothing ever set `fogAmount`, so they have never once been visible. Now there is a button, and the effect is two mechanisms because San Francisco fog is two things at once and only one of them is cheap.",
-      "places": [],
-      "files": 6
     }
   ]
 }

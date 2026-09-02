@@ -109,6 +109,12 @@ page.on("console", (m) => {
   if (m.type() === "warning" && /drop zero/i.test(m.text())) note("warn", m.text());
 });
 
+/* DZ_LOCAL — see dz-shot.mjs. Lets a playtest run as a chosen character. */
+if (process.env.DZ_LOCAL) {
+  await page.addInitScript((entries) => {
+    for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, String(v));
+  }, JSON.parse(process.env.DZ_LOCAL));
+}
 await page.goto(`${BASE}${ROUTE}${ROUTE.includes("?") ? "&" : "?"}shot=1&q=${QUALITY}`, {
   waitUntil: "domcontentloaded",
   timeout: 120000,

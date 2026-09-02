@@ -159,7 +159,11 @@ export default function Locker({ game, cta, onDone, onClose }: LockerProps) {
           style={{ background: `radial-gradient(120% 90% at 50% 100%, ${current.accent}33, transparent 60%), linear-gradient(180deg, #0d1230, #070a18)` }}
         >
           <div className="absolute inset-0">
-            <CharacterPreview key={current.id} character={previewOption} spinning pose="idle" />
+            {/* Not keyed on the pick. A key remounts the Canvas — a fresh WebGL
+                context per click, which is slow everywhere and fatal after
+                sixteen — and the preview already reloads its model when the
+                character changes. */}
+            <CharacterPreview character={previewOption} spinning pose="idle" />
           </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#070a18] via-[#070a18]/70 to-transparent px-5 pb-5 pt-16">
             <div className="flex items-center gap-2">

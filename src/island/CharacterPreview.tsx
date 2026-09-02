@@ -25,9 +25,22 @@ function visibleMeshBounds(object: THREE.Object3D): THREE.Box3 {
   object.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh || !mesh.geometry) return;
-    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-    if (!mesh.geometry.boundingBox) return;
-    meshBox.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
+    /* A skinned mesh's geometry box is the BIND pose, wherever the modeller
+       left it. On the Quaternius rigs that box is centred on the origin while
+       the posed character stands on it, so planting "the feet" at y=0 lifted
+       the model by half its height and the turntable framed a pair of boots.
+       `SkinnedMesh` keeps a box of the posed vertices; use that. */
+    const skinned = mesh as THREE.SkinnedMesh;
+    let box: THREE.Box3 | null;
+    if (skinned.isSkinnedMesh) {
+      skinned.computeBoundingBox();
+      box = skinned.boundingBox;
+    } else {
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      box = mesh.geometry.boundingBox;
+    }
+    if (!box) return;
+    meshBox.copy(box).applyMatrix4(mesh.matrixWorld);
     if (!Number.isFinite(meshBox.min.x) || !Number.isFinite(meshBox.max.x)) return;
     if (meshBox.isEmpty()) return;
     if (!found) {

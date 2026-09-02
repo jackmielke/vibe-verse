@@ -394,8 +394,19 @@ const GROUND_TRUTH = `(() => {
     skinObj.traverse((o) => {
       if (!o.isMesh || !o.visible) return;
       n++;
-      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
-      const b = o.geometry.boundingBox;
+      /* A skinned mesh's geometry box is the BIND pose, centred wherever the
+         modeller left it — for the Quaternius rigs that read as a character
+         half its size standing forty centimetres underground. SkinnedMesh
+         keeps a box of the posed vertices; that is the one the loader fits
+         from and the one to measure. */
+      let b;
+      if (o.isSkinnedMesh) {
+        o.computeBoundingBox();
+        b = o.boundingBox;
+      } else {
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        b = o.geometry.boundingBox;
+      }
       for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
         const w = o.localToWorld(new (p.position.constructor)(x, y, z));
         mn = [Math.min(mn[0], w.x), Math.min(mn[1], w.y), Math.min(mn[2], w.z)];
@@ -404,12 +415,26 @@ const GROUND_TRUTH = `(() => {
     });
     skin = n ? { meshes: n, size: mx.map((v, i) => Math.round((v - mn[i]) * 100) / 100), feetY: Math.round(mn[1] * 100) / 100 } : { meshes: 0 };
   }
+  /* Where the third-person weapon actually is, and where the hand it should
+     be in is — relative to the player's feet, so "in the hand" is a number. */
+  const rel = (o) => {
+    if (!o) return null;
+    o.updateWorldMatrix(true, false);
+    const w = new (p.position.constructor)().setFromMatrixPosition(o.matrixWorld);
+    return [w.x - p.position.x, w.y - p.position.y, w.z - p.position.z].map((v) => Math.round(v * 100) / 100);
+  };
+  const tpRoot = e.ctx.scene.getObjectByName("dz-weapon-tp");
+  const hand = e.ctx.scene.getObjectByName("dz-hand-r");
+  const weapon = tpRoot ? { visible: tpRoot.visible, at: rel(tpRoot) } : null;
+  const handAt = rel(hand);
   return {
     ok: m.phase === "live" && p.state !== "bus" && p.state !== "skydive" && p.state !== "glide",
     phase: m.phase,
     state: p.state,
     camDist,
     skin,
+    weapon,
+    hand: handAt,
     altitude: Math.round((p.position.y - gy) * 100) / 100,
     where,
     x: Math.round(p.position.x),

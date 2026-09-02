@@ -54,7 +54,11 @@ try {
   console.log(`wrote ${OUT}/locker.png`);
 
   await page.click(`button:has-text("${pick.replace(/_/g, " ")}")`);
-  await page.waitForTimeout(8000);
+  /* The preview swaps its model on a pick: a GLB fetch and a first frame on a
+     second WebGL context. Under SwiftSHADER with anything else running that
+     is well over the eight seconds this first waited, and a blank preview in
+     the frame is indistinguishable from a broken one. */
+  await page.waitForTimeout(Number(process.env.DZ_PICK_WAIT ?? 30000));
   await page.screenshot({ path: `${OUT}/locker-pick.png`, timeout: 600000 });
   console.log(`wrote ${OUT}/locker-pick.png`);
 
