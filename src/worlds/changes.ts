@@ -37,6 +37,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "01117ab", iso: "2026-08-02T07:13:32+00:00", subject: "The crew had the fish, and you are in the left seat" },
   ],
+  "airship": [
+    { sha: "10b0105", iso: "2026-09-03T06:49:42+00:00", subject: "Four worlds from one week: the Dipsea, Pathfinder, Developer Trail, Duck On My Head" },
+  ],
   "arcade": [
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
     { sha: "88a1264", iso: "2026-08-09T07:49:03+00:00", subject: "The portal: other people's games, paying real Vibey Coins" },
@@ -46,12 +49,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
   "better-fortnite": [
+    { sha: "c2dec86", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a341", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92a", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad32", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
     { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
-    { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
   ],
   "blob": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -114,13 +117,22 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "18b88dc", iso: "2026-08-17T06:36:43+00:00", subject: "🔦 The Midnight Zone was unplayable, and none of it showed up in a build" },
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
+  "developer-trail": [
+    { sha: "10b0105", iso: "2026-09-03T06:49:42+00:00", subject: "Four worlds from one week: the Dipsea, Pathfinder, Developer Trail, Duck On My Head" },
+  ],
+  "dipsea": [
+    { sha: "10b0105", iso: "2026-09-03T06:49:42+00:00", subject: "Four worlds from one week: the Dipsea, Pathfinder, Developer Trail, Duck On My Head" },
+  ],
   "drop-zero": [
+    { sha: "c2dec86", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a341", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92a", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad32", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
     { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
-    { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
+  ],
+  "duck": [
+    { sha: "10b0105", iso: "2026-09-03T06:49:42+00:00", subject: "Four worlds from one week: the Dipsea, Pathfinder, Developer Trail, Duck On My Head" },
   ],
   "dunes": [
     { sha: "271da81", iso: "2026-08-16T20:40:40+00:00", subject: "The Dune Sea was drawing the sky where the ground should be" },
@@ -304,12 +316,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1e", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "c2dec86", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "52d6e22", iso: "2026-08-29T07:01:41+00:00", subject: "The real weather, and a painted mountain on Twin Peaks" },
     { sha: "9fd6cfa", iso: "2026-08-28T08:23:33+00:00", subject: "The day passes now, and you can wave at people" },
     { sha: "620ba8b", iso: "2026-08-26T08:54:18+00:00", subject: "Other people are in San Francisco now" },
     { sha: "68d1e74", iso: "2026-08-26T07:28:25+00:00", subject: "Stroll is the default. The loud version is a button." },
     { sha: "9df38e0", iso: "2026-08-25T10:13:39+00:00", subject: "A way back to first person, and a hint that says how to get in a car" },
-    { sha: "fa63731", iso: "2026-08-25T09:57:18+00:00", subject: "Tame the lens, and two determinism bugs the fog change flushed out" },
   ],
   "shop": [
     { sha: "64186e3", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
@@ -334,12 +346,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "45648c1", iso: "2026-05-14T04:33:38+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "c2dec86", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a341", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92a", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad32", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
     { sha: "6ed0d1c", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
-    { sha: "093a863", iso: "2026-08-19T05:06:11+00:00", subject: "The lido's pools: water that behaves like water" },
   ],
   "strange-new-worlds": [
     { sha: "b919650", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },

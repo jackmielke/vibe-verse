@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 42;
+export const PASSPORT_ROWS = 48;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1222,6 +1222,12 @@ function drawArchivePassport(g, v, ctx) {
      worlds. So the ceiling is nowhere near, and this number is now a judgement
      about how long a list anybody wants to read rather than an arithmetic
      limit — which is why it goes to forty-two and not to thirty-eight.
+
+     Four worlds from one week (the Dipsea, Pathfinder, Developer Trail, Duck
+     On My Head) made forty-six. Forty-eight is sixteen rows deep at three
+     columns, 450 px of pitch at 30 — exactly the band, so the type is still
+     unshrunk. Past this the pitch starts to close up, and that is the point to
+     add a page rather than a number.
 
      So the rows now shrink to fit instead of falling off the bottom. TOP to
      BOTTOM is the band that is genuinely free between the progress bar and the

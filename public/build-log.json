@@ -1,7 +1,25 @@
 {
-  "generated_at": "2026-09-02T15:43:55.756Z",
+  "generated_at": "2026-09-03T19:11:48.818Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "10b01051",
+      "date": "2026-09-03",
+      "subject": "Four worlds from one week: the Dipsea, Pathfinder, Developer Trail, Duck On My Head",
+      "lede": "A trail run over Mount Tam with the real Dipsea profile under your feet, a 406-foot rigid airship making relief drops around the Bay, an Oregon Trail for a nine-lot cottage project, and a house party seen from a robot with a rubber duck on its head. Each is a thin page plus an engine directory, one registry entry, and a passport stamp. Card art follows in the next commit.",
+      "places": [],
+      "files": 16
+    },
+    {
+      "sha": "c2dec86b",
+      "date": "2026-09-02",
+      "subject": "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed",
+      "lede": "`lib/screen.ts` is the one answer to \"is this a phone\" — the shorter side under 520 px — plus touch and orientation, for every HUD that has to ask.",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 15
+    },
     {
       "sha": "999d2a42",
       "date": "2026-09-02",
@@ -984,25 +1002,6 @@
       "lede": "The streets had a hundred and ninety cars driving through every junction at a constant speed and nothing at all parked. Both are now fixed, and the second one is the bigger change even though it is the dumber one.",
       "places": [],
       "files": 9
-    },
-    {
-      "sha": "5993e0ff",
-      "date": "2026-08-18",
-      "subject": "npm run stamp — and the newsroom gets a date",
-      "lede": "The clone this ran in was shallow, which is the one condition `stamp-worlds` and `build-log` both refuse to write under: `git log -- <path>` in a shallow clone answers with the graft boundary for every file in the tree, so every world untouched inside the window silently adopts one plausible recent date. Unshallowed the clone first, so these are real committer dates again.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "68719881",
-      "date": "2026-08-18",
-      "subject": "🗞 The Newsroom, and a paper that can be subscribed to",
-      "lede": "The Vibe Times had a front page and nothing behind it. This adds the floor it is made on, and three things a real paper has that this one did not.",
-      "places": [
-        "this newspaper",
-        "the machinery underneath"
-      ],
-      "files": 18
     }
   ]
 }
