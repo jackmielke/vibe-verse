@@ -110,6 +110,10 @@ const Coil = lazy(() => import("./pages/Coil.tsx"));
 const Twenty48 = lazy(() => import("./pages/Twenty48.tsx"));
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 const Empyrean = lazy(() => import("./pages/Empyrean.tsx"));
+const Dipsea = lazy(() => import("./pages/Dipsea.tsx"));
+const Airship = lazy(() => import("./pages/Airship.tsx"));
+const DeveloperTrail = lazy(() => import("./pages/DeveloperTrail.tsx"));
+const Duck = lazy(() => import("./pages/Duck.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -505,6 +509,30 @@ const App = () => (
               Vibe City's jetpack, Vibe Island's cast, and a sunset. */}
           {["/empyrean", "/floating-city", "/skycity"].map((path) => (
             <Route key={path} path={path} element={<Empyrean />} />
+          ))}
+          {/* THE DIPSEA — Mill Valley to Stinson Beach on foot, over Mount Tam,
+              with the real course profile under your feet. Effort is the only
+              control; the hills, the bottle and mile four do the rest. */}
+          {["/dipsea", "/quad-dipsea"].map((path) => (
+            <Route key={path} path={path} element={<Dipsea />} />
+          ))}
+          {/* PATHFINDER — a 406-foot rigid airship over San Francisco Bay.
+              Helium up, ballast down, wind from the Gate, five relief drops
+              and a landing at Moffett. Everything happens twenty seconds late. */}
+          {["/airship", "/pathfinder"].map((path) => (
+            <Route key={path} path={path} element={<Airship />} />
+          ))}
+          {/* DEVELOPER TRAIL — Oregon Trail, but the wagon is a nine-lot
+              cottage project and the chance cards are real. Two inks on paper;
+              the rules are a pure state machine in src/devtrail. */}
+          {["/developer-trail", "/devtrail"].map((path) => (
+            <Route key={path} path={path} element={<DeveloperTrail />} />
+          ))}
+          {/* DUCK ON MY HEAD — a house party from Vibey's own camera. Look at
+              whoever is talking, keep the hotspot alive, and never read a
+              sub-agent's message out over somebody's sentence. */}
+          {["/duck", "/vibey-party"].map((path) => (
+            <Route key={path} path={path} element={<Duck />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

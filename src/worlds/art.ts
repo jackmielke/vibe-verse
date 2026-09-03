@@ -63,10 +63,18 @@ import seafairArt from "@/assets/worlds/seafair.jpg";
 import newsroomArt from "@/assets/worlds/newsroom.jpg";
 import vibestarArt from "@/assets/worlds/vibestar.jpg";
 import empyreanArt from "@/assets/worlds/empyrean.jpg";
+import dipseaArt from "@/assets/worlds/dipsea.jpg";
+import airshipArt from "@/assets/worlds/airship.jpg";
+import developerTrailArt from "@/assets/worlds/developer-trail.jpg";
+import duckArt from "@/assets/worlds/duck.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
   empyrean: empyreanArt,
+  dipsea: dipseaArt,
+  airship: airshipArt,
+  "developer-trail": developerTrailArt,
+  duck: duckArt,
   arcade: arcadeArt,
   orbit: orbitArt,
   shop: shopArt,

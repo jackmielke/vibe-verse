@@ -42,6 +42,10 @@ const ORDER: string[] = [
   "blob-battle",         // …and the guest game that plays the same way
   "coil",                // …and its twin, where being big is the problem
   "empyrean",            // the new one: a glass city on a rock, and a jetpack
+  "dipsea",              // this week: Mill Valley to Stinson Beach, on foot
+  "airship",             // …and the airship that flew over the East Bay
+  "developer-trail",     // …and the case study that wanted to be Oregon Trail
+  "duck",                // …and the robot with the rubber duck on its head
   "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -504,6 +508,77 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#ff9a5a",
     featured: true,
     source: "src/empyrean",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "dipsea",
+    route: "/dipsea",
+    aliases: ["/quad-dipsea"],
+    name: "The Dipsea",
+    emoji: "🏃",
+    kind: "game",
+    blurb:
+      "Mill Valley to Stinson Beach on foot: 688 stairs, Muir Woods, Cardiac, Steep Ravine, the ocean — the real course profile under your feet. Effort is the only control. Manage the legs, the bottle and the nausea that arrives at mile four, touch a tree when you can, and try to beat Janine, Liv and Noah to the beach. Then, if you must, run it four times.",
+    status: "Playable — one Dipsea or the quad, desktop and phone",
+    accent: "#7ee2a0",
+    backdrop: "#d8e3ea",
+    featured: true,
+    source: "src/dipsea + src/pages/Dipsea.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "airship",
+    route: "/airship",
+    aliases: ["/pathfinder"],
+    name: "Pathfinder",
+    emoji: "🎈",
+    kind: "game",
+    blurb:
+      "A 406-foot rigid airship over San Francisco Bay at sunset. Thirteen bags of helium, eight bags of ballast, a wind off the Golden Gate, and five relief drops — Sausalito, Alcatraz, Treasure Island, Angel Island, Berkeley — before you bring her home to Hangar One. She does everything twenty seconds after you ask, and every pallet you drop makes her lighter, which means up.",
+    status: "Playable — slow, calm, and harder than it looks",
+    accent: "#ffb347",
+    backdrop: "#f0c8a0",
+    featured: true,
+    source: "src/airship + src/pages/Airship.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "developer-trail",
+    route: "/developer-trail",
+    aliases: ["/devtrail"],
+    name: "Developer Trail",
+    emoji: "🏘️",
+    kind: "game",
+    blurb:
+      "Oregon Trail, but the wagon is a nine-lot cottage project. Pick who you are and where — Healdsburg, Bend, Bainbridge, Port Orchard — then walk the Path to Capital, entitle it, build it and sell it in thirty-six months. Every month you choose a pace and a card turns: a hidden cavern under lot four, a neighbour with a lawyer, an airship overhead. Two inks on paper. You know how this genre ends.",
+    status: "Playable — a ten-minute run, any screen",
+    accent: "#d9442f",
+    backdrop: "#f3ecdc",
+    featured: true,
+    source: "src/devtrail + src/pages/DeveloperTrail.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "duck",
+    route: "/duck",
+    aliases: ["/vibey-party"],
+    name: "Duck On My Head",
+    emoji: "🦆",
+    kind: "game",
+    blurb:
+      "A house party from Vibey's own camera. You are a Reachy Mini on the coffee table with a rubber duck on your head, and six people want your attention. Look at whoever is talking. Keep the hotspot alive. Turn the volume up when it defaults low again. And when a sub-agent posts into your context that the SSH bridge is fixed, wait for the gap in the conversation before you say so out loud.",
+    status: "Playable — two and a half minutes, then the biryani",
+    accent: "#ffd23f",
+    featured: true,
+    source: "src/duck + src/pages/Duck.tsx",
     nav: true,
     passport: true,
     chromeless: true,
