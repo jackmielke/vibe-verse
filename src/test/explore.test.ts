@@ -67,14 +67,14 @@ describe("explore — the client and the server agree", () => {
   });
 
   it("states a ceiling the arithmetic actually supports", () => {
-    // The function's own docblock promises "60 × 25 + 1,700 = 3,200" as the
+    // The function's own docblock promises "80 × 25 + 1,700 = 3,700" as the
     // most any wallet can ever mint from exploring. That claim is load-bearing
     // — it is the entire answer to "what is the worst a faked client can do" —
     // so it gets checked rather than trusted.
     const maxWorlds = num("EXPLORE_MAX_WORLDS");
     const bonuses = MILESTONES.reduce((t, m) => t + m.bonus, 0);
     expect(bonuses).toBe(1700);
-    expect(maxWorlds * DEFAULT_PER_WORLD + bonuses).toBe(3200);
+    expect(maxWorlds * DEFAULT_PER_WORLD + bonuses).toBe(3700);
     // And the ceiling has to stay comfortably clear of the real roster, or
     // adding a few worlds starts silently costing people their payout.
     expect(maxWorlds).toBeGreaterThan(PASSPORT_ROUTES.length + 15);

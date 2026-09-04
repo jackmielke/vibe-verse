@@ -72,12 +72,13 @@ const EXPLORE_PER_WORLD = 25;
 /**
  * The ceiling that stands in for a roster.
  *
- * Comfortably above the ~31 worlds that carry a passport page today, so worlds
- * can be added for a long time without a deploy here — and low enough that the
- * most a wallet can ever mint from exploring is a number you can state:
- * 60 × 25 + 1,700 = 3,200.
+ * Comfortably above the 47 worlds that carry a passport page today (it was 60
+ * when there were 31, and the roster caught up), so worlds can be added for a
+ * long time without a deploy here, and low enough that the most a wallet can
+ * ever mint from exploring is a number you can state:
+ * 80 × 25 + 1,700 = 3,700.
  */
-const EXPLORE_MAX_WORLDS = 60;
+const EXPLORE_MAX_WORLDS = 80;
 
 /**
  * Crossing a threshold pays a bonus.

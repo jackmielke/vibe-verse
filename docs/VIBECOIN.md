@@ -130,9 +130,9 @@ Three properties worth knowing:
 - **There is no roster of worlds on the server, deliberately.** The registry
   ships with the app; a copy in the function would be a second list, and the day
   they disagree is the day a new world silently pays nothing. So any key-shaped
-  id is accepted and the mint is bounded by a *ceiling* instead — 60 paid worlds
+  id is accepted and the mint is bounded by a *ceiling* instead — 80 paid worlds
   per wallet, which is why adding worlds needs no deploy there.
-- **The most a wallet can ever mint from exploring is 3,200** (60 × 25 + 1,700
+- **The most a wallet can ever mint from exploring is 3,700** (80 × 25 + 1,700
   in ranks). `src/test/explore.test.ts` asserts that arithmetic, and asserts
   that every registry key actually matches the regex the server guards on —
   a key with a capital letter would be a world that silently never pays.

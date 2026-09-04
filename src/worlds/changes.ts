@@ -33,6 +33,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ba2e953", iso: "2026-06-18T04:29:51+00:00", subject: "Point /world at the live vibe-world backend; drop redundant agent-lobby" },
     { sha: "809331d", iso: "2026-06-18T03:33:59+00:00", subject: "Add Agent Lobby — an always-on world agents can join over HTTP" },
   ],
+  "agentocracy": [
+    { sha: "944f536", iso: "2026-09-04T09:21:30+00:00", subject: "Add Agentocracy: a cardboard Bainbridge Island run by fifty AI agents" },
+  ],
   "airplane": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "01117ab", iso: "2026-08-02T07:13:32+00:00", subject: "The crew had the fish, and you are in the left seat" },
@@ -194,6 +197,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0ebad2b", iso: "2026-07-04T19:35:41+00:00", subject: "VIBE FM retro deck, Cloud Kingdom physics fix, VIBE GO gets AR + avatar" },
     { sha: "28f6b29", iso: "2026-07-04T18:30:13+00:00", subject: "VIBE GO — catch the VibeVerse in the real world (/go)" },
   ],
+  "goggles": [
+    { sha: "7353a30", iso: "2026-09-04T09:21:20+00:00", subject: "Add The Half-Blind Triathlon at /goggles" },
+  ],
   "golf": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "d21c8ab", iso: "2026-07-30T23:34:15+00:00", subject: "Merge origin/main into the golf branch" },
@@ -257,6 +263,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "manifesto": [
     { sha: "56590fb", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
+  "mars": [
+    { sha: "f4715e0", iso: "2026-09-04T09:28:00+00:00", subject: "Mars College: ten weeks in the desert on one wheel, at /mars" },
+  ],
   "moon": [
     { sha: "d919eee", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "1244104", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
@@ -290,6 +299,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9e1e6e4", iso: "2026-08-14T13:41:03+00:00", subject: "Your own line in the history" },
     { sha: "51778ca", iso: "2026-08-12T06:08:52+00:00", subject: "The wink arrives as a picture, then wakes up" },
     { sha: "7c30fbb", iso: "2026-08-10T03:06:30+00:00", subject: "The passport is a book now, not a fraction" },
+  ],
+  "phangan": [
+    { sha: "7596d37", iso: "2026-09-04T09:24:59+00:00", subject: "Add Flow Phangan: scooter world at /phangan" },
   ],
   "portal": [
     { sha: "b6b15b8", iso: "2026-08-12T20:33:43+00:00", subject: "The form fills itself in while you type" },
@@ -397,12 +409,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
   ],
   "vibeverse": [
+    { sha: "da79143", iso: "2026-09-03T19:20:24+00:00", subject: "Card art, stamped dates and a wider passport panel for the four new worlds" },
     { sha: "207af00", iso: "2026-08-18T22:36:55+00:00", subject: "Passport rows to forty-two, and stop raising it one world at a time" },
     { sha: "a86765f", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
     { sha: "53371bc", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
     { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
-    { sha: "99439c8", iso: "2026-08-07T01:20:45+00:00", subject: "🖖 Strange New Worlds — twelve real Star Trek systems, and everyone on them talks back" },
   ],
   "village": [
     { sha: "fbba2b4", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },
