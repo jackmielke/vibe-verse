@@ -46,6 +46,7 @@ const ORDER: string[] = [
   "airship",             // …and the airship that flew over the East Bay
   "developer-trail",     // …and the case study that wanted to be Oregon Trail
   "duck",                // …and the robot with the rubber duck on its head
+  "phangan",             // …and the scooter, the island, and the secret meetup
   "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -579,6 +580,24 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#ffd23f",
     featured: true,
     source: "src/duck + src/pages/Duck.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "phangan",
+    route: "/phangan",
+    aliases: ["/koh-phangan", "/flow-phangan"],
+    name: "Flow Phangan",
+    emoji: "🛵",
+    kind: "game",
+    blurb:
+      "Koh Phangan, April 2025: ferry six builders round the ring road on a five-dollar scooter to a meetup at a secret location, one on the back at a time telling you about their Telegram bot, before the rain, before dark, and before Muay Thai at 8:30 whether you are ready or not.",
+    status: "Playable, one eight-minute day, desktop and phone",
+    accent: "#ffd36a",
+    backdrop: "#6ec6c0",
+    featured: true,
+    source: "src/phangan + src/pages/Phangan.tsx",
     nav: true,
     passport: true,
     chromeless: true,
