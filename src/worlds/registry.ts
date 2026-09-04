@@ -47,7 +47,8 @@ const ORDER: string[] = [
   "developer-trail",     // …and the case study that wanted to be Oregon Trail
   "duck",                // …and the robot with the rubber duck on its head
   "goggles",             // …and the triathlon swum through fogged goggles
-  "deep",              // eight kilometres straight down, in the dark
+  "agentocracy",         // …and the cardboard island that fifty agents run
+  "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
   "shop",                // …which is what you spend it in
@@ -598,6 +599,24 @@ const WORLDS_RAW: WorldEntry[] = [
     backdrop: "#9fb9b3",
     featured: true,
     source: "src/goggles + src/pages/Goggles.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "agentocracy",
+    route: "/agentocracy",
+    aliases: ["/cardboard-city", "/bainbridge"],
+    name: "Agentocracy",
+    emoji: "🏛️",
+    kind: "game",
+    blurb:
+      "A cardboard Bainbridge Island run by fifty AI agents with a $20,000 treasury in Snack Bay tokens, and it works. The ferry horn opens a round, a proposal is read at the plaza, the agents argue, and you delegate to your agent, override it, or sit it out. Twelve rounds, one constitution, twenty invisible cows, and a shoe on the church roof.",
+    status: "Playable: twelve ferries, three endings, desktop and phone",
+    accent: "#f2c531",
+    backdrop: "#c9a878",
+    featured: true,
+    source: "src/agentocracy + src/pages/Agentocracy.tsx",
     nav: true,
     passport: true,
     chromeless: true,

@@ -115,6 +115,7 @@ const Airship = lazy(() => import("./pages/Airship.tsx"));
 const DeveloperTrail = lazy(() => import("./pages/DeveloperTrail.tsx"));
 const Duck = lazy(() => import("./pages/Duck.tsx"));
 const Goggles = lazy(() => import("./pages/Goggles.tsx"));
+const Agentocracy = lazy(() => import("./pages/Agentocracy.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -540,6 +541,12 @@ const App = () => (
               run on shoes with no cushion left. The rules are pure in src/goggles. */}
           {["/goggles", "/triathlon"].map((path) => (
             <Route key={path} path={path} element={<Goggles />} />
+          ))}
+          {/* AGENTOCRACY: a cardboard Bainbridge Island run by fifty AI agents
+              with a treasury in Snack Bay tokens. The ferry horn opens a round;
+              delegate, override or abstain, and the WHEEL meter remembers. */}
+          {["/agentocracy", "/cardboard-city", "/bainbridge"].map((path) => (
+            <Route key={path} path={path} element={<Agentocracy />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
