@@ -67,6 +67,7 @@ import dipseaArt from "@/assets/worlds/dipsea.jpg";
 import airshipArt from "@/assets/worlds/airship.jpg";
 import developerTrailArt from "@/assets/worlds/developer-trail.jpg";
 import duckArt from "@/assets/worlds/duck.jpg";
+import marsArt from "@/assets/worlds/mars.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
@@ -75,6 +76,7 @@ export const WORLD_ART: Record<string, string> = {
   airship: airshipArt,
   "developer-trail": developerTrailArt,
   duck: duckArt,
+  mars: marsArt,
   arcade: arcadeArt,
   orbit: orbitArt,
   shop: shopArt,

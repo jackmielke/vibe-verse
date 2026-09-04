@@ -46,6 +46,7 @@ const ORDER: string[] = [
   "airship",             // …and the airship that flew over the East Bay
   "developer-trail",     // …and the case study that wanted to be Oregon Trail
   "duck",                // …and the robot with the rubber duck on its head
+  "mars",                // …and ten weeks in the desert on one wheel
   "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -579,6 +580,24 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#ffd23f",
     featured: true,
     source: "src/duck + src/pages/Duck.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "mars",
+    route: "/mars",
+    aliases: ["/mars-college", "/bombay-beach"],
+    name: "Mars College",
+    emoji: "🏜️",
+    kind: "game",
+    blurb:
+      "Ten weeks off-grid near the Salton Sea on an electric unicycle with the music up: build a plywood shelter before the cold gets you, ride to town for water every few days, cook dinner at the one table so six camps eat together, get a noticeably longer hug, survive the brown wall of dust that comes in over the sea, and then take the whole thing down. Burning Man met AI nerds, but for three months, and somebody put a flag on the porta potties.",
+    status: "Playable, ten weeks, desktop and phone",
+    accent: "#ff9a5c",
+    backdrop: "#d9c9a8",
+    featured: true,
+    source: "src/mars + src/pages/Mars.tsx",
     nav: true,
     passport: true,
     chromeless: true,
