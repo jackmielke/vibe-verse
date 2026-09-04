@@ -114,6 +114,7 @@ const Dipsea = lazy(() => import("./pages/Dipsea.tsx"));
 const Airship = lazy(() => import("./pages/Airship.tsx"));
 const DeveloperTrail = lazy(() => import("./pages/DeveloperTrail.tsx"));
 const Duck = lazy(() => import("./pages/Duck.tsx"));
+const Agentocracy = lazy(() => import("./pages/Agentocracy.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -533,6 +534,12 @@ const App = () => (
               sub-agent's message out over somebody's sentence. */}
           {["/duck", "/vibey-party"].map((path) => (
             <Route key={path} path={path} element={<Duck />} />
+          ))}
+          {/* AGENTOCRACY: a cardboard Bainbridge Island run by fifty AI agents
+              with a treasury in Snack Bay tokens. The ferry horn opens a round;
+              delegate, override or abstain, and the WHEEL meter remembers. */}
+          {["/agentocracy", "/cardboard-city", "/bainbridge"].map((path) => (
+            <Route key={path} path={path} element={<Agentocracy />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
