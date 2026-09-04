@@ -114,6 +114,7 @@ const Dipsea = lazy(() => import("./pages/Dipsea.tsx"));
 const Airship = lazy(() => import("./pages/Airship.tsx"));
 const DeveloperTrail = lazy(() => import("./pages/DeveloperTrail.tsx"));
 const Duck = lazy(() => import("./pages/Duck.tsx"));
+const Goggles = lazy(() => import("./pages/Goggles.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -533,6 +534,12 @@ const App = () => (
               sub-agent's message out over somebody's sentence. */}
           {["/duck", "/vibey-party"].map((path) => (
             <Route key={path} path={path} element={<Duck />} />
+          ))}
+          {/* THE HALF-BLIND TRIATHLON: Lake Chelan through goggles that fogged
+              on the first stroke, a bike with no top gear and no brakes, and a
+              run on shoes with no cushion left. The rules are pure in src/goggles. */}
+          {["/goggles", "/triathlon"].map((path) => (
+            <Route key={path} path={path} element={<Goggles />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

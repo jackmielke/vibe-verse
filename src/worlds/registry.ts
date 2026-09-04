@@ -46,7 +46,8 @@ const ORDER: string[] = [
   "airship",             // …and the airship that flew over the East Bay
   "developer-trail",     // …and the case study that wanted to be Oregon Trail
   "duck",                // …and the robot with the rubber duck on its head
-  "deep",                // eight kilometres straight down, in the dark
+  "goggles",             // …and the triathlon swum through fogged goggles
+  "deep",              // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
   "shop",                // …which is what you spend it in
@@ -579,6 +580,24 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#ffd23f",
     featured: true,
     source: "src/duck + src/pages/Duck.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "goggles",
+    route: "/goggles",
+    aliases: ["/triathlon"],
+    name: "The Half-Blind Triathlon",
+    emoji: "🥽",
+    kind: "game",
+    blurb:
+      "Lake Chelan, first triathlon, ten days' notice: the goggles fog on the first stroke and stay fogged, so you swim by orange blob, breathe on the beat and not into a wave, and drink a measurable percentage of the lake; then a bike with no top gear and no brakes over 1,700 feet of rollers, and a 10 km run on shoes with no cushion left, with a voice note every kilometre. Expected three hours. Closer to four. Finished.",
+    status: "Playable: three legs, about seven minutes, desktop and phone",
+    accent: "#ff6a1a",
+    backdrop: "#9fb9b3",
+    featured: true,
+    source: "src/goggles + src/pages/Goggles.tsx",
     nav: true,
     passport: true,
     chromeless: true,
