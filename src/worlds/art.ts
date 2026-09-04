@@ -69,6 +69,7 @@ import developerTrailArt from "@/assets/worlds/developer-trail.jpg";
 import duckArt from "@/assets/worlds/duck.jpg";
 import gogglesArt from "@/assets/worlds/goggles.jpg";
 import agentocracyArt from "@/assets/worlds/agentocracy.jpg";
+import marsArt from "@/assets/worlds/mars.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
@@ -79,6 +80,7 @@ export const WORLD_ART: Record<string, string> = {
   duck: duckArt,
   goggles: gogglesArt,
   agentocracy: agentocracyArt,
+  mars: marsArt,
   arcade: arcadeArt,
   orbit: orbitArt,
   shop: shopArt,

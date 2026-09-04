@@ -116,6 +116,7 @@ const DeveloperTrail = lazy(() => import("./pages/DeveloperTrail.tsx"));
 const Duck = lazy(() => import("./pages/Duck.tsx"));
 const Goggles = lazy(() => import("./pages/Goggles.tsx"));
 const Agentocracy = lazy(() => import("./pages/Agentocracy.tsx"));
+const Mars = lazy(() => import("./pages/Mars.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -547,6 +548,12 @@ const App = () => (
               delegate, override or abstain, and the WHEEL meter remembers. */}
           {["/agentocracy", "/cardboard-city", "/bainbridge"].map((path) => (
             <Route key={path} path={path} element={<Agentocracy />} />
+          ))}
+          {/* MARS COLLEGE: ten weeks off-grid near the Salton Sea on an electric
+              unicycle. Six camps, one table, water in town, solar that dies,
+              dust storms off the sea, and a teardown at the end of week ten. */}
+          {["/mars", "/mars-college", "/bombay-beach"].map((path) => (
+            <Route key={path} path={path} element={<Mars />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
