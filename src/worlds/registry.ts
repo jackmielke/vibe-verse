@@ -49,6 +49,7 @@ const ORDER: string[] = [
   "goggles",             // …and the triathlon swum through fogged goggles
   "agentocracy",         // …and the cardboard island that fifty agents run
   "mars",                // …and ten weeks in the desert on one wheel
+  "phangan",             // …and the scooter, the island, and the secret meetup
   "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -636,6 +637,24 @@ const WORLDS_RAW: WorldEntry[] = [
     backdrop: "#d9c9a8",
     featured: true,
     source: "src/mars + src/pages/Mars.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "phangan",
+    route: "/phangan",
+    aliases: ["/koh-phangan", "/flow-phangan"],
+    name: "Flow Phangan",
+    emoji: "🛵",
+    kind: "game",
+    blurb:
+      "Koh Phangan, April 2025: ferry six builders round the ring road on a five-dollar scooter to a meetup at a secret location, one on the back at a time telling you about their Telegram bot, before the rain, before dark, and before Muay Thai at 8:30 whether you are ready or not.",
+    status: "Playable, one eight-minute day, desktop and phone",
+    accent: "#ffd36a",
+    backdrop: "#6ec6c0",
+    featured: true,
+    source: "src/phangan + src/pages/Phangan.tsx",
     nav: true,
     passport: true,
     chromeless: true,

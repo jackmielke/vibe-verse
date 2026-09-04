@@ -117,6 +117,7 @@ const Duck = lazy(() => import("./pages/Duck.tsx"));
 const Goggles = lazy(() => import("./pages/Goggles.tsx"));
 const Agentocracy = lazy(() => import("./pages/Agentocracy.tsx"));
 const Mars = lazy(() => import("./pages/Mars.tsx"));
+const Phangan = lazy(() => import("./pages/Phangan.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -554,6 +555,12 @@ const App = () => (
               dust storms off the sea, and a teardown at the end of week ten. */}
           {["/mars", "/mars-college", "/bombay-beach"].map((path) => (
             <Route key={path} path={path} element={<Mars />} />
+          ))}
+          {/* FLOW PHANGAN: a month on Koh Phangan as one afternoon on a scooter.
+              Six guests, one secret meetup, the rain from the east and Muay
+              Thai at 8:30 whether you are ready or not. Rules in src/phangan. */}
+          {["/phangan", "/koh-phangan", "/flow-phangan"].map((path) => (
+            <Route key={path} path={path} element={<Phangan />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
