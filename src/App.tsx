@@ -118,6 +118,7 @@ const Goggles = lazy(() => import("./pages/Goggles.tsx"));
 const Agentocracy = lazy(() => import("./pages/Agentocracy.tsx"));
 const Mars = lazy(() => import("./pages/Mars.tsx"));
 const Phangan = lazy(() => import("./pages/Phangan.tsx"));
+const CoastRoad = lazy(() => import("./pages/CoastRoad.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -561,6 +562,12 @@ const App = () => (
               Thai at 8:30 whether you are ready or not. Rules in src/phangan. */}
           {["/phangan", "/koh-phangan", "/flow-phangan"].map((path) => (
             <Route key={path} path={path} element={<Phangan />} />
+          ))}
+          {/* COAST ROAD: a longboard down a headland to the sea, in a painted
+              look and an action-camera look. The road and the wind are pure in
+              src/coastroad/road.ts; the paint is the only thing that changes. */}
+          {["/coast-road", "/longboard", "/skate", "/downhill"].map((path) => (
+            <Route key={path} path={path} element={<CoastRoad />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

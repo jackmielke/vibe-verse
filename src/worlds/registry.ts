@@ -49,7 +49,8 @@ const ORDER: string[] = [
   "goggles",             // …and the triathlon swum through fogged goggles
   "agentocracy",         // …and the cardboard island that fifty agents run
   "mars",                // …and ten weeks in the desert on one wheel
-  "phangan",             // …and the scooter, the island, and the secret meetup
+  "phangan",
+  "coast-road",          // …and the longboard down to the sea, twice
   "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -655,6 +656,24 @@ const WORLDS_RAW: WorldEntry[] = [
     backdrop: "#6ec6c0",
     featured: true,
     source: "src/phangan + src/pages/Phangan.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "coast-road",
+    route: "/coast-road",
+    aliases: ["/longboard", "/skate", "/downhill"],
+    name: "Coast Road",
+    emoji: "🛹",
+    kind: "game",
+    blurb:
+      "Two and a half kilometres downhill to the sea on a longboard, with the wind in the grass and in your ears. One road, two looks: a painted bay under a cumulus stack, or an action camera on a suburban descent that smears at the edges when you are fast.",
+    status: "Playable: four minutes a run, desktop and phone",
+    accent: "#2fb7e6",
+    backdrop: "#bfe2f6",
+    featured: true,
+    source: "src/coastroad + src/pages/CoastRoad.tsx",
     nav: true,
     passport: true,
     chromeless: true,

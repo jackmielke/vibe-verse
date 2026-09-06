@@ -93,6 +93,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "5a0721d", iso: "2026-08-17T16:54:36+00:00", subject: "The jetpack is on your back now, and the sea stops following you home" },
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
   ],
+  "coast-road": [
+    { sha: "7d12afc", iso: "2026-09-06T21:28:21+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
+  ],
   "coil": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "ab05b31", iso: "2026-08-11T06:19:41+00:00", subject: "Fourteen characters that are not a person in a costume" },
