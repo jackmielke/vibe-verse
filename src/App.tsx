@@ -119,6 +119,7 @@ const Agentocracy = lazy(() => import("./pages/Agentocracy.tsx"));
 const Mars = lazy(() => import("./pages/Mars.tsx"));
 const Phangan = lazy(() => import("./pages/Phangan.tsx"));
 const CoastRoad = lazy(() => import("./pages/CoastRoad.tsx"));
+const Beck = lazy(() => import("./pages/Beck.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -568,6 +569,12 @@ const App = () => (
               src/coastroad/road.ts; the paint is the only thing that changes. */}
           {["/coast-road", "/longboard", "/skate", "/downhill"].map((path) => (
             <Route key={path} path={path} element={<CoastRoad />} />
+          ))}
+          {/* BECK ROAD: the real neighbourhood around 8330 NE Beck Road on
+              Bainbridge Island, rebuilt from Overture and OpenStreetMap data
+              with the terrain tiles under it. Data and geometry in src/beck. */}
+          {["/beck-road", "/beck", "/lytle-beach", "/blakely"].map((path) => (
+            <Route key={path} path={path} element={<Beck />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

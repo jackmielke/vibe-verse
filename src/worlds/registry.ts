@@ -51,6 +51,7 @@ const ORDER: string[] = [
   "mars",                // …and ten weeks in the desert on one wheel
   "phangan",
   "coast-road",          // …and the longboard down to the sea, twice
+  "beck-road",           // …and the street Jack grew up on, one to one
   "deep",                // eight kilometres straight down, in the dark
   "orbit",               // the one you can bet on
   "arcade",              // and the one that pays out
@@ -674,6 +675,24 @@ const WORLDS_RAW: WorldEntry[] = [
     backdrop: "#bfe2f6",
     featured: true,
     source: "src/coastroad + src/pages/CoastRoad.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "beck-road",
+    route: "/beck-road",
+    aliases: ["/beck", "/lytle-beach", "/blakely"],
+    name: "Beck Road",
+    emoji: "🏡",
+    kind: "world",
+    blurb:
+      "The neighbourhood around 8330 NE Beck Road on Bainbridge Island, from Blakely Elementary to Lytle Beach, rebuilt one to one from the map: every road down to the driveways, every building on its real footprint, mailboxes with the real numbers, the street signs, the power lines, the firs.",
+    status: "Walkable: real geometry, procedural materials, sun or a grey day",
+    accent: "#3f6a2e",
+    backdrop: "#c9d0d6",
+    featured: true,
+    source: "src/beck + src/pages/Beck.tsx",
     nav: true,
     passport: true,
     chromeless: true,
