@@ -51,6 +51,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "382e5e3", iso: "2026-08-07T20:52:32+00:00", subject: "Arcade: a character shop with six originals you can buy and wear" },
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
+  "beck-road": [
+    { sha: "d43456f", iso: "2026-09-08T15:58:01+00:00", subject: "Beck Road: a 1:1 walk through the neighbourhood around 8330 NE Beck Rd" },
+  ],
   "better-fortnite": [
     { sha: "c2dec86", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "999d2a4", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
@@ -94,7 +97,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "52261cf", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
   ],
   "coast-road": [
-    { sha: "7d12afc", iso: "2026-09-06T21:28:21+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
+    { sha: "7101a68", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
   ],
   "coil": [
     { sha: "5090081", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
