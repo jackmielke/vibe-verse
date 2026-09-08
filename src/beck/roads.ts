@@ -46,7 +46,7 @@ function roadMaterial(s: WorldSurface, macro: THREE.Texture, look: RoadLook, bas
       uWear: { value: look.wear },
       uFeather: { value: look.feather },
       uEdgeLight: { value: look.edgeLight },
-      uGrass: { value: new THREE.Color(0x4f6a32) },
+      uGrass: { value: new THREE.Color(0x4b5c2c) },
     });
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float aAcross; attribute float aStrip; varying float vAcross; varying float vStrip;")
@@ -153,7 +153,8 @@ function ribbon(c: Chain, ground: Ground, into: Strip): void {
     if (i < n - 1) {
       const r0 = base + i * ACROSS.length;
       const r1 = r0 + ACROSS.length;
-      for (let k = 0; k < ACROSS.length - 1; k++) into.idx.push(r0 + k, r1 + k, r0 + k + 1, r0 + k + 1, r1 + k, r1 + k + 1);
+      // Across is the left-hand normal of along, so the up-facing winding is (here, across, along).
+      for (let k = 0; k < ACROSS.length - 1; k++) into.idx.push(r0 + k, r0 + k + 1, r1 + k, r0 + k + 1, r1 + k + 1, r1 + k);
     }
   }
 }
@@ -183,7 +184,7 @@ function paintLine(c: Chain, ground: Ground, offset: number, width: number, into
     }
     if (i < pts.length - 1) {
       const r = base + i * 2;
-      into.idx.push(r, r + 2, r + 1, r + 1, r + 2, r + 3);
+      into.idx.push(r, r + 1, r + 2, r + 1, r + 3, r + 2);
     }
   }
 }
@@ -203,8 +204,8 @@ export function buildRoads(data: Neighbourhood, ground: Ground): Roads {
   const mainTracks: [number, number] = [0.24, 0.76];
   const driveTracks: [number, number] = [0.44, 0.44];
   const materials: Record<keyof typeof surfaces, THREE.MeshStandardMaterial> = {
-    chipseal: roadMaterial(surfaces.chipseal, macro, { tracks: mainTracks, trackDark: 0.7, wear: 0.22, feather: 0.86, edgeLight: 0.14 }, { color: 0xd8cfc2 }),
-    asphalt: roadMaterial(surfaces.asphalt, macro, { tracks: mainTracks, trackDark: 0.8, wear: 0.16, feather: 0.9, edgeLight: 0.08 }, { color: 0xd2ccc4 }),
+    chipseal: roadMaterial(surfaces.chipseal, macro, { tracks: mainTracks, trackDark: 0.7, wear: 0.3, feather: 0.86, edgeLight: 0.14 }, { color: 0xe8ddcf }),
+    asphalt: roadMaterial(surfaces.asphalt, macro, { tracks: mainTracks, trackDark: 0.8, wear: 0.2, feather: 0.9, edgeLight: 0.08 }, { color: 0xdcd5cb }),
     gravel: roadMaterial(surfaces.gravel, macro, { tracks: driveTracks, trackDark: 0.8, wear: 0.14, feather: 0.72, edgeLight: 0.0 }),
     oldasphalt: roadMaterial(surfaces.oldasphalt, macro, { tracks: driveTracks, trackDark: 0.85, wear: 0.3, feather: 0.8, edgeLight: 0.06 }),
     concrete: roadMaterial(surfaces.concrete, macro, { tracks: driveTracks, trackDark: 0.9, wear: 0.12, feather: 0.9, edgeLight: 0.0 }),

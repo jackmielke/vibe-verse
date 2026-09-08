@@ -462,7 +462,8 @@ export function buildGround(data: Neighbourhood, terrain: Terrain): Ground {
         vec3 lawnC = mix(texture2D(map, wuv / 3.0).rgb, texture2D(map, wuv / 7.7 + 0.43).rgb, 0.5);
         lawnC = mix(lawnC, vec3(dot(lawnC, vec3(0.3, 0.59, 0.11))), 0.18) * vec3(0.9, 0.88, 0.82);
         vec3 floorC = texture2D(uFloor, wuv / 4.0).rgb;
-        vec3 gravC = texture2D(uGravel, wuv / 1.5).rgb;
+        // The shoulder gravel is duller and browner than the crushed rock on a fresh driveway: fines, dust, leaf litter.
+        vec3 gravC = texture2D(uGravel, wuv / 1.5).rgb * vec3(0.74, 0.7, 0.62);
         vec3 sandC = texture2D(uSand, wuv / 2.0).rgb;
         vec3 pavedC = texture2D(uPaved, wuv / 2.0).rgb;
         float forest = vBlend.x; float sandW = vBlend.y; float pasture = vBlend.z; float mud = vBlend.w;
@@ -482,8 +483,8 @@ export function buildGround(data: Neighbourhood, terrain: Terrain): Ground {
         col = mix(col, col * vec3(0.5, 0.52, 0.55), gWet);
         col = mix(col, col * vec3(0.7, 0.62, 0.5), sandW * (1.0 - smoothstep(0.0, 0.35, abs(vWy - 1.55))) * 0.7 * step(0.5, nz2.r));
         // Gravel from the road edge, the grass growing into it unevenly.
-        float fe = edge + (nz2.b - 0.5) * 1.2 + (nz.b - 0.5) * 0.5;
-        gGrav = 1.0 - smoothstep(shoulder - 0.25, shoulder + 0.85, fe);
+        float fe = edge + (nz2.b - 0.5) * 0.8 + (nz.b - 0.5) * 0.3;
+        gGrav = 1.0 - smoothstep(shoulder - 0.3, shoulder + 0.6, fe);
         gGrav = max(gGrav, 1.0 - smoothstep(-0.6, -0.2, edge));
         vec3 gravTint = mix(gravC, gravC * vec3(0.8, 0.92, 0.7), smoothstep(shoulder - 0.6, shoulder + 0.7, fe) * 0.55);
         col = mix(col, gravTint, gGrav);

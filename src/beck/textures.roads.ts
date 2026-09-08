@@ -138,13 +138,13 @@ export function chipSealWorld(): WorldSurface {
   const rnd = mulberry32(7001);
   const [c, g] = canvas(n);
   const [hc, hg] = canvas(n);
-  g.fillStyle = "#2e2c29";
+  g.fillStyle = "#3a3733";
   g.fillRect(0, 0, n, n);
   hg.fillStyle = "#606060";
   hg.fillRect(0, 0, n, n);
   // Chips: grey basalt with some tan and pale quartz, near-touching.
-  stones(g, hg, n, rnd, { count: 62000, min: 1.6, max: 3.2, tone: [58, 122], warm: 10, height: [150, 235] });
-  stones(g, hg, n, rnd, { count: 2600, min: 1.4, max: 2.4, tone: [120, 160], warm: 14, height: [200, 240] });
+  stones(g, hg, n, rnd, { count: 62000, min: 1.6, max: 3.2, tone: [88, 158], warm: 12, height: [150, 235] });
+  stones(g, hg, n, rnd, { count: 2600, min: 1.4, max: 2.4, tone: [150, 190], warm: 14, height: [200, 240] });
   // Binder bleeding over some chips, which is what a hot summer does to it.
   for (let i = 0; i < 900; i++) {
     g.fillStyle = `rgba(35,32,30,${0.25 + rnd() * 0.35})`;
@@ -161,12 +161,12 @@ export function asphaltWorld(): WorldSurface {
   const rnd = mulberry32(7002);
   const [c, g] = canvas(n);
   const [hc, hg] = canvas(n);
-  g.fillStyle = "#37352f";
+  g.fillStyle = "#3f3d38";
   g.fillRect(0, 0, n, n);
   hg.fillStyle = "#707070";
   hg.fillRect(0, 0, n, n);
-  stones(g, hg, n, rnd, { count: 90000, min: 0.8, max: 2.0, tone: [50, 100], warm: 5, height: [120, 200] });
-  stones(g, hg, n, rnd, { count: 4000, min: 1.5, max: 2.6, tone: [95, 135], warm: 8, height: [170, 215] });
+  stones(g, hg, n, rnd, { count: 90000, min: 0.8, max: 2.0, tone: [62, 118], warm: 5, height: [120, 200] });
+  stones(g, hg, n, rnd, { count: 4000, min: 1.5, max: 2.6, tone: [105, 145], warm: 8, height: [170, 215] });
   return { map: tex(c, true), normalMap: tex(normalFrom(hc, 0.8), false), tile: 2 };
 }
 
