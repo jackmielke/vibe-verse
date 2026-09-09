@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 48;
+export const PASSPORT_ROWS = 54;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;

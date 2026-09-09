@@ -52,7 +52,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "544acf6", iso: "2026-08-06T06:19:50+00:00", subject: "🪙 Vibecoin becomes a currency: a balance in every corner, and an arcade to spend it in" },
   ],
   "beck-road": [
-    { sha: "d43456f", iso: "2026-09-08T15:58:01+00:00", subject: "Beck Road: a 1:1 walk through the neighbourhood around 8330 NE Beck Rd" },
+    { sha: "d86c52a", iso: "2026-09-09T04:04:33+00:00", subject: "Merge branch 'worktree-agent-afb7155b3c8a2f330'" },
+    { sha: "871977b", iso: "2026-09-09T04:04:33+00:00", subject: "Merge branch 'worktree-agent-af5a3f4ff2d1cb9dd'" },
+    { sha: "bfa4b97", iso: "2026-09-09T04:04:33+00:00", subject: "Merge branch 'worktree-agent-aedf1e557329c24a3'" },
+    { sha: "ab434a2", iso: "2026-09-09T04:04:33+00:00", subject: "Merge branch 'worktree-agent-ab75a3148a6c811a7'" },
+    { sha: "ae012cd", iso: "2026-09-09T04:04:21+00:00", subject: "Beck Road: Puget Sound light, sky and post" },
+    { sha: "30e05a2", iso: "2026-09-09T04:04:21+00:00", subject: "Beck Road: buildings from the footprints, with roofs that follow them" },
   ],
   "better-fortnite": [
     { sha: "c2dec86", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
@@ -415,12 +420,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7077dd7", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
   ],
   "vibeverse": [
+    { sha: "f94abc9", iso: "2026-09-09T12:01:31+00:00", subject: "Beck Road: the five elements merged, card art, passport cap" },
     { sha: "da79143", iso: "2026-09-03T19:20:24+00:00", subject: "Card art, stamped dates and a wider passport panel for the four new worlds" },
     { sha: "207af00", iso: "2026-08-18T22:36:55+00:00", subject: "Passport rows to forty-two, and stop raising it one world at a time" },
     { sha: "a86765f", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
     { sha: "53371bc", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
     { sha: "df6f764", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
-    { sha: "0868774", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
   ],
   "village": [
     { sha: "fbba2b4", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },

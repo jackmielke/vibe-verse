@@ -1,7 +1,141 @@
 {
-  "generated_at": "2026-09-03T19:11:48.818Z",
+  "generated_at": "2026-09-09T12:01:42.567Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f94abc92",
+      "date": "2026-09-09",
+      "subject": "Beck Road: the five elements merged, card art, passport cap",
+      "lede": "Roads graded into the ground with gravel shoulders, chip-seal and fog lines; buildings with roofs that follow their footprints and openings in the walls; an inferred canopy of fir, cedar, maple and alder with understory; mailboxes numbered from the addresses, county blades, poles with three phases and service drops, fences and yard clutter; Puget Sound light with sun and overcast. Card art is a frame from Beck Road l",
+      "places": [
+        "The Long Silence"
+      ],
+      "files": 3
+    },
+    {
+      "sha": "ae012cda",
+      "date": "2026-09-09",
+      "subject": "Beck Road: Puget Sound light, sky and post",
+      "lede": "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01Jd2h8MeTGS8Lpus5RDNst3",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "30e05a25",
+      "date": "2026-09-09",
+      "subject": "Beck Road: buildings from the footprints, with roofs that follow them",
+      "lede": "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01Jd2h8MeTGS8Lpus5RDNst3",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "a88e3090",
+      "date": "2026-09-08",
+      "subject": "Beck Road: street furniture, from the mapped poles and driveway ends",
+      "lede": "Rural mailboxes at every driveway (curved-top box on a 4x4 with the house number on both sides, a flag, sometimes a paper tube, shared rails where drives share), county blades and STOP or DEAD END at each junction, speed limits, the school zone, crossings, bus stops and the shelter, the school's entrance board and flagpole, the beach access board. Power poles start from the 43 mapped pole points and fill every 46 m a",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "a68d6ee3",
+      "date": "2026-09-08",
+      "subject": "Beck Road: wind the road ribbons face up, and settle the road and shoulder tones",
+      "lede": "The ribbons were built with (along, across) winding, which faces down for every road direction, so all of them were back-face culled and the ground's gravel under the road was what showed. Wound the other way. The chip seal is lifted from near-black to a weathered mid grey, the shoulder gravel is warmed and darkened to the fines and dust of a real shoulder and its fade into the grass tightened to under a metre, and t",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "249f5e9e",
+      "date": "2026-09-08",
+      "subject": "Beck Road: a forest with houses in it",
+      "lede": "Infer the canopy everywhere the data is silent: Douglas fir and western red cedar at a mature stand's spacing across the whole box, keeping out of roads, footprints, lawns, pitches, fields, the beach and the water; big-leaf maple and red alder along the road edges and streams; madrona leaning downslope on the bluff. Trees are built from instanced pieces (species trunks with fluted cedar bases, three-plane branch card",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "235d6ba1",
+      "date": "2026-09-08",
+      "subject": "Beck Road: grade the roads into the ground and paint the surfaces at world scale",
+      "lede": "Roads and ground element. The heightfield is resampled to two metres and smoothed so the three-metre terrain creases do not step, then every road is graded into it in priority order: a flat bench the width of the road and its gravel shoulder, cut and fill banks, a ditch on the uphill side of the county roads, driveways pinned to the road they leave so they fill the ditch where they cross it. Streams are cut in and po",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "71a09877",
+      "date": "2026-09-08",
+      "subject": "Beck Road: a 1:1 walk through the neighbourhood around 8330 NE Beck Rd",
+      "lede": "Bainbridge Island, from Blakely Elementary to Lytle Beach, placed from real data: Overture Maps 2026-08-19 (OpenStreetMap and Microsoft footprints) for every road down to the driveways, 507 building footprints with measured heights, 355 address points, land cover, fences, hedges, gates, power lines, hydrants and places; Mapzen/AWS terrain tiles for the ground. Coordinates are metres from the address point of 8330.",
+      "places": [],
+      "files": 19
+    },
+    {
+      "sha": "d43456fe",
+      "date": "2026-09-08",
+      "subject": "Beck Road: a 1:1 walk through the neighbourhood around 8330 NE Beck Rd",
+      "lede": "Bainbridge Island, from Blakely Elementary to Lytle Beach, placed from real data: Overture Maps 2026-08-19 (OpenStreetMap and Microsoft footprints) for every road down to the driveways, 507 building footprints with measured heights, 355 address points, land cover, fences, hedges, gates, power lines, hydrants and places; Mapzen/AWS terrain tiles for the ground. Coordinates are metres from the address point of 8330.",
+      "places": [],
+      "files": 17
+    },
+    {
+      "sha": "7101a68e",
+      "date": "2026-09-06",
+      "subject": "Coast Road: a longboard down a headland to the sea, in two looks",
+      "lede": "One road table under two paints. Painted is the anime frame: saturated sky with a cel-shaded cumulus deck, toon hills, a bay with surf lines, a town at the bottom and the girl with the backpack on an orange board. Lens is the action camera: 104 degree barrel-distorted frame through a render target with speed-scaled radial blur, chromatic split, vignette and grain, a double yellow line with tar snakes, eucalyptus and ",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "b350ec49",
+      "date": "2026-09-04",
+      "subject": "Stamp the four new worlds and raise the explore ceiling to 80 worlds",
+      "lede": "Goggles, Agentocracy, Mars College and Flow Phangan bring the passport roster to 47, which put it inside the explore edge function's fifteen-world safety margin. The ceiling is now 80 paid worlds per wallet (3,700 coins at most), deployed, with the docblock, the test and docs/VIBECOIN.md saying the same.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "f4715e0e",
+      "date": "2026-09-04",
+      "subject": "Mars College: ten weeks in the desert on one wheel, at /mars",
+      "lede": "A new world from Jack's Mars College page and voice notes. Ten weeks off-grid near the Salton Sea, ridden on an electric unicycle across a pale desert with the sea a silver line to the west, low mountains east, six camps of pallet racks, plywood, shade cloth and solar around one table, Poop Mountain, a wireframe dodecahedron at Mars Research, and Bombay Beach a couple of minutes' ride away with Sunflower Lab and the ",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "7596d371",
+      "date": "2026-09-04",
+      "subject": "Add Flow Phangan: scooter world at /phangan",
+      "lede": "Third-person scooter riding on a stylised Koh Phangan: ring road plus two steep interior shortcuts, turquoise sea, instanced palms and jungle, the villa with its long pool on the west side, Thong Sala and Chaloklum piers, longtails, 7-Elevens, dogs asleep in the road, monkeys on the north coast and a police checkpoint near Thong Sala. One eight-minute day from 4 pm to 8:30: a secret meetup location is drawn per run, ",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "944f5361",
+      "date": "2026-09-04",
+      "subject": "Add Agentocracy: a cardboard Bainbridge Island run by fifty AI agents",
+      "lede": "A new world at /agentocracy (aliases /cardboard-city, /bainbridge). Three true things at once: the Agent Village governance experiment at Edge Esmeralda, the kids' cardboard city from the same month, and Bainbridge Island, where Jack grew up.",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "7353a30f",
+      "date": "2026-09-04",
+      "subject": "Add The Half-Blind Triathlon at /goggles",
+      "lede": "Lake Chelan, September 6, 2025: a first-person Olympic-distance triathlon whose whole idea is that you cannot see. The goggles fog a little more with every stroke, orange turn buoys blur into blobs, kayaks splash at the course edge, and the churn of swimmers at the start costs you mouthfuls. Breathe on the beat and not into a wave, or the Lake Chelan ingested percentage ticks up; hold Q to stop and clear the lens for",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "da791439",
+      "date": "2026-09-03",
+      "subject": "Card art, stamped dates and a wider passport panel for the four new worlds",
+      "lede": "Real captures from each running world: Vibey on the Dipsea trail with the ghost runners, Pathfinder on the mast at Moffett with the Bay behind her, month 25 of a Healdsburg build in two inks, and the party from under the duck. `npm run stamp` dates all four. The Long Silence's passport panel capped its list at 42 rows and these made 46, so the cap moves to 48, which is still inside the band where the type does not sh",
+      "places": [
+        "The Long Silence"
+      ],
+      "files": 8
+    },
     {
       "sha": "10b01051",
       "date": "2026-09-03",
@@ -861,147 +995,6 @@
       "lede": "A standard San Francisco lot is twenty-five feet — 7.6 m — and the row houses built on them are why the Mission and Chinatown look the way they do: narrow, tall, shoulder to shoulder, every one a different colour. This city was building them seventeen to twenty-seven metres wide, which is right for the Financial District and wrong for everywhere anybody walks. Every residential block was three or four long slabs.",
       "places": [],
       "files": 5
-    },
-    {
-      "sha": "e1a0765c",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "First Light lost its date in a rebase: the stamp commit went empty against a main that had re-stamped in the meantime, so it was dropped, and the world shipped for a few minutes with a failing freshness test and no date on its card.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "50900813",
-      "date": "2026-08-18",
-      "subject": "Every world now hands its WebGL context back",
-      "lede": "three r160's `renderer.dispose()` drops three's own caches and leaves the GL context for the garbage collector. `forceContextLoss()` is what actually releases it, and twenty-five of the twenty-nine renderers here never called it. Browsers allow around sixteen live contexts per tab and evict the *oldest* when you pass that, so a world that leaks one does not break itself — it breaks whichever world the visitor opened ",
-      "places": [
-        "Vibe Golf",
-        "Vibe Kart",
-        "Vibe Island",
-        "the Memory Garden",
-        "Seafair"
-      ],
-      "files": 27
-    },
-    {
-      "sha": "a86765f9",
-      "date": "2026-08-18",
-      "subject": "First Light — a lake at dawn, and one quality ladder for everybody",
-      "lede": "Fifty-four worlds and every one of them neon, arcade or sci-fi. This is the quiet one: a lake an hour before the sun clears the ridge, no objective, no score. You walk the shore, you wade in up to your knees, and over four minutes the sun comes up. Then it stays up — it does not loop, because the one thing a place should not do is reset while you are standing in it.",
-      "places": [
-        "The Long Silence"
-      ],
-      "files": 14
-    },
-    {
-      "sha": "8fa0918a",
-      "date": "2026-08-18",
-      "subject": "The Conservatory: forty-eight metres of glasshouse, and a walk",
-      "lede": "A new realm at /conservatory (and /glasshouse). No score, no timer, nothing to survive — a Victorian barrel-vaulted glasshouse on a wet afternoon, and a tiled path down the middle of it. The only number on screen is how far you have walked, and nothing counts it down.",
-      "places": [],
-      "files": 13
-    },
-    {
-      "sha": "add340ff",
-      "date": "2026-08-18",
-      "subject": "Recapture the newsroom's card",
-      "lede": "The old frame predated the spike by the door and was taken while the room was reading a two-week-old fallback edition. This one is the room as it stands: tonight's wire on the tape, tonight's issue on the presses.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "67f2af31",
-      "date": "2026-08-18",
-      "subject": "🖨 The paper survives Ctrl-P",
-      "lede": "/times was a newspaper everywhere except the one place a newspaper ends up. Printing it gave you a cream rectangle with a floating nav bar across the masthead, a \"Vibey reads it\" button that does nothing on paper, and every link underlined in a colour that costs ink.",
-      "places": [
-        "this newspaper"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "e29527aa",
-      "date": "2026-08-18",
-      "subject": "Light the level, and stack it into a Spire",
-      "lede": "Two things: the renderer stopped being flat, and the eleven worlds got a second way to be played.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "1a3e4181",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "bdf0cd6c",
-      "date": "2026-08-18",
-      "subject": "Chunk the city so it can be frustum-culled",
-      "lede": "One merged mesh for every building in a 3.4 × 4.4 km map is a mesh that is always drawn. Standing on Market facing east, the Mission, Hayes Valley and the avenues are all behind you and every triangle of them was submitted anyway, because three.js culls objects and there was exactly one object.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "88b82f02",
-      "date": "2026-08-18",
-      "subject": "📰 Reprint issue №13, and a way to photograph one part of a page",
-      "lede": "The presses were re-run tonight against v19 of the function to exercise the whole write path rather than only the read path: published, four headlines, seven dispatches, none dropped, live weather off Open-Meteo. That is the only way to know a deployed function is intact before the morning it has to work. The bylines came back exactly as intended — The Encounter Log filed the proximity story, The Economy Desk the led",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "31ae310a",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "4ab570fe",
-      "date": "2026-08-18",
-      "subject": "Fire escapes, lane markings, and two districts you can start in",
-      "lede": "Four things, all of them street level, because that is where this city is judged and the last two batches were mostly judged from the air.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "b3869db3",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01DkXTgDnCDSAWK5gGog75Qz",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "99e4d5bf",
-      "date": "2026-08-18",
-      "subject": "🗂 Small ads, bylines, and a spike by the door",
-      "lede": "Three more things a real paper has.",
-      "places": [
-        "this newspaper",
-        "the machinery underneath"
-      ],
-      "files": 9
-    },
-    {
-      "sha": "053ec8f6",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "74ca69d8",
-      "date": "2026-08-18",
-      "subject": "Traffic that stops at the lights, and fifteen hundred cars at the kerb",
-      "lede": "The streets had a hundred and ninety cars driving through every junction at a constant speed and nothing at all parked. Both are now fixed, and the second one is the bigger change even though it is the dumber one.",
-      "places": [],
-      "files": 9
     }
   ]
 }
