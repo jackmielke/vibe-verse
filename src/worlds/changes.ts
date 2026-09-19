@@ -271,6 +271,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fd40c52a", iso: "2026-06-24T21:05:53+00:00", subject: "Changes" },
     { sha: "21f5a459", iso: "2026-06-24T21:05:46+00:00", subject: "Changes" },
   ],
+  "magician": [
+    { sha: "17b789cd", iso: "2026-09-19T18:34:17+00:00", subject: "The Magician: a valley in Japan you talk to, with Vibey rebuilding it live" },
+  ],
   "manifesto": [
     { sha: "56590fb9", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
   ],
