@@ -48,7 +48,16 @@ import { createVibey, type Vibey } from "./vibey";
 import { readCompanion, writeCompanion } from "../companions";
 import { createGameRunner, type HouseState } from "../game/runner";
 import { MODE_INFO, type GameHud, type GameModeId } from "../game/types";
+import { joinRoom, readNetMode, readRoom, type PeerPresence, type Room } from "../net";
+import { createPeers } from "./peers";
 import { createPlayer } from "./player";
+
+export interface MagicianOptions {
+  /** The visitor's display name for other players. */
+  name?: string;
+  /** Whether the voice session is live, for the talking ring on our ghost. */
+  talking?(): boolean;
+}
 
 export interface MagicianEvents {
   onToast?(text: string): void;
@@ -61,6 +70,8 @@ export interface MagicianEvents {
   onNotify?(text: string): void;
   /** The game HUD changed (every frame while a game runs, null when none). */
   onGame?(hud: GameHud | null): void;
+  /** Who else is in the valley. */
+  onPeers?(peers: PeerPresence[], connected: boolean): void;
 }
 
 export interface MagicianWorld {
@@ -102,7 +113,7 @@ function naturalSky(elev: number, night: number): { zenith: THREE.Color; horizon
   return { zenith, horizon, sun };
 }
 
-export function createMagician(container: HTMLElement, events: MagicianEvents = {}): MagicianWorld {
+export function createMagician(container: HTMLElement, events: MagicianEvents = {}, options: MagicianOptions = {}): MagicianWorld {
   // ---- renderer ---------------------------------------------------------
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -285,6 +296,27 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   scene.add(vibey.group);
   const ambience = createAmbience();
 
+  // ---- other players --------------------------------------------------------
+  const peers = createPeers();
+  scene.add(peers.group);
+  let room: Room | null = null;
+  let applyingRemote = false;
+  void joinRoom({
+    mode: readNetMode(),
+    room: readRoom(),
+    name: options.name ?? "visitor",
+    onPatch: (p) => { applyingRemote = true; try { store.patch(p); } finally { applyingRemote = false; } },
+    onFull: (s) => { applyingRemote = true; try { store.patch({ ...s, hits: state.hits }); } finally { applyingRemote = false; } },
+    onPeers: (list) => { peers.sync(list); events.onPeers?.(list, true); },
+    onJoin: (n) => events.onToast?.(`${n} arrived`),
+    onLeave: (n) => events.onToast?.(`${n} left`),
+    currentState: () => state,
+  }).then((r) => {
+    if (disposed) { r.close(); return; }
+    room = r;
+    events.onPeers?.([], r.connected);
+  });
+
   // ---- state ----------------------------------------------------------------
   let state: WorldState = applyPatch(DEFAULT_STATE, {});
   let lastNotify = 0;
@@ -318,6 +350,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       if (p.props) syncProps(state.props, state.season);
       if (p.sign !== undefined) sign.setText(state.sign);
       events.onState?.(state);
+      // Our own patches go to the room; theirs came from it.
+      if (!applyingRemote && room?.connected) room.patch(p);
     },
     playerPosition: () => ({ x: player.position.x, z: player.position.z, yaw: player.yaw() }),
     teleport(x, z, yaw) { player.teleport(x, z, yaw); },
@@ -568,6 +602,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       events.onState?.(state);
     }
     game.update(dt, time, lanternSpots);
+    room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false);
+    peers.update(dt, time, heightAt);
     const gh = game.hud();
     events.onGame?.(gh);
     vrHud.visible = renderer.xr.isPresenting && gh !== null;
@@ -663,6 +699,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       rayGeo.dispose();
       rayMat.dispose();
       game.dispose();
+      room?.close();
+      room = null;
+      peers.dispose();
       container.removeEventListener("mousedown", onDown);
       container.removeEventListener("mouseup", onUp);
       container.removeEventListener("touchstart", onTouchStart);
@@ -699,6 +738,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     game: () => game.hud(),
     fire: () => fireFromCamera(),
     companion: () => vibey.debug(),
+    peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     settle: (seconds = 6) => {
       // Fast-forward the eased look, for scripts on machines that render at
       // one frame a second. Physics and the player are left alone.
@@ -740,6 +780,7 @@ declare global {
       game(): GameHud | null;
       fire(): void;
       companion(): ReturnType<Vibey["debug"]>;
+      peers(): { connected: boolean; count: number; id: string | null };
       settle(seconds?: number): void;
     };
   }

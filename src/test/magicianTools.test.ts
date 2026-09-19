@@ -230,7 +230,9 @@ describe("the spellbook", () => {
 
 describe("companions", () => {
   it("resolves plain words to roster characters", () => {
-    expect(resolveCompanion("the wizard").match?.id).toBe("Wizard");
+    expect(resolveCompanion("the wizard").match?.id).toBe("Mage");
+    expect(resolveCompanion("Wizard").match?.id).toBe("Mage");
+    expect(resolveCompanion("witch").match?.id).toBe("Witch");
     expect(resolveCompanion("turn into a pug").match?.id).toBe("Pug");
     expect(resolveCompanion("vibey").match?.id).toBe("vibey");
     expect(resolveCompanion("classic vibey").match?.id).toBe("vibey-classic");

@@ -48,6 +48,9 @@ export function resolveCompanion(text: string): { match: CompanionSpec | null; s
   const q = norm(text).replace(/\b(the|a|an|into|to|be|become|turn|character|please|as)\b/g, " ").trim();
   if (!q) return { match: null, suggest: sample() };
   const words = q.split(/\s+/).filter(Boolean);
+  // The KayKit mage is the better-rigged wizard (spell-casting clips), so
+  // plain "wizard" means that one; the Quaternius Wizard is still there by name.
+  if (/^(wizard|mage|magician|sorcerer|the mage|kaykit mage)$/.test(q) && COMPANIONS.some((c) => c.id === "Mage")) return { match: findCompanion("Mage"), suggest: ["Wizard", "Witch"] };
   const exact = COMPANIONS.find((c) => norm(c.id) === q || norm(c.label) === q);
   if (exact) return { match: exact, suggest: [] };
   // "vibey" alone means the default robot; "classic vibey" the round one.

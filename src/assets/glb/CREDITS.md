@@ -9,6 +9,7 @@ a git archaeology session.
 |---|---|---|
 | `characters/` — ~47 of them (Casual, Chef, Knight, Ninja, Wizard, Witch, Zombie, Cow, Pug…) | [Quaternius](https://quaternius.com/), *Ultimate Animated Character Pack* | CC0 |
 | `characters/Pirate_*` — the named pirates (Anne, Barbarossa, Henry, Mako, Sharky, the skeletons, the tentacle) | [Kay Lousberg](https://kaylousberg.com/game-assets), *KayKit Pirate Kit* | CC0 |
+| `characters/Mage.glb` — the Magician's wizard body (Spellcast, Cheer, Idle, Walking, ninety clips) | [Kay Lousberg](https://kaylousberg.com/game-assets), *KayKit Adventurers Character Pack 1.0* | CC0 |
 | `kits/pirate/`, `kits/crops/` | Kay Lousberg / Quaternius | CC0 |
 | `nature/` | [Quaternius](https://quaternius.com/), *Simple Nature Pack* | CC0 |
 | `robot-expressive.glb` (Vibey), `../../public/models/vibey.glb` | Tomás Laulhé, modified by Don McCurdy — the three.js example robot | CC0 |

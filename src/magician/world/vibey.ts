@@ -41,15 +41,15 @@ export interface Vibey {
 
 /** Emote names the tools use → clip name patterns, in order of preference. */
 const CLIP_ALIASES: Record<string, RegExp[]> = {
-  Wave: [/^wave$/i, /wave/i, /victory/i, /hello/i, /yes/i],
-  Dance: [/^dance$/i, /dance/i, /victory/i, /jump/i],
-  Jump: [/^jump$/i, /jump/i, /roll/i],
-  Yes: [/^yes$/i, /yes/i, /nod/i, /pickup/i, /victory/i],
-  No: [/^no$/i, /\bno\b/i, /defeat/i, /shake/i],
-  ThumbsUp: [/thumbs/i, /victory/i, /wave/i],
-  Punch: [/^punch$/i, /punch/i, /swordslash/i, /shoot/i, /attack/i],
-  Death: [/death/i, /defeat/i],
-  Hit: [/recievehit|receivehit|hit/i, /defeat/i],
+  Wave: [/^wave$/i, /wave/i, /^cheer$/i, /victory/i, /hello/i, /yes/i],
+  Dance: [/^dance$/i, /dance/i, /^cheer$/i, /victory/i, /jump_full_short/i, /jump/i],
+  Jump: [/^jump$/i, /jump_full_short/i, /^jump/i, /jump/i, /roll/i],
+  Yes: [/^yes$/i, /yes/i, /nod/i, /^interact$/i, /pickup/i, /victory/i],
+  No: [/^no$/i, /\bno\b/i, /defeat/i, /dodge_backward/i, /shake/i],
+  ThumbsUp: [/thumbs/i, /^cheer$/i, /victory/i, /wave/i],
+  Punch: [/^punch$/i, /spellcast_shoot/i, /spellcast/i, /punch/i, /swordslash/i, /shoot/i, /attack/i],
+  Death: [/death_a$/i, /death/i, /defeat/i],
+  Hit: [/^hit_a$/i, /recievehit|receivehit|hit/i, /defeat/i],
 };
 
 interface Body {
@@ -247,7 +247,8 @@ export function createVibey(initialId = "vibey"): Vibey {
     body = b;
     bodyId = b.id;
     holder.add(b.object);
-    hat.visible = true;
+    // Some of the roster arrive already hatted; two hats is one too many.
+    hat.visible = !/^(Mage|Wizard|Witch)$/.test(b.id);
     hat.position.set(0, b.height - 0.06, 0.02);
     hat.scale.setScalar(Math.max(0.7, Math.min(1.3, b.height / 1.6)));
     caption.position.y = b.height + 1.05;

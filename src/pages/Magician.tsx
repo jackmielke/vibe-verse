@@ -55,6 +55,8 @@ export default function Magician() {
   const [game, setGame] = useState<GameHud | null>(null);
   const [showModes, setShowModes] = useState(false);
   const lastGameRef = useRef<string>("");
+  const [peers, setPeers] = useState<{ names: string[]; connected: boolean }>({ names: [], connected: false });
+  const statusRef = useRef<VoiceStatus>("idle");
   const idRef = useRef(1);
   const lastFizzleRef = useRef(0);
 
@@ -83,6 +85,7 @@ export default function Magician() {
     const host = hostRef.current;
     if (!host) return;
     const world = createMagician(host, {
+      onPeers: (list, connected) => setPeers({ names: list.map((p) => p.name), connected }),
       onToast: (t) => {
         const id = idRef.current++;
         setToasts((prev) => [...prev, { id, text: t }].slice(-4));
@@ -109,6 +112,9 @@ export default function Magician() {
         const key = h ? `${h.mode}|${h.objective}|${h.score}|${h.hearts}|${h.timer == null ? "" : Math.ceil(h.timer)}|${h.detail ?? ""}|${h.over}|${Math.ceil(h.shield)}|${Math.ceil(h.blast)}` : "";
         if (key !== lastGameRef.current) { lastGameRef.current = key; setGame(h ? { ...h } : null); }
       },
+    }, {
+      name: (() => { try { return localStorage.getItem("magician.name") ?? localStorage.getItem("lobby.name") ?? `visitor-${Math.floor(Math.random() * 900 + 100)}`; } catch { return "visitor"; } })(),
+      talking: () => statusRef.current === "live",
     });
     worldRef.current = world;
     world.wake();
@@ -147,7 +153,7 @@ export default function Magician() {
     const session = createVoiceSession({
       engine,
       handlers: {
-        onStatus: (s, d) => { setStatus(s); setDetail(d ?? ""); if (s === "live") world.vibey.emote("Wave"); },
+        onStatus: (s, d) => { setStatus(s); statusRef.current = s; setDetail(d ?? ""); if (s === "live") world.vibey.emote("Wave"); },
         onUserText: (t, final) => pushLine("you", t, final),
         onAssistantText: (t, final) => { pushLine("vibey", t, final); world.vibey.setCaption(t); },
         onToolCall: (name, args) => world.run(name, args).output,
@@ -258,6 +264,7 @@ export default function Magician() {
               <span className="rounded-sm bg-black/30 px-2 py-0.5">{state.weather}</span>
               <span className="rounded-sm bg-black/30 px-2 py-0.5">{state.season}</span>
               {state.fireballs.on && <span className="rounded-sm bg-[#ff6a2a]/40 px-2 py-0.5">fireballs · {state.hits} hits</span>}
+              {peers.connected && <span className="rounded-sm bg-[#73ffb8]/25 px-2 py-0.5" title={peers.names.join(", ")}>{peers.names.length + 1} in the valley</span>}
             </div>
           </div>
 

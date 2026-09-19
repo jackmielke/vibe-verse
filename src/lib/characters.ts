@@ -14,6 +14,7 @@ const QUATERNIUS_URLS = import.meta.glob(
 
 const CHAR_OVERRIDES: Record<string, { emoji?: string; accent?: string; blurb?: string }> = {
   Wizard: { emoji: "🧙", accent: "#a78bfa", blurb: "Casts vibes." },
+  Mage: { emoji: "🧙‍♂️", accent: "#7c6cff", blurb: "KayKit's mage. Ninety clips, real spell-casting." },
   Witch: { emoji: "🧙‍♀️", accent: "#b392ff", blurb: "Pointy-hat energy." },
   Knight_Male: { emoji: "🛡", accent: "#6aa8ff", blurb: "Square-jawed and shiny." },
   Knight_Golden_Male: { emoji: "🥇", accent: "#ffd166", blurb: "Polished to a mirror." },

@@ -446,6 +446,20 @@ The shape of it, because it is the shape the next voice world should copy:
   click, a tap on the right half, or the VR trigger. `window.__magician.game()`
   reads the HUD and `settle()` steps the runner, which is how the modes were
   verified here without a frame rate.
+- **Playing together is broadcasting patches** (`net.ts`). The world is
+  data, so the shared valley is every patch on a Supabase Realtime channel
+  (`?room=name`, default `hoshimura`) and eight-hertz presence for ghosts;
+  a newcomer says `hi` and the first `full` state it hears wins. There is
+  no host. `?net=local` is the BroadcastChannel transport, which is what
+  `src/test/magicianNet.test.ts` and the sandbox exercise; `?net=off` is
+  single player. Presence rides a timer, not the frame loop, because a
+  background tab stops rendering and would be swept from the room.
+- **The wizard body is KayKit's Mage** (`characters/Mage.glb`, CC0, from
+  the GitHub mirror of the Adventurers pack; itch.io is blocked here but
+  `git clone` of github.com works). Plain "wizard" resolves to it; the
+  Quaternius one is still "Wizard" in the picker. Its clips are named
+  `Spellcast_Shoot`, `Cheer`, `Hit_A` and so on; `CLIP_ALIASES` in
+  `world/vibey.ts` maps the emote names to whichever family a body has.
 - **Never grab pointer lock on a headset browser.** Quest's browser points
   with a laser, and a page that locks the pointer on its first click stops
   answering clicks. `player.ts` skips the lock wherever `immersive-vr` is

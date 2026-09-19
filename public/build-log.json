@@ -1,7 +1,57 @@
 {
-  "generated_at": "2026-09-19T18:32:36.558Z",
+  "generated_at": "2026-09-19T19:30:16.189Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f6ed2655",
+      "date": "2026-09-19",
+      "subject": "The Magician: roster companions face the player, quieter robot eyes",
+      "lede": "Verified at noon with the sun behind the camera: the Quaternius roster faces the same way as the robot. The earlier flip made them face away; what had looked like a back at golden hour was a face in its own shadow. The robot's lenses glow at a fraction of what they did. A debug hook, window.__magician.companion(), lists the mounted body's meshes and materials for scripts.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "e4a56978",
+      "date": "2026-09-19",
+      "subject": "The Magician: three games, any companion, headset clicks, sky props",
+      "lede": "Games (src/magician/game): Oni Siege, Spirit Lights and Dragon's Breath share one runner (enemies, bolts, hearts, a shield and a blast that Vibey casts on request) and each mode is about 150 lines of rules. The world's tools are the weapons: rain drowns fire oni, snow slows them, a storm's lightning strikes them, a flood drowns them, fog hides the player from the yurei, lit lanterns keep it away. Vibey aims at the ne",
+      "places": [],
+      "files": 20
+    },
+    {
+      "sha": "17168e4f",
+      "date": "2026-09-19",
+      "subject": "The Magician: merge the fixed forest into a few meshes for the headset",
+      "lede": "260 trees built one at a time were about 1,700 meshes. The fixed forest is now one merged geometry per species (so the season still recolours each species through its one material) plus one for all the trunks: five draw calls. Conjured trees are still individual and still sway.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "672a47e2",
+      "date": "2026-09-19",
+      "subject": "The Magician: card art, Vibey reacts to the world, phone HUD, ground and sky fixes",
+      "lede": "- Card art captured from the running world (scripts/magician-shot.mjs at 960x540), wired into src/worlds/art.ts. - The world can now tell Vibey things: a fireball hit and a fizzle in the rain go to the session as a system message (realtime) or commentary (live), rate-limited, so the magician notices its own magic working. - A landed spell sparkles at Vibey's hands and gets a flourish unless the model chose its own ge",
+      "places": [],
+      "files": 11
+    },
+    {
+      "sha": "303c7c8e",
+      "date": "2026-09-19",
+      "subject": "Stamp The Magician's date",
+      "lede": "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "17b789cd",
+      "date": "2026-09-19",
+      "subject": "The Magician: a valley in Japan you talk to, with Vibey rebuilding it live",
+      "lede": "A new world at /magician. A rural Japanese valley (river, paddies, bridge, torii, shrine on the hill, a mountain with a mouth) rendered in three.js, and Vibey floating beside you in a wizard's hat.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 24
+    },
     {
       "sha": "cae1ead5",
       "date": "2026-09-09",
@@ -943,58 +993,6 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
       "places": [],
       "files": 3
-    },
-    {
-      "sha": "d919eee0",
-      "date": "2026-08-18",
-      "subject": "THE BASEMENT: a room in the same world where the music is the point",
-      "lede": "Everything built for dancing so far has been outdoors, in a plaza, at whatever time of day the world happened to be in, with four regulars around a lit square. That is a good demo of a system and it is not a place. So: a club. Enclosed, dark, twenty regulars, a DJ on a riser, four beams sweeping the room, speaker stacks that punch on the kick, and a floor of panels running off the same `cityBeats()` clock as everythi",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "4c096d41",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "939bb6fb",
-      "date": "2026-08-18",
-      "subject": "Sixteen hundred people who turn corners instead of vanishing",
-      "lede": "Nine hundred pedestrians across 3.4 by 4.4 km put one or two on a Mission block, which is a street nobody lives on. Sixteen hundred now, and clustered tighter — 400 m rather than 620 — because a thousand people spread over a square kilometre is one every thirty metres of pavement, and that reads as a quiet Sunday rather than as downtown.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "61bfe43c",
-      "date": "2026-08-18",
-      "subject": "Rebuild the build log",
-      "lede": "Regenerated by `npm run prebuild` during verification; it now covers First Light, the context-release pass and the passport raise.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "207af005",
-      "date": "2026-08-18",
-      "subject": "Passport rows to forty-two, and stop raising it one world at a time",
-      "lede": "Thirty-six was passed inside a day: First Light and the Conservatory landed together and made thirty-seven, so the panel silently truncated — which on a completion panel is the worst kind of bug, since telling you what you have not done yet is its entire job.",
-      "places": [
-        "The Long Silence"
-      ],
-      "files": 1
-    },
-    {
-      "sha": "a12f0c34",
-      "date": "2026-08-18",
-      "subject": "Twenty-five foot lots, garage doors, and the long way out of a terrace",
-      "lede": "A standard San Francisco lot is twenty-five feet — 7.6 m — and the row houses built on them are why the Mission and Chinatown look the way they do: narrow, tall, shoulder to shoulder, every one a different colour. This city was building them seventeen to twenty-seven metres wide, which is right for the Financial District and wrong for everywhere anybody walks. Every residential block was three or four long slabs.",
-      "places": [],
-      "files": 5
     }
   ]
 }
