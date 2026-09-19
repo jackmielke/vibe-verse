@@ -57,6 +57,8 @@ export interface MagicianOptions {
   name?: string;
   /** Whether the voice session is live, for the talking ring on our ghost. */
   talking?(): boolean;
+  /** One line about the voice for the headset HUD: "pinch to talk", "listening", … */
+  voiceLine?(): string;
 }
 
 export interface MagicianEvents {
@@ -72,6 +74,10 @@ export interface MagicianEvents {
   onGame?(hud: GameHud | null): void;
   /** Who else is in the valley. */
   onPeers?(peers: PeerPresence[], connected: boolean): void;
+  /** A trigger or a pinch in VR while no game is running: the visitor wants to talk. */
+  onSelect?(): void;
+  /** The visitor held the trigger or the pinch: leave VR. */
+  onExitVR?(): void;
 }
 
 export interface MagicianWorld {
@@ -90,6 +96,10 @@ export interface MagicianWorld {
   /** Zoom: 1 is the natural field of view, 2 is twice as wide. */
   setZoom(z: number): void;
   zoom(): number;
+  /** The canvas, for the recorder. */
+  canvas(): HTMLCanvasElement;
+  /** The ambience mix, for the recorder. */
+  audioStream(): MediaStream | null;
   startGame(id: GameModeId): void;
   stopGame(): void;
   gameHud(): GameHud | null;
@@ -447,13 +457,24 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   container.addEventListener("touchend", onTouchEnd);
   const ctrlDir = new THREE.Vector3();
   const ctrlPos = new THREE.Vector3();
-  const onSelect = (c: THREE.Group) => () => {
-    if (!game.active()) return;
-    c.getWorldPosition(ctrlPos);
-    ctrlDir.set(0, 0, -1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
-    game.fire(ctrlPos, ctrlDir);
+  // In the headset a trigger or a pinch means: shoot if a game is on,
+  // otherwise talk. Holding it for two seconds leaves VR, which is the only
+  // way out with bare hands.
+  const holdTimers = new Map<THREE.Group, number>();
+  const onSelectStart = (c: THREE.Group) => () => {
+    if (game.active()) {
+      c.getWorldPosition(ctrlPos);
+      ctrlDir.set(0, 0, -1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
+      game.fire(ctrlPos, ctrlDir);
+    } else events.onSelect?.();
+    holdTimers.set(c, window.setTimeout(() => {
+      holdTimers.delete(c);
+      events.onExitVR?.();
+      void renderer.xr.getSession()?.end().catch(() => undefined);
+    }, 2000));
   };
-  const selectHandlers = controllers.map((c) => { const h = onSelect(c); c.addEventListener("selectstart", h); return h; });
+  const onSelectEnd = (c: THREE.Group) => () => { const t = holdTimers.get(c); if (t !== undefined) { clearTimeout(t); holdTimers.delete(c); } };
+  const selectHandlers = controllers.map((c) => { const h = onSelectStart(c); const e = onSelectEnd(c); c.addEventListener("selectstart", h); c.addEventListener("selectend", e); return { h, e }; });
 
   // A HUD that exists inside the headset: a small canvas sprite under the
   // view with hearts, the objective and the score.
@@ -470,7 +491,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   camera.add(vrHud);
   let vrHudText = "";
   function drawVrHud(h: GameHud | null) {
-    const text = h ? `${"♥".repeat(h.hearts)}${"♡".repeat(Math.max(0, h.maxHearts - h.hearts))}   ${h.objective}   ${h.score} pts${h.timer != null ? `   ${Math.ceil(h.timer)}s` : ""}` : "";
+    const text = h ? `${"♥".repeat(h.hearts)}${"♡".repeat(Math.max(0, h.maxHearts - h.hearts))}   ${h.objective}   ${h.score} pts${h.timer != null ? `   ${Math.ceil(h.timer)}s` : ""}` : (options.voiceLine?.() ?? "");
     if (text === vrHudText) return;
     vrHudText = text;
     const c = vrHudCanvas.getContext("2d")!;
@@ -640,7 +661,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     peers.update(dt, time, heightAt);
     const gh = game.hud();
     events.onGame?.(gh);
-    vrHud.visible = renderer.xr.isPresenting && gh !== null;
+    vrHud.visible = renderer.xr.isPresenting;
     if (vrHud.visible) drawVrHud(gh);
     vibey.update(dt, time, player.position, player.yaw(), heightAt);
     renderer.toneMappingExposure += lastHitFlash * 0.5;
@@ -705,6 +726,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     fire: () => fireFromCamera(),
     setZoom: (z) => { zoomLevel = Math.max(0.6, Math.min(1.8, z)); applyFov(); },
     zoom: () => zoomLevel,
+    canvas: () => renderer.domElement,
+    audioStream: () => ambience.stream(),
     startGame: (id) => game.start(id),
     stopGame: () => game.stop(),
     gameHud: () => game.hud(),
@@ -746,7 +769,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       container.removeEventListener("mouseup", onUp);
       container.removeEventListener("touchstart", onTouchStart);
       container.removeEventListener("touchend", onTouchEnd);
-      controllers.forEach((c, i) => c.removeEventListener("selectstart", selectHandlers[i]));
+      controllers.forEach((c, i) => { c.removeEventListener("selectstart", selectHandlers[i].h); c.removeEventListener("selectend", selectHandlers[i].e); });
+      for (const t of holdTimers.values()) clearTimeout(t);
       vrHudTex.dispose();
       vrHudMat.dispose();
       renderer.xr.removeEventListener("sessionstart", onXrStart);

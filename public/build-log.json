@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-09-19T20:20:46.248Z",
+  "generated_at": "2026-09-19T21:08:17.387Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "14fe0a85",
+      "date": "2026-09-19",
+      "subject": "The Magician: left and right were swapped for every input",
+      "lede": "The player's 'right' vector was built as (fwd.z, 0, -fwd.x), which at yaw 0 is (-1, 0, 0): left. The joystick, the touch drag, the D key and the VR thumbstick all used it, so all four walked the wrong way sideways while forward and back were fine, which is why it read as an inverted stick rather than a broken one. It is (-fwd.z, 0, fwd.x) now, and a script drives the stick and the D key and checks the sign of x.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "599777d9",
+      "date": "2026-09-19",
+      "subject": "The Magician on a phone: a stick, a pinch, one menu",
+      "lede": "A phone is a different HUD, not a smaller one. Under 640 px the page shows a joystick (src/magician/ui/Joystick.tsx), a jump button, a shoot button during a game, and one menu that holds the companion picker, sound, hide, an invite button that shares the room link, and leave. The suggestion chips become one scrolling row and the footer goes; the transcript keeps two lines.",
+      "places": [],
+      "files": 8
+    },
     {
       "sha": "595216d3",
       "date": "2026-09-19",
@@ -979,22 +995,6 @@
       "lede": "Every shot of this realm so far has been taken from the near gable looking down the nave, which is the composition it was designed for and therefore the one that hides its faults. Turning round found all three of these at once.",
       "places": [],
       "files": 5
-    },
-    {
-      "sha": "9eb66186",
-      "date": "2026-08-18",
-      "subject": "Sweep the Conservatory less often",
-      "lede": "Litter, drains, slimmer glazing bars, and three quarters of the frame back.",
-      "places": [],
-      "files": 7
-    },
-    {
-      "sha": "2b13d314",
-      "date": "2026-08-18",
-      "subject": "Furnish the Conservatory, and let three sparrows in",
-      "lede": "Four things the room needed, in the order they were missing.",
-      "places": [],
-      "files": 6
     }
   ]
 }

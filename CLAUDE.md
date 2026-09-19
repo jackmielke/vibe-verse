@@ -476,5 +476,14 @@ The shape of it, because it is the shape the next voice world should copy:
 - **VR:** `renderer.xr.enabled`, the loop runs through `setAnimationLoop`, and
   the HUD's VR button is three's own `VRButton`. Vibey's captions are a
   canvas sprite above the head, so the words exist in the headset where there
-  is no HTML. Press Talk before Enter VR; the microphone prompt is a DOM
-  thing.
+  is no HTML, and a strip under the view says what the trigger does. In the
+  headset a trigger or a hand pinch *talks* (starts the voice session) when
+  no game is running and shoots when one is; holding it for two seconds
+  ends the XR session, which is the only way out with bare hands. A pinch is
+  `buttons[0]` on a hand's gamepad, so nothing else may be bound to button 0
+  or a pinch will do two things.
+- **Recording** (`record.ts`): the canvas through `captureStream`, with the
+  ambience, Vibey's voice and the microphone mixed into one audio track, into
+  a WebM through `MediaRecorder`; the page shares it through the share sheet
+  or downloads it. Not inside VR: three renders to the XR layer there and the
+  canvas is blank, so the headset's own recorder is the tool.

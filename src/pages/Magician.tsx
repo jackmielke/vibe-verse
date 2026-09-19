@@ -18,6 +18,7 @@ import { COMPANIONS, findCompanion, readCompanion } from "@/magician/companions"
 import { MODE_INFO, type GameHud, type GameModeId } from "@/magician/game/types";
 import { Joystick } from "@/magician/ui/Joystick";
 import { readRoom } from "@/magician/net";
+import { createRecorder, type Recorder } from "@/magician/record";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -59,6 +60,10 @@ export default function Magician() {
   const lastGameRef = useRef<string>("");
   const [peers, setPeers] = useState<{ names: string[]; connected: boolean }>({ names: [], connected: false });
   const statusRef = useRef<VoiceStatus>("idle");
+  const startVoiceRef = useRef<() => void>(() => undefined);
+  const recorderRef = useRef<Recorder | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
   // A phone: narrow, touch-first. The HUD folds into one menu and a stick.
   const [phone, setPhone] = useState<boolean>(() => (typeof window !== "undefined" ? window.matchMedia("(max-width: 640px), (pointer: coarse) and (max-width: 900px)").matches : false));
   const [menuOpen, setMenuOpen] = useState(false);
@@ -106,6 +111,7 @@ export default function Magician() {
     if (!host) return;
     const world = createMagician(host, {
       onPeers: (list, connected) => setPeers({ names: list.map((p) => p.name), connected }),
+      onSelect: () => { if (statusRef.current === "idle" || statusRef.current === "closed" || statusRef.current === "error") startVoiceRef.current(); },
       onToast: (t) => {
         const id = idRef.current++;
         setToasts((prev) => [...prev, { id, text: t }].slice(-4));
@@ -135,7 +141,15 @@ export default function Magician() {
     }, {
       name: (() => { try { return localStorage.getItem("magician.name") ?? localStorage.getItem("lobby.name") ?? `visitor-${Math.floor(Math.random() * 900 + 100)}`; } catch { return "visitor"; } })(),
       talking: () => statusRef.current === "live",
+      voiceLine: () => {
+        const s = statusRef.current;
+        if (s === "live") return "Listening. Just talk. Hold the trigger or pinch to leave VR.";
+        if (s === "connecting") return "Connecting to Vibey…";
+        if (s === "error") return "Voice failed. Take the headset off to see why.";
+        return "Pinch or pull the trigger to talk to Vibey. Hold it to leave VR.";
+      },
     });
+    recorderRef.current = createRecorder(world.canvas(), () => [world.audioStream(), ...(sessionRef.current?.streams() ?? [])].filter((s): s is MediaStream => Boolean(s)));
     worldRef.current = world;
     world.wake();
     setState(world.getState());
@@ -188,6 +202,30 @@ export default function Magician() {
       /* status handler already reported it */
     }
   }, [engine, pushLine, status]);
+  useEffect(() => { startVoiceRef.current = () => { void startVoice(); }; }, [startVoice]);
+
+  const toggleRecording = useCallback(async () => {
+    const r = recorderRef.current;
+    if (!r) return;
+    if (!r.recording()) { r.start(); setRecording(true); return; }
+    const { blob, name } = await r.stop();
+    setRecording(false);
+    if (!blob.size) return;
+    const file = new File([blob], name, { type: blob.type });
+    const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean; share?: (d: { files: File[]; title: string }) => Promise<void> };
+    if (nav.canShare?.({ files: [file] }) && nav.share) {
+      try { await nav.share({ files: [file], title: "The Magician" }); return; } catch { /* fall through to download */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }, []);
+  useEffect(() => {
+    if (!recording) return;
+    const t = setInterval(() => setRecSeconds(Math.floor(recorderRef.current?.seconds() ?? 0)), 500);
+    return () => clearInterval(t);
+  }, [recording]);
 
   const submitText = useCallback(
     (e: React.FormEvent) => {
@@ -322,6 +360,9 @@ export default function Magician() {
             <button onClick={invite} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               {copied ? "link copied" : "invite"}
             </button>
+            <button onClick={() => void toggleRecording()} className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/70 hover:text-white"}`}>
+              {recording ? `● ${recSeconds}s stop` : "record"}
+            </button>
             <Link to="/" className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               out
             </Link>
@@ -344,6 +385,7 @@ export default function Magician() {
               <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] uppercase tracking-[0.15em]">
                 <button onClick={() => setMuted((m) => !m)} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">{muted ? "sound off" : "sound on"}</button>
                 <button onClick={invite} className="rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">{copied ? "copied" : "invite"}</button>
+                <button onClick={() => void toggleRecording()} className={`col-span-2 rounded-md border px-2 py-2 ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/80"}`}>{recording ? `● recording ${recSeconds}s · stop and share` : "record a clip"}</button>
                 <button onClick={() => { setHudHidden(true); setMenuOpen(false); }} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">hide hud</button>
                 <Link to="/" className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-center text-white/80">leave</Link>
               </div>
@@ -352,6 +394,12 @@ export default function Magician() {
               </div>
               <div className="mt-2 text-[11px] text-white/40">Left stick walks · drag the right side to look · pinch to zoom</div>
             </div>
+          )}
+
+          {phone && recording && !menuOpen && (
+            <button onClick={() => void toggleRecording()} data-ui="1" className="absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-[#ff5a5a] bg-[#ff5a5a]/30 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-[#ffd0d0]">
+              ● {recSeconds}s · stop
+            </button>
           )}
 
           {/* Phone: stick and buttons */}

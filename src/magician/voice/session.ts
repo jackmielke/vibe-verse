@@ -54,6 +54,8 @@ export interface VoiceSession {
   notify(text: string): void;
   setMuted(m: boolean): void;
   status(): VoiceStatus;
+  /** Vibey's voice and the visitor's microphone, for the recorder. */
+  streams(): MediaStream[];
 }
 
 export interface VoiceOptions {
@@ -118,6 +120,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
   let dc: RTCDataChannel | null = null;
   let mic: MediaStream | null = null;
   let audioEl: HTMLAudioElement | null = null;
+  let remote: MediaStream | null = null;
   let audioCtx: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
   let raf = 0;
@@ -292,6 +295,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
       pc.ontrack = (e) => {
         if (!audioEl) return;
         audioEl.srcObject = e.streams[0];
+        remote = e.streams[0];
         void audioEl.play().catch(() => undefined);
         watchAudio(e.streams[0]);
       };
@@ -361,6 +365,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
     if (pc) { try { pc.close(); } catch { /* fine */ } pc = null; }
     if (mic) { for (const t of mic.getTracks()) t.stop(); mic = null; }
     if (audioEl) { audioEl.srcObject = null; audioEl.remove(); audioEl = null; }
+    remote = null;
     handlers.onSpeaking(0);
     handlers.onListening(false);
   }
@@ -399,5 +404,6 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
       if (mic) for (const t of mic.getAudioTracks()) t.enabled = !m;
     },
     status: () => status,
+    streams: () => [remote, mic].filter((s): s is MediaStream => Boolean(s)),
   };
 }

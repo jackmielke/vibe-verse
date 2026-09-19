@@ -165,11 +165,11 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
           const gp = src.gamepad;
           if (!gp) continue;
           const ax = gp.axes.length >= 4 ? [gp.axes[2], gp.axes[3]] : [gp.axes[0] ?? 0, gp.axes[1] ?? 0];
-          if (src.handedness === "left") { mx += ax[0]; mz += ax[1]; if (gp.buttons[0]?.pressed || gp.buttons[3]?.pressed) jump = true; }
+          if (src.handedness === "left") { mx += ax[0]; mz += ax[1]; if (gp.buttons[3]?.pressed) jump = true; }
           else if (src.handedness === "right") {
             if (Math.abs(ax[0]) > 0.7 && snapCooldown === 0) { yaw -= Math.sign(ax[0]) * (Math.PI / 6); snapCooldown = 0.3; }
             if (Math.abs(ax[0]) < 0.3) snapCooldown = 0;
-            if (gp.buttons[0]?.pressed || gp.buttons[4]?.pressed) jump = true;
+            if (gp.buttons[4]?.pressed) jump = true;
           }
         }
         if (jump && xrJumpLatch) jump = false; else xrJumpLatch = jump;

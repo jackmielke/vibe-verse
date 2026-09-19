@@ -14,12 +14,15 @@ export interface Ambience {
   set(levels: { rain: number; wind: number; night: number; storm: number; water: number }): void;
   play(name: "bell" | "gong" | "thunder" | "chime" | "whoosh" | "hit" | "fizz" | "roar" | "pop"): void;
   setMuted(m: boolean): void;
+  /** The mix as a stream, for the recorder. */
+  stream(): MediaStream | null;
   dispose(): void;
 }
 
 export function createAmbience(): Ambience {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
+  let tap: MediaStreamAudioDestinationNode | null = null;
   let muted = false;
   const gains: Record<string, GainNode> = {};
   let cricketTimer: number | null = null;
@@ -42,6 +45,8 @@ export function createAmbience(): Ambience {
     master = ctx.createGain();
     master.gain.value = muted ? 0 : 0.8;
     master.connect(ctx.destination);
+    tap = ctx.createMediaStreamDestination();
+    master.connect(tap);
     const noise = noiseBuffer(ctx, 3);
     const mk = (name: string, filterType: BiquadFilterType, freq: number, q = 0.7) => {
       const src = ctx!.createBufferSource();
@@ -151,6 +156,7 @@ export function createAmbience(): Ambience {
         case "pop": tone(880, 0.12, 0.2, "triangle"); burst(0.12, 0.15, 3000, "bandpass"); break;
       }
     },
+    stream() { ensure(); return tap?.stream ?? null; },
     setMuted(m) {
       muted = m;
       if (master && ctx) master.gain.setTargetAtTime(m ? 0 : 0.8, ctx.currentTime, 0.1);
