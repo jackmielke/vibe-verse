@@ -11,7 +11,8 @@
  * Usage:
  *   node scripts/magician-shot.mjs                       # arrival frame → magician-0.jpg
  *   node scripts/magician-shot.mjs "make it rain" "night"  # one frame per spell
- *   OUT=dir node scripts/magician-shot.mjs …
+ *   OUT=dir W=960 H=540 node scripts/magician-shot.mjs …   # card-art size
+ *   "@teleport x z yaw" as a spell moves the player first.
  */
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -46,10 +47,14 @@ const browser = await chromium.launch({
   ...(existsSync(exe) ? { executablePath: exe } : {}),
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--no-sandbox", "--disable-dev-shm-usage"],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: Number(process.env.W ?? 1280), height: Number(process.env.H ?? 720) } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
-page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") errors.push(`[${m.type()}] ${m.text()}`); });
+page.on("console", (m) => {
+  const t = m.text();
+  if (/Router Future Flag|ERR_CERT|ERR_TUNNEL|Failed to load resource/.test(t)) return;
+  if (m.type() === "error" || m.type() === "warning") errors.push(`[${m.type()}] ${t.slice(0, 400)}`);
+});
 
 await page.goto(`${BASE}/magician`, { waitUntil: "domcontentloaded" });
 await page.getByRole("button", { name: /enter the valley/i }).click({ timeout: 30000 });
@@ -83,7 +88,9 @@ for (const spell of spells) {
   await page.evaluate(() => window.__magician.settle(8));
   await shot(`magician-${i++}`);
 }
-if (errors.length) { console.log("console/page errors:"); for (const e of errors.slice(0, 20)) console.log("  ", e); }
+// A shader that fails to compile is a silently missing mesh, and three only
+// says so on the console. So the console is part of the result.
+if (errors.length) { console.log("console/page errors:"); for (const e of errors.slice(0, 20)) console.log("  ", e); process.exitCode = 2; }
 await browser.close();
 server?.kill();
 process.exit(0);

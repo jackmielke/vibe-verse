@@ -44,10 +44,11 @@ export default function Magician() {
   const [hitFlash, setHitFlash] = useState(0);
   const [muted, setMuted] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
-  const [available, setAvailable] = useState<boolean | null>(null);
+  const [available, setAvailable] = useState<boolean | null>(null); // null: unknown, not no
   const [text, setText] = useState("");
   const [hudHidden, setHudHidden] = useState(false);
   const idRef = useRef(1);
+  const lastFizzleRef = useRef(0);
 
   useWorldStamp("/magician", "The Magician");
 
@@ -79,18 +80,34 @@ export default function Magician() {
         setToasts((prev) => [...prev, { id, text: t }].slice(-4));
         setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 2600);
       },
-      onHit: () => { setHitFlash(1); setTimeout(() => setHitFlash(0), 260); },
+      onHit: (hits) => {
+        setHitFlash(1);
+        setTimeout(() => setHitFlash(0), 260);
+        if (hits === 1 || hits % 4 === 0) sessionRef.current?.notify(`A fireball just hit the visitor (${hits} hits so far). React in one short line; offer to stop them or to make it rain.`);
+      },
+      onFizzle: () => {
+        const now = Date.now();
+        if (now - lastFizzleRef.current > 20000) {
+          lastFizzleRef.current = now;
+          sessionRef.current?.notify("The wet weather just put a fireball out mid-air with a hiss of steam. Mention it in one short, pleased line.");
+        }
+      },
       onState: (s) => setState(s),
     });
     worldRef.current = world;
     world.wake();
     setState(world.getState());
-    if (vrSlot.current) {
+    // Only offer VR where a headset can actually answer; three's button
+    // otherwise sits there saying "VR NOT SUPPORTED" in a HUD that is
+    // already tight on a phone.
+    const xr = (navigator as Navigator & { xr?: { isSessionSupported(m: string): Promise<boolean> } }).xr;
+    void xr?.isSessionSupported("immersive-vr").then((ok) => {
+      if (!ok || !vrSlot.current || worldRef.current !== world) return;
       vrSlot.current.innerHTML = "";
       const b = world.vrButton();
       b.setAttribute("data-ui", "1");
       vrSlot.current.appendChild(b);
-    }
+    }).catch(() => undefined);
     return () => {
       sessionRef.current?.disconnect();
       sessionRef.current = null;
@@ -209,7 +226,7 @@ export default function Magician() {
             </button>
             <p className="mt-7 text-[11px] tracking-wide text-[#6f5f90]">
               W A S D to walk · drag to look · space to jump · then press Talk
-              {available === false && <span className="block mt-2 text-[#ff9a7a]">Vibey's voice is not connected on this deploy; the spellbook still works by text.</span>}
+              {available === false && <span className="block mt-2 text-[#ff9a7a]">Vibey's voice is not connected on this deploy (no OpenAI key); the spellbook still works by text.</span>}
             </p>
           </div>
         </div>
@@ -217,8 +234,8 @@ export default function Magician() {
 
       {entered && !hudHidden && (
         <>
-          {/* Top-left: the place and its state */}
-          <div className="pointer-events-none absolute left-5 top-4 z-10 select-none">
+          {/* Top-left: the place and its state. Sits under the app's home chip. */}
+          <div className="pointer-events-none absolute left-4 top-16 z-10 select-none sm:left-5">
             <div className="font-serif text-2xl text-white/90 drop-shadow">{state.title}</div>
             <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-[0.2em] text-white/60">
               <span className="rounded-sm bg-black/30 px-2 py-0.5">{clock}</span>
@@ -229,7 +246,7 @@ export default function Magician() {
           </div>
 
           {/* Top-right: VR, sound, out */}
-          <div className="absolute right-5 top-4 z-10 flex items-center gap-2" data-ui="1">
+          <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center justify-end gap-1.5 sm:right-5 sm:top-4 sm:gap-2" data-ui="1">
             <div ref={vrSlot} className="[&>button]:!rounded-sm [&>button]:!border [&>button]:!border-white/30 [&>button]:!bg-black/30 [&>button]:!px-3 [&>button]:!py-1.5 [&>button]:!text-[10px] [&>button]:!uppercase [&>button]:!tracking-[0.2em] [&>button]:!text-white/80 [&>button]:!font-sans [&>button]:!opacity-100" />
             <button onClick={() => setMuted((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               {muted ? "sound off" : "sound on"}

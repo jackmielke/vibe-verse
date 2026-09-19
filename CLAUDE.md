@@ -388,3 +388,50 @@ instead of promising coins. `PortalPlay` therefore must never gate the frame on
 the SDK handshake — it did once, and every SDK-less game ran perfectly
 underneath a spinner that never went away. Nothing in a build or a test catches
 that; you have to open the route and look.
+
+## The Magician
+
+`/magician` is a valley in Japan you *talk to*. Vibey floats next to you in a
+wizard's hat; you say "make it rain" and it rains. Everything is under
+`src/magician/`, the page is `src/pages/Magician.tsx`, and the key lives in
+`supabase/functions/vibe-magician-voice`.
+
+The shape of it, because it is the shape the next voice world should copy:
+
+- **The world is data.** `state.ts` is one `WorldState`; `tools.ts` is the
+  list of things the model may call and what each one does to the state; the
+  renderer in `world/Magician.ts` *eases* the scene toward the state every
+  frame and never switches anything. A wish lands over two seconds, which is
+  what makes it read as magic rather than as a settings panel.
+- **Rules are state, not code.** Rain puts fireballs out because
+  `fireballsFizzle()` reads the same `weather` everything else does. Add a new
+  hazard the same way, by reading the state, not by adding a case to a
+  weather handler.
+- **Two OpenAI engines, one interface** (`voice/session.ts`). `realtime` is
+  `gpt-realtime-2.1` through an ephemeral client secret and the browser's own
+  SDP post to `/v1/realtime/calls`. `live` is `gpt-live-1` (September 2026):
+  there are no ephemeral secrets, the edge function relays the SDP to
+  `/v1/live/sessions`, and tools run through the session's Responses
+  delegation (`gpt-5.4-mini`), arriving at the browser wrapped in
+  `response.event`. Both minted real sessions from this sandbox through
+  pg_net, since the sandbox cannot reach OpenAI or Supabase directly; neither
+  has been *heard* here. The data channel is `oai-events` for both.
+- **The spellbook (`spellbook.ts`) is not a fallback, it is the test rig.**
+  A dumb keyword parser that produces the same tool calls the model would,
+  so the whole tool → state → renderer path runs in node and in headless
+  Chromium with no key at all. It also keeps typed input working when the
+  voice is down.
+- **Reading a frame:** `node scripts/magician-shot.mjs "make it rain" "night"`
+  boots the route, casts each spell and writes a JPEG per step through
+  `window.__magician.snapshot()`. `window.__magician.settle(8)` fast-forwards
+  the eased look, because SwiftShader draws under one frame a second and five
+  wall-clock seconds is half a second of easing. The script exits non-zero if
+  three logged a shader error, because a fragment shader that does not compile
+  is a *silently missing mesh*: the terrain vanished once and the water plane
+  underneath looked like a flood. The cause was a variable named `patch`,
+  which is a reserved word in GLSL.
+- **VR:** `renderer.xr.enabled`, the loop runs through `setAnimationLoop`, and
+  the HUD's VR button is three's own `VRButton`. Vibey's captions are a
+  canvas sprite above the head, so the words exist in the headset where there
+  is no HTML. Press Talk before Enter VR; the microphone prompt is a DOM
+  thing.

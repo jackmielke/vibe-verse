@@ -91,15 +91,28 @@ export function createTerrain(): Terrain {
       .replace("#include <common>", "#include <common>\nvarying vec3 vWorldPos;\nvarying float vUp;")
       .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvUp = normalize(mat3(modelMatrix) * objectNormal).y;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform float uSnow;\nuniform float uWet;\nvarying vec3 vWorldPos;\nvarying float vUp;")
+      .replace(
+        "#include <common>",
+        [
+          "#include <common>",
+          "uniform float uSnow;",
+          "uniform float uWet;",
+          "varying vec3 vWorldPos;",
+          "varying float vUp;",
+          // Value noise for the ground. Not named noise*: those are reserved.
+          "float vhash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }",
+          "float vnoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);",
+          "  return mix(mix(vhash(i), vhash(i + vec2(1.0, 0.0)), f.x), mix(vhash(i + vec2(0.0, 1.0)), vhash(i + vec2(1.0, 1.0)), f.x), f.y); }",
+        ].join("\n"),
+      )
       .replace(
         "#include <color_fragment>",
         [
           "#include <color_fragment>",
-          "vec2 cellA = floor(vWorldPos.xz * 3.0); vec2 cellB = floor(vWorldPos.xz * 0.7);",
-          "float speck = fract(sin(dot(cellA, vec2(12.9898, 78.233))) * 43758.5453);",
-          "float patch = fract(sin(dot(cellB, vec2(39.3468, 11.135))) * 24634.6345);",
-          "diffuseColor.rgb *= 0.9 + 0.16 * speck + 0.1 * patch - 0.08;",
+          "float fine = vnoise(vWorldPos.xz * 2.6) * 0.6 + vnoise(vWorldPos.xz * 7.0) * 0.4;",
+          "float broad = vnoise(vWorldPos.xz * 0.11);",
+          "diffuseColor.rgb *= 0.86 + 0.18 * fine + 0.12 * broad;",
+          "diffuseColor.g *= 0.97 + 0.06 * broad;",
           "float snowMask = smoothstep(0.55, 0.9, vUp) * uSnow;",
           "diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.95, 0.98), snowMask);",
           "diffuseColor.rgb *= 1.0 - uWet * 0.28;",

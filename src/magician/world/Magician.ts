@@ -72,6 +72,8 @@ export interface MagicianWorld {
 }
 
 const V = new THREE.Vector3();
+const CAST_GESTURES = ["Punch", "ThumbsUp", "Jump", "Yes"];
+let lastEmote = 0;
 const C = new THREE.Color();
 const C2 = new THREE.Color();
 
@@ -439,7 +441,16 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     vibey,
     run(name, args) {
       const r = runTool(name, args, store);
-      if (r.toast) events.onToast?.(r.toast);
+      if (r.toast) {
+        events.onToast?.(r.toast);
+        // A spell landed: sparkles at Vibey's hands and a flourish, unless the
+        // model chose its own gesture this turn.
+        bursts.spawn("sparkle", vibey.position.x, vibey.position.y + 1.2, vibey.position.z);
+        if (name !== "emote" && performance.now() - lastEmote > 1500) {
+          lastEmote = performance.now();
+          vibey.emote(CAST_GESTURES[Math.floor(Math.random() * CAST_GESTURES.length)]);
+        }
+      }
       return r;
     },
     cast(text) {

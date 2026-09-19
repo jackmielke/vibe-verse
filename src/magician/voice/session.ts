@@ -47,6 +47,11 @@ export interface VoiceSession {
   disconnect(): void;
   /** Send a typed message as if spoken. */
   sendText(text: string): void;
+  /**
+   * Tell Vibey something the world did on its own (a fireball landed, the
+   * rain put the fire out) so it can react. Not shown as the visitor's words.
+   */
+  notify(text: string): void;
   setMuted(m: boolean): void;
   status(): VoiceStatus;
 }
@@ -90,13 +95,18 @@ async function callFunction(body: Record<string, unknown>): Promise<FnResponse> 
   return data;
 }
 
-/** Ask the function whether a key is configured at all. */
-export async function voiceAvailable(): Promise<boolean> {
+/**
+ * Ask the function whether a key is configured at all. `null` means the
+ * question could not be asked (offline, blocked), which is not the same as
+ * "no": the page only warns on an explicit no.
+ */
+export async function voiceAvailable(): Promise<boolean | null> {
   try {
-    const { data } = await supabase.functions.invoke<{ configured?: boolean }>(FUNCTION_NAME, { body: { action: "status" } });
-    return Boolean(data?.configured);
+    const { data, error } = await supabase.functions.invoke<{ configured?: boolean }>(FUNCTION_NAME, { body: { action: "status" } });
+    if (error || !data || typeof data.configured !== "boolean") return null;
+    return data.configured;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -373,6 +383,16 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
       } else {
         send({ type: "response.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: t }] } });
         send({ type: "response.create" });
+      }
+    },
+    notify(text) {
+      const t = text.trim();
+      if (!t || status !== "live") return;
+      if (opts.engine === "realtime") {
+        send({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: `[world event] ${t}` }] } });
+        send({ type: "response.create" });
+      } else {
+        send({ type: "session.commentary.append", delegation_id: null, content: t });
       }
     },
     setMuted(m) {
