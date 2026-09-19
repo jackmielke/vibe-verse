@@ -178,7 +178,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
         const headYaw = xrEuler.y;
         headYawXr = headYaw;
         fwd.set(-Math.sin(yaw + headYaw), 0, -Math.cos(yaw + headYaw));
-        right.set(fwd.z, 0, -fwd.x);
+        right.set(-fwd.z, 0, fwd.x); // +x when looking down -z: right is right
         vel.set(0, 0, 0).addScaledVector(fwd, -mz).addScaledVector(right, mx);
         if (vel.lengthSq() > 1) vel.normalize();
         if (vel.lengthSq() < 0.02) vel.set(0, 0, 0);
@@ -199,7 +199,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
           mz += Math.max(-1, Math.min(1, (t.y - t.y0) / 60));
         }
         fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
-        right.set(fwd.z, 0, -fwd.x);
+        right.set(-fwd.z, 0, fwd.x); // +x when looking down -z: right is right
         vel.set(0, 0, 0).addScaledVector(fwd, -mz).addScaledVector(right, mx);
         if (vel.lengthSq() > 1) vel.normalize();
         rig.rotation.y = yaw;
