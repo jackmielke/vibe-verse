@@ -32,6 +32,8 @@ export interface Vibey {
   /** Swap the body. Resolves when the new one is standing there. */
   setBody(id: string): Promise<void>;
   bodyId(): string;
+  /** What is actually mounted: mesh and material names, for scripts. */
+  debug(): { id: string; height: number; rotationY: number; meshes: Array<{ name: string; material: string; emissive: number }> };
   /** Where the head is, for the voice to come from. */
   position: THREE.Vector3;
   dispose(): void;
@@ -158,7 +160,7 @@ export function createVibey(initialId = "vibey"): Vibey {
         const std = m.material as THREE.MeshStandardMaterial;
         if (std && std.name === "Black") {
           // Lit goggles rather than holes.
-          const lens = new THREE.MeshStandardMaterial({ color: "#101018", roughness: 0.12, metalness: 0.5, emissive: new THREE.Color("#39d6ff"), emissiveIntensity: 0.12 });
+          const lens = new THREE.MeshStandardMaterial({ color: "#101018", roughness: 0.12, metalness: 0.5, emissive: new THREE.Color("#39d6ff"), emissiveIntensity: 0.06 });
           m.material = lens;
           own.push(lens);
         } else if (std && "metalness" in std) {
@@ -223,11 +225,11 @@ export function createVibey(initialId = "vibey"): Vibey {
   function loadRig(spec: CompanionSpec): Promise<Body> {
     if (!spec.spec) return loadRobot();
     return loadCharacterRig(spec.spec, { height: 1.6, fitBy: "height", center: true, castShadow: true }).then((rig: CharacterRig) => {
-      // The glTF roster faces -z; the procedural ones and the robot face +z.
-      // Everything downstream assumes +z, so turn the file-based ones round.
+      // Verified at noon with the sun behind the camera: the roster faces the
+      // same way as the robot, so no turn. (A flip was tried once; what looked
+      // like a back was a face in its own shadow at golden hour.)
       const wrap = new THREE.Group();
       wrap.add(rig.object);
-      if (spec.spec?.url) rig.object.rotation.y = Math.PI;
       return {
       id: spec.id,
       object: wrap,
@@ -346,6 +348,16 @@ export function createVibey(initialId = "vibey"): Vibey {
     setCaption(text) { drawCaption(text); captionAge = 0; },
     setBody,
     bodyId: () => bodyId,
+    debug() {
+      const meshes: Array<{ name: string; material: string; emissive: number }> = [];
+      body?.object.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.MeshStandardMaterial;
+        meshes.push({ name: m.name, material: mat?.name ?? "", emissive: mat?.emissiveIntensity ?? -1 });
+      });
+      return { id: bodyId, height: body?.height ?? 0, rotationY: body?.object.children[0]?.rotation.y ?? body?.object.rotation.y ?? 0, meshes };
+    },
     dispose() {
       loadToken++;
       tex.dispose();

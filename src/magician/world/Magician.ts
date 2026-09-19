@@ -698,6 +698,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     become: (id: string) => store.become(id),
     game: () => game.hud(),
     fire: () => fireFromCamera(),
+    companion: () => vibey.debug(),
     settle: (seconds = 6) => {
       // Fast-forward the eased look, for scripts on machines that render at
       // one frame a second. Physics and the player are left alone.
@@ -738,6 +739,7 @@ declare global {
       become(id: string): void;
       game(): GameHud | null;
       fire(): void;
+      companion(): ReturnType<Vibey["debug"]>;
       settle(seconds?: number): void;
     };
   }
