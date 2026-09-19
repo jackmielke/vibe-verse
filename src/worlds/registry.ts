@@ -36,6 +36,7 @@
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
+  "magician",            // …then the valley you talk to, which rebuilds itself as you speak
   "better-fortnite",     // …then the battle royale with everything in it
   "splash-royale",       // …and the water fight, which is the one you send to a friend
   "blob",                // …and the one you can explain in four words
@@ -143,6 +144,24 @@ export interface WorldEntry {
  * that reorders itself is a list nobody can build muscle memory for.
  */
 const WORLDS_RAW: WorldEntry[] = [
+  {
+    key: "magician",
+    route: "/magician",
+    aliases: ["/vibe-magician", "/hoshimura", "/genie"],
+    name: "The Magician",
+    emoji: "🪄",
+    kind: "hangout",
+    blurb:
+      "A valley village in rural Japan, and Vibey floating beside you in a wizard's hat. Say what you want the world to be, out loud, and it becomes it while you watch: rain, midnight, a cherry forest, northern lights, fireballs from the mountain. Rain puts the fireballs out.",
+    status: "Playable — voice over OpenAI Realtime 2.1 or Live 1, flat, phone, or VR headset",
+    accent: "#b98cff",
+    backdrop: "#1a1030",
+    featured: true,
+    source: "src/magician + src/pages/Magician.tsx + supabase/functions/vibe-magician-voice",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
   {
     key: "conservatory",
     route: "/conservatory",

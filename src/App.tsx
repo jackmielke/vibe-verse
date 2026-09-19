@@ -37,6 +37,7 @@ import NotFound from "./pages/NotFound.tsx";
  * The two exceptions above are deliberate and should stay at two.
  */
 const Index = lazy(() => import("./pages/Index.tsx"));
+const Magician = lazy(() => import("./pages/Magician.tsx"));
 const Unit7Playground = lazy(() => import("./pages/Unit7Playground.tsx"));
 const Lobby = lazy(() => import("./pages/Lobby.tsx"));
 const About = lazy(() => import("./pages/About.tsx"));
@@ -575,6 +576,12 @@ const App = () => (
               with the terrain tiles under it. Data and geometry in src/beck. */}
           {["/beck-road", "/beck", "/lytle-beach", "/blakely"].map((path) => (
             <Route key={path} path={path} element={<Beck />} />
+          ))}
+          {/* THE MAGICIAN: a valley in Japan you talk to. Vibey, a wizard's hat,
+              and OpenAI's realtime voice with tools that rewrite the world as
+              you speak. State, tools and renderer in src/magician. */}
+          {["/magician", "/vibe-magician", "/hoshimura", "/genie"].map((path) => (
+            <Route key={path} path={path} element={<Magician />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
