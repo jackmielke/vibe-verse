@@ -54,6 +54,17 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const FREE_SECONDS = 600;
 const SESSION_CAP_SECONDS = 600;
+/**
+ * The cap is soft: after the free minutes a device may keep talking, and the
+ * page asks for a donation instead of stopping. What is hard is the whole
+ * valley's day: past DAILY_CAP_SECONDS of talking across every device in a
+ * rolling 24 hours, minting stops until it rolls off, so a link that goes
+ * further than expected costs a bounded amount. At the published rates that
+ * is on the order of fifty dollars.
+ */
+const DAILY_CAP_SECONDS = 4 * 3600;
+/** Past this a device is asked, more insistently, to donate. Still not stopped. */
+const DEVICE_SOFT_MAX_SECONDS = 3600;
 const ADMIN_EMAILS = ["jackcmielke@gmail.com"];
 
 const JSON_HEADERS = { ...corsHeaders, "Content-Type": "application/json" };
@@ -257,12 +268,26 @@ function secondsLeft(u: Usage): number {
   return Math.max(0, FREE_SECONDS + u.seconds_granted - u.seconds_used);
 }
 
-function limitReply(u: Usage): Response {
+/** Seconds of talking across every device in the last 24 hours. */
+async function valleyDaySeconds(): Promise<number> {
+  const db = admin();
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const { data } = await db.from("vibe_magician_usage").select("seconds_used, session_started_at, session_last_seen_at, updated_at").gte("updated_at", since);
+  let total = 0;
+  for (const r of (data ?? []) as Array<{ seconds_used: number; session_started_at: string | null; session_last_seen_at: string | null }>) {
+    // seconds_used is lifetime; rows touched today are a fair upper bound of today.
+    total += r.seconds_used;
+    if (r.session_started_at) total += Math.min(SESSION_CAP_SECONDS, Math.round((Date.now() - new Date(r.session_started_at).getTime()) / 1000));
+  }
+  return total;
+}
+
+function dayCapReply(total: number): Response {
   return reply(402, {
-    error: "Out of free minutes",
-    code: "limit",
-    secondsUsed: u.seconds_used,
-    secondsFree: FREE_SECONDS + u.seconds_granted,
+    error: "The valley has talked enough for one day",
+    code: "daycap",
+    daySeconds: total,
+    dayCap: DAILY_CAP_SECONDS,
     payUrl: Deno.env.get("MAGICIAN_PAY_URL") ?? null,
   });
 }
@@ -295,6 +320,7 @@ Deno.serve(async (req) => {
       engines: apiKey ? ["realtime", "live"] : [],
       secondsLeft: exempt ? null : left,
       secondsFree: FREE_SECONDS,
+      softCap: true,
       unlimited: exempt,
       payUrl: Deno.env.get("MAGICIAN_PAY_URL") ?? null,
     });
@@ -308,8 +334,7 @@ Deno.serve(async (req) => {
       const running = Math.round((now.getTime() - started) / 1000);
       const left = Math.max(0, FREE_SECONDS + u.seconds_granted - u.seconds_used - running);
       await saveUsage({ ...u, session_last_seen_at: now.toISOString() }, ip);
-      if (left <= 0) return limitReply({ ...u, seconds_used: u.seconds_used + running });
-      return reply(200, { ok: true, secondsLeft: left });
+      return reply(200, { ok: true, secondsLeft: left, overFree: left <= 0 });
     } catch (err) {
       return reply(200, { ok: true, secondsLeft: null, note: err instanceof Error ? err.message : String(err) });
     }
@@ -335,7 +360,11 @@ Deno.serve(async (req) => {
     if (!device) return reply(400, { error: "A device id is required", code: "no_device" });
     try {
       usage = settle(await loadUsage(device), now);
-      if (secondsLeft(usage) <= 0) { await saveUsage(usage, ip); return limitReply(usage); }
+      const day = await valleyDaySeconds();
+      if (day >= DAILY_CAP_SECONDS) { await saveUsage(usage, ip); return dayCapReply(day); }
+      // Past the free minutes the device may continue; the page asks nicely.
+      // Past the soft maximum, only if the day still has room, and the page
+      // asks less nicely. Nothing here says no to a person, only to a day.
     } catch (err) {
       // If the ledger is unreachable, fail closed: the key is the expensive thing.
       return reply(503, { error: `The minute ledger is unavailable: ${err instanceof Error ? err.message : String(err)}` });
@@ -347,7 +376,7 @@ Deno.serve(async (req) => {
       await saveUsage({ ...usage, sessions: usage.sessions + 1, session_started_at: now.toISOString(), session_last_seen_at: now.toISOString() }, ip);
       // Tell the client how long it has, so it can count down and stop itself.
       const data = await res.json();
-      return reply(200, { ...data, secondsLeft: secondsLeft(usage) });
+      return reply(200, { ...data, secondsLeft: secondsLeft(usage), overFree: secondsLeft(usage) <= 0, secondsUsed: usage.seconds_used, insistent: usage.seconds_used >= DEVICE_SOFT_MAX_SECONDS });
     }
     return res;
   } catch (err) {

@@ -40,7 +40,7 @@ import { castSpell } from "../spellbook";
 import { heightAt, riverCentre, WATER_LEVEL } from "./noise";
 import { createTerrain, pathAt } from "./terrain";
 import { createSky } from "./sky";
-import { buildBridge, buildForest, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject, type TreeKind } from "./props";
+import { buildBoard, buildBridge, buildForest, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject, type TreeKind } from "./props";
 import { createBursts, createFireflies, createLightning, createPetals, createRain, createSnow } from "./weather";
 import { createFireballs } from "./fireballs";
 import { createAmbience } from "./audio";
@@ -98,6 +98,8 @@ export interface MagicianWorld {
   zoom(): number;
   /** The canvas, for the recorder. */
   canvas(): HTMLCanvasElement;
+  /** Names for the supporters' board on the square. */
+  setSupporters(lines: string[]): void;
   /** The ambience mix, for the recorder. */
   audioStream(): MediaStream | null;
   startGame(id: GameModeId): void;
@@ -270,6 +272,12 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   sign.group.position.set(LANDMARKS.bridge.x - 14, heightAt(LANDMARKS.bridge.x - 14, LANDMARKS.bridge.z + 3), LANDMARKS.bridge.z + 3);
   sign.group.rotation.y = -0.6;
   scene.add(sign.group);
+
+  // The supporters' board, on the square, where everyone arrives.
+  const board = buildBoard();
+  board.group.position.set(6, heightAt(6, -3), -3);
+  board.group.rotation.y = 2.4;
+  scene.add(board.group);
 
   // ---- conjured things ------------------------------------------------------
   const spawned = new Map<number, { obj: PropObject; prop: Prop }>();
@@ -727,6 +735,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     setZoom: (z) => { zoomLevel = Math.max(0.6, Math.min(1.8, z)); applyFov(); },
     zoom: () => zoomLevel,
     canvas: () => renderer.domElement,
+    setSupporters: (lines) => board.setLines("Supporters of Hoshimura", lines),
     audioStream: () => ambience.stream(),
     startGame: (id) => game.start(id),
     stopGame: () => game.stop(),
@@ -757,6 +766,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       sky.dispose();
       rain.dispose(); snow.dispose(); petals.dispose(); fireflies.dispose(); bursts.dispose(); fireballs.dispose();
       sign.dispose();
+      board.dispose();
       for (const p of fixed) p.dispose();
       forest.dispose();
       rayGeo.dispose();

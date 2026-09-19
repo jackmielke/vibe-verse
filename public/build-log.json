@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-09-19T21:28:05.613Z",
+  "generated_at": "2026-09-19T21:37:19.957Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "cebaac5e",
+      "date": "2026-09-19",
+      "subject": "The Magician: ten free minutes of voice per device",
+      "lede": "Every minute of the voice costs real money and the link is going public, so vibe-magician-voice now keeps a ledger (vibe_magician_usage) and gives each device ten free minutes. A session is charged on the server clock from the mint to the last heartbeat; the client heartbeats every thirty seconds and counts down locally, ending the call itself when the minutes run out; a client that goes quiet is charged for its whol",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 7
+    },
     {
       "sha": "5b1e602f",
       "date": "2026-09-19",
@@ -985,14 +995,6 @@
       "lede": "A separate realm in the same world: a municipal water park on the island's NE shelf. A 28 m tower of flumes into three splash pools, a wave pool with a shelving floor you can walk into, a 163 m lazy river whose current actually carries you, splash pads with a bucket always tipping, a diving stack, cabins, a kiosk, a car park, and twenty-two signs in one draw call. 1,319 colliders. Built BEFORE props and vegetation in",
       "places": [],
       "files": 8
-    },
-    {
-      "sha": "ceeecb94",
-      "date": "2026-08-18",
-      "subject": "npm run stamp",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_017vYGwEXHXBMSj4cT1EfrNF",
-      "places": [],
-      "files": 3
     }
   ]
 }

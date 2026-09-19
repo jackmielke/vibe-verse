@@ -56,6 +56,8 @@ export interface LimitInfo {
   secondsUsed: number;
   secondsFree: number;
   payUrl: string | null;
+  /** True when it is the whole valley's day that is spent, not this device. */
+  day?: boolean;
 }
 
 export interface VoiceHandlers {
@@ -71,8 +73,10 @@ export interface VoiceHandlers {
   onListening(active: boolean): void;
   /** Seconds of free talking left, whenever the function says. */
   onBudget?(secondsLeft: number | null): void;
-  /** The device is out of minutes. */
+  /** The device is out of minutes (hard stop: only the valley's daily cap). */
   onLimit?(info: LimitInfo): void;
+  /** The device is past its free minutes but still talking; ask nicely, once. */
+  onOverFree?(insistent: boolean): void;
 }
 
 export interface VoiceSession {
@@ -113,6 +117,10 @@ interface FnResponse {
   secondsUsed?: number;
   secondsFree?: number;
   payUrl?: string | null;
+  overFree?: boolean;
+  insistent?: boolean;
+  daySeconds?: number;
+  dayCap?: number;
 }
 
 export class LimitError extends Error {
@@ -128,7 +136,7 @@ async function callFunction(body: Record<string, unknown>): Promise<FnResponse> 
     if (ctx && typeof ctx.json === "function") {
       let j: FnResponse | null = null;
       try { j = (await ctx.json()) as FnResponse; } catch { j = null; }
-      if (j?.code === "limit") throw new LimitError({ secondsUsed: j.secondsUsed ?? 0, secondsFree: j.secondsFree ?? 600, payUrl: j.payUrl ?? null });
+      if (j?.code === "limit" || j?.code === "daycap") throw new LimitError({ secondsUsed: j.secondsUsed ?? j.daySeconds ?? 0, secondsFree: j.secondsFree ?? j.dayCap ?? 600, payUrl: j.payUrl ?? null, day: j.code === "daycap" });
       if (j?.error) throw new Error(j.error);
     }
     throw new Error(error.message);
@@ -368,6 +376,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
         const minted = await callFunction({ action: "realtime", instructions: VIBEY_REALTIME_PROMPT, tools, voice: opts.voice ?? "marin" });
         if (!minted.value) throw new Error("No client secret returned");
         armBudget(minted.secondsLeft ?? null);
+        if (minted.overFree) handlers.onOverFree?.(Boolean(minted.insistent));
         const resp = await fetch("https://api.openai.com/v1/realtime/calls", {
           method: "POST",
           headers: { Authorization: `Bearer ${minted.value}`, "Content-Type": "application/sdp" },
@@ -392,6 +401,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
         });
         if (!opened.sdp) throw new Error("No SDP answer returned for the live session");
         armBudget(opened.secondsLeft ?? null);
+        if (opened.overFree) handlers.onOverFree?.(Boolean(opened.insistent));
         await pc.setRemoteDescription({ type: "answer", sdp: opened.sdp });
         dc.onopen = () => {
           // session.started arrives on the channel and flips status to live.
@@ -416,13 +426,18 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
   function armBudget(secondsLeft: number | null) {
     disarmBudget();
     handlers.onBudget?.(secondsLeft);
+    let asked = false;
     heartbeat = window.setInterval(() => {
       void callFunction({ action: "heartbeat" })
-        .then((r) => { if (typeof r.secondsLeft === "number") handlers.onBudget?.(r.secondsLeft); })
+        .then((r) => {
+          if (typeof r.secondsLeft === "number") handlers.onBudget?.(r.secondsLeft);
+          if (r.overFree && !asked) { asked = true; handlers.onOverFree?.(false); }
+        })
         .catch((e) => { if (e instanceof LimitError) outOfMinutes(e.info); });
     }, 30_000);
-    if (secondsLeft !== null) {
-      budgetTimer = window.setTimeout(() => outOfMinutes({ secondsUsed: 0, secondsFree: 0, payUrl: null }), Math.max(1000, secondsLeft * 1000));
+    // The free minutes running out is a nudge, not a hang-up.
+    if (secondsLeft !== null && secondsLeft > 0) {
+      budgetTimer = window.setTimeout(() => { if (!asked) { asked = true; handlers.onOverFree?.(false); } }, Math.max(1000, secondsLeft * 1000));
     }
   }
   function disarmBudget() {

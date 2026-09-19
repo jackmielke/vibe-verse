@@ -19,6 +19,8 @@ import { MODE_INFO, type GameHud, type GameModeId } from "@/magician/game/types"
 import { Joystick } from "@/magician/ui/Joystick";
 import { readRoom } from "@/magician/net";
 import { createRecorder, type Recorder } from "@/magician/record";
+import { DONATE_URL, loadSupporters, openDonate, recentlyDonated, signBoard, type Supporter } from "@/magician/support";
+import { deviceId } from "@/magician/voice/session";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -55,6 +57,19 @@ export default function Magician() {
   const [budget, setBudget] = useState<VoiceBudget | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [limit, setLimit] = useState<LimitInfo | null>(null);
+  const [ask, setAsk] = useState<null | { insistent: boolean }>(null);
+  const [supporters, setSupporters] = useState<Supporter[]>([]);
+  const [signName, setSignName] = useState("");
+  const [signMsg, setSignMsg] = useState("");
+  const [signed, setSigned] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
+  const refreshSupporters = useCallback(async () => {
+    const list = await loadSupporters();
+    setSupporters(list);
+    worldRef.current?.setSupporters(list.map((s) => (s.message ? `${s.name} · ${s.message}` : s.name)));
+  }, []);
+  const refreshSupportersRef = useRef(refreshSupporters);
+  refreshSupportersRef.current = refreshSupporters;
   const [text, setText] = useState("");
   const [hudHidden, setHudHidden] = useState(false);
   const [companion, setCompanion] = useState<string>(() => readCompanion());
@@ -167,6 +182,7 @@ export default function Magician() {
     recorderRef.current = createRecorder(world.canvas(), () => [world.audioStream(), ...(sessionRef.current?.streams() ?? [])].filter((s): s is MediaStream => Boolean(s)));
     worldRef.current = world;
     world.wake();
+    void refreshSupportersRef.current();
     setState(world.getState());
     // Only offer VR where a headset can actually answer; three's button
     // otherwise sits there saying "VR NOT SUPPORTED" in a HUD that is
@@ -209,7 +225,8 @@ export default function Magician() {
         onSpeaking: (level) => world.vibey.setSpeaking(level),
         onListening: (on) => world.vibey.setListening(on),
         onBudget: (left) => setSecondsLeft(left),
-        onLimit: (info) => { setLimit(info); setSecondsLeft(0); world.vibey.setCaption("That is all my voice for today. Type to me, or come back tomorrow."); },
+        onLimit: (info) => { setLimit(info); setSecondsLeft(0); world.vibey.setCaption(info.day ? "The whole valley has talked itself hoarse for today. Type to me, or come back tomorrow." : "That is all my voice for now. Type to me."); },
+        onOverFree: (insistent) => { if (!recentlyDonated()) setAsk({ insistent }); },
       },
     });
     sessionRef.current = session;
@@ -280,7 +297,7 @@ export default function Magician() {
   }, [state.timeOfDay]);
 
   const talkLabel =
-    status === "connecting" ? "Connecting…" : status === "live" ? (micMuted ? "Mic muted" : secondsLeft !== null && secondsLeft < 120 ? `Listening · ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}` : "Listening") : limit ? "Out of minutes" : "Talk to Vibey";
+    status === "connecting" ? "Connecting…" : status === "live" ? (micMuted ? "Mic muted" : secondsLeft !== null && secondsLeft > 0 && secondsLeft < 120 ? `Listening · ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}` : "Listening") : limit?.day ? "Voice resting today" : "Talk to Vibey";
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#1a1030] text-white">
@@ -291,19 +308,70 @@ export default function Magician() {
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-6 backdrop-blur-sm" data-ui="1">
           <div className="max-w-md rounded-2xl border border-white/15 bg-[#1b1633]/95 p-6 text-center">
             <p className="text-[11px] uppercase tracking-[0.4em] text-[#b98cff]">the magician</p>
-            <h2 className="mt-3 font-serif text-3xl text-[#f3ecff]">Your free minutes are up</h2>
+            <h2 className="mt-3 font-serif text-3xl text-[#f3ecff]">{limit.day ? "The valley is resting its voice" : "Vibey's voice is resting"}</h2>
             <p className="mt-4 text-sm leading-relaxed text-[#cbbde6]">
-              Every device gets {Math.round(limit.secondsFree / 60)} minutes of Vibey's voice for free, because each minute costs real money. You used yours well.
-              The valley still works: type your wishes below, walk, play the games, and share the link.
+              {limit.day
+                ? "Everyone together has talked to Vibey for hours today, and every minute costs real money, so the voice sleeps until tomorrow. Everything else still works: type your wishes below, walk, play the games, share the link."
+                : "The voice is unavailable for the moment. Type your wishes below; the valley still listens."}
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
-              {limit.payUrl ? (
-                <a href={limit.payUrl} target="_blank" rel="noreferrer" className="rounded-full bg-[#b98cff] px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.25em] text-[#1a1030]">Get more minutes</a>
-              ) : (
-                <span className="rounded-full border border-white/15 px-5 py-2.5 text-[11px] uppercase tracking-[0.25em] text-white/60">More minutes coming soon</span>
-              )}
+              <button onClick={() => { openDonate(); }} className="rounded-full bg-[#b98cff] px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.25em] text-[#1a1030]">Support the valley</button>
               <button onClick={() => setLimit(null)} className="rounded-full border border-white/25 px-5 py-2.5 text-[11px] uppercase tracking-[0.25em] text-white/80">Keep exploring</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* The gentle ask: free minutes are up, keep going, consider chipping in. */}
+      {entered && ask && !limit && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 px-6 backdrop-blur-sm" data-ui="1">
+          <div className="max-w-md rounded-2xl border border-white/15 bg-[#1b1633]/95 p-6 text-center">
+            <p className="text-[11px] uppercase tracking-[0.4em] text-[#b98cff]">the magician</p>
+            <h2 className="mt-3 font-serif text-3xl text-[#f3ecff]">{ask.insistent ? "You have talked for an hour" : "Ten minutes, on the house"}</h2>
+            <p className="mt-4 text-sm leading-relaxed text-[#cbbde6]">
+              Every minute with Vibey costs real money on the other end. You are welcome to keep going, truly. If it made you smile, chip in whatever you like and your name goes on the board on the square, where everyone arrives.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              <button onClick={() => { openDonate(); setAsk(null); setShowSupport(true); }} className="rounded-full bg-[#b98cff] px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.25em] text-[#1a1030]">Chip in</button>
+              <button onClick={() => setAsk(null)} className="rounded-full border border-white/25 px-5 py-2.5 text-[11px] uppercase tracking-[0.25em] text-white/80">Keep talking</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The supporters' board, and the pen to sign it. */}
+      {entered && showSupport && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm" data-ui="1" onClick={() => setShowSupport(false)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1633]/95 p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[11px] uppercase tracking-[0.4em] text-[#b98cff]">supporters of hoshimura</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#cbbde6]">The voice runs on donations. Chip in any amount, then sign the board; the names stand on the square for everyone who arrives.</p>
+            <div className="mt-3 flex gap-2">
+              <a href={DONATE_URL} target="_blank" rel="noreferrer" onClick={() => openDonate()} className="rounded-full bg-[#b98cff] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.2em] text-[#1a1030]">Donate</a>
+              <button onClick={() => setShowSupport(false)} className="rounded-full border border-white/25 px-4 py-2 text-[11px] uppercase tracking-[0.2em] text-white/80">Close</button>
+            </div>
+            {!signed ? (
+              <form
+                className="mt-4 flex flex-col gap-2"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const ok = await signBoard(signName, signMsg, null, deviceId());
+                  if (ok) { setSigned(true); void refreshSupporters(); worldRef.current?.vibey.setCaption(`${signName.trim()}, your name is on the board. Thank you.`); }
+                }}
+              >
+                <input value={signName} onChange={(e) => setSignName(e.target.value)} maxLength={40} placeholder="Your name for the board" className="h-10 rounded-md border border-white/15 bg-black/30 px-3 text-sm text-white placeholder:text-white/40 outline-none" />
+                <input value={signMsg} onChange={(e) => setSignMsg(e.target.value)} maxLength={140} placeholder="A line, if you like" className="h-10 rounded-md border border-white/15 bg-black/30 px-3 text-sm text-white placeholder:text-white/40 outline-none" />
+                <button type="submit" disabled={!signName.trim()} className="h-10 rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 text-[11px] uppercase tracking-[0.2em] text-[#d8ffe9] disabled:opacity-40">Sign the board</button>
+                <p className="text-[10px] text-white/40">Signing is on your honour; the board says "as told to us".</p>
+              </form>
+            ) : (
+              <p className="mt-4 text-sm text-[#d8ffe9]">Signed. Thank you.</p>
+            )}
+            <ul className="mt-4 max-h-56 space-y-1.5 overflow-y-auto text-sm">
+              {supporters.length === 0 && <li className="text-white/40">Nobody yet. Your name could be first.</li>}
+              {supporters.map((s) => (
+                <li key={s.id} className="text-[#e9ddff]"><span className="font-medium">{s.name}</span>{s.message ? <span className="text-white/60"> · {s.message}</span> : null}</li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
@@ -347,7 +415,7 @@ export default function Magician() {
               W A S D to walk · drag to look · space to jump · then press Talk
               {available === false && <span className="block mt-2 text-[#ff9a7a]">Vibey's voice is not connected on this deploy (no OpenAI key); the spellbook still works by text.</span>}
               {budget && budget.configured && !budget.unlimited && budget.secondsLeft !== null && (
-                <span className="block mt-2 text-[#cbbde6]">{budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} free minutes of voice left on this device` : "Your free voice minutes are used up; typing still works"}</span>
+                <span className="block mt-2 text-[#cbbde6]">{budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} free minutes of voice on this device, then it runs on donations` : "Your free minutes are used; keep going, and consider chipping in"}</span>
               )}
               {budget?.unlimited && <span className="block mt-2 text-[#73ffb8]">Signed in as an admin: no voice limit</span>}
             </p>
@@ -406,6 +474,9 @@ export default function Magician() {
             <button onClick={() => void toggleRecording()} className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/70 hover:text-white"}`}>
               {recording ? `● ${recSeconds}s stop` : "record"}
             </button>
+            <button onClick={() => setShowSupport(true)} className="rounded-sm border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-[#d8ffe9] hover:bg-[#73ffb8]/30">
+              support
+            </button>
             <Link to="/" className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               out
             </Link>
@@ -429,6 +500,7 @@ export default function Magician() {
                 <button onClick={() => setMuted((m) => !m)} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">{muted ? "sound off" : "sound on"}</button>
                 <button onClick={invite} className="rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">{copied ? "copied" : "invite"}</button>
                 <button onClick={() => void toggleRecording()} className={`col-span-2 rounded-md border px-2 py-2 ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/80"}`}>{recording ? `● recording ${recSeconds}s · stop and share` : "record a clip"}</button>
+                <button onClick={() => { setShowSupport(true); setMenuOpen(false); }} className="col-span-2 rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">support the valley · the board</button>
                 <button onClick={() => { setHudHidden(true); setMenuOpen(false); }} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">hide hud</button>
                 <Link to="/" className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-center text-white/80">leave</Link>
               </div>
@@ -535,7 +607,7 @@ export default function Magician() {
             {status === "error" && detail && <div className="max-w-xl rounded-md bg-[#5a1a1a]/80 px-3 py-1.5 text-xs text-[#ffd0c8]">{detail}</div>}
             <div className="flex w-full max-w-xl items-center gap-2">
               <button
-                onClick={() => (limit ? setLimit(limit) : void startVoice())}
+                onClick={() => (limit?.day ? setLimit({ ...limit }) : void startVoice())}
                 disabled={available === false}
                 className={`relative flex h-12 shrink-0 items-center gap-2 rounded-full px-5 text-xs font-medium uppercase tracking-[0.2em] transition disabled:opacity-40 ${
                   status === "live" ? "bg-[#73ffb8] text-[#0c2a1b]" : status === "connecting" ? "bg-[#b98cff]/60 text-white" : "bg-[#b98cff] text-[#1a1030] hover:bg-[#cdaaff]"

@@ -702,6 +702,58 @@ export function buildSign(): Sign {
   };
 }
 
+/** The supporters' board: a taller sign with up to eight lines on it. */
+export interface Board {
+  group: THREE.Group;
+  setLines(title: string, lines: string[]): void;
+  dispose(): void;
+}
+
+export function buildBoard(): Board {
+  const group = new THREE.Group();
+  const postG = new THREE.BoxGeometry(0.12, 2.6, 0.12);
+  group.add(mesh(postG, darkWood, -0.9, 1.3, 0), mesh(postG, darkWood, 0.9, 1.3, 0));
+  const canvas = document.createElement("canvas");
+  canvas.width = 768;
+  canvas.height = 640;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const boardMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 });
+  const board = mesh(new THREE.BoxGeometry(2.1, 1.75, 0.06), boardMat, 0, 1.75, 0);
+  const roof = mesh(new THREE.BoxGeometry(2.4, 0.08, 0.5), tile, 0, 2.68, 0);
+  const lamp = new THREE.PointLight("#ffd28a", 0.8, 5, 2);
+  lamp.position.set(0, 2.5, 0.5);
+  group.add(board, roof, lamp);
+  const draw = (title: string, lines: string[]) => {
+    const c = canvas.getContext("2d")!;
+    c.fillStyle = "#8a6238";
+    c.fillRect(0, 0, 768, 640);
+    c.strokeStyle = "#5a3d20";
+    c.lineWidth = 12;
+    c.strokeRect(8, 8, 752, 624);
+    c.fillStyle = "#f6e9c8";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.font = "600 44px Georgia, serif";
+    c.fillText(title, 384, 60);
+    c.font = "400 30px Georgia, serif";
+    const shown = lines.slice(0, 9);
+    if (!shown.length) { c.font = "italic 30px Georgia, serif"; c.fillText("Your name could be first.", 384, 320); }
+    shown.forEach((l, i) => {
+      let t = l;
+      while (c.measureText(t).width > 700 && t.length > 4) t = t.slice(0, -4) + "…";
+      c.fillText(t, 384, 120 + i * 56);
+    });
+    tex.needsUpdate = true;
+  };
+  draw("Supporters of Hoshimura", []);
+  return {
+    group,
+    setLines: draw,
+    dispose() { tex.dispose(); boardMat.dispose(); postG.dispose(); },
+  };
+}
+
 /** The bridge over the river at the east end of the village road. */
 export function buildBridge(x: number, z: number): THREE.Group {
   const g = new THREE.Group();
