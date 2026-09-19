@@ -469,18 +469,23 @@ The shape of it, because it is the shape the next voice world should copy:
   pinch multiplies it (0.6 to 1.8). `scripts/magician-phone.mjs` drives the
   stick and the pinch with synthetic events and reads back
   `window.__magician.player()` to prove both moved something.
-- **Ten free minutes of voice per device**, enforced by the function that
-  holds the key, never by the page. `vibe_magician_usage` is the ledger
-  (RLS on, no policies, service role only); a session is charged on the
-  server clock from mint to last heartbeat, a silent client is charged for
-  its whole session next time it asks, and a device with nothing left gets a
-  402 the page turns into an out-of-minutes screen. Signed-in admins are
-  exempt. `select public.vibe_magician_grant(device, seconds)` tops a device
-  up by hand; set `MAGICIAN_PAY_URL` as a secret to offer a checkout link
-  (a Stripe Payment Link works with no code) and `MAGICIAN_ADMIN_EMAILS` for
-  more exempt people. The device id is `localStorage["magician.device"]`,
-  which a determined person can reset: this is a spending guard, not a
-  paywall.
+- **Ten free minutes of voice per device, then donations, then a daily
+  ceiling.** Enforced by the function that holds the key, never by the page.
+  `vibe_magician_usage` is the ledger (RLS on, no policies, service role
+  only); a session is charged on the server clock from mint to last
+  heartbeat and a silent client pays for its whole session next time it
+  asks. At ten minutes the page asks once, gently, and the visitor may keep
+  going; the hard stop is the whole valley's day (`DAILY_CAP_SECONDS`, four
+  hours across every device in a rolling 24 hours, roughly fifty dollars),
+  which comes back as a 402 with `code: "daycap"`. Signed-in admins are
+  exempt. Donations are a Stripe Payment Link with a customer-chosen amount
+  (`DONATE_URL` in `support.ts`), and `vibe_magician_supporters` is the
+  board on the square: a guestbook the visitor signs after donating, until
+  a Stripe webhook verifies it. `select public.vibe_magician_grant(device,
+  seconds)` tops a device up by hand; the device id is
+  `localStorage["magician.device"]`.
+  `select sum(seconds_used) from vibe_magician_usage where updated_at > now()
+  - interval '24 hours'` is today's bill in seconds.
 - **Never grab pointer lock on a headset browser.** Quest's browser points
   with a laser, and a page that locks the pointer on its first click stops
   answering clicks. `player.ts` skips the lock wherever `immersive-vr` is
