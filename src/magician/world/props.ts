@@ -8,6 +8,7 @@
  * is its natural size. `Magician.ts` places it on `heightAt`.
  */
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { heightAt, riverCentre, WATER_LEVEL } from "./noise";
 import type { PropKind, Season } from "../state";
 
@@ -421,6 +422,106 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
         const me = o as THREE.Mesh;
         if (me.isMesh && !geoCache.has(me.geometry.uuid) && ![...geoCache.values()].includes(me.geometry)) me.geometry.dispose();
       });
+    },
+  };
+}
+
+/**
+ * A forest as a handful of draw calls.
+ *
+ * Two hundred and forty trees built one at a time are seventeen hundred
+ * meshes, which is fine on a desktop GPU and a slideshow on a headset. So the
+ * fixed forest is merged: one geometry per species for the canopies (so the
+ * season can still recolour each species through its one material) and one
+ * for all the trunks. These trees do not sway; the conjured ones still do.
+ */
+export type TreeKind = "tree" | "sakura" | "maple" | "pine";
+
+export interface Forest {
+  group: THREE.Group;
+  /** One material per species, for the season to recolour. */
+  foliage: Record<TreeKind, THREE.MeshStandardMaterial>;
+  dispose(): void;
+}
+
+export function buildForest(trees: Array<{ kind: TreeKind; x: number; z: number; yaw: number; scale: number }>, season: Season): Forest {
+  const group = new THREE.Group();
+  const foliage = {
+    tree: canopyMaterial(FOLIAGE[season].tree),
+    sakura: canopyMaterial(FOLIAGE[season].sakura),
+    maple: canopyMaterial(FOLIAGE[season].maple),
+    pine: canopyMaterial(FOLIAGE[season].pine),
+  };
+  const canopyParts: Record<TreeKind, THREE.BufferGeometry[]> = { tree: [], sakura: [], maple: [], pine: [] };
+  const trunkParts: THREE.BufferGeometry[] = [];
+  const blob = new THREE.IcosahedronGeometry(1, 1);
+  const cone = new THREE.ConeGeometry(1, 1, 8);
+  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.22, 1, 7);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const s = new THREE.Vector3();
+  const p = new THREE.Vector3();
+  const tree = new THREE.Matrix4();
+  const part = (g: THREE.BufferGeometry, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+    m.compose(p.set(x, y, z), q.identity(), s.set(sx, sy, sz)).premultiply(tree);
+    const c = g.clone();
+    c.applyMatrix4(m);
+    return c;
+  };
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  for (const t of trees) {
+    tree.compose(p.set(t.x, heightAt(t.x, t.z), t.z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw), s.set(t.scale, t.scale, t.scale));
+    if (t.kind === "pine") {
+      const h = 3 + rnd() * 2;
+      trunkParts.push(part(trunkGeo, 0, h * 0.35, 0, 1, h * 0.7, 1));
+      for (let i = 0; i < 3; i++) canopyParts.pine.push(part(cone, 0, h * 0.45 + i * h * 0.22, 0, 1.5 - i * 0.35, h * 0.45, 1.5 - i * 0.35));
+    } else {
+      const h = 2.2 + rnd() * 1.2;
+      trunkParts.push(part(trunkGeo, 0, h / 2, 0, 1, h, 1));
+      const r = t.kind === "sakura" ? 1.7 : 1.5;
+      const y = h - 0.4;
+      const n = 5;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + 0.7;
+        const k = r * (0.7 + (i % 3) * 0.12);
+        canopyParts[t.kind].push(part(blob, Math.cos(a) * r * 0.45, y + (i % 2) * r * 0.3, Math.sin(a) * r * 0.45, k, k, k));
+      }
+      canopyParts[t.kind].push(part(blob, 0, y + r * 0.5, 0, r * 0.85, r * 0.85, r * 0.85));
+    }
+  }
+  const merged: THREE.BufferGeometry[] = [];
+  for (const kind of Object.keys(canopyParts) as TreeKind[]) {
+    const parts = canopyParts[kind];
+    if (!parts.length) continue;
+    const g = mergeGeometries(parts, false);
+    if (!g) continue;
+    const mesh = new THREE.Mesh(g, foliage[kind]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.name = `forest-${kind}`;
+    group.add(mesh);
+    merged.push(g);
+    for (const pg of parts) pg.dispose();
+  }
+  if (trunkParts.length) {
+    const g = mergeGeometries(trunkParts, false);
+    if (g) {
+      const mesh = new THREE.Mesh(g, trunk);
+      mesh.castShadow = true;
+      mesh.name = "forest-trunks";
+      group.add(mesh);
+      merged.push(g);
+    }
+    for (const pg of trunkParts) pg.dispose();
+  }
+  blob.dispose(); cone.dispose(); trunkGeo.dispose();
+  return {
+    group,
+    foliage,
+    dispose() {
+      for (const g of merged) g.dispose();
+      for (const mat of Object.values(foliage)) mat.dispose();
     },
   };
 }

@@ -97,12 +97,14 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
   const xrEuler = new THREE.Euler();
   let snapCooldown = 0;
   let xrJumpLatch = false;
+  let headYawXr = 0;
 
   return {
     rig,
     camera,
     position: rig.position,
-    yaw() { return yaw; },
+    /** Where the player is looking: rig yaw, plus the headset's own yaw in VR. */
+    yaw() { return yaw + headYawXr; },
     active() { return locked || touches.size > 0; },
     update(dt, groundAt, opts) {
       let mx = 0, mz = 0, jump = false;
@@ -124,6 +126,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
         // Head yaw in rig space.
         xrEuler.setFromQuaternion(opts.xrCamera.quaternion, "YXZ");
         const headYaw = xrEuler.y;
+        headYawXr = headYaw;
         fwd.set(-Math.sin(yaw + headYaw), 0, -Math.cos(yaw + headYaw));
         right.set(fwd.z, 0, -fwd.x);
         vel.set(0, 0, 0).addScaledVector(fwd, -mz).addScaledVector(right, mx);
@@ -148,6 +151,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
         if (vel.lengthSq() > 1) vel.normalize();
         rig.rotation.y = yaw;
         head.rotation.x = pitch;
+        headYawXr = 0;
       }
       const run = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 1.8 : 1;
       const speed = 4.2 * opts.speed * run;

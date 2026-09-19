@@ -39,7 +39,7 @@ import { castSpell } from "../spellbook";
 import { heightAt, riverCentre, WATER_LEVEL } from "./noise";
 import { createTerrain, pathAt } from "./terrain";
 import { createSky } from "./sky";
-import { buildBridge, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject } from "./props";
+import { buildBridge, buildForest, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject, type TreeKind } from "./props";
 import { createBursts, createFireflies, createLightning, createPetals, createRain, createSnow } from "./weather";
 import { createFireballs } from "./fireballs";
 import { createAmbience } from "./audio";
@@ -175,7 +175,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   for (let i = 0; i < 7; i++) place("bamboo", 44 + Math.random() * 14, 62 + Math.random() * 12);
   // Trees: sakura around the village and up the shrine path, maples by the
   // lake, pines on the slopes, generic trees everywhere else.
-  const treeCount = 240;
+  const treeCount = 260;
+  const forestTrees: Array<{ kind: TreeKind; x: number; z: number; yaw: number; scale: number }> = [];
   let placed = 0, tries = 0;
   while (placed < treeCount && tries++ < 4000) {
     const x = (Math.random() - 0.5) * 380;
@@ -190,10 +191,13 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (Math.hypot(x - LANDMARKS.torii.x, z - LANDMARKS.torii.z) < 5) continue;
     const h = heightAt(x, z);
     if (h < WATER_LEVEL + 0.5 || h > 95) continue;
-    const kind = r < 60 && Math.random() < 0.55 ? "sakura" : Math.hypot(x - 60, z - 56) < 45 && Math.random() < 0.6 ? "maple" : h > 30 || Math.random() < 0.35 ? "pine" : "tree";
-    place(kind, x, z, Math.random() * 6.28, 0.9 + Math.random() * 0.5);
+    const kind: TreeKind = r < 60 && Math.random() < 0.55 ? "sakura" : Math.hypot(x - 60, z - 56) < 45 && Math.random() < 0.6 ? "maple" : h > 30 || Math.random() < 0.35 ? "pine" : "tree";
+    forestTrees.push({ kind, x, z, yaw: Math.random() * 6.28, scale: 0.9 + Math.random() * 0.5 });
     placed++;
   }
+  const forest = buildForest(forestTrees, state0.season);
+  scene.add(forest.group);
+  for (const kind of ["tree", "sakura", "maple", "pine"] as const) foliageMats.push({ mat: forest.foliage[kind], kind });
   // The mountain's mouth: where the fireballs come from.
   const crater = new THREE.Mesh(new THREE.CylinderGeometry(6, 9, 3, 12), new THREE.MeshStandardMaterial({ color: "#3a2a26", emissive: "#ff5a1f", emissiveIntensity: 0.25, roughness: 1 }));
   crater.position.set(110, heightAt(110, -120) + 1, -120);
@@ -427,6 +431,26 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   }
   renderer.setAnimationLoop(frame);
 
+  // A headset has a mobile GPU and two eyes. Halve the shadow map for the
+  // session and put it back after.
+  const onXrStart = () => {
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.needsUpdate = true;
+  };
+  const onXrEnd = () => {
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.needsUpdate = true;
+    onResize();
+  };
+  renderer.xr.addEventListener("sessionstart", onXrStart);
+  renderer.xr.addEventListener("sessionend", onXrEnd);
+
   const onResize = () => {
     if (renderer.xr.isPresenting) return;
     const w = container.clientWidth, h = container.clientHeight;
@@ -485,6 +509,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       rain.dispose(); snow.dispose(); petals.dispose(); fireflies.dispose(); bursts.dispose(); fireballs.dispose();
       sign.dispose();
       for (const p of fixed) p.dispose();
+      forest.dispose();
+      renderer.xr.removeEventListener("sessionstart", onXrStart);
+      renderer.xr.removeEventListener("sessionend", onXrEnd);
       for (const s of spawned.values()) s.obj.dispose();
       disposeSharedProps();
       crater.geometry.dispose();
