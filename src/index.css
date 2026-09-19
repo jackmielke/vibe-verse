@@ -158,20 +158,20 @@
 }
 
 .magician-splash__scene {
-  animation: magician-scene-arrive 2.8s cubic-bezier(0.22, 1, 0.36, 1) both;
-  filter: saturate(0.82) contrast(1.08);
+  animation: magician-scene-arrive 4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  filter: saturate(0.68) contrast(0.96) brightness(0.9);
 }
 
 .magician-splash__veil {
   background:
-    radial-gradient(circle at 50% 45%, transparent 0 18%, hsl(var(--magician-ink) / 0.08) 34%, hsl(var(--magician-ink) / 0.68) 82%),
-    linear-gradient(to bottom, hsl(var(--magician-ink) / 0.38), transparent 35%, hsl(var(--magician-ink) / 0.75));
+    radial-gradient(circle at 50% 46%, transparent 0 22%, hsl(var(--magician-ink) / 0.05) 42%, hsl(var(--magician-ink) / 0.52) 88%),
+    linear-gradient(to bottom, hsl(var(--magician-ink) / 0.24), transparent 35%, hsl(var(--magician-ink) / 0.7));
 }
 
 .magician-splash__mist {
   background: linear-gradient(to top, hsl(var(--magician-mist) / 0.22), transparent);
   filter: blur(34px);
-  opacity: 0.55;
+  opacity: 0.4;
   transform: translate3d(-8%, 14%, 0) scale(1.15);
   animation: magician-mist-drift 14s ease-in-out infinite alternate;
 }
@@ -212,13 +212,13 @@
 .magician-splash__rune--bottom { bottom: -0.4rem; left: 50%; transform: translateX(-50%); }
 .magician-splash__rune--left { left: -0.3rem; top: 50%; transform: translateY(-50%); }
 
-.magician-splash__content { animation: magician-content-arrive 1.2s 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.magician-splash__content { animation: magician-content-arrive 1.8s 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .magician-splash__eyebrow, .magician-splash__label { color: hsl(var(--magician-spirit) / 0.82); }
 .magician-splash__title {
-  font-family: 'Sora', sans-serif;
+  font-family: ui-serif, Georgia, serif;
   letter-spacing: 0;
-  line-height: 0.95;
-  text-shadow: 0 2px 32px hsl(var(--magician-ink)), 0 0 54px hsl(var(--magician-spirit) / 0.18);
+  line-height: 1;
+  text-shadow: 0 2px 32px hsl(var(--magician-ink));
 }
 .magician-splash__divider { background: linear-gradient(to right, transparent, hsl(var(--magician-spirit)), transparent); }
 .magician-splash__premise { color: hsl(var(--magician-moon) / 0.82); text-shadow: 0 2px 14px hsl(var(--magician-ink)); }
@@ -252,10 +252,22 @@
 .magician-splash__corner { border-color: hsl(var(--magician-moon) / 0.28); }
 .magician-splash__corner--top { border-left-width: 1px; border-top-width: 1px; }
 .magician-splash__corner--bottom { border-bottom-width: 1px; border-right-width: 1px; }
+.magician-splash__qr {
+  color: hsl(var(--magician-moon) / 0.62);
+  opacity: 0.78;
+  transition: opacity 300ms ease;
+}
+.magician-splash__qr:hover { opacity: 1; }
+.magician-splash__qr img {
+  border: 5px solid hsl(var(--magician-moon) / 0.94);
+  background: hsl(var(--magician-moon));
+  border-radius: 2px;
+  box-shadow: 0 8px 30px hsl(var(--magician-ink) / 0.5);
+}
 
 @keyframes magician-scene-arrive {
   from { opacity: 0; transform: scale(1.08); filter: saturate(0.4) contrast(1.2) blur(8px); }
-  to { opacity: 1; transform: scale(1); filter: saturate(0.82) contrast(1.08) blur(0); }
+  to { opacity: 1; transform: scale(1); filter: saturate(0.68) contrast(0.96) brightness(0.9) blur(0); }
 }
 @keyframes magician-content-arrive {
   from { opacity: 0; transform: translateY(22px); }

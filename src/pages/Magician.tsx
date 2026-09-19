@@ -23,6 +23,7 @@ import { DONATE_URL, loadSupporters, openDonate, recentlyDonated, signBoard, typ
 import { deviceId } from "@/magician/voice/session";
 import { Button } from "@/components/ui/button";
 import spiritGate from "@/assets/magician-spirit-gate.jpg";
+import magicianQr from "@/assets/magician-qr.png";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -394,25 +395,16 @@ export default function Magician() {
           <div className="magician-splash__mist magician-splash__mist--one absolute inset-x-0 bottom-0 h-2/3" />
           <div className="magician-splash__mist magician-splash__mist--two absolute inset-x-0 bottom-0 h-1/2" />
 
-          <div className="magician-splash__portal pointer-events-none absolute left-1/2 top-[42%] aspect-square w-[min(76vw,42rem)] -translate-x-1/2 -translate-y-1/2 rounded-full" aria-hidden="true">
-            <div className="magician-splash__ring absolute inset-0 rounded-full" />
-            <div className="magician-splash__ring magician-splash__ring--inner absolute inset-[8%] rounded-full" />
-            <span className="magician-splash__rune magician-splash__rune--top">風</span>
-            <span className="magician-splash__rune magician-splash__rune--right">火</span>
-            <span className="magician-splash__rune magician-splash__rune--bottom">水</span>
-            <span className="magician-splash__rune magician-splash__rune--left">空</span>
-          </div>
-
           <div className="magician-splash__content relative z-10 flex w-full max-w-3xl flex-col items-center text-center">
-            <p className="magician-splash__eyebrow text-[10px] font-medium uppercase tracking-[0.5em] sm:text-[11px]">Voice interface awakened</p>
-            <h1 className="magician-splash__title mt-4 text-5xl font-semibold uppercase sm:text-7xl lg:text-8xl">The Magician</h1>
+            <p className="magician-splash__eyebrow text-[10px] font-medium tracking-[0.32em] sm:text-[11px]">星村 · Hoshimura</p>
+            <h1 className="magician-splash__title mt-4 text-5xl font-medium sm:text-7xl lg:text-8xl">The Magician</h1>
             <div className="magician-splash__divider mt-5 h-px w-28" />
             <p className="magician-splash__premise mt-5 max-w-xl text-sm leading-relaxed sm:text-base">
-              Speak a wish into the mountain air. The valley listens—summoning storms, midnight, cherry forests, and fire from the sky.
+              A quiet valley that listens. Speak softly, and the weather, lanterns, and forest will answer.
             </p>
 
             <div className="mt-7 w-full max-w-md">
-              <p className="magician-splash__label mb-3 text-[9px] font-medium uppercase tracking-[0.3em]">Choose a voice spirit</p>
+              <p className="magician-splash__label mb-3 text-[9px] font-medium uppercase tracking-[0.3em]">Choose a voice</p>
               <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <Button
                   type="button"
@@ -440,7 +432,7 @@ export default function Magician() {
               onClick={() => setEntered(true)}
               className="magician-splash__enter mt-6 h-14 rounded-sm px-10 text-[11px] font-semibold uppercase tracking-[0.32em] sm:px-14"
             >
-              Open the gate
+              Enter Hoshimura
             </Button>
             <p className="magician-splash__help mt-5 max-w-lg text-[10px] leading-relaxed tracking-[0.08em] sm:text-[11px]">
               W A S D to walk · drag to look · space to jump · press Talk to cast
@@ -454,6 +446,14 @@ export default function Magician() {
 
           <div className="magician-splash__corner magician-splash__corner--top absolute left-5 top-5 h-10 w-10 sm:left-8 sm:top-8" aria-hidden="true" />
           <div className="magician-splash__corner magician-splash__corner--bottom absolute bottom-5 right-5 h-10 w-10 sm:bottom-8 sm:right-8" aria-hidden="true" />
+          <a
+            href="https://myvibeverse.com/magician"
+            className="magician-splash__qr absolute bottom-5 left-5 z-20 hidden items-center gap-3 sm:flex sm:bottom-8 sm:left-8"
+            aria-label="Open The Magician on another device"
+          >
+            <img src={magicianQr} alt="QR code for The Magician" className="h-16 w-16" />
+            <span className="text-left text-[9px] uppercase leading-relaxed tracking-[0.18em]">Take the valley<br />with you</span>
+          </a>
         </div>
       )}
 
