@@ -82,6 +82,14 @@ export interface MagicianWorld {
   /** Run a plain sentence through the spellbook. Returns how many spells landed. */
   cast(text: string): ToolResult[];
   getState(): WorldState;
+  /** Virtual joystick from the HUD. */
+  setStick(x: number, y: number): void;
+  jump(): void;
+  /** Shoot down the view, from a button. */
+  fire(): void;
+  /** Zoom: 1 is the natural field of view, 2 is twice as wide. */
+  setZoom(z: number): void;
+  zoom(): number;
   startGame(id: GameModeId): void;
   stopGame(): void;
   gameHud(): GameHud | null;
@@ -131,6 +139,23 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2("#d7e8f6", 0.004);
   const camera = new THREE.PerspectiveCamera(70, container.clientWidth / Math.max(1, container.clientHeight), 0.1, 1500);
+  // A phone held upright is a tall, narrow window. Keep a sensible horizontal
+  // view (about 75 degrees) by widening the vertical one for portrait, with a
+  // ceiling so it never turns into a fisheye. Pinch multiplies it.
+  let zoomLevel = 1;
+  function applyFov() {
+    if (renderer.xr.isPresenting) return;
+    const aspect = camera.aspect;
+    const hfov = (75 * Math.PI) / 180;
+    let v = (2 * Math.atan(Math.tan(hfov / 2) / aspect) * 180) / Math.PI;
+    v = Math.max(55, Math.min(95, v)) * zoomLevel;
+    camera.fov = Math.max(30, Math.min(115, v));
+    camera.updateProjectionMatrix();
+    // On a narrow screen the companion stands nearer the middle, further off,
+    // so the caption above its head stays on screen.
+    const narrow = Math.max(0, Math.min(1, (1.2 - aspect) / 0.8));
+    vibey.setStance(2.6 + narrow * 0.8, 1.3 - narrow * 0.9);
+  }
 
   // ---- light --------------------------------------------------------------
   const hemi = new THREE.HemisphereLight("#cfe6ff", "#4f6a3a", 0.6);
@@ -274,6 +299,14 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // ---- people ---------------------------------------------------------------
   const player = createPlayer(container, camera);
   player.teleport(-2, 6, Math.PI * 0.15);
+  let pinchStartZoom = 1;
+  let pinchArmed = false;
+  player.onPinch((ratio) => {
+    if (!pinchArmed) { pinchStartZoom = zoomLevel; pinchArmed = true; }
+    zoomLevel = Math.max(0.6, Math.min(1.8, pinchStartZoom / ratio));
+    applyFov();
+  });
+  container.addEventListener("touchend", () => { pinchArmed = false; });
   scene.add(player.rig);
   // Hands in the headset: the controller models and a short pointer ray each,
   // parented to the rig so they move with the player.
@@ -294,6 +327,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   }
   const vibey = createVibey(readCompanion());
   scene.add(vibey.group);
+  applyFov();
   const ambience = createAmbience();
 
   // ---- other players --------------------------------------------------------
@@ -639,6 +673,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const w = container.clientWidth, h = container.clientHeight;
     camera.aspect = w / Math.max(1, h);
     camera.updateProjectionMatrix();
+    applyFov();
     renderer.setSize(w, h);
   };
   window.addEventListener("resize", onResize);
@@ -665,6 +700,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       return calls.map((c) => world.run(c.name, c.args));
     },
     getState: () => state,
+    setStick: (x, y) => player.setStick(x, y),
+    jump: () => player.jump(),
+    fire: () => fireFromCamera(),
+    setZoom: (z) => { zoomLevel = Math.max(0.6, Math.min(1.8, z)); applyFov(); },
+    zoom: () => zoomLevel,
     startGame: (id) => game.start(id),
     stopGame: () => game.stop(),
     gameHud: () => game.hud(),
@@ -738,6 +778,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     game: () => game.hud(),
     fire: () => fireFromCamera(),
     companion: () => vibey.debug(),
+    player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     settle: (seconds = 6) => {
       // Fast-forward the eased look, for scripts on machines that render at
@@ -780,6 +821,7 @@ declare global {
       game(): GameHud | null;
       fire(): void;
       companion(): ReturnType<Vibey["debug"]>;
+      player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
       peers(): { connected: boolean; count: number; id: string | null };
       settle(seconds?: number): void;
     };

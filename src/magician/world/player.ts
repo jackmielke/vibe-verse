@@ -22,6 +22,12 @@ export interface Player {
   teleport(x: number, z: number, yaw?: number): void;
   /** Whether the pointer is locked / a touch is active — input is bound. */
   active(): boolean;
+  /** A virtual joystick: x right, y forward, each -1..1. Zero to release. */
+  setStick(x: number, y: number): void;
+  /** Jump on the next frame, from a button. */
+  jump(): void;
+  /** Two-finger pinch: called with the ratio of current to starting spread. */
+  onPinch(fn: (ratio: number) => void): void;
   dispose(): void;
 }
 
@@ -39,6 +45,10 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
   let vy = 0;
   const keys = new Set<string>();
   let locked = false;
+  const stick = { x: 0, y: 0 };
+  let jumpQueued = false;
+  let pinchFn: ((ratio: number) => void) | null = null;
+  let pinch0 = 0;
 
   const onKey = (down: boolean) => (e: KeyboardEvent) => {
     if (e.target && (e.target as HTMLElement).tagName === "INPUT") return;
@@ -101,6 +111,16 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
     }
   };
   const onTouchMove = (e: TouchEvent) => {
+    // Two fingers on the world is a pinch, never a look or a walk.
+    if (e.touches.length >= 2) {
+      const a = e.touches[0], b = e.touches[1];
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (pinch0 === 0) pinch0 = d;
+      else if (pinchFn && pinch0 > 0) pinchFn(d / pinch0);
+      for (const s of touches.values()) { s.x0 = s.x; s.y0 = s.y; }
+      e.preventDefault();
+      return;
+    }
     for (const t of Array.from(e.changedTouches)) {
       const s = touches.get(t.identifier);
       if (!s) continue;
@@ -112,7 +132,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
     }
     if (touches.size) e.preventDefault();
   };
-  const onTouchEnd = (e: TouchEvent) => { for (const t of Array.from(e.changedTouches)) touches.delete(t.identifier); };
+  const onTouchEnd = (e: TouchEvent) => { for (const t of Array.from(e.changedTouches)) touches.delete(t.identifier); if (e.touches.length < 2) pinch0 = 0; };
   container.addEventListener("touchstart", onTouchStart, { passive: true });
   container.addEventListener("touchmove", onTouchMove, { passive: false });
   container.addEventListener("touchend", onTouchEnd);
@@ -132,6 +152,9 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
     position: rig.position,
     /** Where the player is looking: rig yaw, plus the headset's own yaw in VR. */
     yaw() { return yaw + headYawXr; },
+    setStick(x, y) { stick.x = Math.max(-1, Math.min(1, x)); stick.y = Math.max(-1, Math.min(1, y)); },
+    jump() { jumpQueued = true; },
+    onPinch(fn) { pinchFn = fn; },
     active() { return locked || touches.size > 0; },
     update(dt, groundAt, opts) {
       let mx = 0, mz = 0, jump = false;
@@ -166,9 +189,12 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
         if (keys.has("KeyS") || keys.has("ArrowDown")) mz += 1;
         if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
         if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
-        if (keys.has("Space")) jump = true;
+        if (keys.has("Space") || jumpQueued) jump = true;
+        jumpQueued = false;
+        mx += stick.x;
+        mz -= stick.y;
         for (const t of touches.values()) {
-          if (t.side !== "l") continue;
+          if (t.side !== "l" || stick.x !== 0 || stick.y !== 0) continue;
           mx += Math.max(-1, Math.min(1, (t.x - t.x0) / 60));
           mz += Math.max(-1, Math.min(1, (t.y - t.y0) / 60));
         }

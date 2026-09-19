@@ -460,6 +460,15 @@ The shape of it, because it is the shape the next voice world should copy:
   Quaternius one is still "Wizard" in the picker. Its clips are named
   `Spellcast_Shoot`, `Cheer`, `Hit_A` and so on; `CLIP_ALIASES` in
   `world/vibey.ts` maps the emote names to whichever family a body has.
+- **A phone is a different HUD, not a smaller one.** Under 640 px (or a
+  coarse pointer under 900 px) the page shows a joystick, a jump button, a
+  shoot button during a game, and one menu holding the companion picker,
+  sound, invite and leave; the suggestion chips become one scrolling row
+  and the footer goes. The camera's vertical field of view is derived from
+  the aspect so a portrait screen keeps about 75 degrees across, and a
+  pinch multiplies it (0.6 to 1.8). `scripts/magician-phone.mjs` drives the
+  stick and the pinch with synthetic events and reads back
+  `window.__magician.player()` to prove both moved something.
 - **Never grab pointer lock on a headset browser.** Quest's browser points
   with a laser, and a page that locks the pointer on its first click stops
   answering clicks. `player.ts` skips the lock wherever `immersive-vr` is

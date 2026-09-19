@@ -1,7 +1,17 @@
 {
-  "generated_at": "2026-09-19T19:30:16.189Z",
+  "generated_at": "2026-09-19T20:20:46.248Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "595216d3",
+      "date": "2026-09-19",
+      "subject": "The Magician: play together, and a real wizard body",
+      "lede": "Multiplayer as broadcasting patches (src/magician/net.ts). The world is data, so a shared valley is every patch on a Supabase Realtime channel (?room=name, default hoshimura): say 'make it rain' and it rains for everybody. Presence at eight hertz draws the other players as ghosts (src/magician/world/peers.ts) with name tags and a talking ring. A newcomer says hi and the first full state it hears wins; there is no hos",
+      "places": [
+        "the character roster"
+      ],
+      "files": 13
+    },
     {
       "sha": "f6ed2655",
       "date": "2026-09-19",
@@ -985,14 +995,6 @@
       "lede": "Four things the room needed, in the order they were missing.",
       "places": [],
       "files": 6
-    },
-    {
-      "sha": "3bd03131",
-      "date": "2026-08-18",
-      "subject": "Restamped Vibe City",
-      "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01MToSEWqt4PNC1WgvPcz1Wu",
-      "places": [],
-      "files": 3
     }
   ]
 }

@@ -32,6 +32,8 @@ export interface Vibey {
   /** Swap the body. Resolves when the new one is standing there. */
   setBody(id: string): Promise<void>;
   bodyId(): string;
+  /** How far ahead and how far to the side the companion stands. */
+  setStance(ahead: number, side: number): void;
   /** What is actually mounted: mesh and material names, for scripts. */
   debug(): { id: string; height: number; rotationY: number; meshes: Array<{ name: string; material: string; emissive: number }> };
   /** Where the head is, for the voice to come from. */
@@ -287,6 +289,8 @@ export function createVibey(initialId = "vibey"): Vibey {
   let bobPhase = Math.random() * 10;
   let facing = 0;
   let initialised = false;
+  let standAhead = 2.6;
+  let standSide = 1.3;
 
   return {
     group,
@@ -294,7 +298,7 @@ export function createVibey(initialId = "vibey"): Vibey {
     update(dt, time, player, playerYaw, groundAt) {
       const fx = -Math.sin(playerYaw), fz = -Math.cos(playerYaw);
       const lx = -fz, lz = fx;
-      desired.set(player.x + fx * 2.6 + lx * 1.3, 0, player.z + fz * 2.6 + lz * 1.3);
+      desired.set(player.x + fx * standAhead + lx * standSide, 0, player.z + fz * standAhead + lz * standSide);
       desired.y = groundAt(desired.x, desired.z);
       if (!initialised) { group.position.copy(desired); initialised = true; }
       const dist = tmp.copy(desired).sub(group.position).length();
@@ -349,6 +353,12 @@ export function createVibey(initialId = "vibey"): Vibey {
     setCaption(text) { drawCaption(text); captionAge = 0; },
     setBody,
     bodyId: () => bodyId,
+    setStance(ahead, side) {
+      standAhead = ahead; standSide = side;
+      // A narrower stance means a narrower screen: keep the caption inside it.
+      const w = 2.4 + side * 0.6;
+      caption.scale.set(w, w / 4, 1);
+    },
     debug() {
       const meshes: Array<{ name: string; material: string; emissive: number }> = [];
       body?.object.traverse((o) => {

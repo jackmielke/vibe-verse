@@ -16,6 +16,8 @@ import { DEFAULT_STATE, type WorldState } from "@/magician/state";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { COMPANIONS, findCompanion, readCompanion } from "@/magician/companions";
 import { MODE_INFO, type GameHud, type GameModeId } from "@/magician/game/types";
+import { Joystick } from "@/magician/ui/Joystick";
+import { readRoom } from "@/magician/net";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -57,6 +59,24 @@ export default function Magician() {
   const lastGameRef = useRef<string>("");
   const [peers, setPeers] = useState<{ names: string[]; connected: boolean }>({ names: [], connected: false });
   const statusRef = useRef<VoiceStatus>("idle");
+  // A phone: narrow, touch-first. The HUD folds into one menu and a stick.
+  const [phone, setPhone] = useState<boolean>(() => (typeof window !== "undefined" ? window.matchMedia("(max-width: 640px), (pointer: coarse) and (max-width: 900px)").matches : false));
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px), (pointer: coarse) and (max-width: 900px)");
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const invite = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", readRoom());
+    const text = url.toString();
+    const nav = navigator as Navigator & { share?: (d: { title: string; url: string }) => Promise<void> };
+    if (nav.share) { void nav.share({ title: "Come to Hoshimura", url: text }).catch(() => undefined); return; }
+    void navigator.clipboard?.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  }, []);
   const idRef = useRef(1);
   const lastFizzleRef = useRef(0);
 
@@ -258,7 +278,7 @@ export default function Magician() {
         <>
           {/* Top-left: the place and its state. Sits under the app's home chip. */}
           <div className="pointer-events-none absolute left-4 top-16 z-10 select-none sm:left-5">
-            <div className="font-serif text-2xl text-white/90 drop-shadow">{state.title}</div>
+            <div className="font-serif text-xl text-white/90 drop-shadow sm:text-2xl">{state.title}</div>
             <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-[0.2em] text-white/60">
               <span className="rounded-sm bg-black/30 px-2 py-0.5">{clock}</span>
               <span className="rounded-sm bg-black/30 px-2 py-0.5">{state.weather}</span>
@@ -271,12 +291,18 @@ export default function Magician() {
           {/* Top-right: VR, sound, out */}
           <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center justify-end gap-1.5 sm:right-5 sm:top-4 sm:gap-2" data-ui="1">
             <div ref={vrSlot} className="[&>button]:!rounded-sm [&>button]:!border [&>button]:!border-white/30 [&>button]:!bg-black/30 [&>button]:!px-3 [&>button]:!py-1.5 [&>button]:!text-[10px] [&>button]:!uppercase [&>button]:!tracking-[0.2em] [&>button]:!text-white/80 [&>button]:!font-sans [&>button]:!opacity-100" />
+            {phone && (
+              <button onClick={() => setMenuOpen((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70">
+                {menuOpen ? "close" : "menu"}
+              </button>
+            )}
             <button
               onClick={() => (game ? worldRef.current?.stopGame() : setShowModes(true))}
               className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${game ? "border-[#ff8a9a]/60 bg-[#ff8a9a]/20 text-[#ffd0d6]" : "border-[#b98cff]/60 bg-[#b98cff]/20 text-[#f3ecff] hover:bg-[#b98cff]/40"}`}
             >
               {game ? "end game" : "play"}
             </button>
+            {!phone && (<>
             <select
               value={companion}
               onChange={(e) => { setCompanion(e.target.value); worldRef.current?.store.become(e.target.value); }}
@@ -293,10 +319,65 @@ export default function Magician() {
             <button onClick={() => setHudHidden(true)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               hide
             </button>
+            <button onClick={invite} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
+              {copied ? "link copied" : "invite"}
+            </button>
             <Link to="/" className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               out
             </Link>
+            </>)}
           </div>
+
+          {/* Phone menu: everything that is not walking, talking or playing. */}
+          {phone && menuOpen && (
+            <div className="absolute right-3 top-14 z-20 w-64 rounded-xl border border-white/15 bg-[#1b1633]/95 p-3 text-sm text-[#e9ddff] backdrop-blur-md" data-ui="1">
+              <label className="block text-[10px] uppercase tracking-[0.2em] text-white/50">Companion</label>
+              <select
+                value={companion}
+                onChange={(e) => { setCompanion(e.target.value); worldRef.current?.store.become(e.target.value); }}
+                className="mt-1 h-9 w-full rounded-md border border-white/20 bg-black/30 px-2 text-sm text-white outline-none"
+              >
+                {COMPANIONS.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-[#1a1030] text-white">{c.emoji} {c.label}</option>
+                ))}
+              </select>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] uppercase tracking-[0.15em]">
+                <button onClick={() => setMuted((m) => !m)} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">{muted ? "sound off" : "sound on"}</button>
+                <button onClick={invite} className="rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">{copied ? "copied" : "invite"}</button>
+                <button onClick={() => { setHudHidden(true); setMenuOpen(false); }} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">hide hud</button>
+                <Link to="/" className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-center text-white/80">leave</Link>
+              </div>
+              <div className="mt-3 text-[11px] leading-relaxed text-white/50">
+                {peers.connected ? `${peers.names.length + 1} in the valley${peers.names.length ? `: you, ${peers.names.join(", ")}` : ""}` : "playing alone"} · {engine === "live" ? "gpt-live-1" : "gpt-realtime-2.1"} · {findCompanion(companion).label}
+              </div>
+              <div className="mt-2 text-[11px] text-white/40">Left stick walks · drag the right side to look · pinch to zoom</div>
+            </div>
+          )}
+
+          {/* Phone: stick and buttons */}
+          {phone && (
+            <>
+              <div className="absolute bottom-[12.5rem] left-4 z-10" data-ui="1">
+                <Joystick onMove={(x, y) => worldRef.current?.setStick(x, y)} />
+              </div>
+              <div className="absolute bottom-[12.5rem] right-4 z-10 flex flex-col items-end gap-2" data-ui="1">
+                {game && !game.over && (
+                  <button
+                    onPointerDown={(e) => { e.preventDefault(); worldRef.current?.fire(); }}
+                    className="h-16 w-16 rounded-full border border-[#b98cff]/60 bg-[#b98cff]/30 text-[10px] uppercase tracking-[0.15em] text-white backdrop-blur-sm"
+                  >
+                    shoot
+                  </button>
+                )}
+                <button
+                  onPointerDown={(e) => { e.preventDefault(); worldRef.current?.jump(); }}
+                  className="h-14 w-14 rounded-full border border-white/25 bg-black/30 text-[10px] uppercase tracking-[0.15em] text-white/80 backdrop-blur-sm"
+                >
+                  jump
+                </button>
+              </div>
+            </>
+          )}
 
           {/* Game HUD */}
           {game && (
@@ -353,7 +434,7 @@ export default function Magician() {
           {/* Bottom: transcript, talk, type */}
           <div className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center gap-2 px-4 pb-5" data-ui="1">
             <div className="pointer-events-none flex w-full max-w-xl flex-col gap-1 text-sm">
-              {lines.slice(-4).map((l) => (
+              {lines.slice(phone ? -2 : -4).map((l) => (
                 <div key={l.id} className={`max-w-[85%] rounded-lg px-3 py-1.5 backdrop-blur-sm ${l.who === "you" ? "self-end bg-white/15 text-white/90" : "self-start bg-[#1b1633]/70 text-[#e9ddff]"}`}>
                   <span className="mr-1.5 text-[10px] uppercase tracking-[0.2em] opacity-60">{l.who === "you" ? "you" : "vibey"}</span>
                   {l.text}
@@ -386,7 +467,7 @@ export default function Magician() {
                 />
               </form>
             </div>
-            <div className="flex max-w-xl flex-wrap justify-center gap-1.5">
+            <div className={`max-w-xl gap-1.5 ${phone ? "flex w-full overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:none]" : "flex flex-wrap justify-center"}`}>
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
@@ -396,15 +477,17 @@ export default function Magician() {
                     if (sessionRef.current && status === "live") sessionRef.current.sendText(s);
                     else { pushLine("you", s, true); const r = world.cast(s); const msg = r.map((x) => x.output).join(" "); world.vibey.setCaption(msg); pushLine("vibey", msg, true); }
                   }}
-                  className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[11px] text-white/60 hover:border-white/30 hover:text-white"
+                  className="shrink-0 rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[11px] text-white/60 hover:border-white/30 hover:text-white"
                 >
                   {s}
                 </button>
               ))}
             </div>
-            <div className="text-[10px] tracking-wide text-white/35">
-              {engine === "live" ? "gpt-live-1" : "gpt-realtime-2.1"}{detail && status === "live" ? ` · ${detail}` : ""} · {findCompanion(companion).label} beside you · say "become a wizard" · click the world to look around
-            </div>
+            {!phone && (
+              <div className="text-[10px] tracking-wide text-white/35">
+                {status === "live" && detail ? detail : engine === "live" ? "gpt-live-1" : "gpt-realtime-2.1"} · {findCompanion(companion).label} beside you · say "become a wizard" · click the world to look around
+              </div>
+            )}
           </div>
         </>
       )}
