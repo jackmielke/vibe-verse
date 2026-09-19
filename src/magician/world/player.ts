@@ -74,6 +74,9 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
   const xr = (navigator as Navigator & { xr?: { isSessionSupported(m: string): Promise<boolean> } }).xr;
   void xr?.isSessionSupported("immersive-vr").then((ok) => { if (ok) allowLock = false; }).catch(() => undefined);
   if (/OculusBrowser|Quest|Pico|VR/i.test(navigator.userAgent)) allowLock = false;
+  // A finger is not a mouse: Android Chrome would happily lock the pointer
+  // on a tap and then swallow every touch after it.
+  if (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches) allowLock = false;
   const onClick = (e: MouseEvent) => {
     if ((e.target as HTMLElement).closest("button, input, a, select, [data-ui]")) return;
     if (allowLock && !locked && "requestPointerLock" in container) {
@@ -101,38 +104,64 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("pointerlockchange", onLockChange);
 
-  // Touch: left half moves, right half looks.
-  const touches = new Map<number, { x0: number; y0: number; x: number; y: number; side: "l" | "r" }>();
+  // Touch. One finger on the world looks, anywhere, with a little fling
+  // when it lifts. Two fingers on the world pinch. Only touches that began
+  // on the world count: a finger resting on the HUD's joystick is also in
+  // `e.touches`, and counting it once made walking and looking at the same
+  // time read as a pinch, so you could not turn while you moved.
+  // On a wide touch screen with no joystick (a big tablet), the left half
+  // is still a drag-stick, as it was.
+  const touches = new Map<number, { x0: number; y0: number; x: number; y: number; side: "l" | "r"; stick: boolean; t: number }>();
+  const lookVel = { yaw: 0, pitch: 0 };
+  let lastLookAt = 0;
   const onTouchStart = (e: TouchEvent) => {
     for (const t of Array.from(e.changedTouches)) {
       if ((t.target as HTMLElement).closest("button, input, a, select, [data-ui]")) continue;
       const side = t.clientX < window.innerWidth / 2 ? "l" : "r";
-      touches.set(t.identifier, { x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, side });
+      const stickDrag = side === "l" && window.innerWidth > 900;
+      touches.set(t.identifier, { x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, side, stick: stickDrag, t: performance.now() });
+      lookVel.yaw = 0; lookVel.pitch = 0;
     }
   };
   const onTouchMove = (e: TouchEvent) => {
-    // Two fingers on the world is a pinch, never a look or a walk.
-    if (e.touches.length >= 2) {
-      const a = e.touches[0], b = e.touches[1];
+    const mine = Array.from(e.touches).filter((t) => touches.has(t.identifier));
+    if (mine.length >= 2) {
+      const [a, b] = mine;
       const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
       if (pinch0 === 0) pinch0 = d;
       else if (pinchFn && pinch0 > 0) pinchFn(d / pinch0);
-      for (const s of touches.values()) { s.x0 = s.x; s.y0 = s.y; }
+      for (const t of mine) { const s = touches.get(t.identifier)!; s.x = t.clientX; s.y = t.clientY; s.x0 = t.clientX; s.y0 = t.clientY; }
       e.preventDefault();
       return;
     }
+    const now = performance.now();
     for (const t of Array.from(e.changedTouches)) {
       const s = touches.get(t.identifier);
       if (!s) continue;
-      if (s.side === "r") {
-        yaw -= (t.clientX - s.x) * 0.005;
-        pitch = Math.max(-1.3, Math.min(1.3, pitch - (t.clientY - s.y) * 0.005));
+      if (!s.stick) {
+        const dx = t.clientX - s.x, dy = t.clientY - s.y;
+        const k = 0.0055;
+        yaw -= dx * k;
+        pitch = Math.max(-1.3, Math.min(1.3, pitch - dy * k));
+        const dt = Math.max(8, now - lastLookAt);
+        lookVel.yaw = (-dx * k) / dt * 1000;
+        lookVel.pitch = (-dy * k) / dt * 1000;
+        lastLookAt = now;
       }
       s.x = t.clientX; s.y = t.clientY;
     }
     if (touches.size) e.preventDefault();
   };
-  const onTouchEnd = (e: TouchEvent) => { for (const t of Array.from(e.changedTouches)) touches.delete(t.identifier); if (e.touches.length < 2) pinch0 = 0; };
+  const onTouchEnd = (e: TouchEvent) => {
+    for (const t of Array.from(e.changedTouches)) {
+      const s = touches.get(t.identifier);
+      touches.delete(t.identifier);
+      // A flick that ended within the last 120 ms keeps its speed; a finger
+      // that stopped and then lifted does not.
+      if (s && !s.stick && performance.now() - lastLookAt > 120) { lookVel.yaw = 0; lookVel.pitch = 0; }
+    }
+    if (Array.from(e.touches).filter((t) => touches.has(t.identifier)).length < 2) pinch0 = 0;
+  };
   container.addEventListener("touchstart", onTouchStart, { passive: true });
   container.addEventListener("touchmove", onTouchMove, { passive: false });
   container.addEventListener("touchend", onTouchEnd);
@@ -194,9 +223,16 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
         mx += stick.x;
         mz -= stick.y;
         for (const t of touches.values()) {
-          if (t.side !== "l" || stick.x !== 0 || stick.y !== 0) continue;
+          if (!t.stick || stick.x !== 0 || stick.y !== 0) continue;
           mx += Math.max(-1, Math.min(1, (t.x - t.x0) / 60));
           mz += Math.max(-1, Math.min(1, (t.y - t.y0) / 60));
+        }
+        // The fling: keep turning after the finger lifts, and settle.
+        if (touches.size === 0 && (Math.abs(lookVel.yaw) > 0.02 || Math.abs(lookVel.pitch) > 0.02)) {
+          yaw += lookVel.yaw * dt;
+          pitch = Math.max(-1.3, Math.min(1.3, pitch + lookVel.pitch * dt));
+          const decay = Math.exp(-dt * 5);
+          lookVel.yaw *= decay; lookVel.pitch *= decay;
         }
         fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
         right.set(-fwd.z, 0, fwd.x); // +x when looking down -z: right is right
