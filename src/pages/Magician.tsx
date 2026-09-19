@@ -23,7 +23,7 @@ import { DONATE_URL, loadSupporters, openDonate, recentlyDonated, signBoard, typ
 import { deviceId } from "@/magician/voice/session";
 import { Button } from "@/components/ui/button";
 import spiritGate from "@/assets/magician-spirit-gate.jpg";
-import magicianQr from "@/assets/magician-qr.png";
+import magicianQr from "@/assets/magician-qr.jpg.asset.json";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -451,7 +451,7 @@ export default function Magician() {
             className="magician-splash__qr absolute bottom-5 left-5 z-20 hidden items-center gap-3 sm:flex sm:bottom-8 sm:left-8"
             aria-label="Open The Magician on another device"
           >
-            <img src={magicianQr} alt="QR code for The Magician" className="h-16 w-16" />
+            <img src={magicianQr.url} alt="QR code for The Magician" className="h-16 w-16" />
             <span className="text-left text-[9px] uppercase leading-relaxed tracking-[0.18em]">Take the valley<br />with you</span>
           </a>
         </div>
