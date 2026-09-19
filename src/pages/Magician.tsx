@@ -14,6 +14,8 @@ import { createMagician, type MagicianWorld } from "@/magician/world/Magician";
 import { createVoiceSession, voiceAvailable, type Engine, type VoiceSession, type VoiceStatus } from "@/magician/voice/session";
 import { DEFAULT_STATE, type WorldState } from "@/magician/state";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
+import { COMPANIONS, findCompanion, readCompanion } from "@/magician/companions";
+import { MODE_INFO, type GameHud, type GameModeId } from "@/magician/game/types";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -26,6 +28,8 @@ const SUGGESTIONS = [
   "attack me with fireballs",
   "purple sky",
   "take me to the shrine",
+  "let's play oni siege",
+  "become a wizard",
 ];
 
 export default function Magician() {
@@ -47,6 +51,10 @@ export default function Magician() {
   const [available, setAvailable] = useState<boolean | null>(null); // null: unknown, not no
   const [text, setText] = useState("");
   const [hudHidden, setHudHidden] = useState(false);
+  const [companion, setCompanion] = useState<string>(() => readCompanion());
+  const [game, setGame] = useState<GameHud | null>(null);
+  const [showModes, setShowModes] = useState(false);
+  const lastGameRef = useRef<string>("");
   const idRef = useRef(1);
   const lastFizzleRef = useRef(0);
 
@@ -93,6 +101,14 @@ export default function Magician() {
         }
       },
       onState: (s) => setState(s),
+      onCompanion: (id) => setCompanion(id),
+      onNotify: (text) => sessionRef.current?.notify(text),
+      onGame: (h) => {
+        // The HUD object is rebuilt every frame; only re-render React when the
+        // visible numbers change.
+        const key = h ? `${h.mode}|${h.objective}|${h.score}|${h.hearts}|${h.timer == null ? "" : Math.ceil(h.timer)}|${h.detail ?? ""}|${h.over}|${Math.ceil(h.shield)}|${Math.ceil(h.blast)}` : "";
+        if (key !== lastGameRef.current) { lastGameRef.current = key; setGame(h ? { ...h } : null); }
+      },
     });
     worldRef.current = world;
     world.wake();
@@ -248,6 +264,22 @@ export default function Magician() {
           {/* Top-right: VR, sound, out */}
           <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center justify-end gap-1.5 sm:right-5 sm:top-4 sm:gap-2" data-ui="1">
             <div ref={vrSlot} className="[&>button]:!rounded-sm [&>button]:!border [&>button]:!border-white/30 [&>button]:!bg-black/30 [&>button]:!px-3 [&>button]:!py-1.5 [&>button]:!text-[10px] [&>button]:!uppercase [&>button]:!tracking-[0.2em] [&>button]:!text-white/80 [&>button]:!font-sans [&>button]:!opacity-100" />
+            <button
+              onClick={() => (game ? worldRef.current?.stopGame() : setShowModes(true))}
+              className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${game ? "border-[#ff8a9a]/60 bg-[#ff8a9a]/20 text-[#ffd0d6]" : "border-[#b98cff]/60 bg-[#b98cff]/20 text-[#f3ecff] hover:bg-[#b98cff]/40"}`}
+            >
+              {game ? "end game" : "play"}
+            </button>
+            <select
+              value={companion}
+              onChange={(e) => { setCompanion(e.target.value); worldRef.current?.store.become(e.target.value); }}
+              title="Who floats beside you"
+              className="h-7 max-w-[9rem] rounded-sm border border-white/20 bg-black/30 px-2 text-[10px] uppercase tracking-[0.15em] text-white/80 outline-none"
+            >
+              {COMPANIONS.map((c) => (
+                <option key={c.id} value={c.id} className="bg-[#1a1030] text-white">{c.emoji} {c.label}</option>
+              ))}
+            </select>
             <button onClick={() => setMuted((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               {muted ? "sound off" : "sound on"}
             </button>
@@ -258,6 +290,51 @@ export default function Magician() {
               out
             </Link>
           </div>
+
+          {/* Game HUD */}
+          {game && (
+            <div className="pointer-events-none absolute left-1/2 top-16 z-10 w-[min(92vw,34rem)] -translate-x-1/2 sm:top-4">
+              <div className="rounded-lg bg-black/40 px-4 py-2 text-center backdrop-blur-sm">
+                <div className="flex items-center justify-center gap-3 text-[10px] uppercase tracking-[0.25em] text-white/60">
+                  <span>{MODE_INFO[game.mode ?? "siege"].emoji} {game.title}</span>
+                  <span className="text-[#ff8a9a]">{"♥".repeat(game.hearts)}<span className="text-white/25">{"♥".repeat(Math.max(0, game.maxHearts - game.hearts))}</span></span>
+                  <span className="tabular-nums text-[#ffe08a]">{game.score} pts</span>
+                  {game.timer != null && <span className="tabular-nums">{Math.ceil(game.timer)}s</span>}
+                </div>
+                <div className="mt-1 text-sm text-[#f3ecff]">{game.objective}</div>
+                {game.detail && <div className="text-[11px] text-white/55">{game.detail}</div>}
+                <div className="mt-1 text-[10px] uppercase tracking-[0.2em] text-white/45">
+                  🛡 {game.shield > 0 ? `${Math.ceil(game.shield)}s` : game.shield < 0 ? `${Math.ceil(-game.shield)}s` : "ready"} · 💥 {game.blast < 0 ? `${Math.ceil(-game.blast)}s` : "ready"} · say "shield me" or "blast them"
+                </div>
+              </div>
+              {game.over && (
+                <div className="pointer-events-auto mt-2 flex justify-center gap-2" data-ui="1">
+                  <button onClick={() => worldRef.current?.startGame(game.mode ?? "siege")} className="rounded-full bg-[#b98cff] px-4 py-1.5 text-[11px] uppercase tracking-[0.2em] text-[#1a1030]">play again</button>
+                  <button onClick={() => worldRef.current?.stopGame()} className="rounded-full border border-white/25 bg-black/30 px-4 py-1.5 text-[11px] uppercase tracking-[0.2em] text-white/80">free play</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mode picker */}
+          {showModes && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/55 px-4" data-ui="1" onClick={() => setShowModes(false)}>
+              <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-3" onClick={(e) => e.stopPropagation()}>
+                {(Object.keys(MODE_INFO) as GameModeId[]).map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => { worldRef.current?.startGame(id); setShowModes(false); }}
+                    className="rounded-xl border border-white/15 bg-[#1b1633]/85 p-4 text-left backdrop-blur-sm transition hover:border-[#b98cff]"
+                  >
+                    <div className="text-2xl">{MODE_INFO[id].emoji}</div>
+                    <div className="mt-1 font-serif text-xl text-[#f3ecff]">{MODE_INFO[id].title}</div>
+                    <div className="mt-2 text-xs leading-relaxed text-[#cbbde6]">{MODE_INFO[id].blurb}</div>
+                    <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-[#8f7fb0]">{MODE_INFO[id].tip}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Spell toasts */}
           <div className="pointer-events-none absolute left-1/2 top-16 z-10 flex -translate-x-1/2 flex-col items-center gap-1">
@@ -319,7 +396,7 @@ export default function Magician() {
               ))}
             </div>
             <div className="text-[10px] tracking-wide text-white/35">
-              {engine === "live" ? "gpt-live-1" : "gpt-realtime-2.1"}{detail && status === "live" ? ` · ${detail}` : ""} · click the world to look around
+              {engine === "live" ? "gpt-live-1" : "gpt-realtime-2.1"}{detail && status === "live" ? ` · ${detail}` : ""} · {findCompanion(companion).label} beside you · say "become a wizard" · click the world to look around
             </div>
           </div>
         </>

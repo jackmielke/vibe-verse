@@ -10,10 +10,12 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { applyPatch, DEFAULT_STATE, describeState, fireballsFizzle, lanternsOn, nightness, type Patch, type WorldState } from "@/magician/state";
 import { LANDMARKS, resetPropIds, runTool, TOOL_DEFINITIONS, type MagicianStore } from "@/magician/tools";
 import { castSpell } from "@/magician/spellbook";
+import { COMPANIONS, resolveCompanion } from "@/magician/companions";
 
 function fakeStore() {
   let state: WorldState = applyPatch(DEFAULT_STATE, { props: [] });
   const log: string[] = [];
+  let gameActive: "siege" | "spirits" | "dragon" | null = null;
   const store: MagicianStore = {
     get: () => state,
     patch: (p: Patch) => { state = applyPatch(state, p); },
@@ -22,6 +24,15 @@ function fakeStore() {
     emote: (c) => log.push(`emote ${c}`),
     sound: (n) => log.push(`sound ${n}`),
     burst: (k) => log.push(`burst ${k}`),
+    become: (id) => log.push(`become ${id}`),
+    game: {
+      start: (m) => { log.push(`game ${m}`); gameActive = m; },
+      stop: () => { log.push("game stop"); gameActive = null; },
+      active: () => gameActive,
+      status: () => (gameActive ? `${gameActive} running` : "No game running (free play)."),
+      shield: () => (gameActive ? "Shield up for 12 seconds." : "No game is running; shields are for games."),
+      blast: () => (gameActive ? "Blast! 2 enemies gone." : "No game is running; blasts are for games."),
+    },
   };
   return { store, log, state: () => state };
 }
@@ -214,5 +225,54 @@ describe("the spellbook", () => {
     const known = new Set(TOOL_DEFINITIONS.map((t) => t.name));
     const phrases = ["make it rain", "sunset", "snow", "a forest", "remove everything", "moon gravity", "northern lights", "flood the valley", "dance", "ring the bell", "call this place Dawnfield", "the sign says Hello there"];
     for (const p of phrases) for (const c of castSpell(p)) expect(known.has(c.name), `${p} → ${c.name}`).toBe(true);
+  });
+});
+
+describe("companions", () => {
+  it("resolves plain words to roster characters", () => {
+    expect(resolveCompanion("the wizard").match?.id).toBe("Wizard");
+    expect(resolveCompanion("turn into a pug").match?.id).toBe("Pug");
+    expect(resolveCompanion("vibey").match?.id).toBe("vibey");
+    expect(resolveCompanion("classic vibey").match?.id).toBe("vibey-classic");
+    expect(resolveCompanion("golden knight").match?.label).toMatch(/Knight Golden/);
+    const none = resolveCompanion("a dragon");
+    expect(none.match).toBeNull();
+    expect(none.suggest.length).toBeGreaterThan(2);
+  });
+  it("every companion has a unique id and the two Vibeys are built in code", () => {
+    expect(new Set(COMPANIONS.map((c) => c.id)).size).toBe(COMPANIONS.length);
+    expect(COMPANIONS.filter((c) => c.spec === null).map((c) => c.id).sort()).toEqual(["vibey", "vibey-classic"]);
+  });
+  it("the become tool swaps the body and names what it became", () => {
+    const { store, log } = fakeStore();
+    const r = runTool("become", { character: "witch" }, store);
+    expect(log).toContain("become Witch");
+    expect(r.output).toMatch(/Witch/);
+    expect(runTool("become", { character: "zzz" }, store).output).toMatch(/No such character/);
+  });
+});
+
+describe("games", () => {
+  it("start, status, shield, blast and stop go through the store", () => {
+    const { store, log } = fakeStore();
+    expect(runTool("shield", {}, store).output).toMatch(/No game/);
+    const r = runTool("start_game", { mode: "siege" }, store);
+    expect(log).toContain("game siege");
+    expect(r.output).toMatch(/siege running/);
+    expect(runTool("shield", {}, store).output).toMatch(/Shield up/);
+    expect(runTool("blast", {}, store).output).toMatch(/Blast/);
+    expect(runTool("game_status", {}, store).output).toMatch(/running/);
+    expect(runTool("end_game", {}, store).output).toMatch(/Stopped siege/);
+    expect(runTool("end_game", {}, store).output).toMatch(/No game was running/);
+    expect(runTool("start_game", { mode: "chess" }, store).output).toMatch(/Unknown mode/);
+  });
+  it("the spellbook knows the games", () => {
+    expect(castSpell("let's play oni siege")).toEqual([{ name: "start_game", args: { mode: "siege" } }]);
+    expect(castSpell("spirit lights")).toEqual([{ name: "start_game", args: { mode: "spirits" } }]);
+    expect(castSpell("dragon's breath")).toEqual([{ name: "start_game", args: { mode: "dragon" } }]);
+    expect(castSpell("shield me")).toEqual([{ name: "shield", args: {} }]);
+    expect(castSpell("stop the game")).toEqual([{ name: "end_game", args: {} }]);
+    expect(castSpell("a rocket")[0]).toMatchObject({ name: "spawn", args: { kind: "rocket" } });
+    expect(castSpell("a big rock")[0]).toMatchObject({ name: "spawn", args: { kind: "rock" } });
   });
 });

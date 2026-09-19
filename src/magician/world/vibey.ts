@@ -1,18 +1,26 @@
 /**
- * Vibey, the magician.
+ * The companion: Vibey the magician, or whoever you asked for.
  *
- * The same expressive robot as everywhere else in the vibeverse
- * (`/models/vibey.glb`, the three.js RobotExpressive), with its animation
- * clips finally used: Idle as a base, and Wave / Dance / Jump / Yes / No /
- * ThumbsUp / Punch as one-shot emotes the voice agent can trigger. The
- * subtitle above the head is a canvas sprite, so it also works in VR where
- * there is no HTML.
+ * One `Companion` object with a swappable body. `setBody(id)` loads a roster
+ * character through the shared `loadCharacterRig`, or builds one of the two
+ * Vibeys in code: the expressive robot (`vibey`) with its Idle / Wave /
+ * Dance / Jump / Yes / No / ThumbsUp / Punch clips, or the round goggled
+ * Vibey from the reference photo (`vibey-classic`), who has no clips and
+ * hops instead.
  *
- * Vibey follows the player, keeping a polite distance a little to one side
- * and always facing them, and pulses when speaking.
+ * Whatever the body, the same things sit on it: the wizard's hat on top, a
+ * glow ring underneath, and a caption sprite above the head, which is how
+ * the words exist inside a headset where there is no HTML.
+ *
+ * The robot's eyes are the model's flat black material; they read as holes.
+ * They get the same treatment the fnaf Vibey's lenses got: dark glass with a
+ * faint cyan emissive, so they read as lit goggles instead.
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
+import { makeVibeyParts, type VibeyParts } from "@/fnaf/vibey";
+import { findCompanion, type CompanionSpec } from "../companions";
 
 export interface Vibey {
   group: THREE.Group;
@@ -21,17 +29,44 @@ export interface Vibey {
   setSpeaking(level: number): void;
   setListening(on: boolean): void;
   setCaption(text: string): void;
+  /** Swap the body. Resolves when the new one is standing there. */
+  setBody(id: string): Promise<void>;
+  bodyId(): string;
   /** Where the head is, for the voice to come from. */
   position: THREE.Vector3;
   dispose(): void;
 }
 
-export function createVibey(): Vibey {
+/** Emote names the tools use → clip name patterns, in order of preference. */
+const CLIP_ALIASES: Record<string, RegExp[]> = {
+  Wave: [/^wave$/i, /wave/i, /victory/i, /hello/i, /yes/i],
+  Dance: [/^dance$/i, /dance/i, /victory/i, /jump/i],
+  Jump: [/^jump$/i, /jump/i, /roll/i],
+  Yes: [/^yes$/i, /yes/i, /nod/i, /pickup/i, /victory/i],
+  No: [/^no$/i, /\bno\b/i, /defeat/i, /shake/i],
+  ThumbsUp: [/thumbs/i, /victory/i, /wave/i],
+  Punch: [/^punch$/i, /punch/i, /swordslash/i, /shoot/i, /attack/i],
+  Death: [/death/i, /defeat/i],
+  Hit: [/recievehit|receivehit|hit/i, /defeat/i],
+};
+
+interface Body {
+  id: string;
+  object: THREE.Object3D;
+  /** Height in metres after fitting. */
+  height: number;
+  mixer: THREE.AnimationMixer | null;
+  clips: THREE.AnimationClip[];
+  update(dt: number, time: number): void;
+  hop?(): void;
+  dispose(): void;
+}
+
+export function createVibey(initialId = "vibey"): Vibey {
   const group = new THREE.Group();
   const holder = new THREE.Group();
   group.add(holder);
 
-  // Glow ring on the ground and a soft halo, so Vibey reads at night.
   const ringMat = new THREE.MeshBasicMaterial({ color: "#73ffb8", transparent: true, opacity: 0.5, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.95, 32), ringMat);
   ring.rotation.x = -Math.PI / 2;
@@ -40,59 +75,22 @@ export function createVibey(): Vibey {
   halo.position.y = 1.6;
   holder.add(halo);
 
-  // A wizard's hat, because a magician needs one. Sits on top of the head.
+  // The hat.
   const hatMat = new THREE.MeshStandardMaterial({ color: "#3a2a8a", roughness: 0.7 });
   const hat = new THREE.Group();
   const cone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.75, 12), hatMat);
   cone.position.y = 0.33;
   cone.rotation.z = -0.18;
+  cone.castShadow = true;
   const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.04, 16), hatMat);
   const starMat = new THREE.MeshBasicMaterial({ color: "#ffe066" });
   const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), starMat);
   star.position.set(0.08, 0.55, 0.15);
   hat.add(cone, brim, star);
-  hat.castShadow = true;
   hat.visible = false;
   holder.add(hat);
 
-  let mixer: THREE.AnimationMixer | null = null;
-  let idle: THREE.AnimationAction | null = null;
-  let current: THREE.AnimationAction | null = null;
-  const clips = new Map<string, THREE.AnimationClip>();
-  let model: THREE.Group | null = null;
-  let headBone: THREE.Object3D | null = null;
-
-  const loader = new GLTFLoader();
-  loader.load("/models/vibey.glb", (gltf) => {
-    model = gltf.scene;
-    model.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(model);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const fit = 1.7 / Math.max(size.x, size.y, size.z, 0.0001);
-    model.scale.setScalar(fit);
-    model.updateMatrixWorld(true);
-    const scaled = new THREE.Box3().setFromObject(model);
-    model.position.y = -scaled.min.y;
-    model.traverse((obj) => {
-      const m = obj as THREE.Mesh;
-      if (m.isMesh) { m.castShadow = true; m.frustumCulled = false; }
-      if (obj.name === "Head" || obj.name === "Head_1") headBone = obj;
-    });
-    holder.add(model);
-    mixer = new THREE.AnimationMixer(model);
-    for (const c of gltf.animations) clips.set(c.name, c);
-    const idleClip = clips.get("Idle");
-    if (idleClip) {
-      idle = mixer.clipAction(idleClip);
-      idle.play();
-      current = idle;
-    }
-    hat.visible = true;
-    hat.position.set(0, scaled.max.y - scaled.min.y - 0.08, 0.02);
-  });
-
-  // Caption sprite.
+  // Caption.
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 256;
@@ -111,7 +109,6 @@ export function createVibey(): Vibey {
     c.clearRect(0, 0, 1024, 256);
     if (!text) return;
     c.font = "500 44px system-ui, -apple-system, Segoe UI, sans-serif";
-    // Wrap into at most three lines.
     const words = text.split(/\s+/);
     const lines: string[] = [];
     let line = "";
@@ -133,6 +130,153 @@ export function createVibey(): Vibey {
     tex.needsUpdate = true;
   }
 
+  // ---- bodies -------------------------------------------------------------
+  let body: Body | null = null;
+  let bodyId = initialId;
+  let loadToken = 0;
+  let idleAction: THREE.AnimationAction | null = null;
+  let emoteAction: THREE.AnimationAction | null = null;
+
+  function loadRobot(): Promise<Body> {
+    return new GLTFLoader().loadAsync("/models/vibey.glb").then((gltf) => {
+      const model = gltf.scene;
+      model.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const fit = 1.7 / Math.max(size.x, size.y, size.z, 0.0001);
+      model.scale.setScalar(fit);
+      model.updateMatrixWorld(true);
+      const scaled = new THREE.Box3().setFromObject(model);
+      model.position.y = -scaled.min.y;
+      const own: THREE.Material[] = [];
+      model.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.castShadow = true;
+        m.frustumCulled = false;
+        const std = m.material as THREE.MeshStandardMaterial;
+        if (std && std.name === "Black") {
+          // Lit goggles rather than holes.
+          const lens = new THREE.MeshStandardMaterial({ color: "#101018", roughness: 0.12, metalness: 0.5, emissive: new THREE.Color("#39d6ff"), emissiveIntensity: 0.12 });
+          m.material = lens;
+          own.push(lens);
+        } else if (std && "metalness" in std) {
+          std.metalness = Math.min(std.metalness, 0.4);
+          std.roughness = Math.max(std.roughness, 0.4);
+        }
+      });
+      const mixer = new THREE.AnimationMixer(model);
+      return {
+        id: "vibey",
+        object: model,
+        height: scaled.max.y - scaled.min.y,
+        mixer,
+        clips: gltf.animations,
+        update(dt) { mixer.update(dt); },
+        dispose() {
+          mixer.stopAllAction();
+          for (const m of own) m.dispose();
+          model.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh) mm.geometry.dispose(); });
+        },
+      };
+    });
+  }
+
+  function loadClassic(): Promise<Body> {
+    const parts: VibeyParts = makeVibeyParts();
+    const wrap = new THREE.Group();
+    wrap.add(parts.root);
+    wrap.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(wrap);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const fit = 1.35 / Math.max(size.y, 0.0001);
+    wrap.scale.setScalar(fit);
+    wrap.updateMatrixWorld(true);
+    const scaled = new THREE.Box3().setFromObject(wrap);
+    wrap.position.y = -scaled.min.y;
+    wrap.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true; });
+    let hopT = 99;
+    return Promise.resolve({
+      id: "vibey-classic",
+      object: wrap,
+      height: scaled.max.y - scaled.min.y,
+      mixer: null,
+      clips: [],
+      update(dt, time) {
+        hopT += dt;
+        const hop = hopT < 0.6 ? Math.sin((hopT / 0.6) * Math.PI) : 0;
+        parts.body.position.y = hop * 0.35;
+        parts.body.scale.set(1 + hop * 0.08, 1 - hop * 0.08, 1 + hop * 0.08);
+        parts.body.rotation.y = hop * Math.PI * 2 * (hopT < 0.6 ? 1 : 0);
+        parts.head.rotation.z = Math.sin(time * 1.3) * 0.06;
+        parts.disc.rotation.y += dt * 2;
+        for (const a of parts.antennas) a.rotation.x = Math.sin(time * 2.2 + a.position.x) * 0.15;
+        for (const m of parts.eyeMats) m.emissiveIntensity = 0.25 + Math.sin(time * 1.6) * 0.06;
+      },
+      hop() { hopT = 0; },
+      dispose() { parts.dispose(); },
+    });
+  }
+
+  function loadRig(spec: CompanionSpec): Promise<Body> {
+    if (!spec.spec) return loadRobot();
+    return loadCharacterRig(spec.spec, { height: 1.6, fitBy: "height", center: true, castShadow: true }).then((rig: CharacterRig) => {
+      // The glTF roster faces -z; the procedural ones and the robot face +z.
+      // Everything downstream assumes +z, so turn the file-based ones round.
+      const wrap = new THREE.Group();
+      wrap.add(rig.object);
+      if (spec.spec?.url) rig.object.rotation.y = Math.PI;
+      return {
+      id: spec.id,
+      object: wrap,
+      height: rig.size.y,
+      mixer: rig.mixer,
+      clips: rig.clips,
+      update(dt) { rig.update(dt); },
+      dispose() { rig.dispose(); },
+      };
+    });
+  }
+
+  function mount(b: Body) {
+    if (body) { holder.remove(body.object); body.dispose(); }
+    body = b;
+    bodyId = b.id;
+    holder.add(b.object);
+    hat.visible = true;
+    hat.position.set(0, b.height - 0.06, 0.02);
+    hat.scale.setScalar(Math.max(0.7, Math.min(1.3, b.height / 1.6)));
+    caption.position.y = b.height + 1.05;
+    halo.position.y = b.height * 0.9;
+    idleAction = null;
+    emoteAction = null;
+    if (b.mixer) {
+      const idleClip = b.clips.find((c) => /^idle$/i.test(c.name)) ?? b.clips.find((c) => /idle|breath|stand/i.test(c.name)) ?? null;
+      if (idleClip) {
+        idleAction = b.mixer.existingAction(idleClip) ?? b.mixer.clipAction(idleClip);
+        idleAction.play();
+      }
+    }
+  }
+
+  async function setBody(id: string): Promise<void> {
+    const spec = findCompanion(id);
+    const token = ++loadToken;
+    let b: Body;
+    try {
+      b = spec.kind === "robot" ? await loadRobot() : spec.kind === "classic" ? await loadClassic() : await loadRig(spec);
+    } catch (e) {
+      console.warn("[magician] companion failed to load, keeping the robot", e);
+      if (token !== loadToken) return;
+      b = await loadRobot();
+    }
+    if (token !== loadToken) { b.dispose(); return; }
+    mount(b);
+  }
+  void setBody(initialId);
+
   let speaking = 0;
   let listening = false;
   const desired = new THREE.Vector3();
@@ -145,71 +289,72 @@ export function createVibey(): Vibey {
     group,
     position: group.position,
     update(dt, time, player, playerYaw, groundAt) {
-      // Target: 2.6 m in front of the player and 1.2 m to their left.
       const fx = -Math.sin(playerYaw), fz = -Math.cos(playerYaw);
       const lx = -fz, lz = fx;
       desired.set(player.x + fx * 2.6 + lx * 1.3, 0, player.z + fz * 2.6 + lz * 1.3);
       desired.y = groundAt(desired.x, desired.z);
       if (!initialised) { group.position.copy(desired); initialised = true; }
       const dist = tmp.copy(desired).sub(group.position).length();
-      // Only drift over when the player has moved a fair way, so Vibey does
-      // not orbit nervously every time you turn your head.
       const k = dist > 4.5 ? 2.2 : dist > 1.2 ? 0.9 : 0.15;
       group.position.lerp(desired, Math.min(1, dt * k));
       const ground = groundAt(group.position.x, group.position.z);
       group.position.y += (ground - group.position.y) * Math.min(1, dt * 4);
-      // Face the player.
       const want = Math.atan2(player.x - group.position.x, player.z - group.position.z);
       let d = want - facing;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       facing += d * Math.min(1, dt * 4);
       holder.rotation.y = facing;
-      // Hover and bob.
       bobPhase += dt;
-      holder.position.y = 0.55 + Math.sin(bobPhase * 1.6) * 0.12 + speaking * 0.08 * Math.sin(time * 14);
+      const hover = bodyId === "vibey" || bodyId === "vibey-classic" ? 0.55 : 0.05;
+      holder.position.y = hover + Math.sin(bobPhase * 1.6) * (hover > 0.2 ? 0.12 : 0.02) + speaking * 0.08 * Math.sin(time * 14);
       const pulse = 1 + speaking * 0.05 * Math.sin(time * 18);
       holder.scale.setScalar(pulse);
       ringMat.opacity = 0.35 + Math.sin(time * 2.4) * 0.12 + speaking * 0.35 + (listening ? 0.15 : 0);
       ringMat.color.set(listening ? "#ffd166" : "#73ffb8");
       halo.intensity = 0.9 + speaking * 1.8;
       halo.color.copy(ringMat.color);
-      mixer?.update(dt);
+      body?.update(dt, time);
       captionAge += dt;
       capMat.opacity = captionAge < 7 ? 1 : Math.max(0, 1 - (captionAge - 7) * 1.5);
-      if (headBone && speaking > 0) headBone.rotation.x = Math.sin(time * 16) * 0.06 * speaking;
       star.rotation.y = time * 2;
     },
     emote(name) {
-      if (!mixer) return;
-      const clip = clips.get(name);
-      if (!clip || !idle) return;
+      if (!body) return;
+      if (!body.mixer) { body.hop?.(); return; }
+      const patterns = CLIP_ALIASES[name] ?? [new RegExp(name, "i")];
+      let clip: THREE.AnimationClip | undefined;
+      for (const re of patterns) { clip = body.clips.find((c) => re.test(c.name.replace(/^.*\|/, ""))); if (clip) break; }
+      if (!clip || !idleAction) return;
+      const mixer = body.mixer;
       const action = mixer.clipAction(clip);
+      if (action === idleAction) return;
       action.reset();
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = false;
       action.fadeIn(0.2).play();
-      idle.fadeOut(0.2);
-      current = action;
-      const done = () => {
-        mixer?.removeEventListener("finished", done);
-        if (current === action && idle) { idle.reset().fadeIn(0.3).play(); action.fadeOut(0.3); current = idle; }
+      idleAction.fadeOut(0.2);
+      emoteAction = action;
+      const done = (e: { action: THREE.AnimationAction }) => {
+        if (e.action !== action) return;
+        mixer.removeEventListener("finished", done);
+        if (emoteAction === action && idleAction) { idleAction.reset().fadeIn(0.3).play(); action.fadeOut(0.3); emoteAction = null; }
       };
       mixer.addEventListener("finished", done);
     },
     setSpeaking(level) { speaking = Math.max(0, Math.min(1, level)); },
     setListening(on) { listening = on; },
     setCaption(text) { drawCaption(text); captionAge = 0; },
+    setBody,
+    bodyId: () => bodyId,
     dispose() {
+      loadToken++;
       tex.dispose();
       capMat.dispose();
       ringMat.dispose();
       hatMat.dispose();
       starMat.dispose();
-      mixer?.stopAllAction();
-      model?.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) { m.geometry.dispose(); (Array.isArray(m.material) ? m.material : [m.material]).forEach((mm) => mm.dispose()); }
-      });
+      body?.dispose();
+      body = null;
     },
   };
 }

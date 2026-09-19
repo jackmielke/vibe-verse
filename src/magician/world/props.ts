@@ -375,6 +375,140 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
       }
       break;
     }
+    case "rocket": {
+      const bodyMat = new THREE.MeshStandardMaterial({ color: color ?? "#e9e6dd", roughness: 0.5, metalness: 0.2 });
+      own.push(bodyMat);
+      const ship = new THREE.Group();
+      const hull = mesh(new THREE.CylinderGeometry(0.5, 0.6, 3.2, 14), bodyMat, 0, 2.2, 0);
+      const nose = mesh(new THREE.ConeGeometry(0.5, 1.2, 14), vermilion, 0, 4.4, 0);
+      const finG = geo("fin", () => new THREE.BoxGeometry(0.1, 1.1, 0.7));
+      for (let i = 0; i < 3; i++) {
+        const f = mesh(finG, vermilion, 0, 0.9, 0);
+        const h = new THREE.Group();
+        f.position.set(0.7, 0.9, 0);
+        h.add(f);
+        h.rotation.y = (i / 3) * Math.PI * 2;
+        ship.add(h);
+      }
+      const win = mesh(geo("rwin", () => new THREE.SphereGeometry(0.22, 10, 8)), new THREE.MeshStandardMaterial({ color: "#5ec8ff", emissive: "#5ec8ff", emissiveIntensity: 0.4 }), 0, 3, 0.5);
+      const flameMat = new THREE.MeshBasicMaterial({ color: "#ffb03a", transparent: true, opacity: 0.9 });
+      own.push(flameMat);
+      const flame = mesh(new THREE.ConeGeometry(0.45, 1.6, 10), flameMat, 0, -0.4, 0);
+      flame.rotation.x = Math.PI;
+      flame.castShadow = false;
+      const light = new THREE.PointLight("#ffa33a", 0, 14, 2);
+      light.position.y = -0.5;
+      ship.add(hull, nose, win, flame, light);
+      group.add(ship);
+      let age = -1.5; // a moment on the pad before the launch
+      update = (dt, time) => {
+        age += dt;
+        const t = Math.max(0, age);
+        // Climbs fast for a few seconds, then hovers high and slowly circles.
+        const climb = Math.min(46, t * t * 2.2);
+        ship.position.y = climb + (t > 5 ? Math.sin(time * 0.6) * 1.2 : 0);
+        ship.rotation.y = time * 0.3;
+        ship.rotation.z = t > 5 ? Math.sin(time * 0.4) * 0.12 : Math.sin(time * 40) * 0.01;
+        const thrust = t > 0 && t < 5 ? 1 : 0.35;
+        flame.scale.set(thrust, 0.8 + Math.sin(time * 30) * 0.3 * thrust + thrust * 0.6, thrust);
+        light.intensity = t > 0 ? 3 * thrust + Math.sin(time * 25) * 0.6 : 0;
+      };
+      break;
+    }
+    case "ufo": {
+      const shell = new THREE.MeshStandardMaterial({ color: color ?? "#9aa4b5", roughness: 0.35, metalness: 0.7 });
+      own.push(shell);
+      const saucer = new THREE.Group();
+      const disc = mesh(new THREE.CylinderGeometry(2.6, 1.6, 0.5, 24), shell, 0, 0, 0);
+      const dome = mesh(new THREE.SphereGeometry(1, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhysicalMaterial({ color: "#8fe3ff", transparent: true, opacity: 0.55, roughness: 0.1 }), 0, 0.25, 0);
+      const lightsMat = new THREE.MeshBasicMaterial({ color: "#ff5cf3" });
+      own.push(lightsMat);
+      const lg = geo("ulight", () => new THREE.SphereGeometry(0.14, 8, 6));
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        const l = mesh(lg, lightsMat, Math.cos(a) * 2.2, -0.05, Math.sin(a) * 2.2);
+        l.castShadow = false;
+        saucer.add(l);
+      }
+      const beamMat = new THREE.MeshBasicMaterial({ color: "#a8ffdc", transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
+      own.push(beamMat);
+      const beam = mesh(new THREE.ConeGeometry(2.4, 22, 20, 1, true), beamMat, 0, -11.2, 0);
+      beam.castShadow = false;
+      const light = new THREE.PointLight("#a8ffdc", 2.5, 30, 2);
+      light.position.y = -1;
+      saucer.add(disc, dome, beam, light);
+      group.add(saucer);
+      update = (dt, time) => {
+        saucer.position.y = 22 + Math.sin(time * 0.7) * 1.5;
+        saucer.position.x = Math.sin(time * 0.25) * 4;
+        saucer.position.z = Math.cos(time * 0.2) * 4;
+        saucer.rotation.y = time * 1.6;
+        saucer.rotation.z = Math.sin(time * 0.9) * 0.08;
+        beamMat.opacity = 0.1 + Math.sin(time * 2.4) * 0.06;
+      };
+      break;
+    }
+    case "balloon": {
+      const envMat = new THREE.MeshStandardMaterial({ color: color ?? "#ff6b6b", roughness: 0.6 });
+      own.push(envMat);
+      const stripe = new THREE.MeshStandardMaterial({ color: "#fff1a8", roughness: 0.6 });
+      own.push(stripe);
+      const rig = new THREE.Group();
+      const env = mesh(new THREE.SphereGeometry(2.4, 18, 14), envMat, 0, 4.6, 0);
+      env.scale.y = 1.15;
+      const band = mesh(new THREE.TorusGeometry(2.42, 0.18, 8, 24), stripe, 0, 4.6, 0);
+      band.rotation.x = Math.PI / 2;
+      const skirt = mesh(new THREE.ConeGeometry(1.6, 1.4, 14, 1, true), envMat, 0, 2.2, 0);
+      skirt.rotation.x = Math.PI;
+      const basket = mesh(new THREE.BoxGeometry(1.1, 0.8, 1.1), wood, 0, 0.6, 0);
+      const ropeG = geo("brope", () => new THREE.CylinderGeometry(0.02, 0.02, 1.5, 4));
+      for (const [x, z] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) rig.add(mesh(ropeG, darkWood, x, 1.6, z));
+      const burner = new THREE.PointLight("#ffb347", 0, 8, 2);
+      burner.position.y = 1.8;
+      rig.add(env, band, skirt, basket, burner);
+      group.add(rig);
+      let age = 0;
+      const phase = Math.random() * 10;
+      update = (dt, time, ctx) => {
+        age += dt;
+        const rise = Math.min(26, age * 1.6);
+        rig.position.y = rise + Math.sin(time * 0.5 + phase) * 0.8;
+        rig.position.x += Math.sin(ctx.windDir) * (0.3 + ctx.wind * 2.5) * dt;
+        rig.position.z += Math.cos(ctx.windDir) * (0.3 + ctx.wind * 2.5) * dt;
+        rig.rotation.z = Math.sin(time * 0.7 + phase) * 0.04 * (1 + ctx.wind * 3);
+        burner.intensity = (Math.sin(time * 3 + phase) > 0.7 ? 2.5 : 0) * (ctx.night > 0.3 ? 1 : 0.4);
+      };
+      break;
+    }
+    case "birds": {
+      const birdMat = new THREE.MeshStandardMaterial({ color: color ?? "#2a2a30", roughness: 0.9, side: THREE.DoubleSide });
+      own.push(birdMat);
+      const flock = new THREE.Group();
+      const birds: Array<{ g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; r0: number; a0: number; y0: number; spd: number }> = [];
+      const wingG = geo("wing", () => { const g = new THREE.PlaneGeometry(0.55, 0.22); g.translate(0.27, 0, 0); return g; });
+      const n = 12;
+      for (let i = 0; i < n; i++) {
+        const g = new THREE.Group();
+        const l = new THREE.Mesh(wingG, birdMat);
+        l.rotation.y = Math.PI;
+        const r = new THREE.Mesh(wingG, birdMat);
+        g.add(l, r);
+        flock.add(g);
+        birds.push({ g, l, r, r0: 4 + Math.random() * 9, a0: Math.random() * Math.PI * 2, y0: 12 + Math.random() * 6, spd: 0.5 + Math.random() * 0.4 });
+      }
+      group.add(flock);
+      update = (dt, time) => {
+        for (const b of birds) {
+          const a = b.a0 + time * b.spd;
+          b.g.position.set(Math.cos(a) * b.r0, b.y0 + Math.sin(time * 1.3 + b.a0) * 0.8, Math.sin(a) * b.r0);
+          b.g.rotation.y = -a;
+          const flap = Math.sin(time * 9 + b.a0) * 0.7;
+          b.l.rotation.z = flap;
+          b.r.rotation.z = -flap;
+        }
+      };
+      break;
+    }
     case "windmill": {
       const tower = mesh(new THREE.CylinderGeometry(0.7, 1.1, 5, 8), plaster, 0, 2.5, 0);
       const roof = mesh(new THREE.ConeGeometry(1, 1.2, 8), tile, 0, 5.6, 0);

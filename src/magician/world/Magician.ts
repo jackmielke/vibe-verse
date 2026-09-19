@@ -17,6 +17,7 @@
  */
 import * as THREE from "three";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
+import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import {
   applyPatch,
   cloudAmount,
@@ -44,6 +45,9 @@ import { createBursts, createFireflies, createLightning, createPetals, createRai
 import { createFireballs } from "./fireballs";
 import { createAmbience } from "./audio";
 import { createVibey, type Vibey } from "./vibey";
+import { readCompanion, writeCompanion } from "../companions";
+import { createGameRunner, type HouseState } from "../game/runner";
+import { MODE_INFO, type GameHud, type GameModeId } from "../game/types";
 import { createPlayer } from "./player";
 
 export interface MagicianEvents {
@@ -51,6 +55,12 @@ export interface MagicianEvents {
   onHit?(hits: number): void;
   onState?(state: WorldState): void;
   onFizzle?(): void;
+  /** The companion body changed (by voice or the picker). */
+  onCompanion?(id: string): void;
+  /** Something the voice should be told, from the game. */
+  onNotify?(text: string): void;
+  /** The game HUD changed (every frame while a game runs, null when none). */
+  onGame?(hud: GameHud | null): void;
 }
 
 export interface MagicianWorld {
@@ -61,6 +71,9 @@ export interface MagicianWorld {
   /** Run a plain sentence through the spellbook. Returns how many spells landed. */
   cast(text: string): ToolResult[];
   getState(): WorldState;
+  startGame(id: GameModeId): void;
+  stopGame(): void;
+  gameHud(): GameHud | null;
   vrButton(): HTMLElement;
   setMuted(m: boolean): void;
   /** Call from a user gesture to start the ambience. */
@@ -150,7 +163,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const houseSpots: Array<[number, number, number]> = [
     [-9, 9, Math.PI], [6, 11, Math.PI], [-14, -10, 0.2], [8, -12, -0.2], [17, 4, -Math.PI / 2], [-19, 1, Math.PI / 2], [0, 22, Math.PI], [14, 18, Math.PI * 0.8],
   ];
-  for (const [x, z, yaw] of houseSpots) place("house", x, z, yaw);
+  const houses: HouseState[] = [];
+  for (const [x, z, yaw] of houseSpots) { const p = place("house", x, z, yaw); houses.push({ x, z, group: p.group, hp: 3, alive: true, fire: null }); }
+  const lanternSpots: Array<{ x: number; z: number }> = [];
   // Shrine on its hill, torii on the way, the bridge, the pagoda far side.
   place("shrine", LANDMARKS.shrine.x, LANDMARKS.shrine.z, 0.35, 1.2);
   place("torii", LANDMARKS.torii.x, LANDMARKS.torii.z, 0.1, 1.1);
@@ -164,8 +179,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const sx = -8 - t * 38 + 2.4;
     const sz = -6 - t * 56 + Math.sin(t * 6) * 4;
     place("lantern", sx, sz, 0, 0.9);
+    lanternSpots.push({ x: sx, z: sz });
   }
-  for (const [x, z] of [[-4, 4], [4, 4], [-4, -4], [4, -4], [-30, -30], [-30, -38]]) place("lantern", x, z, 0, 0.9);
+  for (const [x, z] of [[-4, 4], [4, 4], [-4, -4], [4, -4], [-30, -30], [-30, -38]]) { place("lantern", x, z, 0, 0.9); lanternSpots.push({ x, z }); }
   // A few campfires' worth of rocks by the river, bamboo by the lake.
   for (let i = 0; i < 10; i++) {
     const z = -80 + i * 17;
@@ -248,12 +264,53 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const player = createPlayer(container, camera);
   player.teleport(-2, 6, Math.PI * 0.15);
   scene.add(player.rig);
-  const vibey = createVibey();
+  // Hands in the headset: the controller models and a short pointer ray each,
+  // parented to the rig so they move with the player.
+  const controllerFactory = new XRControllerModelFactory();
+  const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+  const rayMat = new THREE.LineBasicMaterial({ color: "#b98cff", transparent: true, opacity: 0.6 });
+  const controllers: THREE.Group[] = [];
+  for (let i = 0; i < 2; i++) {
+    const grip = renderer.xr.getControllerGrip(i);
+    grip.add(controllerFactory.createControllerModel(grip));
+    player.rig.add(grip);
+    const ctrl = renderer.xr.getController(i);
+    const ray = new THREE.Line(rayGeo, rayMat);
+    ray.scale.z = 3;
+    ctrl.add(ray);
+    player.rig.add(ctrl);
+    controllers.push(ctrl);
+  }
+  const vibey = createVibey(readCompanion());
   scene.add(vibey.group);
   const ambience = createAmbience();
 
   // ---- state ----------------------------------------------------------------
   let state: WorldState = applyPatch(DEFAULT_STATE, {});
+  let lastNotify = 0;
+  const notify = (text: string) => {
+    if (time - lastNotify < 4) return;
+    lastNotify = time;
+    events.onNotify?.(text);
+  };
+  const game = createGameRunner({
+    scene,
+    state: () => state,
+    patch: (p) => store.patch(p),
+    player: { position: player.position, yaw: () => player.yaw() },
+    heightAt,
+    vibey: () => vibey.position,
+    burst: (kind, x, y, z) => { if (kind === "flash") flash = 1; bursts.spawn(kind === "flash" ? "sparkle" : kind, x, y, z); },
+    sound: (n) => ambience.play(n),
+    notify,
+    toast: (t) => events.onToast?.(t),
+    caption: (t) => vibey.setCaption(t),
+    emote: (c) => vibey.emote(c),
+    teleport: (x, z, yaw) => player.teleport(x, z, yaw),
+    houses,
+    lightning: () => lightning.flash,
+    time: () => time,
+  });
   const store: MagicianStore = {
     get: () => state,
     patch(p: Patch) {
@@ -266,6 +323,22 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     teleport(x, z, yaw) { player.teleport(x, z, yaw); },
     emote(clip) { vibey.emote(clip); },
     sound(name) { ambience.play(name); },
+    game: {
+      start: (m) => game.start(m),
+      stop: () => game.stop(),
+      active: () => game.active(),
+      status: () => {
+        const h = game.hud();
+        if (!h) return "No game running (free play).";
+        return `${h.title}: ${h.objective}. Score ${h.score}, hearts ${h.hearts}/${h.maxHearts}${h.timer != null ? `, ${Math.ceil(h.timer)}s left` : ""}${h.detail ? `, ${h.detail}` : ""}. Shield ${h.shield > 0 ? `up for ${Math.ceil(h.shield)}s` : h.shield < 0 ? `recharging ${Math.ceil(-h.shield)}s` : "ready"}, blast ${h.blast < 0 ? `recharging ${Math.ceil(-h.blast)}s` : "ready"}.${h.over ? (h.won ? " The game is WON." : " The game is LOST.") : ""}`;
+      },
+      shield: () => game.shield(),
+      blast: () => game.blast(),
+    },
+    become(id) {
+      writeCompanion(id);
+      void vibey.setBody(id).then(() => events.onCompanion?.(id));
+    },
     burst(kind, x, z) {
       const px = x ?? player.position.x - Math.sin(player.yaw()) * 3;
       const pz = z ?? player.position.z - Math.cos(player.yaw()) * 3;
@@ -275,6 +348,75 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   };
   sign.setText(state.sign);
   let flash = 0;
+
+  // ---- shooting -----------------------------------------------------------
+  // Desktop: a click (while locked, or a click with no drag) fires down the
+  // view. Phone: a short tap on the right half. VR: the trigger, down the
+  // controller's ray.
+  const shotDir = new THREE.Vector3();
+  const shotOrigin = new THREE.Vector3();
+  function fireFromCamera() {
+    if (!game.active()) return;
+    const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+    cam.getWorldDirection(shotDir);
+    cam.getWorldPosition(shotOrigin);
+    shotOrigin.addScaledVector(shotDir, 0.6);
+    game.fire(shotOrigin, shotDir);
+  }
+  let downAt = 0, downX = 0, downY = 0;
+  const onDown = (e: MouseEvent) => { if ((e.target as HTMLElement).closest("button, input, a, select, [data-ui]")) return; downAt = performance.now(); downX = e.clientX; downY = e.clientY; };
+  const onUp = (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button, input, a, select, [data-ui]")) return;
+    const quick = performance.now() - downAt < 250 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6;
+    if (quick || document.pointerLockElement === container) fireFromCamera();
+  };
+  container.addEventListener("mousedown", onDown);
+  container.addEventListener("mouseup", onUp);
+  let tapAt = 0, tapX = 0, tapY = 0, tapId = -1;
+  const onTouchStart = (e: TouchEvent) => { const t = e.changedTouches[0]; if (!t || t.clientX < window.innerWidth / 2) return; if ((t.target as HTMLElement).closest("button, input, a, select, [data-ui]")) return; tapAt = performance.now(); tapX = t.clientX; tapY = t.clientY; tapId = t.identifier; };
+  const onTouchEnd = (e: TouchEvent) => { for (const t of Array.from(e.changedTouches)) { if (t.identifier !== tapId) continue; if (performance.now() - tapAt < 250 && Math.hypot(t.clientX - tapX, t.clientY - tapY) < 10) fireFromCamera(); } };
+  container.addEventListener("touchstart", onTouchStart, { passive: true });
+  container.addEventListener("touchend", onTouchEnd);
+  const ctrlDir = new THREE.Vector3();
+  const ctrlPos = new THREE.Vector3();
+  const onSelect = (c: THREE.Group) => () => {
+    if (!game.active()) return;
+    c.getWorldPosition(ctrlPos);
+    ctrlDir.set(0, 0, -1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
+    game.fire(ctrlPos, ctrlDir);
+  };
+  const selectHandlers = controllers.map((c) => { const h = onSelect(c); c.addEventListener("selectstart", h); return h; });
+
+  // A HUD that exists inside the headset: a small canvas sprite under the
+  // view with hearts, the objective and the score.
+  const vrHudCanvas = document.createElement("canvas");
+  vrHudCanvas.width = 1024; vrHudCanvas.height = 160;
+  const vrHudTex = new THREE.CanvasTexture(vrHudCanvas);
+  vrHudTex.colorSpace = THREE.SRGBColorSpace;
+  const vrHudMat = new THREE.SpriteMaterial({ map: vrHudTex, transparent: true, depthTest: false, depthWrite: false });
+  const vrHud = new THREE.Sprite(vrHudMat);
+  vrHud.scale.set(0.9, 0.14, 1);
+  vrHud.position.set(0, -0.32, -1.1);
+  vrHud.renderOrder = 30;
+  vrHud.visible = false;
+  camera.add(vrHud);
+  let vrHudText = "";
+  function drawVrHud(h: GameHud | null) {
+    const text = h ? `${"♥".repeat(h.hearts)}${"♡".repeat(Math.max(0, h.maxHearts - h.hearts))}   ${h.objective}   ${h.score} pts${h.timer != null ? `   ${Math.ceil(h.timer)}s` : ""}` : "";
+    if (text === vrHudText) return;
+    vrHudText = text;
+    const c = vrHudCanvas.getContext("2d")!;
+    c.clearRect(0, 0, 1024, 160);
+    if (!text) { vrHudTex.needsUpdate = true; return; }
+    c.fillStyle = "rgba(10,14,20,0.7)";
+    c.fillRect(0, 20, 1024, 120);
+    c.fillStyle = "#f3ecff";
+    c.font = "500 44px system-ui, sans-serif";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.fillText(text.slice(0, 60), 512, 80);
+    vrHudTex.needsUpdate = true;
+  }
 
   // ---- eased look ---------------------------------------------------------
   const look = {
@@ -420,11 +562,16 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (hit) {
       state = { ...state, hits: state.hits + 1 };
       lastHitFlash = 1;
-      ambience.play("hit");
       bursts.spawn("sparkle", hit.x, heightAt(hit.x, hit.z) + 1, hit.z);
+      if (!game.playerHit()) ambience.play("hit");
       events.onHit?.(state.hits);
       events.onState?.(state);
     }
+    game.update(dt, time, lanternSpots);
+    const gh = game.hud();
+    events.onGame?.(gh);
+    vrHud.visible = renderer.xr.isPresenting && gh !== null;
+    if (vrHud.visible) drawVrHud(gh);
     vibey.update(dt, time, player.position, player.yaw(), heightAt);
     renderer.toneMappingExposure += lastHitFlash * 0.5;
     renderer.render(scene, camera);
@@ -482,6 +629,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       return calls.map((c) => world.run(c.name, c.args));
     },
     getState: () => state,
+    startGame: (id) => game.start(id),
+    stopGame: () => game.stop(),
+    gameHud: () => game.hud(),
     vrButton() {
       const b = VRButton.createButton(renderer);
       b.style.position = "static";
@@ -510,6 +660,16 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       sign.dispose();
       for (const p of fixed) p.dispose();
       forest.dispose();
+      rayGeo.dispose();
+      rayMat.dispose();
+      game.dispose();
+      container.removeEventListener("mousedown", onDown);
+      container.removeEventListener("mouseup", onUp);
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchend", onTouchEnd);
+      controllers.forEach((c, i) => c.removeEventListener("selectstart", selectHandlers[i]));
+      vrHudTex.dispose();
+      vrHudMat.dispose();
       renderer.xr.removeEventListener("sessionstart", onXrStart);
       renderer.xr.removeEventListener("sessionend", onXrEnd);
       for (const s of spawned.values()) s.obj.dispose();
@@ -535,6 +695,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     teleport: (x: number, z: number, yaw?: number) => player.teleport(x, z, yaw),
     counts: () => ({ props: spawned.size, fixed: fixed.length, fireballs: fireballs.count(), fizzled: fireballs.fizzled(), hits: state.hits }),
     caption: (t: string) => vibey.setCaption(t),
+    become: (id: string) => store.become(id),
+    game: () => game.hud(),
+    fire: () => fireFromCamera(),
     settle: (seconds = 6) => {
       // Fast-forward the eased look, for scripts on machines that render at
       // one frame a second. Physics and the player are left alone.
@@ -552,6 +715,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         for (const sp of spawned.values()) { sp.obj.update?.(0.1, time, propCtx); sp.obj.group.scale.setScalar(sp.prop.scale); }
         bursts.update(0.1);
         fireballs.update(0.1, { on: state.fireballs.on, rate: state.fireballs.rate, wet: fireballsFizzle(state), player: V, heightAt });
+        game.update(0.1, time, lanternSpots);
       }
     },
   };
@@ -571,6 +735,9 @@ declare global {
       teleport(x: number, z: number, yaw?: number): void;
       counts(): { props: number; fixed: number; fireballs: number; fizzled: number; hits: number };
       caption(t: string): void;
+      become(id: string): void;
+      game(): GameHud | null;
+      fire(): void;
       settle(seconds?: number): void;
     };
   }

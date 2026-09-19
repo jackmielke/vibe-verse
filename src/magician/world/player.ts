@@ -56,11 +56,38 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
     pitch = Math.max(-1.3, Math.min(1.3, pitch - e.movementY * 0.0022));
   };
   const onLockChange = () => { locked = document.pointerLockElement === container; };
+  // Pointer lock is a desktop idea. A headset's 2D browser (Quest) points
+  // with a laser and treats a locked pointer as a page that has stopped
+  // answering clicks, so on anything XR-capable the mouse drags to look
+  // instead and nothing is ever locked.
+  let allowLock = true;
+  const xr = (navigator as Navigator & { xr?: { isSessionSupported(m: string): Promise<boolean> } }).xr;
+  void xr?.isSessionSupported("immersive-vr").then((ok) => { if (ok) allowLock = false; }).catch(() => undefined);
+  if (/OculusBrowser|Quest|Pico|VR/i.test(navigator.userAgent)) allowLock = false;
   const onClick = (e: MouseEvent) => {
-    if ((e.target as HTMLElement).closest("button, input, a, [data-ui]")) return;
-    if (!locked && "requestPointerLock" in container) container.requestPointerLock?.();
+    if ((e.target as HTMLElement).closest("button, input, a, select, [data-ui]")) return;
+    if (allowLock && !locked && "requestPointerLock" in container) {
+      try { const p = container.requestPointerLock?.() as unknown as Promise<void> | undefined; void p?.catch?.(() => undefined); } catch { /* not available */ }
+    }
+  };
+  let dragging = false;
+  let dragX = 0, dragY = 0;
+  const onMouseDown = (e: MouseEvent) => {
+    if (locked || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button, input, a, select, [data-ui]")) return;
+    dragging = true; dragX = e.clientX; dragY = e.clientY;
+  };
+  const onMouseUp = () => { dragging = false; };
+  const onDragMove = (e: MouseEvent) => {
+    if (!dragging || locked) return;
+    yaw -= (e.clientX - dragX) * 0.004;
+    pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - dragY) * 0.004));
+    dragX = e.clientX; dragY = e.clientY;
   };
   container.addEventListener("click", onClick);
+  container.addEventListener("mousedown", onMouseDown);
+  window.addEventListener("mouseup", onMouseUp);
+  window.addEventListener("mousemove", onDragMove);
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("pointerlockchange", onLockChange);
 
@@ -68,7 +95,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
   const touches = new Map<number, { x0: number; y0: number; x: number; y: number; side: "l" | "r" }>();
   const onTouchStart = (e: TouchEvent) => {
     for (const t of Array.from(e.changedTouches)) {
-      if ((t.target as HTMLElement).closest("button, input, a, [data-ui]")) continue;
+      if ((t.target as HTMLElement).closest("button, input, a, select, [data-ui]")) continue;
       const side = t.clientX < window.innerWidth / 2 ? "l" : "r";
       touches.set(t.identifier, { x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, side });
     }
@@ -187,6 +214,9 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("pointerlockchange", onLockChange);
       container.removeEventListener("click", onClick);
+      container.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("mousemove", onDragMove);
       container.removeEventListener("touchstart", onTouchStart);
       container.removeEventListener("touchmove", onTouchMove);
       container.removeEventListener("touchend", onTouchEnd);

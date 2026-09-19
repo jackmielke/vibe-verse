@@ -32,12 +32,16 @@ export type PropKind =
   | "mushroom"
   | "pagoda"
   | "windmill"
-  | "boulder";
+  | "boulder"
+  | "rocket"
+  | "ufo"
+  | "balloon"
+  | "birds";
 
 export const PROP_KINDS: PropKind[] = [
   "tree", "sakura", "maple", "pine", "bamboo", "lantern", "torii", "house", "shrine",
   "rock", "campfire", "flowers", "crystal", "fox", "snowman", "mushroom", "pagoda",
-  "windmill", "boulder",
+  "windmill", "boulder", "rocket", "ufo", "balloon", "birds",
 ];
 
 /** Named places in the valley the player (or a spawn) can be sent to. */

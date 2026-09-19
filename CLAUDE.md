@@ -430,6 +430,26 @@ The shape of it, because it is the shape the next voice world should copy:
   is a *silently missing mesh*: the terrain vanished once and the water plane
   underneath looked like a flood. The cause was a variable named `patch`,
   which is a reserved word in GLSL.
+- **The companion is anybody in the roster.** `companions.ts` lists the two
+  Vibeys (the expressive robot and the round goggled one from
+  `src/fnaf/vibey.ts`) plus every `CHARACTERS` entry, loaded through the
+  shared `loadCharacterRig`. The `become` tool resolves plain words ("turn
+  into a pug"), the HUD has a picker, and `?companion=Wizard` picks one for
+  a script. The glTF roster faces -z and the robot faces +z, so file-based
+  bodies are turned round once in `world/vibey.ts`.
+- **Three games, one runner** (`game/`). Enemies, bolts, hearts, the shield
+  and the blast are shared; each mode is ~150 lines of rules. The point of
+  all three is that Vibey's world tools are the weapons: `enemies.ts` reads
+  the same state as everything else, so rain drowns fire oni, snow slows
+  them, a storm's lightning strikes them, a flood drowns them, fog hides
+  the player from the yurei and lit lanterns keep it off. Shooting is a
+  click, a tap on the right half, or the VR trigger. `window.__magician.game()`
+  reads the HUD and `settle()` steps the runner, which is how the modes were
+  verified here without a frame rate.
+- **Never grab pointer lock on a headset browser.** Quest's browser points
+  with a laser, and a page that locks the pointer on its first click stops
+  answering clicks. `player.ts` skips the lock wherever `immersive-vr` is
+  supported (or the user agent says Quest) and drags to look instead.
 - **VR:** `renderer.xr.enabled`, the loop runs through `setAnimationLoop`, and
   the HUD's VR button is three's own `VRButton`. Vibey's captions are a
   canvas sprite above the head, so the words exist in the headset where there

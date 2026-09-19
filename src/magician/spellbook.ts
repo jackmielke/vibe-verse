@@ -39,7 +39,7 @@ const KIND_WORDS: Array<[RegExp, PropKind]> = [
   [/\bshrine/, "shrine"],
   [/\bhouse|\bhut|\bcottage|\bvillage/, "house"],
   [/\bboulder/, "boulder"],
-  [/\brock|\bstone\b/, "rock"],
+  [/\brocks?\b|\bstones?\b/, "rock"],
   [/\bcampfire|\bbonfire|\bfire pit|\bfire\b(?!ball)/, "campfire"],
   [/\bflower|\bblossoms?\b(?! tree)/, "flowers"],
   [/\bcrystal|\bgem/, "crystal"],
@@ -47,6 +47,10 @@ const KIND_WORDS: Array<[RegExp, PropKind]> = [
   [/\bsnowman/, "snowman"],
   [/\bmushroom/, "mushroom"],
   [/\bwindmill/, "windmill"],
+  [/\brocket|\bspaceship|\bspace ship/, "rocket"],
+  [/\bufo|\bflying saucer|\balien ship/, "ufo"],
+  [/\bballoon/, "balloon"],
+  [/\bbirds?\b|\bflock|\bcrows?\b|\bcranes?\b/, "birds"],
   [/\bforest|\bwoods|\btrees?\b/, "tree"],
 ];
 
@@ -75,6 +79,14 @@ export function castSpell(input: string): SpellCall[] {
   const calls: SpellCall[] = [];
 
   if (/\breset\b|\bstart over\b|\bundo everything\b/.test(t)) return [{ name: "reset_world", args: {} }];
+
+  // Games
+  if (/\b(oni|siege)\b/.test(t)) return [{ name: "start_game", args: { mode: "siege" } }];
+  if (/\bspirit lights?\b|\bspirits\b|\blights game\b/.test(t)) return [{ name: "start_game", args: { mode: "spirits" } }];
+  if (/\bdragon'?s? breath\b|\bdragon game\b|\bbells? game\b/.test(t)) return [{ name: "start_game", args: { mode: "dragon" } }];
+  if (/\b(stop|end|quit) (the )?game\b|\bfree play\b/.test(t)) return [{ name: "end_game", args: {} }];
+  if (/\bshield\b|\bprotect me\b/.test(t)) return [{ name: "shield", args: {} }];
+  if (/\bblast\b|\bnuke\b|\bkill them all\b/.test(t)) return [{ name: "blast", args: {} }];
 
   // Time
   if (/\bmidnight\b/.test(t)) calls.push({ name: "set_time", args: { hour: 0 } });

@@ -29,6 +29,7 @@ import {
   type Weather,
   type WorldState,
 } from "./state";
+import { resolveCompanion } from "./companions";
 
 export interface ToolDefinition {
   type: "function";
@@ -62,6 +63,17 @@ export interface MagicianStore {
   sound(name: "bell" | "thunder" | "gong" | "chime" | "whoosh"): void;
   /** Something visual and momentary: a flash, a burst of sparkles at a point. */
   burst(kind: "sparkle" | "smoke" | "flash", x?: number, z?: number): void;
+  /** Swap the companion's body to a roster character id. */
+  become(id: string): void;
+  /** The game layer. */
+  game: {
+    start(mode: "siege" | "spirits" | "dragon"): void;
+    stop(): void;
+    active(): "siege" | "spirits" | "dragon" | null;
+    status(): string;
+    shield(): string;
+    blast(): string;
+  };
 }
 
 const weatherEnum: Weather[] = ["clear", "cloudy", "rain", "storm", "snow", "fog"];
@@ -108,7 +120,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: "function",
     name: "spawn",
     description:
-      "Conjure things into the world. Kinds: tree, sakura (cherry tree), maple, pine, bamboo, lantern (stone lantern, glows at night), torii (red gate), house (village house), shrine, rock, boulder, campfire, flowers, crystal (glowing), fox (kitsune statue), snowman, mushroom, pagoda, windmill. Use count for 'a forest' (20-40) or 'a few' (3-5). 'around' scatters them around the player, 'here' puts them right in front.",
+      "Conjure things into the world. On the ground: tree, sakura (cherry tree), maple, pine, bamboo, lantern (stone lantern, glows at night), torii (red gate), house (village house), shrine, rock, boulder, campfire, flowers, crystal (glowing), fox (kitsune statue), snowman, mushroom, pagoda, windmill. In the sky: rocket (launches from where it appears and climbs), ufo (hovers and spins with a beam), balloon (hot-air balloon drifting on the wind), birds (a circling flock). Anything not on this list: pick the closest kind and say so. Use count for 'a forest' (20-40) or 'a few' (3-5). 'around' scatters them around the player, 'here' puts them right in front.",
     parameters: {
       type: "object",
       properties: {
@@ -225,6 +237,44 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "play_sound",
     description: "A one-shot sound: bell (temple bell), gong, thunder, chime, whoosh.",
     parameters: { type: "object", properties: { name: { type: "string", enum: ["bell", "gong", "thunder", "chime", "whoosh"] } }, required: ["name"] },
+  },
+  {
+    type: "function",
+    name: "start_game",
+    description:
+      "Start a game in the valley. 'siege': Oni Siege, five waves of oni attack the village; the visitor shoots bolts and you fight beside them, and weather is a weapon (rain drowns fire oni, snow slows, storm lightning strikes them, flood drowns). 'spirits': Spirit Lights, gather 30 lights in two minutes while a yurei hunts the visitor; fog hides them, lit lanterns repel it. 'dragon': Dragon's Breath, the mountain throws fireballs faster and faster while the visitor rings three bells (bridge, torii, shrine); rain buys time. Use when the visitor wants to play, fight, or a game.",
+    parameters: { type: "object", properties: { mode: { type: "string", enum: ["siege", "spirits", "dragon"] } }, required: ["mode"] },
+  },
+  {
+    type: "function",
+    name: "end_game",
+    description: "Stop the current game and go back to free play.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "game_status",
+    description: "Read the state of the current game: objective, score, hearts, wave or timer, spell cooldowns. Call before commenting on how the fight is going.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "shield",
+    description: "Cast a shield around the visitor: 12 seconds of immunity from oni and fireballs, 25 second cooldown. Only during a game. Use when asked to protect, shield, or save them.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "blast",
+    description: "Cast a blast: every enemy within 9 metres of the visitor is destroyed, 30 second cooldown. Only during a game. Use when asked to blast, nuke, clear them out, or when the visitor is surrounded.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "become",
+    description:
+      "Change your own body to another character from the vibeverse roster: e.g. 'wizard', 'witch', 'pug', 'cow', 'knight', 'ninja', 'pirate', 'elf', 'goblin', 'viking', 'zombie', 'skeleton', 'shark', or 'vibey' / 'classic vibey' to go back. The hat stays on.",
+    parameters: { type: "object", properties: { character: { type: "string", description: "Who to become, in plain words." } }, required: ["character"] },
   },
   {
     type: "function",
@@ -447,6 +497,31 @@ export function runTool(name: string, rawArgs: unknown, store: MagicianStore, rn
       const n = String(args.name ?? "chime") as Parameters<MagicianStore["sound"]>[0];
       store.sound(n);
       return { output: `Played ${n}.`, toast: null };
+    }
+    case "start_game": {
+      const mode = args.mode as "siege" | "spirits" | "dragon";
+      if (!["siege", "spirits", "dragon"].includes(mode)) return { output: "Unknown mode. Use siege, spirits or dragon.", toast: null };
+      store.game.start(mode);
+      return { output: `Started ${mode}. ${store.game.status()}`, toast: null };
+    }
+    case "end_game": {
+      const was = store.game.active();
+      store.game.stop();
+      return { output: was ? `Stopped ${was}. Back to free play.` : "No game was running.", toast: was ? "free play" : null };
+    }
+    case "game_status":
+      return { output: store.game.status(), toast: null };
+    case "shield":
+      return { output: store.game.shield(), toast: null };
+    case "blast":
+      return { output: store.game.blast(), toast: null };
+    case "become": {
+      const { match, suggest } = resolveCompanion(String(args.character ?? ""));
+      if (!match) return { output: `No such character. Try one of: ${suggest.join(", ")}.`, toast: null };
+      store.become(match.id);
+      store.burst("flash");
+      store.sound("chime");
+      return { output: `You are now ${match.label}.${suggest.length ? ` (Also close: ${suggest.join(", ")}.)` : ""}`, toast: `became ${match.label}` };
     }
     case "look_around": {
       const p = store.playerPosition();

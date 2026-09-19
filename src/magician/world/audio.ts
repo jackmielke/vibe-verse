@@ -12,7 +12,7 @@ export interface Ambience {
   /** Must be called from a user gesture at least once. */
   resume(): void;
   set(levels: { rain: number; wind: number; night: number; storm: number; water: number }): void;
-  play(name: "bell" | "gong" | "thunder" | "chime" | "whoosh" | "hit" | "fizz"): void;
+  play(name: "bell" | "gong" | "thunder" | "chime" | "whoosh" | "hit" | "fizz" | "roar" | "pop"): void;
   setMuted(m: boolean): void;
   dispose(): void;
 }
@@ -147,6 +147,8 @@ export function createAmbience(): Ambience {
         case "whoosh": burst(0.6, 0.25, 2400, "bandpass"); break;
         case "hit": burst(0.35, 0.5, 600); tone(110, 0.3, 0.3, "square"); break;
         case "fizz": burst(0.9, 0.2, 4000, "highpass"); break;
+        case "roar": burst(1.8, 0.55, 300); tone(70, 1.6, 0.35, "sawtooth"); tone(95, 1.2, 0.2, "sawtooth", 8); break;
+        case "pop": tone(880, 0.12, 0.2, "triangle"); burst(0.12, 0.15, 3000, "bandpass"); break;
       }
     },
     setMuted(m) {
