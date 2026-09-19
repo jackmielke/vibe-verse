@@ -144,6 +144,149 @@
   }
 }
 
+/* The Magician's arrival gate keeps its palette local to the world. */
+.magician-splash {
+  --magician-ink: 230 35% 5%;
+  --magician-spirit: 188 92% 76%;
+  --magician-flame: 8 78% 59%;
+  --magician-moon: 42 38% 92%;
+  --magician-mist: 215 26% 68%;
+  --magician-warning: 18 95% 72%;
+  background: hsl(var(--magician-ink));
+  color: hsl(var(--magician-moon));
+  isolation: isolate;
+}
+
+.magician-splash__scene {
+  animation: magician-scene-arrive 2.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  filter: saturate(0.82) contrast(1.08);
+}
+
+.magician-splash__veil {
+  background:
+    radial-gradient(circle at 50% 45%, transparent 0 18%, hsl(var(--magician-ink) / 0.08) 34%, hsl(var(--magician-ink) / 0.68) 82%),
+    linear-gradient(to bottom, hsl(var(--magician-ink) / 0.38), transparent 35%, hsl(var(--magician-ink) / 0.75));
+}
+
+.magician-splash__mist {
+  background: linear-gradient(to top, hsl(var(--magician-mist) / 0.22), transparent);
+  filter: blur(34px);
+  opacity: 0.55;
+  transform: translate3d(-8%, 14%, 0) scale(1.15);
+  animation: magician-mist-drift 14s ease-in-out infinite alternate;
+}
+
+.magician-splash__mist--two {
+  opacity: 0.34;
+  transform: translate3d(10%, 25%, 0) scale(1.2);
+  animation-direction: alternate-reverse;
+  animation-duration: 19s;
+}
+
+.magician-splash__portal {
+  color: hsl(var(--magician-spirit));
+  filter: drop-shadow(0 0 28px hsl(var(--magician-spirit) / 0.26));
+  animation: magician-portal-arrive 1.8s 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.magician-splash__ring {
+  border: 1px solid hsl(var(--magician-spirit) / 0.34);
+  box-shadow: inset 0 0 32px hsl(var(--magician-spirit) / 0.08), 0 0 32px hsl(var(--magician-spirit) / 0.08);
+  animation: magician-ring-breathe 5s ease-in-out infinite;
+}
+
+.magician-splash__ring--inner {
+  border-color: hsl(var(--magician-flame) / 0.26);
+  animation-delay: -2.4s;
+}
+
+.magician-splash__rune {
+  position: absolute;
+  font-family: ui-serif, Georgia, serif;
+  font-size: 0.8rem;
+  text-shadow: 0 0 12px currentColor;
+  opacity: 0.72;
+}
+.magician-splash__rune--top { left: 50%; top: -0.4rem; transform: translateX(-50%); }
+.magician-splash__rune--right { right: -0.3rem; top: 50%; transform: translateY(-50%); }
+.magician-splash__rune--bottom { bottom: -0.4rem; left: 50%; transform: translateX(-50%); }
+.magician-splash__rune--left { left: -0.3rem; top: 50%; transform: translateY(-50%); }
+
+.magician-splash__content { animation: magician-content-arrive 1.2s 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.magician-splash__eyebrow, .magician-splash__label { color: hsl(var(--magician-spirit) / 0.82); }
+.magician-splash__title {
+  font-family: 'Sora', sans-serif;
+  letter-spacing: 0;
+  line-height: 0.95;
+  text-shadow: 0 2px 32px hsl(var(--magician-ink)), 0 0 54px hsl(var(--magician-spirit) / 0.18);
+}
+.magician-splash__divider { background: linear-gradient(to right, transparent, hsl(var(--magician-spirit)), transparent); }
+.magician-splash__premise { color: hsl(var(--magician-moon) / 0.82); text-shadow: 0 2px 14px hsl(var(--magician-ink)); }
+.magician-splash__help { color: hsl(var(--magician-mist) / 0.78); text-shadow: 0 2px 12px hsl(var(--magician-ink)); }
+.magician-splash__warning { color: hsl(var(--magician-warning)); }
+.magician-splash__unlimited { color: hsl(var(--magician-spirit)); }
+
+.magician-splash__engine {
+  border-color: hsl(var(--magician-moon) / 0.18);
+  background: hsl(var(--magician-ink) / 0.56);
+  color: hsl(var(--magician-moon) / 0.7);
+  backdrop-filter: blur(14px);
+}
+.magician-splash__engine:hover, .magician-splash__engine.is-active {
+  border-color: hsl(var(--magician-spirit) / 0.72);
+  background: hsl(var(--magician-spirit) / 0.13);
+  color: hsl(var(--magician-moon));
+  box-shadow: inset 0 0 24px hsl(var(--magician-spirit) / 0.06), 0 0 20px hsl(var(--magician-spirit) / 0.08);
+}
+.magician-splash__enter {
+  background: hsl(var(--magician-moon));
+  color: hsl(var(--magician-ink));
+  box-shadow: 0 0 42px hsl(var(--magician-moon) / 0.2), 0 12px 36px hsl(var(--magician-ink) / 0.5);
+}
+.magician-splash__enter:hover {
+  background: hsl(var(--magician-flame));
+  color: hsl(var(--magician-moon));
+  box-shadow: 0 0 52px hsl(var(--magician-flame) / 0.34);
+}
+
+.magician-splash__corner { border-color: hsl(var(--magician-moon) / 0.28); }
+.magician-splash__corner--top { border-left-width: 1px; border-top-width: 1px; }
+.magician-splash__corner--bottom { border-bottom-width: 1px; border-right-width: 1px; }
+
+@keyframes magician-scene-arrive {
+  from { opacity: 0; transform: scale(1.08); filter: saturate(0.4) contrast(1.2) blur(8px); }
+  to { opacity: 1; transform: scale(1); filter: saturate(0.82) contrast(1.08) blur(0); }
+}
+@keyframes magician-content-arrive {
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes magician-portal-arrive {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.72) rotate(-8deg); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0); }
+}
+@keyframes magician-ring-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.985); }
+  50% { opacity: 0.85; transform: scale(1.015); }
+}
+@keyframes magician-mist-drift {
+  from { translate: -4% 0; }
+  to { translate: 4% -3%; }
+}
+
+@media (max-height: 760px) {
+  .magician-splash__premise { display: none; }
+  .magician-splash__content { transform: scale(0.92); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .magician-splash__scene,
+  .magician-splash__mist,
+  .magician-splash__portal,
+  .magician-splash__ring,
+  .magician-splash__content { animation: none; }
+}
+
 /* Vibey chat: tight markdown styling that fits inside chat bubbles. */
 .vibey-md {
   word-break: break-word;
