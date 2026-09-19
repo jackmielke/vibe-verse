@@ -21,6 +21,8 @@ import { readRoom } from "@/magician/net";
 import { createRecorder, type Recorder } from "@/magician/record";
 import { DONATE_URL, loadSupporters, openDonate, recentlyDonated, signBoard, type Supporter } from "@/magician/support";
 import { deviceId } from "@/magician/voice/session";
+import { Button } from "@/components/ui/button";
+import spiritGate from "@/assets/magician-spirit-gate.jpg";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -380,46 +382,78 @@ export default function Magician() {
       <div className="pointer-events-none absolute inset-0 z-30 bg-[#ff3b1f] transition-opacity duration-300" style={{ opacity: hitFlash * 0.45 }} />
 
       {!entered && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-b from-[#1a1030] via-[#231645] to-[#0d0a1c] px-6">
-          <div className="max-w-md text-center">
-            <p className="text-[11px] uppercase tracking-[0.45em] text-[#b98cff]">the vibeverse</p>
-            <h1 className="mt-4 font-serif text-5xl font-light tracking-tight text-[#f3ecff] sm:text-6xl">The Magician</h1>
-            <p className="mt-6 text-sm leading-relaxed text-[#cbbde6]">
-              A valley village in the mountains of Japan, and Vibey floating beside you in a wizard's hat. Say what you want
-              the world to be and it becomes it, while you watch: rain, midnight, a cherry forest, fireballs from the mountain.
+        <div className="magician-splash absolute inset-0 z-20 flex items-center justify-center overflow-hidden px-5 py-16 sm:px-8">
+          <img
+            src={spiritGate}
+            alt="A moonlit spirit gate in the mountains of Japan"
+            width={1920}
+            height={1080}
+            className="magician-splash__scene absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="magician-splash__veil absolute inset-0" />
+          <div className="magician-splash__mist magician-splash__mist--one absolute inset-x-0 bottom-0 h-2/3" />
+          <div className="magician-splash__mist magician-splash__mist--two absolute inset-x-0 bottom-0 h-1/2" />
+
+          <div className="magician-splash__portal pointer-events-none absolute left-1/2 top-[42%] aspect-square w-[min(76vw,42rem)] -translate-x-1/2 -translate-y-1/2 rounded-full" aria-hidden="true">
+            <div className="magician-splash__ring absolute inset-0 rounded-full" />
+            <div className="magician-splash__ring magician-splash__ring--inner absolute inset-[8%] rounded-full" />
+            <span className="magician-splash__rune magician-splash__rune--top">風</span>
+            <span className="magician-splash__rune magician-splash__rune--right">火</span>
+            <span className="magician-splash__rune magician-splash__rune--bottom">水</span>
+            <span className="magician-splash__rune magician-splash__rune--left">空</span>
+          </div>
+
+          <div className="magician-splash__content relative z-10 flex w-full max-w-3xl flex-col items-center text-center">
+            <p className="magician-splash__eyebrow text-[10px] font-medium uppercase tracking-[0.5em] sm:text-[11px]">Voice interface awakened</p>
+            <h1 className="magician-splash__title mt-4 text-5xl font-semibold uppercase sm:text-7xl lg:text-8xl">The Magician</h1>
+            <div className="magician-splash__divider mt-5 h-px w-28" />
+            <p className="magician-splash__premise mt-5 max-w-xl text-sm leading-relaxed sm:text-base">
+              Speak a wish into the mountain air. The valley listens—summoning storms, midnight, cherry forests, and fire from the sky.
             </p>
-            <p className="mt-4 text-sm leading-relaxed text-[#8f7fb0]">
-              Real voice, real-time, over OpenAI's newest voice models. Works flat, on a phone, and in a headset.
-            </p>
-            <div className="mt-8 flex items-center justify-center gap-2 text-[11px] uppercase tracking-[0.2em]">
-              <button
+
+            <div className="mt-7 w-full max-w-md">
+              <p className="magician-splash__label mb-3 text-[9px] font-medium uppercase tracking-[0.3em]">Choose a voice spirit</p>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
                 onClick={() => setEngine("realtime")}
-                className={`rounded-sm border px-3 py-1.5 transition ${engine === "realtime" ? "border-[#b98cff] bg-[#b98cff]/20 text-[#f3ecff]" : "border-[#4a3a6a] text-[#8f7fb0] hover:text-[#cbbde6]"}`}
+                  className={`magician-splash__engine h-auto min-h-14 flex-col rounded-sm px-3 py-3 ${engine === "realtime" ? "is-active" : ""}`}
               >
-                Realtime 2.1
-              </button>
-              <button
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Realtime 2.1</span>
+                  <span className="mt-1 text-[9px] font-normal uppercase tracking-[0.16em] opacity-60">Immediate magic</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
                 onClick={() => setEngine("live")}
-                className={`rounded-sm border px-3 py-1.5 transition ${engine === "live" ? "border-[#b98cff] bg-[#b98cff]/20 text-[#f3ecff]" : "border-[#4a3a6a] text-[#8f7fb0] hover:text-[#cbbde6]"}`}
+                  className={`magician-splash__engine h-auto min-h-14 flex-col rounded-sm px-3 py-3 ${engine === "live" ? "is-active" : ""}`}
               >
-                Live 1 · new
-              </button>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Live 1</span>
+                  <span className="mt-1 text-[9px] font-normal uppercase tracking-[0.16em] opacity-60">Experimental</span>
+                </Button>
+              </div>
             </div>
-            <button
+
+            <Button
+              type="button"
               onClick={() => setEntered(true)}
-              className="mt-8 rounded-sm border border-[#b98cff] px-9 py-3 text-xs font-medium uppercase tracking-[0.3em] text-[#f3ecff] transition hover:bg-[#b98cff] hover:text-[#1a1030]"
+              className="magician-splash__enter mt-6 h-14 rounded-sm px-10 text-[11px] font-semibold uppercase tracking-[0.32em] sm:px-14"
             >
-              Enter the valley
-            </button>
-            <p className="mt-7 text-[11px] tracking-wide text-[#6f5f90]">
-              W A S D to walk · drag to look · space to jump · then press Talk
-              {available === false && <span className="block mt-2 text-[#ff9a7a]">Vibey's voice is not connected on this deploy (no OpenAI key); the spellbook still works by text.</span>}
+              Open the gate
+            </Button>
+            <p className="magician-splash__help mt-5 max-w-lg text-[10px] leading-relaxed tracking-[0.08em] sm:text-[11px]">
+              W A S D to walk · drag to look · space to jump · press Talk to cast
+              {available === false && <span className="magician-splash__warning mt-2 block">Vibey's voice is sleeping here; the written spellbook still works.</span>}
               {budget && budget.configured && !budget.unlimited && budget.secondsLeft !== null && (
-                <span className="block mt-2 text-[#cbbde6]">{budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} free minutes of voice on this device, then it runs on donations` : "Your free minutes are used; keep going, and consider chipping in"}</span>
+                <span className="mt-2 block">{budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} free minutes of voice on this device, then it runs on donations` : "Your free minutes are used; keep going, and consider chipping in"}</span>
               )}
-              {budget?.unlimited && <span className="block mt-2 text-[#73ffb8]">Signed in as an admin: no voice limit</span>}
+              {budget?.unlimited && <span className="magician-splash__unlimited mt-2 block">Signed in as an admin: no voice limit</span>}
             </p>
           </div>
+
+          <div className="magician-splash__corner magician-splash__corner--top absolute left-5 top-5 h-10 w-10 sm:left-8 sm:top-8" aria-hidden="true" />
+          <div className="magician-splash__corner magician-splash__corner--bottom absolute bottom-5 right-5 h-10 w-10 sm:bottom-8 sm:right-8" aria-hidden="true" />
         </div>
       )}
 
