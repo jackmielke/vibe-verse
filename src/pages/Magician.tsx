@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createMagician, type MagicianWorld } from "@/magician/world/Magician";
-import { createVoiceSession, voiceAvailable, type Engine, type VoiceSession, type VoiceStatus } from "@/magician/voice/session";
+import { createVoiceSession, voiceBudget, type Engine, type LimitInfo, type VoiceBudget, type VoiceSession, type VoiceStatus } from "@/magician/voice/session";
 import { DEFAULT_STATE, type WorldState } from "@/magician/state";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { COMPANIONS, findCompanion, readCompanion } from "@/magician/companions";
@@ -52,6 +52,9 @@ export default function Magician() {
   const [muted, setMuted] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null); // null: unknown, not no
+  const [budget, setBudget] = useState<VoiceBudget | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const [limit, setLimit] = useState<LimitInfo | null>(null);
   const [text, setText] = useState("");
   const [hudHidden, setHudHidden] = useState(false);
   const [companion, setCompanion] = useState<string>(() => readCompanion());
@@ -88,8 +91,20 @@ export default function Magician() {
   useWorldStamp("/magician", "The Magician");
 
   useEffect(() => {
-    void voiceAvailable().then(setAvailable);
+    void voiceBudget().then((b) => {
+      setAvailable(b ? b.configured : null);
+      setBudget(b);
+      if (b && b.secondsLeft !== null) setSecondsLeft(b.secondsLeft);
+      if (b && b.secondsLeft !== null && b.secondsLeft <= 0 && b.configured) setLimit({ secondsUsed: b.secondsFree, secondsFree: b.secondsFree, payUrl: b.payUrl });
+    });
   }, []);
+  // The countdown ticks locally between the function's own reports.
+  const counting = status === "live" && secondsLeft !== null;
+  useEffect(() => {
+    if (!counting) return;
+    const t = setInterval(() => setSecondsLeft((s) => (s === null ? s : Math.max(0, s - 1))), 1000);
+    return () => clearInterval(t);
+  }, [counting]);
 
   const pushLine = useCallback((who: Line["who"], text: string, final: boolean) => {
     setLines((prev) => {
@@ -193,6 +208,8 @@ export default function Magician() {
         onToolCall: (name, args) => world.run(name, args).output,
         onSpeaking: (level) => world.vibey.setSpeaking(level),
         onListening: (on) => world.vibey.setListening(on),
+        onBudget: (left) => setSecondsLeft(left),
+        onLimit: (info) => { setLimit(info); setSecondsLeft(0); world.vibey.setCaption("That is all my voice for today. Type to me, or come back tomorrow."); },
       },
     });
     sessionRef.current = session;
@@ -263,11 +280,33 @@ export default function Magician() {
   }, [state.timeOfDay]);
 
   const talkLabel =
-    status === "connecting" ? "Connecting…" : status === "live" ? (micMuted ? "Mic muted" : "Listening") : "Talk to Vibey";
+    status === "connecting" ? "Connecting…" : status === "live" ? (micMuted ? "Mic muted" : secondsLeft !== null && secondsLeft < 120 ? `Listening · ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}` : "Listening") : limit ? "Out of minutes" : "Talk to Vibey";
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#1a1030] text-white">
       <div ref={hostRef} className="absolute inset-0" />
+
+      {/* Out of minutes */}
+      {entered && limit && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-6 backdrop-blur-sm" data-ui="1">
+          <div className="max-w-md rounded-2xl border border-white/15 bg-[#1b1633]/95 p-6 text-center">
+            <p className="text-[11px] uppercase tracking-[0.4em] text-[#b98cff]">the magician</p>
+            <h2 className="mt-3 font-serif text-3xl text-[#f3ecff]">Your free minutes are up</h2>
+            <p className="mt-4 text-sm leading-relaxed text-[#cbbde6]">
+              Every device gets {Math.round(limit.secondsFree / 60)} minutes of Vibey's voice for free, because each minute costs real money. You used yours well.
+              The valley still works: type your wishes below, walk, play the games, and share the link.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {limit.payUrl ? (
+                <a href={limit.payUrl} target="_blank" rel="noreferrer" className="rounded-full bg-[#b98cff] px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.25em] text-[#1a1030]">Get more minutes</a>
+              ) : (
+                <span className="rounded-full border border-white/15 px-5 py-2.5 text-[11px] uppercase tracking-[0.25em] text-white/60">More minutes coming soon</span>
+              )}
+              <button onClick={() => setLimit(null)} className="rounded-full border border-white/25 px-5 py-2.5 text-[11px] uppercase tracking-[0.25em] text-white/80">Keep exploring</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hit flash */}
       <div className="pointer-events-none absolute inset-0 z-30 bg-[#ff3b1f] transition-opacity duration-300" style={{ opacity: hitFlash * 0.45 }} />
@@ -307,6 +346,10 @@ export default function Magician() {
             <p className="mt-7 text-[11px] tracking-wide text-[#6f5f90]">
               W A S D to walk · drag to look · space to jump · then press Talk
               {available === false && <span className="block mt-2 text-[#ff9a7a]">Vibey's voice is not connected on this deploy (no OpenAI key); the spellbook still works by text.</span>}
+              {budget && budget.configured && !budget.unlimited && budget.secondsLeft !== null && (
+                <span className="block mt-2 text-[#cbbde6]">{budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} free minutes of voice left on this device` : "Your free voice minutes are used up; typing still works"}</span>
+              )}
+              {budget?.unlimited && <span className="block mt-2 text-[#73ffb8]">Signed in as an admin: no voice limit</span>}
             </p>
           </div>
         </div>
@@ -492,7 +535,7 @@ export default function Magician() {
             {status === "error" && detail && <div className="max-w-xl rounded-md bg-[#5a1a1a]/80 px-3 py-1.5 text-xs text-[#ffd0c8]">{detail}</div>}
             <div className="flex w-full max-w-xl items-center gap-2">
               <button
-                onClick={() => void startVoice()}
+                onClick={() => (limit ? setLimit(limit) : void startVoice())}
                 disabled={available === false}
                 className={`relative flex h-12 shrink-0 items-center gap-2 rounded-full px-5 text-xs font-medium uppercase tracking-[0.2em] transition disabled:opacity-40 ${
                   status === "live" ? "bg-[#73ffb8] text-[#0c2a1b]" : status === "connecting" ? "bg-[#b98cff]/60 text-white" : "bg-[#b98cff] text-[#1a1030] hover:bg-[#cdaaff]"

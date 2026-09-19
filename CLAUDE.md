@@ -469,6 +469,18 @@ The shape of it, because it is the shape the next voice world should copy:
   pinch multiplies it (0.6 to 1.8). `scripts/magician-phone.mjs` drives the
   stick and the pinch with synthetic events and reads back
   `window.__magician.player()` to prove both moved something.
+- **Ten free minutes of voice per device**, enforced by the function that
+  holds the key, never by the page. `vibe_magician_usage` is the ledger
+  (RLS on, no policies, service role only); a session is charged on the
+  server clock from mint to last heartbeat, a silent client is charged for
+  its whole session next time it asks, and a device with nothing left gets a
+  402 the page turns into an out-of-minutes screen. Signed-in admins are
+  exempt. `select public.vibe_magician_grant(device, seconds)` tops a device
+  up by hand; set `MAGICIAN_PAY_URL` as a secret to offer a checkout link
+  (a Stripe Payment Link works with no code) and `MAGICIAN_ADMIN_EMAILS` for
+  more exempt people. The device id is `localStorage["magician.device"]`,
+  which a determined person can reset: this is a spending guard, not a
+  paywall.
 - **Never grab pointer lock on a headset browser.** Quest's browser points
   with a laser, and a page that locks the pointer on its first click stops
   answering clicks. `player.ts` skips the lock wherever `immersive-vr` is

@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-09-19T21:08:17.387Z",
+  "generated_at": "2026-09-19T21:28:05.613Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "5b1e602f",
+      "date": "2026-09-19",
+      "subject": "The Magician on a phone: look with one finger while you walk",
+      "lede": "While a finger rested on the joystick the browser reported two active touches, and the look handler treated any two as a pinch, so you could not turn while you moved and looking felt like it needed two fingers. Only touches that began on the world count now. One finger looks anywhere on the world (the left-half drag-stick survives only on wide touch screens that have no joystick), a flick keeps turning for a moment a",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "13de70a7",
+      "date": "2026-09-19",
+      "subject": "The Magician in VR: pinch to talk, hold to leave, and a recorder",
+      "lede": "In the headset a trigger or a hand pinch now starts the conversation when no game is running (it still shoots during one), and holding it for two seconds ends the XR session, which is the only way out with bare hands. A pinch is button 0 on a hand's gamepad and was also bound to jump, which is why talking looked like jumping; jump is now only the face buttons on a controller. The strip under the view says what the tr",
+      "places": [],
+      "files": 8
+    },
     {
       "sha": "14fe0a85",
       "date": "2026-09-19",
@@ -977,24 +993,6 @@
       "lede": "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_017vYGwEXHXBMSj4cT1EfrNF",
       "places": [],
       "files": 3
-    },
-    {
-      "sha": "be85b80f",
-      "date": "2026-08-18",
-      "subject": "Vibe City: make The Deep a place you can actually see",
-      "lede": "The trench shipped a working dive and an invisible destination. Every number the harness measured passed — you crossed −40 under power, the floor held at −92, the pearl paid — and the screenshot at the bottom was a flat teal rectangle. Then a black one. The measurements were all about the swimmer, and none of them were about the picture.",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "694c6c71",
-      "date": "2026-08-18",
-      "subject": "Three things you could only see from the wrong end of the room",
-      "lede": "Every shot of this realm so far has been taken from the near gable looking down the nave, which is the composition it was designed for and therefore the one that hides its faults. Turning round found all three of these at once.",
-      "places": [],
-      "files": 5
     }
   ]
 }

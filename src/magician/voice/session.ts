@@ -26,7 +26,37 @@ import { TOOL_DEFINITIONS, type ToolDefinition } from "../tools";
 import { VIBEY_BACKEND_PROMPT, VIBEY_GREETING, VIBEY_REALTIME_PROMPT, VIBEY_VOICE_PROMPT } from "../prompt";
 
 export type Engine = "realtime" | "live";
-export type VoiceStatus = "idle" | "connecting" | "live" | "error" | "closed";
+export type VoiceStatus = "idle" | "connecting" | "live" | "error" | "closed" | "limit";
+
+/** Every device gets ten free minutes; this is how the function knows which device. */
+const DEVICE_KEY = "magician.device";
+export function deviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id || !/^[a-z0-9-]{8,64}$/i.test(id)) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch {
+    return "nodevice-" + Math.random().toString(36).slice(2, 12);
+  }
+}
+
+export interface VoiceBudget {
+  configured: boolean;
+  /** Seconds left, or null when unlimited or unknown. */
+  secondsLeft: number | null;
+  secondsFree: number;
+  unlimited: boolean;
+  payUrl: string | null;
+}
+
+export interface LimitInfo {
+  secondsUsed: number;
+  secondsFree: number;
+  payUrl: string | null;
+}
 
 export interface VoiceHandlers {
   onStatus(status: VoiceStatus, detail?: string): void;
@@ -39,6 +69,10 @@ export interface VoiceHandlers {
   /** 0–1, from the incoming audio. */
   onSpeaking(level: number): void;
   onListening(active: boolean): void;
+  /** Seconds of free talking left, whenever the function says. */
+  onBudget?(secondsLeft: number | null): void;
+  /** The device is out of minutes. */
+  onLimit?(info: LimitInfo): void;
 }
 
 export interface VoiceSession {
@@ -75,20 +109,27 @@ interface FnResponse {
   sessionId?: string;
   error?: string;
   code?: string;
+  secondsLeft?: number | null;
+  secondsUsed?: number;
+  secondsFree?: number;
+  payUrl?: string | null;
+}
+
+export class LimitError extends Error {
+  info: LimitInfo;
+  constructor(info: LimitInfo) { super("Out of free minutes"); this.info = info; }
 }
 
 async function callFunction(body: Record<string, unknown>): Promise<FnResponse> {
-  const { data, error } = await supabase.functions.invoke<FnResponse>(FUNCTION_NAME, { body });
+  const { data, error } = await supabase.functions.invoke<FnResponse>(FUNCTION_NAME, { body: { ...body, device: deviceId() } });
   if (error) {
     // supabase-js hides the body of a non-2xx reply behind `context`.
     const ctx = (error as { context?: Response }).context;
     if (ctx && typeof ctx.json === "function") {
-      try {
-        const j = (await ctx.json()) as FnResponse;
-        throw new Error(j.error ?? error.message);
-      } catch (e) {
-        if (e instanceof Error && e.message !== error.message) throw e;
-      }
+      let j: FnResponse | null = null;
+      try { j = (await ctx.json()) as FnResponse; } catch { j = null; }
+      if (j?.code === "limit") throw new LimitError({ secondsUsed: j.secondsUsed ?? 0, secondsFree: j.secondsFree ?? 600, payUrl: j.payUrl ?? null });
+      if (j?.error) throw new Error(j.error);
     }
     throw new Error(error.message);
   }
@@ -103,10 +144,16 @@ async function callFunction(body: Record<string, unknown>): Promise<FnResponse> 
  * "no": the page only warns on an explicit no.
  */
 export async function voiceAvailable(): Promise<boolean | null> {
+  const b = await voiceBudget();
+  return b ? b.configured : null;
+}
+
+/** The whole picture: key present, minutes left, pay link. Null when the function could not be asked. */
+export async function voiceBudget(): Promise<VoiceBudget | null> {
   try {
-    const { data, error } = await supabase.functions.invoke<{ configured?: boolean }>(FUNCTION_NAME, { body: { action: "status" } });
+    const { data, error } = await supabase.functions.invoke<FnResponse & { configured?: boolean; unlimited?: boolean }>(FUNCTION_NAME, { body: { action: "status", device: deviceId() } });
     if (error || !data || typeof data.configured !== "boolean") return null;
-    return data.configured;
+    return { configured: data.configured, secondsLeft: data.secondsLeft ?? null, secondsFree: data.secondsFree ?? 600, unlimited: Boolean(data.unlimited), payUrl: data.payUrl ?? null };
   } catch {
     return null;
   }
@@ -127,6 +174,8 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
   let assistantBuffer = "";
   let userBuffer = "";
   let closed = false;
+  let heartbeat: number | null = null;
+  let budgetTimer: number | null = null;
 
   const setStatus = (s: VoiceStatus, detail?: string) => { status = s; handlers.onStatus(s, detail); };
 
@@ -318,6 +367,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
       if (opts.engine === "realtime") {
         const minted = await callFunction({ action: "realtime", instructions: VIBEY_REALTIME_PROMPT, tools, voice: opts.voice ?? "marin" });
         if (!minted.value) throw new Error("No client secret returned");
+        armBudget(minted.secondsLeft ?? null);
         const resp = await fetch("https://api.openai.com/v1/realtime/calls", {
           method: "POST",
           headers: { Authorization: `Bearer ${minted.value}`, "Content-Type": "application/sdp" },
@@ -341,6 +391,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
           voice: opts.voice ?? "marin",
         });
         if (!opened.sdp) throw new Error("No SDP answer returned for the live session");
+        armBudget(opened.secondsLeft ?? null);
         await pc.setRemoteDescription({ type: "answer", sdp: opened.sdp });
         dc.onopen = () => {
           // session.started arrives on the channel and flips status to live.
@@ -351,13 +402,45 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       teardown();
-      setStatus("error", msg);
+      if (e instanceof LimitError) { handlers.onLimit?.(e.info); setStatus("limit", msg); }
+      else setStatus("error", msg);
       throw e;
     }
   }
 
+  /**
+   * The budget, client side: a heartbeat every thirty seconds so the ledger
+   * sees the session running, and a local countdown that ends the call when
+   * the free minutes are gone, without waiting to be told.
+   */
+  function armBudget(secondsLeft: number | null) {
+    disarmBudget();
+    handlers.onBudget?.(secondsLeft);
+    heartbeat = window.setInterval(() => {
+      void callFunction({ action: "heartbeat" })
+        .then((r) => { if (typeof r.secondsLeft === "number") handlers.onBudget?.(r.secondsLeft); })
+        .catch((e) => { if (e instanceof LimitError) outOfMinutes(e.info); });
+    }, 30_000);
+    if (secondsLeft !== null) {
+      budgetTimer = window.setTimeout(() => outOfMinutes({ secondsUsed: 0, secondsFree: 0, payUrl: null }), Math.max(1000, secondsLeft * 1000));
+    }
+  }
+  function disarmBudget() {
+    if (heartbeat !== null) { clearInterval(heartbeat); heartbeat = null; }
+    if (budgetTimer !== null) { clearTimeout(budgetTimer); budgetTimer = null; }
+  }
+  function outOfMinutes(info: LimitInfo) {
+    if (closed) return;
+    if (opts.engine === "live") send({ type: "session.close" });
+    teardown();
+    void callFunction({ action: "end" }).catch(() => undefined);
+    handlers.onLimit?.(info);
+    setStatus("limit", "Out of free minutes");
+  }
+
   function teardown() {
     closed = true;
+    disarmBudget();
     cancelAnimationFrame(raf);
     analyser = null;
     if (audioCtx) { void audioCtx.close().catch(() => undefined); audioCtx = null; }
@@ -375,7 +458,9 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
     connect,
     disconnect() {
       if (opts.engine === "live") send({ type: "session.close" });
+      const wasLive = status === "live" || status === "connecting";
       teardown();
+      if (wasLive) void callFunction({ action: "end" }).catch(() => undefined);
       setStatus("closed");
     },
     sendText(text) {

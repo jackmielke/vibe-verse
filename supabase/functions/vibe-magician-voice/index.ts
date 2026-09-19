@@ -20,16 +20,41 @@
  *                Tools go through the session's Responses delegation.
  *
  *  - `status`    Whether an OPENAI_API_KEY is configured at all, so the page
- *                can say "Vibe has no voice yet" instead of failing on the
- *                first tap of the microphone.
+ *                can say "Vibey has no voice yet" instead of failing on the
+ *                first tap of the microphone. Also how many free seconds the
+ *                caller has left.
+ *
+ *  - `heartbeat` The client's "still talking" tick, every thirty seconds.
+ *  - `end`       The client hung up; settle the session in flight.
  *
  * The instructions and the tool list come from the client. That is on
  * purpose: they are the game's script, they live next to the world code that
- * executes them, and there is no secret in them. The budget is the thing that
- * is enforced here — a session secret lives ten minutes and a Live session
- * is whatever OpenAI's own cap is — not the prompt.
+ * executes them, and there is no secret in them.
+ *
+ * ## The budget
+ *
+ * Every minute of this costs real money, and the link is going to be posted
+ * in public. So every device gets FREE_SECONDS (ten minutes) of talking,
+ * counted here against `vibe_magician_usage`, and then a 402 with a message
+ * the page turns into an "out of minutes" screen. The count is kept on the
+ * server clock: a session is charged from the moment it is minted until the
+ * last heartbeat, and a client that stops reporting is charged for its whole
+ * session (up to SESSION_CAP_SECONDS) the next time it asks for one. The
+ * device id is whatever the browser says it is, which a determined person
+ * can reset; this is a spending guard, not a paywall, and the IP is kept so
+ * a flood from one place is visible.
+ *
+ * Signed-in admins (ADMIN_EMAILS, plus the MAGICIAN_ADMIN_EMAILS secret) are
+ * exempt, so the demo can run all day. `seconds_granted` is how a purchase,
+ * or a top-up by hand in SQL, adds time; MAGICIAN_PAY_URL, if set, is
+ * offered on the out-of-minutes screen.
  */
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const FREE_SECONDS = 600;
+const SESSION_CAP_SECONDS = 600;
+const ADMIN_EMAILS = ["jackcmielke@gmail.com"];
 
 const JSON_HEADERS = { ...corsHeaders, "Content-Type": "application/json" };
 
@@ -163,6 +188,85 @@ async function openLive(apiKey: string, body: LiveBody): Promise<Response> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// The budget
+// ---------------------------------------------------------------------------
+
+interface Usage {
+  device_id: string;
+  seconds_used: number;
+  seconds_granted: number;
+  sessions: number;
+  session_started_at: string | null;
+  session_last_seen_at: string | null;
+}
+
+function admin() {
+  return createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+}
+
+/** Who is calling, if they are signed in. */
+async function callerEmail(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  try {
+    const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY") ?? "", { auth: { persistSession: false } });
+    const { data } = await anon.auth.getUser(token);
+    return data.user?.email?.toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isAdmin(email: string | null): boolean {
+  if (!email) return false;
+  const extra = (Deno.env.get("MAGICIAN_ADMIN_EMAILS") ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return [...ADMIN_EMAILS, ...extra].includes(email);
+}
+
+function cleanDevice(v: unknown): string | null {
+  return typeof v === "string" && /^[a-z0-9-]{8,64}$/i.test(v) ? v : null;
+}
+
+/** Charge the session in flight up to now (or up to the cap), and clear it. */
+function settle(u: Usage, now: Date): Usage {
+  if (!u.session_started_at) return u;
+  const started = new Date(u.session_started_at).getTime();
+  const seen = u.session_last_seen_at ? new Date(u.session_last_seen_at).getTime() : started;
+  // Trust the heartbeat trail; a client that went quiet pays for the gap it
+  // could have talked through, capped.
+  const quiet = Math.max(0, now.getTime() - seen);
+  const ran = Math.max(0, seen - started) + Math.min(quiet, 45_000);
+  const charge = Math.min(SESSION_CAP_SECONDS, Math.round(ran / 1000));
+  return { ...u, seconds_used: u.seconds_used + charge, session_started_at: null, session_last_seen_at: null };
+}
+
+async function loadUsage(device: string): Promise<Usage> {
+  const db = admin();
+  const { data } = await db.from("vibe_magician_usage").select("device_id, seconds_used, seconds_granted, sessions, session_started_at, session_last_seen_at").eq("device_id", device).maybeSingle();
+  return (data as Usage | null) ?? { device_id: device, seconds_used: 0, seconds_granted: 0, sessions: 0, session_started_at: null, session_last_seen_at: null };
+}
+
+async function saveUsage(u: Usage, ip: string | null): Promise<void> {
+  const db = admin();
+  await db.from("vibe_magician_usage").upsert({ ...u, last_ip: ip, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+}
+
+function secondsLeft(u: Usage): number {
+  return Math.max(0, FREE_SECONDS + u.seconds_granted - u.seconds_used);
+}
+
+function limitReply(u: Usage): Response {
+  return reply(402, {
+    error: "Out of free minutes",
+    code: "limit",
+    secondsUsed: u.seconds_used,
+    secondsFree: FREE_SECONDS + u.seconds_granted,
+    payUrl: Deno.env.get("MAGICIAN_PAY_URL") ?? null,
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return reply(405, { error: "POST only" });
@@ -175,9 +279,46 @@ Deno.serve(async (req) => {
     return reply(400, { error: "Body must be JSON" });
   }
   const action = typeof body.action === "string" ? body.action : "status";
+  const device = cleanDevice(body.device);
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  const email = await callerEmail(req);
+  const exempt = isAdmin(email);
+  const now = new Date();
 
   if (action === "status") {
-    return reply(200, { configured: Boolean(apiKey), engines: apiKey ? ["realtime", "live"] : [] });
+    let left: number | null = null;
+    if (device && !exempt) {
+      try { left = secondsLeft(settle(await loadUsage(device), now)); } catch { left = null; }
+    }
+    return reply(200, {
+      configured: Boolean(apiKey),
+      engines: apiKey ? ["realtime", "live"] : [],
+      secondsLeft: exempt ? null : left,
+      secondsFree: FREE_SECONDS,
+      unlimited: exempt,
+      payUrl: Deno.env.get("MAGICIAN_PAY_URL") ?? null,
+    });
+  }
+  if (action === "heartbeat") {
+    if (!device || exempt) return reply(200, { ok: true, secondsLeft: null });
+    try {
+      const u = await loadUsage(device);
+      if (!u.session_started_at) return reply(200, { ok: true, secondsLeft: secondsLeft(u) });
+      const started = new Date(u.session_started_at).getTime();
+      const running = Math.round((now.getTime() - started) / 1000);
+      const left = Math.max(0, FREE_SECONDS + u.seconds_granted - u.seconds_used - running);
+      await saveUsage({ ...u, session_last_seen_at: now.toISOString() }, ip);
+      if (left <= 0) return limitReply({ ...u, seconds_used: u.seconds_used + running });
+      return reply(200, { ok: true, secondsLeft: left });
+    } catch (err) {
+      return reply(200, { ok: true, secondsLeft: null, note: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  if (action === "end") {
+    if (device && !exempt) {
+      try { await saveUsage(settle(await loadUsage(device), now), ip); } catch { /* charged next time */ }
+    }
+    return reply(200, { ok: true });
   }
   if (!apiKey) {
     return reply(500, {
@@ -185,10 +326,30 @@ Deno.serve(async (req) => {
       code: "no_key",
     });
   }
+  if (action !== "realtime" && action !== "live") return reply(400, { error: `Unknown action ${action}` });
+
+  // The budget, unless the caller is exempt. No device id means no budget to
+  // count against, which is not a free pass: it is refused.
+  let usage: Usage | null = null;
+  if (!exempt) {
+    if (!device) return reply(400, { error: "A device id is required", code: "no_device" });
+    try {
+      usage = settle(await loadUsage(device), now);
+      if (secondsLeft(usage) <= 0) { await saveUsage(usage, ip); return limitReply(usage); }
+    } catch (err) {
+      // If the ledger is unreachable, fail closed: the key is the expensive thing.
+      return reply(503, { error: `The minute ledger is unavailable: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
   try {
-    if (action === "realtime") return await mintRealtime(apiKey, body as unknown as RealtimeBody);
-    if (action === "live") return await openLive(apiKey, body as unknown as LiveBody);
-    return reply(400, { error: `Unknown action ${action}` });
+    const res = action === "realtime" ? await mintRealtime(apiKey, body as unknown as RealtimeBody) : await openLive(apiKey, body as unknown as LiveBody);
+    if (res.ok && usage) {
+      await saveUsage({ ...usage, sessions: usage.sessions + 1, session_started_at: now.toISOString(), session_last_seen_at: now.toISOString() }, ip);
+      // Tell the client how long it has, so it can count down and stop itself.
+      const data = await res.json();
+      return reply(200, { ...data, secondsLeft: secondsLeft(usage) });
+    }
+    return res;
   } catch (err) {
     return reply(500, { error: err instanceof Error ? err.message : String(err) });
   }
