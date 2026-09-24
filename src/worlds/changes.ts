@@ -272,7 +272,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "21f5a459", iso: "2026-06-24T21:05:46+00:00", subject: "Changes" },
   ],
   "magician": [
-    { sha: "17b789cd", iso: "2026-09-19T18:34:17+00:00", subject: "The Magician: a valley in Japan you talk to, with Vibey rebuilding it live" },
+    { sha: "29bac927", iso: "2026-09-24T19:32:50+00:00", subject: "Magician: Vibey stands a little further off, and on the same floors you do" },
+    { sha: "10d645c3", iso: "2026-09-24T19:28:48+00:00", subject: "Magician: sky lanterns" },
+    { sha: "a7f7aa85", iso: "2026-09-24T19:22:41+00:00", subject: "Magician: arrive from the sky" },
+    { sha: "cab9d6d9", iso: "2026-09-24T19:15:31+00:00", subject: "Magician: the spell ribbon arcs out over the valley where you can see it" },
+    { sha: "f3ef2991", iso: "2026-09-24T19:02:30+00:00", subject: "Magician: spells you can see leave, hotaru over the river, channels, a temple bell" },
+    { sha: "0f463d3c", iso: "2026-09-24T16:01:24+00:00", subject: "Magician: Vibey gives a thumbs up when a program lands and waves a lantern off" },
   ],
   "manifesto": [
     { sha: "56590fb9", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
