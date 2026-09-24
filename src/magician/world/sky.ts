@@ -60,10 +60,14 @@ void main() {
   float up = clamp(d.y, -0.1, 1.0);
   float t = pow(smoothstep(-0.05, 0.75, up), 0.6);
   vec3 col = mix(uHorizon, uZenith, t);
+  // A pale band of haze at the horizon, so the land fades into the sky.
+  float haze = 1.0 - smoothstep(0.0, 0.18, abs(d.y));
+  col = mix(col, uHorizon * 1.08 + uSunColor * 0.04, haze * 0.55);
 
   // Sun disc and glow.
   float sd = max(0.0, dot(d, uSunDir));
-  float glow = pow(sd, 48.0) * 0.28 + pow(sd, 900.0) * 1.1;
+  // A small bright core and a wide soft halo: the sun seen through air.
+  float glow = pow(sd, 2400.0) * 1.6 + pow(sd, 90.0) * 0.28 + pow(sd, 8.0) * 0.1;
   float overcast = smoothstep(0.45, 0.95, uClouds);
   col += uSunColor * glow * (1.0 - uNight * 0.85) * (1.0 - overcast * 0.9);
   // Warm horizon band near the sun when it is low.
@@ -115,7 +119,7 @@ export function createSky(): Sky {
   const discTex = makeDiscTexture();
   const sunMat = new THREE.SpriteMaterial({ map: discTex, color: "#ffe9a8", transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending });
   const sun = new THREE.Sprite(sunMat);
-  sun.scale.setScalar(15);
+  sun.scale.setScalar(9);
   group.add(sun);
   const moonMat = new THREE.SpriteMaterial({ map: discTex, color: "#d8e3ff", transparent: true, depthWrite: false, fog: false });
   const moon = new THREE.Sprite(moonMat);
@@ -168,7 +172,7 @@ export function createSky(): Sky {
       meteorAmount = look.meteors;
       sun.position.copy(look.sunDir).multiplyScalar(820);
       const overcast = Math.max(0, Math.min(1, (look.clouds - 0.45) / 0.5));
-      sunMat.opacity = Math.min(1, Math.max(0, look.sunDir.y + 0.08) * 2) * (1 - look.night) * (1 - overcast * 0.92);
+      sunMat.opacity = 0.55 * Math.min(1, Math.max(0, look.sunDir.y + 0.08) * 2) * (1 - look.night) * (1 - overcast * 0.92);
       moon.position.copy(look.sunDir).multiplyScalar(-800);
       moon.position.y = Math.max(moon.position.y, 60);
       moonMat.opacity = look.night * 0.95 * (1 - overcast * 0.8);

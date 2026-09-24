@@ -223,7 +223,9 @@ export function createGrass(opts: GrassOptions): Grass {
       if (d <= 0 || hash(cz, cx, i) > d) continue;
       // Clumps: blades are taller where a slow noise says the soil is good.
       const clump = fbm(x * 0.18, z * 0.18, 2);
-      const h = (0.28 + clump * 0.55) * (0.7 + hash(cx, i, cz) * 0.6);
+      // Shorter toward the edge of where grass may grow, so a field meets a
+      // path as a fringe instead of a wall.
+      const h = (0.28 + clump * 0.55) * (0.7 + hash(cx, i, cz) * 0.6) * (0.25 + 0.75 * Math.min(1, d * 1.4));
       const w = 0.8 + hash(i, cx, cz) * 0.6;
       q.setFromAxisAngle(up, hash(i, cz, cx) * Math.PI * 2);
       // A small random lean, so the field is not a crowd standing to attention.

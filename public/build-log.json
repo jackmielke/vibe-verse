@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-09-24T04:55:09.477Z",
+  "generated_at": "2026-09-24T05:04:50.890Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "ebc182d3",
+      "date": "2026-09-24",
+      "subject": "The Magician: a real field of grass",
+      "lede": "Instanced blades in 12 m chunks, built lazily around the player and kept, drawn only inside a radius (22 per square metre out to 32 m on a desktop, 10 to 24 m on a phone, 9 to 22 m in a headset). Everything that moves is in the vertex shader in world space: a rolling gust and a flutter along the world's own wind, blades leaning away from the player's feet, shrinking to nothing at the edge of the radius so the field n",
+      "places": [],
+      "files": 5
+    },
     {
       "sha": "b0e1a749",
       "date": "2026-09-19",
@@ -989,14 +997,6 @@
       "lede": "Two things, and the second one is the one that matters.",
       "places": [],
       "files": 4
-    },
-    {
-      "sha": "1297ab30",
-      "date": "2026-08-19",
-      "subject": "THE EMPYREAN: a glass city on a rock that never landed",
-      "lede": "A new world at /empyrean, built from a reference painting: a cluster of iridescent towers on a floating island four hundred metres over a frozen lake, in a sunset that runs navy-and-stars at the zenith through jade and gold to rose on the horizon. You fly it with Vibe City's jetpack, as whichever character you already picked anywhere else in the vibeverse.",
-      "places": [],
-      "files": 15
     }
   ]
 }

@@ -101,7 +101,11 @@ function makeParticles(opts: Opts): Particles {
           pos[k] = px; pos[k + 1] = py + hide; pos[k + 2] = pz;
           pos[k + 3] = px + wx * 0.02; pos[k + 4] = py - opts.streak + hide; pos[k + 5] = pz + wz * 0.02;
         } else {
-          pos[j] = px; pos[j + 1] = i >= active ? -9999 : py; pos[j + 2] = pz;
+          // Anything within a metre and a half of the eye is hidden: a petal
+          // at arm's length is drawn the size of a plate.
+          const dx = px - centre.x, dy = py - centre.y, dz = pz - centre.z;
+          const tooNear = dx * dx + dy * dy + dz * dz < 2.25;
+          pos[j] = px; pos[j + 1] = i >= active || tooNear ? -9999 : py; pos[j + 2] = pz;
         }
       }
       (geo.attributes.position as THREE.BufferAttribute).needsUpdate = true;

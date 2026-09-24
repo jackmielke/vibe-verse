@@ -80,6 +80,8 @@ for (const spell of spells) {
     const [, x, z, yaw] = spell.split(/\s+/).map(Number);
     await page.evaluate(([x, z, yaw]) => window.__magician.teleport(x, z, yaw), [x, z, yaw]);
     await page.waitForTimeout(1500);
+    await page.evaluate(() => window.__magician.settle(3));
+    await shot(`magician-${i++}`);
     continue;
   }
   const results = await page.evaluate((s) => window.__magician.cast(s).map((r) => r.output), spell);

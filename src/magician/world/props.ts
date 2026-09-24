@@ -10,6 +10,8 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { heightAt, riverCentre, WATER_LEVEL } from "./noise";
+import { buildMinka, disposeMinkaMaterials } from "./house";
+import { disposeSurfaces } from "./textures";
 import type { PropKind, Season } from "../state";
 
 export interface PropObject {
@@ -89,6 +91,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
   const own: THREE.Material[] = [];
   let update: PropObject["update"];
   let lamp: PropObject["lamp"];
+  const disposers: Array<() => void> = [];
   const sway: THREE.Object3D[] = [];
 
   switch (kind) {
@@ -176,25 +179,14 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
       break;
     }
     case "house": {
-      const w = 4 + Math.random() * 1.5;
-      const d = 3.5 + Math.random();
-      const wallMat = color ? new THREE.MeshStandardMaterial({ color, roughness: 0.9 }) : plaster;
-      if (color) own.push(wallMat);
-      const body = mesh(new THREE.BoxGeometry(w, 2.4, d), wallMat, 0, 1.2, 0);
-      const beams = mesh(new THREE.BoxGeometry(w + 0.1, 0.18, d + 0.1), darkWood, 0, 2.45, 0);
-      const roofG = new THREE.ConeGeometry(1, 1, 4);
-      const roof = mesh(roofG, tile, 0, 3.15, 0);
-      roof.rotation.y = Math.PI / 4;
-      roof.scale.set(w * 0.86, 1.5, d * 0.86);
-      const door = mesh(geo("door", () => new THREE.BoxGeometry(0.9, 1.7, 0.08)), darkWood, w * 0.15, 0.85, d / 2 + 0.03);
-      const win = mesh(geo("win", () => new THREE.BoxGeometry(0.8, 0.7, 0.06)), paper, -w * 0.25, 1.4, d / 2 + 0.03);
-      const winMat = new THREE.MeshStandardMaterial({ color: "#f8e7b8", emissive: "#ffb866", emissiveIntensity: 0, roughness: 0.8 });
-      own.push(winMat);
-      win.material = winMat;
-      const light = new THREE.PointLight("#ffb866", 0, 7, 2);
-      light.position.set(-w * 0.25, 1.4, d / 2 + 0.6);
-      group.add(body, beams, roof, door, win, light);
-      lamp = { light, glow: winMat, base: 1.2 };
+      // A full minka, merged to a handful of draw calls. See house.ts.
+      const minka = buildMinka(Math.floor(Math.random() * 1e9));
+      group.add(minka.group);
+      const light = new THREE.PointLight("#ffb866", 0, 8, 2);
+      light.position.copy(minka.lampAt);
+      group.add(light);
+      lamp = { light, glow: minka.glow, base: 1.4 };
+      disposers.push(() => minka.dispose());
       break;
     }
     case "shrine": {
@@ -551,6 +543,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
     foliage: mats,
     lamp,
     dispose() {
+      for (const f of disposers) f();
       for (const m of own) m.dispose();
       group.traverse((o) => {
         const me = o as THREE.Mesh;
@@ -784,4 +777,6 @@ export function buildBridge(x: number, z: number): THREE.Group {
 export function disposeSharedProps(): void {
   for (const g of geoCache.values()) g.dispose();
   geoCache.clear();
+  disposeMinkaMaterials();
+  disposeSurfaces();
 }

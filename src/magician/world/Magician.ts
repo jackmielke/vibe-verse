@@ -279,7 +279,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // under a building or up the bare mountain. Density eases off near each
   // edge so the field thins out instead of stopping at a line.
   const noGrass: Array<{ x: number; z: number; r: number }> = [
-    ...houseSpots.map(([x, z]) => ({ x, z, r: 3.4 })),
+    ...houseSpots.map(([x, z]) => ({ x, z, r: 5 })),
     { x: LANDMARKS.shrine.x, z: LANDMARKS.shrine.z, r: 4.5 },
     { x: -70, z: -20, r: 3.5 },
     { x: 62, z: 12, r: 2.2 },
@@ -597,8 +597,13 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     look.sunColor.lerp(nat.sun, k);
     look.sunDir.lerp(sunDir, k).normalize();
     look.night += (night - look.night) * k;
-    look.sunI += (Math.max(0, elev) * 2.4 * (1 - grey * 0.75) - look.sunI) * k;
-    look.hemiI += ((0.25 + Math.max(0, elev) * 0.5) * (1 - night * 0.6) - look.hemiI) * k;
+    // The sun stays strong when it is low (golden hour is the best light of
+    // the day, not a dim one) and fades out only as it touches the horizon.
+    // The sky fills shadows generously, so a house's shade is cool and
+    // readable rather than black.
+    const sunUp = Math.max(0, Math.min(1, (elev + 0.04) / 0.14));
+    look.sunI += ((0.4 + 2.1 * Math.sqrt(Math.max(0, elev))) * sunUp * (1 - grey * 0.75) - look.sunI) * k;
+    look.hemiI += ((0.55 + Math.max(0, elev) * 0.35) * (1 - night * 0.62) - look.hemiI) * k;
     look.fog += (fogDensity(s) - look.fog) * k;
     look.rain += (rainAmount(s) - look.rain) * k;
     look.snow += (snowAmount(s) - look.snow) * k;

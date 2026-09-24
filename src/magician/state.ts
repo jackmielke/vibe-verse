@@ -218,7 +218,9 @@ export function cloudAmount(state: WorldState): number {
 }
 
 export function fogDensity(state: WorldState): number {
-  const base = { clear: 0.0035, cloudy: 0.005, rain: 0.009, storm: 0.011, snow: 0.012, fog: 0.03 }[state.weather];
+  // Enough haze that the far hills recede and pale, which is most of what
+  // makes a valley read as deep; near things are untouched.
+  const base = { clear: 0.0052, cloudy: 0.0065, rain: 0.01, storm: 0.012, snow: 0.013, fog: 0.03 }[state.weather];
   return base + state.fog * 0.03 + nightness(state.timeOfDay) * 0.002;
 }
 
