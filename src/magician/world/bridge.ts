@@ -109,7 +109,7 @@ export function buildTaikoBridge(nearZ: number): Bridge {
     for (let k = 0; k < P; k++) {
       const u = -L / 2 + 0.25 + (k / (P - 1)) * (L - 0.5);
       add(postGeo.clone(), shu, u, archY(u) + 0.5, v);
-      if (k === 0 || k === P - 1 || k === (P - 1) / 2) {
+      if (k === 0 || k === P - 1) {
         // Giboshi: the gold onion caps on the principal posts.
         add(capGeo.clone(), gold, u, archY(u) + 1.1, v);
         add(tipGeo.clone(), gold, u, archY(u) + 1.25, v);
@@ -333,8 +333,6 @@ export function createRiverLife(bridgeZ: number): RiverLife {
   const tailGeo = keep(new THREE.PlaneGeometry(0.2, 0.18));
   tailGeo.translate(-0.1, 0, 0);
   tailGeo.rotateX(Math.PI / 2);
-  const finGeo = keep(new THREE.PlaneGeometry(0.1, 0.07));
-  finGeo.rotateX(-Math.PI / 2);
   const koiMats = KOI_KINDS.map((k) => {
     const tex = keep(koiTexture(k.base, k.spots));
     // Drawn after the water and a little toward its colour, so they read as
@@ -349,9 +347,9 @@ export function createRiverLife(bridgeZ: number): RiverLife {
     const body = new THREE.Mesh(koiBody, koiMats[i % koiMats.length]);
     const tail = new THREE.Mesh(tailGeo, finMat);
     tail.position.x = -0.32;
-    const f1 = new THREE.Mesh(finGeo, finMat); f1.position.set(0.1, -0.03, 0.13); f1.rotation.y = -0.5;
-    const f2 = new THREE.Mesh(finGeo, finMat); f2.position.set(0.1, -0.03, -0.13); f2.rotation.y = 0.5;
-    g.add(body, tail, f1, f2);
+    // Two draw calls a fish: the pectoral fins are invisible from the bank
+    // and were half the koi's cost in a headset.
+    g.add(body, tail);
     for (const c of g.children) c.renderOrder = 2;
     const size = 0.75 + Math.random() * 0.6;
     g.scale.setScalar(size);

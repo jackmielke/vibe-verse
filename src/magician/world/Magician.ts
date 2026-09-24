@@ -676,7 +676,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         // Downstream from the top of the arch: the koi below, the lanterns' way.
         const c = bridge.centre;
         const slope = riverCentre(c.z + 0.5) - riverCentre(c.z - 0.5);
-        player.teleport(c.x, c.z, Math.atan2(-slope, -1));
+        // A step off the middle, so the centre post is not in the middle of the view.
+        const ux = 1 / Math.hypot(1, slope), uz = -slope / Math.hypot(1, slope);
+        player.teleport(c.x + ux * 1.1, c.z + uz * 1.1, Math.atan2(-slope, -1));
         player.position.y = c.y;
       }
       river.feed(player.position, player.yaw());
@@ -860,6 +862,13 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // way out with bare hands.
   const holdTimers = new Map<THREE.Group, number>();
   const onSelectStart = (c: THREE.Group) => () => {
+    if (playing) {
+      // Playing the screen: the trigger is the program's pointer, aimed down the controller.
+      vrPointer = c;
+      aimFromController(c);
+      screenPtr.pressed = true;
+      return;
+    }
     if (game.active()) {
       c.getWorldPosition(ctrlPos);
       ctrlDir.set(0, 0, -1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
@@ -871,7 +880,31 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       void renderer.xr.getSession()?.end().catch(() => undefined);
     }, 2000));
   };
-  const onSelectEnd = (c: THREE.Group) => () => { const t = holdTimers.get(c); if (t !== undefined) { clearTimeout(t); holdTimers.delete(c); } };
+  const onSelectEnd = (c: THREE.Group) => () => {
+    if (vrPointer === c) { vrPointer = null; screenPtr.pressed = false; }
+    const t = holdTimers.get(c); if (t !== undefined) { clearTimeout(t); holdTimers.delete(c); }
+  };
+  let vrPointer: THREE.Group | null = null;
+  const ctrlQ = new THREE.Quaternion();
+  function aimFromController(c: THREE.Group) {
+    c.getWorldPosition(ctrlPos);
+    ctrlDir.set(0, 0, -1).applyQuaternion(c.getWorldQuaternion(ctrlQ));
+    const h = screen.hit(ctrlPos, ctrlDir);
+    if (h) { screenPtr.x = h.x; screenPtr.y = h.y; }
+  }
+  // The grips do what the HUD's buttons do on a screen: the right grip the
+  // first thing on offer, the left grip the second. Words (a wish, a program)
+  // have no keyboard here, so a wish is written for you and the screen asks
+  // you to say what you want.
+  const onSqueeze = (e: { data?: XRInputSource }) => {
+    const left = e.data?.handedness === "left";
+    const a = (left ? actionsNow[1] : undefined) ?? actionsNow[0];
+    if (!a) return;
+    if (a.id === "wish") world.act("wish", "a wish from the headset");
+    else if (a.id === "program") { events.onToast?.("Say what the screen should show"); events.onSelect?.(); }
+    else world.act(a.id);
+  };
+  for (const c of controllers) c.addEventListener("squeezestart", onSqueeze as unknown as (e: THREE.Event) => void);
   const selectHandlers = controllers.map((c) => { const h = onSelectStart(c); const e = onSelectEnd(c); c.addEventListener("selectstart", h); c.addEventListener("selectend", e); return { h, e }; });
 
   // A HUD that exists inside the headset: a small canvas sprite under the
@@ -889,7 +922,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   camera.add(vrHud);
   let vrHudText = "";
   function drawVrHud(h: GameHud | null) {
-    const text = h ? `${"♥".repeat(h.hearts)}${"♡".repeat(Math.max(0, h.maxHearts - h.hearts))}   ${h.objective}   ${h.score} pts${h.timer != null ? `   ${Math.ceil(h.timer)}s` : ""}` : (options.voiceLine?.() ?? "");
+    const grips = actionsNow.length ? `grip: ${actionsNow[0].label}${actionsNow[1] ? ` · left grip: ${actionsNow[1].label}` : ""}` : "";
+    const text = h ? `${"♥".repeat(h.hearts)}${"♡".repeat(Math.max(0, h.maxHearts - h.hearts))}   ${h.objective}   ${h.score} pts${h.timer != null ? `   ${Math.ceil(h.timer)}s` : ""}` : (grips || (options.voiceLine?.() ?? ""));
     if (text === vrHudText) return;
     vrHudText = text;
     const c = vrHudCanvas.getContext("2d")!;
@@ -901,7 +935,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     c.font = "500 44px system-ui, sans-serif";
     c.textAlign = "center";
     c.textBaseline = "middle";
-    c.fillText(text.slice(0, 60), 512, 80);
+    c.font = `500 ${text.length > 44 ? 34 : 44}px system-ui, sans-serif`;
+    c.fillText(text.slice(0, 70), 512, 80);
     vrHudTex.needsUpdate = true;
   }
 
@@ -1124,10 +1159,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     forest.update(time, s.windDirection, s.wind);
     bridge.update(dt, time, s.wind, s.windDirection);
     screen.update(dt, time, player.position);
-    for (const h of openHouses) h.house!.interior.update(dt, time, h.group.visible && h.group.position.distanceTo(player.position) < 30);
+    for (const h of openHouses) h.house!.interior.update(dt, time, h.group.visible && h.group.position.distanceTo(player.position) < 16);
     if (playing) {
       const c = player.controls();
-      if (document.pointerLockElement === container || xr) aimScreen(0, 0, true);
+      if (vrPointer) aimFromController(vrPointer);
+      else if (document.pointerLockElement === container || xr) aimScreen(0, 0, true);
       screen.input({ left: c.x < -0.35, right: c.x > 0.35, up: c.y > 0.35, down: c.y < -0.35, a: c.jump, b: screenB, x: screenPtr.x, y: screenPtr.y, pressed: screenPtr.pressed });
     }
     river.update(dt, time, { waterY: terrain.waterY(), player: player.position, onBridge: onBridge(), night: look.night });
@@ -1327,7 +1363,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       river.dispose();
       container.removeEventListener("touchstart", onTouchStart);
       container.removeEventListener("touchend", onTouchEnd);
-      controllers.forEach((c, i) => { c.removeEventListener("selectstart", selectHandlers[i].h); c.removeEventListener("selectend", selectHandlers[i].e); });
+      controllers.forEach((c, i) => { c.removeEventListener("selectstart", selectHandlers[i].h); c.removeEventListener("selectend", selectHandlers[i].e); c.removeEventListener("squeezestart", onSqueeze as unknown as (e: THREE.Event) => void); });
       for (const t of holdTimers.values()) clearTimeout(t);
       vrHudTex.dispose();
       vrHudMat.dispose();

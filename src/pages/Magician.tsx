@@ -502,7 +502,7 @@ export default function Magician() {
 
           {/* What there is to do right here. */}
           {actions.length > 0 && !wishOpen && (
-            <div className={`absolute left-1/2 z-10 flex -translate-x-1/2 gap-2 ${phone ? "top-28" : "bottom-44"}`} data-ui="1">
+            <div className={`absolute left-1/2 z-10 flex -translate-x-1/2 gap-2 ${phone ? "top-36" : "bottom-44"}`} data-ui="1">
               {actions.map((a, i) => (
                 <button
                   key={a.id}

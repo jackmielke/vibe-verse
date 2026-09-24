@@ -504,3 +504,43 @@ The shape of it, because it is the shape the next voice world should copy:
   a WebM through `MediaRecorder`; the page shares it through the share sheet
   or downloads it. Not inside VR: three renders to the XR layer there and the
   canvas is blank, so the headset's own recorder is the tool.
+- **The Magic Screen** (`screen/`, `world/screen.ts`,
+  `supabase/functions/vibe-magician-screen`) is a screen in the square that
+  Vibey programs: `program_screen` sends the request (and the running code,
+  for a change) to the function, a fast OpenAI model streams JavaScript back,
+  and the screen shows the code arriving while the room gets a draft every
+  1.5 s. The finished program is `state.screen`, so every viewer runs it on
+  the same clock. It is a stranger's code broadcast to everybody, so it runs
+  in a worker inside an opaque-origin `sandbox="allow-scripts"` iframe whose
+  CSP is `default-src 'none'`; frames come back as ImageBitmaps. Three things
+  that were learned the hard way: models redeclare `W` and `H` however they
+  are told, so each program gets its own function scope; a watchdog that runs
+  late is watching a busy page, not a stuck program (in SwiftShader every
+  program "froze" until it learned that); and "take me to the screen" is a
+  trip, not a program, so the spellbook checks travel first. The eight
+  channels in `screen/library.ts` are the offline fallback and the test rig.
+  `vibe_magician_screen` is the budget ledger and keeps every program's code;
+  the sandbox cannot reach Supabase, so the function was verified by calling
+  it from inside the database with `pg_net` and reading the ledger.
+- **The river is carved last in `heightAt`.** It used to be a dent the paddy
+  terraces blended away, and was dry for most of its length.
+  `src/test/magicianRiver.test.ts` holds it to water from the bridge to the
+  lake. The water plane has `depthWrite: false` so the koi (drawn after it)
+  show through. Wish lanterns are `state.wishes` and their position is a pure
+  function of the wall clock since release (`wishPosition`), which is what
+  lets a newcomer see them where they really are.
+- **The world's floor is `groundAt`, not `heightAt`**: the higher of the
+  terrain, the bridge's planks (only if you are up on them), and the open
+  houses' floors, with a float in deep water. The two open minka have walls
+  as segments with a doorway gap (`house.walls`), and their hearth is the
+  house's lamp, always lit.
+- **Sound can be checked without speakers**: `node scripts/magician-listen.mjs
+  "strong wind" "night"` has the page draw a spectrogram of the final mix and
+  print the loudness per second. Wind should swell and fall; a flat band is a
+  hiss, which is what it was.
+- **Actions** (`onActions` / `act`): what there is to do where you stand
+  (feed the koi, float a wish, play or program the screen, sit by the fire,
+  pet the cat) is one list; the page shows it as buttons with E and R, the
+  headset maps it to the right and left grips and shows it on the VR strip.
+- **The dials** (`ui/Dials.tsx`) write the same patches as a spoken wish, and
+  `turn_dial` is the voice's way to set one exactly.
