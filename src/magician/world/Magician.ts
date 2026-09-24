@@ -626,12 +626,17 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     lightning: () => lightning.flash,
     time: () => time,
   });
+  let prevWishes = 0;
   const store: MagicianStore = {
     get: () => state,
     patch(p: Patch) {
       state = applyPatch(state, p);
       if (p.props) syncProps(state.props, state.season);
-      if (p.wishes) river.syncWishes(state.wishes);
+      if (p.wishes) {
+        if (!applyingRemote && state.wishes.length > prevWishes) vibey.emote("Wave");
+        river.syncWishes(state.wishes);
+      }
+      prevWishes = state.wishes.length;
       if (p.screen !== undefined) syncScreen();
       if (p.screenWriting !== undefined && !screenBusy) {
         const w = state.screenWriting;
@@ -742,6 +747,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       store.patch({ screen: { code: prog.code, title: prog.title, request, at: screenMine }, screenWriting: null });
       ambience.play("sparkle", SCREEN_AT);
       bursts.spawn("sparkle", SCREEN_AT.x, heightAt(SCREEN_AT.x, SCREEN_AT.z) + 3, SCREEN_AT.z);
+      vibey.emote("ThumbsUp");
       events.onToast?.(`📺 ${prog.title}`);
       events.onNotify?.(`The Magic Screen now shows "${prog.title}"${error ? " (fixed)" : ""}. Say so in one short, delighted line${/game|play|catch|snake|pong|quiz/i.test(request) ? "; they can walk up to it and press Play" : ""}.`);
     } catch (err) {
