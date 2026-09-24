@@ -789,9 +789,13 @@ export function buildForest(trees: TreeSpec[], season: Season): Forest {
     }
     const sakura = t.kind === "sakura";
     const maple = t.kind === "maple";
-    const H = (sakura ? 2.2 : maple ? 2.6 : 3) * s + rnd() * 0.8;
-    const rx = (sakura ? 2.7 : maple ? 1.9 : 2.2) * s;
-    const ry = (sakura ? 1.35 : 1.6) * s;
+    // Not one tree repeated: a broadleaf is round, or a tall vase like a
+    // zelkova, or a wide old umbrella like a camphor, and sometimes two-lobed.
+    const shape = sakura ? 0 : Math.floor(rnd() * 3);
+    const tall = shape === 1, wide = shape === 2;
+    const H = (sakura ? 2.2 : maple ? 2.6 : 3) * s * (tall ? 1.25 : wide ? 1.1 : 1) + rnd() * 0.8;
+    const rx = (sakura ? 2.7 : maple ? 1.9 : 2.2) * s * (tall ? 0.72 : wide ? 1.4 : 1) * (0.9 + rnd() * 0.2);
+    const ry = (sakura ? 1.35 : 1.6) * s * (tall ? 1.55 : wide ? 0.72 : 1) * (0.9 + rnd() * 0.2);
     const lean = (rnd() - 0.5) * (sakura ? 0.25 : 0.12);
     const yaw = rnd() * Math.PI * 2;
     trunk(t.x, gy, t.z, (sakura ? 0.2 : 0.22) * s, H + ry * 0.4, lean, yaw);
@@ -812,6 +816,12 @@ export function buildForest(trees: TreeSpec[], season: Season): Forest {
       clump(crowns[t.kind], lo, crown.x + px, crown.y + py, crown.z + pz, r, crown, Math.max(rx, ry), gy, crown.y + ry, tone * (0.9 + rnd() * 0.2));
     }
     clump(crowns[t.kind], lo, crown.x, crown.y + ry * 0.55, crown.z, rx * 0.5, crown, Math.max(rx, ry), gy, crown.y + ry, tone);
+    if (!sakura && !lo && rnd() < 0.3) {
+      // A second, lower lobe off to one side.
+      const a = yaw + 1.7;
+      const c2 = new THREE.Vector3(crown.x + Math.cos(a) * rx * 0.8, crown.y - ry * 0.35, crown.z + Math.sin(a) * rx * 0.8);
+      for (let k = 0; k < 4; k++) clump(crowns[t.kind], lo, c2.x + (rnd() - 0.5) * rx * 0.6, c2.y + (rnd() - 0.3) * ry * 0.4, c2.z + (rnd() - 0.5) * rx * 0.6, 0.75 * s, c2, rx * 0.7, gy, c2.y + ry * 0.6, tone * 0.95);
+    }
   }
 
   const merged: THREE.BufferGeometry[] = [];
