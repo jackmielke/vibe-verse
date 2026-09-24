@@ -136,7 +136,7 @@ export default function Magician() {
     if (!entered) return;
     const on = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement | null)?.tagName === "INPUT") return;
-      const a = e.code === "KeyE" ? actions[0] : e.code === "KeyR" ? actions[1] : undefined;
+      const a = e.code === "KeyE" ? actions[0] : e.code === "KeyR" ? actions[1] : e.code === "KeyF" ? actions[2] : undefined;
       if (a) { e.preventDefault(); doAction(a.id); }
     };
     window.addEventListener("keydown", on);
@@ -512,7 +512,7 @@ export default function Magician() {
                   onClick={() => doAction(a.id)}
                   className="rounded-full border border-[#ffd9a0]/50 bg-[#2a1a10]/60 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-[#ffe9c8] shadow-[0_0_24px_rgba(255,180,90,0.25)] backdrop-blur-sm hover:bg-[#3a2414]/70"
                 >
-                  {!phone && i < 2 && <span className="mr-2 rounded-sm border border-[#ffd9a0]/40 px-1.5 py-0.5 text-[9px]">{i === 0 ? "E" : "R"}</span>}
+                  {!phone && i < 3 && <span className="mr-2 rounded-sm border border-[#ffd9a0]/40 px-1.5 py-0.5 text-[9px]">{["E", "R", "F"][i]}</span>}
                   {a.label}
                 </button>
               ))}

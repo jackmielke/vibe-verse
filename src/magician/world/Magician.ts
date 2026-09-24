@@ -47,6 +47,8 @@ import { createFireballs } from "./fireballs";
 import { createAmbience, type Surface } from "./audio";
 import { buildTaikoBridge, createRiverLife } from "./bridge";
 import { createMagicScreen } from "./screen";
+import { createSpellFx, spellColour } from "./spell";
+import { createHotaru } from "./hotaru";
 import { CHANNELS, findChannel } from "../screen/library";
 import { writeProgram } from "../screen/coder";
 import { NO_INPUT } from "../screen/runtime";
@@ -90,7 +92,7 @@ export interface MagicianEvents {
 
 /** Something to do where the visitor is standing, shown as a button. */
 export interface WorldAction {
-  id: "feed" | "wish" | "play" | "program" | "sit" | "pet";
+  id: "feed" | "wish" | "play" | "program" | "sit" | "pet" | "channel";
   label: string;
 }
 
@@ -332,6 +334,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   for (const p of bridge.posts) fixed.push(p);
   const river = createRiverLife(BRIDGE_Z);
   scene.add(river.group);
+  const hotaru = createHotaru(BRIDGE_Z);
+  scene.add(hotaru.points);
+  hotaru.setLevel(0);
+  const spells = createSpellFx();
+  scene.add(spells.group);
   // The Magic Screen at the edge of the square, facing it. See screen.ts.
   const SCREEN_AT = { x: -2, z: -19 };
   const screenCoarse = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
@@ -1097,6 +1104,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     return "grass";
   }
   let stepDist = 0;
+  let hotaruLevel = 0;
+  let wasDark: boolean | null = null;
   let indoorsNow = 0, fireNow = 0;
   let actionTick = 0, actionKey = "", actionsNow: WorldAction[] = [];
   const lastFeet = new THREE.Vector3();
@@ -1113,6 +1122,10 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (home) fireTarget = Math.max(0, 1 - home.group.localToWorld(V.copy(home.house!.interior.hearth)).distanceTo(p) / 5);
     fireNow += (fireTarget - fireNow) * 0.08;
     ambience.listener(p.x, p.z, player.yaw());
+    // The temple on the hill rings its bell at dusk and at dawn.
+    const dark = look.night > 0.35;
+    if (wasDark !== null && dark !== wasDark) ambience.play("bonsho");
+    wasDark = dark;
     ambience.set({
       rain: wet, wind: s.wind, night: look.night * (s.season === "winter" ? 0.1 : 1), storm: s.weather === "storm" ? 1 : 0,
       water: Math.max(riverNear, s.flood > 0.2 ? 0.5 : 0),
@@ -1170,6 +1183,15 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     forest.update(time, s.windDirection, s.wind);
     bridge.update(dt, time, s.wind, s.windDirection);
     screen.update(dt, time, player.position);
+    spells.update(dt);
+    {
+      // Hotaru by the river: warm, dry, dark nights.
+      const warmSeason = s.season === "summer" ? 1 : s.season === "spring" ? 0.7 : 0;
+      const dryNight = s.weather === "rain" || s.weather === "storm" || s.weather === "snow" ? 0 : 1;
+      hotaruLevel += (Math.max(0, (look.night - 0.4) / 0.4) * warmSeason * dryNight - hotaruLevel) * Math.min(1, dt * 0.8);
+      hotaru.setLevel(Math.min(1, hotaruLevel));
+      hotaru.update(dt, time, terrain.waterY());
+    }
     for (const h of openHouses) h.house!.interior.update(dt, time, h.group.visible && h.group.position.distanceTo(player.position) < 16);
     if (playing) {
       const c = player.controls();
@@ -1214,7 +1236,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         : onBridge()
         ? [{ id: "feed", label: "Feed the koi" }, { id: "wish", label: "Float a wish" }]
         : nearScreen()
-          ? [{ id: "play", label: playing ? "Stop playing" : "Play on the screen" }, { id: "program", label: "Make something" }]
+          ? [{ id: "play", label: playing ? "Stop playing" : "Play on the screen" }, { id: "program", label: "Make something" }, { id: "channel", label: "Change channel" }]
           : [];
       const key = next.map((a) => a.label).join();
       if (key !== actionKey) { actionKey = key; actionsNow = next; events.onActions?.(next); }
@@ -1273,6 +1295,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         // A spell landed: sparkles at Vibey's hands and a flourish, unless the
         // model chose its own gesture this turn.
         bursts.spawn("sparkle", vibey.position.x, vibey.position.y + 1.2, vibey.position.z);
+        // And the spell leaves: a ribbon up into the sky that blooms there.
+        if (!/^(emote|game_status|look_around|shield|blast)$/.test(name)) {
+          spells.cast(V.copy(vibey.position).setY(vibey.position.y + 1.1), spellColour(name), (at) => bursts.spawn("sparkle", at.x, at.y, at.z));
+          ambience.play("sparkle", { x: vibey.position.x, z: vibey.position.z });
+        }
         if (name !== "emote" && performance.now() - lastEmote > 1500) {
           lastEmote = performance.now();
           vibey.emote(CAST_GESTURES[Math.floor(Math.random() * CAST_GESTURES.length)]);
@@ -1310,6 +1337,14 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       if (id === "feed") { river.feed(player.position, player.yaw()); ambience.play("whoosh", { x: player.position.x, z: player.position.z }); }
       else if (id === "wish") runTool("release_lantern", { wish: text ?? "" }, store);
       else if (id === "play") { setPlaying(!playing); actionKey = ""; }
+      else if (id === "channel") {
+        // Flip through the channels the screen already knows.
+        const now = state.screen ? CHANNELS.findIndex((c) => c.title === state.screen!.title) : 0;
+        const next = CHANNELS[(now + 1 + CHANNELS.length) % CHANNELS.length];
+        store.patch({ screen: { code: next.code, title: next.title, request: next.title, at: Date.now() } });
+        ambience.play("pop", SCREEN_AT);
+        events.onToast?.(`📺 ${next.title}`);
+      }
       else if (id === "sit") {
         sitting = !sitting;
         actionKey = "";
@@ -1370,6 +1405,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       window.removeEventListener("keydown", onScreenKeyDown);
       window.removeEventListener("keyup", onScreenKeyUp);
       screen.dispose();
+      spells.dispose();
+      hotaru.dispose();
       bridge.dispose();
       river.dispose();
       container.removeEventListener("touchstart", onTouchStart);
@@ -1487,6 +1524,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         forest.update(time, state.windDirection, state.wind);
         bridge.update(0.1, time, state.wind, state.windDirection);
         river.update(0.1, time, { waterY: terrain.waterY(), player: player.position, onBridge: onBridge(), night: look.night });
+        hotaruLevel = Math.max(0, (look.night - 0.4) / 0.4) * (state.season === "summer" || state.season === "spring" ? 1 : 0) * (/rain|storm|snow/.test(state.weather) ? 0 : 1);
+        hotaru.setLevel(Math.min(1, hotaruLevel));
+        hotaru.update(0.1, time, terrain.waterY());
         grass.update(0.1, time, player.position, { windDir: state.windDirection, wind: state.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
         for (const p of fixed) p.update?.(0.1, time, propCtx);
         for (const sp of spawned.values()) { sp.obj.update?.(0.1, time, propCtx); sp.obj.group.scale.setScalar(sp.prop.scale); }

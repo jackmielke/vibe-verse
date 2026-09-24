@@ -48,7 +48,7 @@ export interface AmbienceLevels {
   fire?: number;
 }
 
-export type SoundName = "bell" | "gong" | "thunder" | "chime" | "whoosh" | "hit" | "fizz" | "roar" | "pop" | "splash" | "sparkle" | "plop" | "furin" | "purr" | "mew";
+export type SoundName = "bell" | "gong" | "thunder" | "chime" | "whoosh" | "hit" | "fizz" | "roar" | "pop" | "splash" | "sparkle" | "plop" | "furin" | "purr" | "mew" | "bonsho";
 
 export interface Ambience {
   /** Must be called from a user gesture at least once. */
@@ -459,6 +459,15 @@ export function createAmbience(): Ambience {
         case "plop": tone(420, 0.12, 0.12, "sine", 0, { ...o, bend: 2.2 }); burst(0.08, 0.06, 1500, "bandpass", o); break;
         case "furin": furin(at, 1); break;
         case "purr": purr(at); break;
+        case "bonsho": {
+          // A temple bell far off across the valley: the strike, then a long
+          // hum that beats slowly as its two near partials drift apart.
+          const w = { wet: true, attack: 0.02 };
+          tone(98, 9, 0.07, "sine", 0, w); tone(98.6, 9, 0.05, "sine", 0, w);
+          tone(98 * 2.43, 6, 0.03, "sine", 0, w); tone(98 * 3.9, 3.5, 0.015, "sine", 0, w);
+          burst(0.3, 0.04, 500, "lowpass", { wet: true });
+          break;
+        }
         case "mew": tone(620, 0.35, 0.05, "triangle", 0, { ...o, bend: 1.45, attack: 0.05 }); tone(900, 0.4, 0.035, "triangle", 0, { ...o, delay: 0.3, bend: 0.62, attack: 0.04 }); break;
       }
     },
