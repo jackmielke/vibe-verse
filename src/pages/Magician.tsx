@@ -32,6 +32,7 @@ const SUGGESTIONS = [
   "put a game where you catch falling stars on the screen",
   "make it rain",
   "I wish for a peaceful night",
+  "release sky lanterns",
   "sunset, please",
   "feed the koi",
   "a cherry forest around me",

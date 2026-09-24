@@ -91,6 +91,10 @@ export function castSpell(input: string): SpellCall[] {
   // The river: wish lanterns and koi. Checked before anything that would
   // read "lantern" as the stone kind or as the village lights.
   if (/\bfeed (the )?(koi|fish)\b|\bkoi\b.*\bfood\b/.test(t)) return [{ name: "feed_koi", args: {} }];
+  if (/\bsky lanterns?|\blanterns? (in|into|to) the sky|\blanterns? (rise|float up|fly)/.test(t)) {
+    const w = input.match(/\b(?:reading|that says|for)\s+(.+)$/i);
+    return [{ name: "release_lantern", args: { wish: w?.[1]?.trim() ?? "a wish", count: countIn(t) ?? 12, sky: true } }];
+  }
   const wish = input.match(/\b(?:wish(?:ing)?(?: for| that)?|lanterns? (?:for|reading|that says))\s+(.+)$/i);
   if (wish || /\bfloat(ing)? (a |some )?lanterns?|\blanterns? (on|down) the (river|water)|\btoro nagashi|\bwish lanterns?/.test(t)) {
     return [{ name: "release_lantern", args: { wish: wish?.[1]?.trim() ?? "a wish", count: countIn(t) ?? 1 } }];

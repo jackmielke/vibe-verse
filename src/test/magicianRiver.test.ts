@@ -44,12 +44,12 @@ describe("wish lanterns", () => {
     runTool("reset_world", {}, s);
     expect(state().wishes).toHaveLength(1);
   });
-  it("old lanterns are gone after five minutes, and the river holds forty", () => {
+  it("old lanterns are gone after five minutes, and the valley holds sixty", () => {
     const now = Date.now();
-    const many = Array.from({ length: 60 }, (_, i) => ({ id: i, text: "x", born: now }));
+    const many = Array.from({ length: 80 }, (_, i) => ({ id: i, text: "x", born: now }));
     const stale = { id: 999, text: "old", born: now - 400_000 };
     const next = applyPatch(DEFAULT_STATE, { wishes: [stale, ...many] });
-    expect(next.wishes).toHaveLength(40);
+    expect(next.wishes).toHaveLength(60);
     expect(next.wishes.find((w) => w.id === 999)).toBeUndefined();
   });
   it("drifts downstream, on the water, and fades out", () => {
@@ -59,6 +59,17 @@ describe("wish lanterns", () => {
     expect(b.z).toBeGreaterThan(a.z);
     for (const p of [a, b]) expect(heightAt(p.x, p.z)).toBeLessThan(WATER_LEVEL);
     expect(wishPosition(w, 301_000, -6)).toBeNull();
+  });
+  it("sky lanterns rise from where the visitor stands, and fade among the stars", () => {
+    const { s, state } = store();
+    runTool("release_lantern", { wish: "hello", sky: true, count: 20 }, s);
+    expect(state().wishes).toHaveLength(20);
+    const w = state().wishes[0];
+    expect(w.sky).toBeDefined();
+    const a = wishPosition(w, w.born + 2_000, -6)!, b = wishPosition(w, w.born + 60_000, -6)!;
+    expect(b.y!).toBeGreaterThan(a.y! + 20);
+    expect(wishPosition(w, w.born + 201_000, -6)).toBeNull();
+    expect(castSpell("release sky lanterns")[0]).toMatchObject({ name: "release_lantern", args: { sky: true } });
   });
   it("the spellbook hears wishes and koi", () => {
     expect(castSpell("I wish for a quiet summer")).toEqual([{ name: "release_lantern", args: { wish: "a quiet summer", count: 1 } }]);

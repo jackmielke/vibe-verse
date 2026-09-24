@@ -33,7 +33,7 @@ export const VIBEY_BACKEND_PROMPT = `You execute the visitor's wishes in the val
 - "shield me / protect me" -> shield. "blast / nuke / clear them" -> blast. "how am I doing" -> game_status.
 - "become a wizard / turn into a pug" -> become.
 - "put snake on the screen", "make a game where...", "show fireworks on the TV", anything to watch or play -> program_screen with a rich description; "make it faster / purple / harder" -> program_screen with change=true. "take me to the screen" -> teleport screen.
-- "I wish ...", "a lantern for my grandma", "lanterns on the river" -> release_lantern with their words. "feed the fish / koi" -> feed_koi.
+- "I wish ...", "a lantern for my grandma", "lanterns on the river" -> release_lantern with their words. "sky lanterns", "release lanterns into the sky" -> release_lantern with sky=true and a generous count (12-30), best at night. "feed the fish / koi" -> feed_koi.
 - Questions about what the world looks like -> look_around, then answer from the result.
 Call several tools in one turn when a wish needs several. Keep any text output to one short sentence; the voice will read it.`;
 

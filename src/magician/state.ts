@@ -77,6 +77,8 @@ export interface Wish {
   text: string;
   /** Wall-clock ms when it was released: where it has drifted is a function of this. */
   born: number;
+  /** A sky lantern rises from here instead of floating down the river. */
+  sky?: { x: number; z: number };
 }
 
 export interface Palette {
@@ -185,7 +187,7 @@ export function applyPatch(state: WorldState, patch: Patch): WorldState {
   if (next.props.length > 400) next.props = next.props.slice(next.props.length - 400);
   // A lantern lives five minutes; the river holds forty at most.
   const now = Date.now();
-  next.wishes = (next.wishes ?? []).filter((w) => now - w.born < 300_000).slice(-40);
+  next.wishes = (next.wishes ?? []).filter((w) => now - w.born < 300_000).slice(-60);
   if (next.screen === undefined) next.screen = null;
   if (next.screen && next.screen.code.length > 40000) next.screen = null;
   if (next.screenWriting === undefined) next.screenWriting = null;

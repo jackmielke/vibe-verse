@@ -297,12 +297,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: "function",
     name: "release_lantern",
     description:
-      "Set a glowing paper wish lantern (toro nagashi) on the river at the red drum bridge. It drifts downstream to the lake over a few minutes and everyone in the valley sees it. Use when the visitor makes a wish, remembers someone, or asks for lanterns on the water. Write their wish on it in a few words.",
+      "Set a glowing paper wish lantern (toro nagashi) on the river at the red drum bridge, or with sky=true release sky lanterns that rise into the air from where the visitor stands. It drifts downstream to the lake over a few minutes and everyone in the valley sees it. Use when the visitor makes a wish, remembers someone, or asks for lanterns on the water. Write their wish on it in a few words.",
     parameters: {
       type: "object",
       properties: {
         wish: { type: "string", description: "What is written on the lantern, a few words, in the visitor's language." },
-        count: { type: "number", description: "How many lanterns, 1-8. Default 1." },
+        count: { type: "number", description: "How many lanterns, 1-8 on the river, up to 30 into the sky. Default 1." },
+        sky: { type: "boolean", description: "True to release sky lanterns that rise from where the visitor stands into the night sky, instead of floating on the river. Magical at night; 'release lanterns into the sky'." },
       },
       required: ["wish"],
     },
@@ -589,11 +590,17 @@ export function runTool(name: string, rawArgs: unknown, store: MagicianStore, rn
     }
     case "release_lantern": {
       const text = String(args.wish ?? "").trim().slice(0, 60) || "a wish";
-      const n = Math.max(1, Math.min(8, Math.round(Number(args.count ?? 1)) || 1));
+      const sky = args.sky === true;
+      const n = Math.max(1, Math.min(sky ? 30 : 8, Math.round(Number(args.count ?? 1)) || 1));
       const now = Date.now();
-      const made = Array.from({ length: n }, (_, i) => ({ id: Math.floor(rnd() * 1e9), text, born: now + i * 2500 }));
+      const at = store.playerPosition();
+      const made = Array.from({ length: n }, (_, i) => ({
+        id: Math.floor(rnd() * 1e9), text, born: now + i * (sky ? 450 : 2500),
+        ...(sky ? { sky: { x: at.x + (rnd() - 0.5) * Math.min(8, n * 0.5), z: at.z + (rnd() - 0.5) * Math.min(8, n * 0.5) } } : {}),
+      }));
       store.patch({ wishes: [...store.get().wishes, ...made] });
       store.sound("chime");
+      if (sky) return { output: `${n === 1 ? "A sky lantern rises" : `${n} sky lanterns rise`} from where the visitor stands, reading "${text}", drifting up into the sky for everyone to see.`, toast: `🏮↑ "${text}"` };
       return { output: `${n === 1 ? "A lantern is" : `${n} lanterns are`} on the river at the bridge, reading "${text}". ${n === 1 ? "It drifts" : "They drift"} down to the lake over the next few minutes.`, toast: `🏮 "${text}"` };
     }
     case "turn_dial": {

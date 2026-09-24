@@ -273,12 +273,25 @@ const KOI_KINDS = [
 ];
 
 /** Where a lantern released at `born` is now, and whether it still is. */
-export function wishPosition(w: Wish, now: number, startZ: number): { x: number; z: number; yaw: number; alive: number } | null {
+export function wishPosition(w: Wish, now: number, startZ: number): { x: number; y: number | null; z: number; yaw: number; alive: number } | null {
   const age = (now - w.born) / 1000;
+  const seed = (w.id % 97) / 97;
+  if (w.sky) {
+    // A sky lantern: lifts slowly off the hands, then climbs and drifts on
+    // the air, turning, until it is a star among the stars.
+    const LIFE = 200;
+    if (age < 0 || age > LIFE) return null;
+    const rise = age < 3 ? age * age * 0.12 : 1.08 + (age - 3) * (0.55 + seed * 0.35);
+    const drift = age * (0.18 + seed * 0.12);
+    const a = seed * 6.283;
+    const x = w.sky.x + Math.cos(a) * (0.6 + drift) + Math.sin(age * 0.3 + seed * 9) * 0.4;
+    const z = w.sky.z + Math.sin(a) * (0.6 + drift) + Math.cos(age * 0.27 + seed * 7) * 0.4;
+    const alive = Math.min(1, age / 1.5) * Math.min(1, (LIFE - age) / 40);
+    return { x, y: heightAt(w.sky.x, w.sky.z) + 1.3 + rise, z, yaw: age * 0.25 + seed * 6, alive };
+  }
   const LIFE = 300;
   if (age < 0 || age > LIFE) return null;
   const s = age * 0.42;
-  const seed = (w.id % 97) / 97;
   let z = startZ + s;
   let x = riverCentre(z) + Math.sin(age * 0.07 + seed * 6) * 1.6 + (seed - 0.5) * 1.5;
   // Past the paddies the river opens into the lake, and the lantern drifts on.
@@ -288,7 +301,7 @@ export function wishPosition(w: Wish, now: number, startZ: number): { x: number;
     x = riverCentre(50) + Math.min(14, over * 0.35) + Math.sin(age * 0.05 + seed * 9) * 3;
   }
   const alive = Math.min(1, age / 2) * Math.min(1, (LIFE - age) / 20);
-  return { x, z, yaw: age * 0.08 + seed * 6, alive };
+  return { x, y: null, z, yaw: age * 0.08 + seed * 6, alive };
 }
 
 export function createRiverLife(bridgeZ: number): RiverLife {
@@ -404,6 +417,11 @@ export function createRiverLife(bridgeZ: number): RiverLife {
         const base = new THREE.Mesh(lanternBase, baseMat);
         const box = new THREE.Mesh(lanternBox, paper);
         box.position.y = 0.27;
+        if (w.sky) {
+          // Sky lanterns are taller paper and no raft, open at the bottom.
+          base.visible = false;
+          box.scale.set(1.1, 1.6, 1.1);
+        }
         const halo = new THREE.SpriteMaterial({ map: haloTex, color: "#ffb45c", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 });
         const sprite = new THREE.Sprite(halo);
         sprite.scale.set(2.2, 2.2, 1);
@@ -495,11 +513,16 @@ export function createRiverLife(bridgeZ: number): RiverLife {
         const p = wishPosition(w.wish, now, bridgeZ);
         if (!p) { w.g.visible = false; continue; }
         w.g.visible = true;
-        w.g.position.set(p.x, wy + 0.02 + Math.sin(time * 1.3 + w.wish.id) * 0.025, p.z);
-        w.g.rotation.set(Math.sin(time * 0.9 + w.wish.id) * 0.04, p.yaw, Math.cos(time * 0.8 + w.wish.id) * 0.04);
+        if (p.y !== null) {
+          w.g.position.set(p.x, p.y, p.z);
+          w.g.rotation.set(Math.sin(time * 0.7 + w.wish.id) * 0.06, p.yaw, Math.cos(time * 0.6 + w.wish.id) * 0.06);
+        } else {
+          w.g.position.set(p.x, wy + 0.02 + Math.sin(time * 1.3 + w.wish.id) * 0.025, p.z);
+          w.g.rotation.set(Math.sin(time * 0.9 + w.wish.id) * 0.04, p.yaw, Math.cos(time * 0.8 + w.wish.id) * 0.04);
+        }
         w.paper.opacity = p.alive;
         w.paper.emissiveIntensity = (0.5 + o.night * 1.1) * p.alive * (0.92 + Math.sin(time * 7 + w.wish.id) * 0.08);
-        w.halo.opacity = p.alive * (0.25 + o.night * 0.6);
+        w.halo.opacity = p.alive * (0.25 + o.night * 0.6) * (p.y !== null ? 1.3 : 1);
       }
     },
     dispose() {
