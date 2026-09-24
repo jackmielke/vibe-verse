@@ -56,6 +56,7 @@ export function createTerrain(): Terrain {
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
+  const dirtVar = new THREE.Color();
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -74,7 +75,13 @@ export function createTerrain(): Terrain {
     const rd = riverDistance(x, z);
     if (rd < 11) c.lerp(sandCol, Math.max(0, 1 - rd / 11) * 0.8);
     const p = pathAt(x, z);
-    if (p > 0) c.lerp(dirtCol, p);
+    if (p > 0) {
+      // Dirt is not one colour: packed and pale where feet go, darker and
+      // damp at the edges, with a little gravel.
+      const v = fbm(x * 0.3 + 5, z * 0.3 + 1, 3);
+      dirtVar.copy(dirtCol).multiplyScalar(0.82 + v * 0.36);
+      c.lerp(dirtVar, Math.min(1, p * (0.8 + v * 0.4)));
+    }
     const pd = Math.hypot((x - 42) / 1.4, z - 30);
     if (pd < 33) c.lerp(paddyCol, 0.6);
     colors[i * 3] = c.r;

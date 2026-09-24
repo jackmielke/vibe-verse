@@ -143,7 +143,9 @@ const C2 = new THREE.Color();
 function naturalSky(elev: number, night: number): { zenith: THREE.Color; horizon: THREE.Color; sun: THREE.Color } {
   const day = { z: new THREE.Color("#3d7fd6"), h: new THREE.Color("#d7e8f6") };
   const sunset = { z: new THREE.Color("#4a3a8f"), h: new THREE.Color("#ff9d5c") };
-  const nightC = { z: new THREE.Color("#050a1c"), h: new THREE.Color("#141d3c") };
+  // A moonlit night, not a black one: the horizon keeps a blue mist the
+  // hills stand against, which is most of what makes a night valley deep.
+  const nightC = { z: new THREE.Color("#060c24"), h: new THREE.Color("#23335e") };
   const low = 1 - Math.min(1, Math.max(0, elev * 3.5));
   const zenith = day.z.clone().lerp(sunset.z, low * 0.9).lerp(nightC.z, night);
   const horizon = day.h.clone().lerp(sunset.h, low).lerp(nightC.h, night);
@@ -200,7 +202,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   sun.shadow.bias = -0.0008;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
-  const moonLight = new THREE.DirectionalLight("#8fa4ff", 0);
+  const moonLight = new THREE.DirectionalLight("#a9bcff", 0);
   scene.add(moonLight);
 
   // ---- ground and sky -----------------------------------------------------
@@ -444,11 +446,14 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (h < WATER_LEVEL + 0.35) return 0;
     let d = 1;
     d *= Math.min(1, Math.max(0, (riverDistance(x, z) - 5) / 4));
-    d *= 1 - Math.min(1, pathAt(x, z) * 1.6);
+    // A worn edge, not a ruled line: the path's boundary wanders, and a few
+    // tufts survive in the middle of the dirt.
+    const ragged = (fbm(x * 0.45 + 11, z * 0.45 - 4, 2) - 0.5) * 0.7;
+    d *= 1 - Math.min(0.94, Math.max(0, pathAt(x, z) + ragged * Math.min(1, pathAt(x, z) * 4)) * 1.6);
     const paddy = Math.hypot((x - 42) / 1.4, z - 30);
     d *= Math.min(1, Math.max(0, (paddy - 33) / 4));
     d *= Math.min(1, Math.max(0, (Math.hypot(x - 60, z - 56) - 23) / 4));
-    for (const o of noGrass) d *= Math.min(1, Math.max(0, (Math.hypot(x - o.x, z - o.z) - o.r) / 1.5));
+    for (const o of noGrass) d *= Math.min(1, Math.max(0, (Math.hypot(x - o.x, z - o.z) - o.r + ragged * 2.2) / 2.2));
     if (h > 45) d *= Math.max(0, 1 - (h - 45) / 25);
     return d;
   };
@@ -1002,7 +1007,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     // A low sun leaves every wall facing away from it in its own shade; the
     // bright sky around a sunset fills those, or houses go to silhouettes.
     const lowSun = Math.max(0, 1 - Math.abs(elev) / 0.3);
-    look.hemiI += ((0.55 + Math.max(0, elev) * 0.35 + lowSun * 0.3) * (1 - night * 0.62) - look.hemiI) * k;
+    look.hemiI += ((0.55 + Math.max(0, elev) * 0.35 + lowSun * 0.3) * (1 - night * 0.42) - look.hemiI) * k;
     look.fog += (fogDensity(s) - look.fog) * k;
     look.rain += (rainAmount(s) - look.rain) * k;
     look.snow += (snowAmount(s) - look.snow) * k;
@@ -1027,11 +1032,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     sun.intensity = look.sunI;
     sun.position.copy(look.sunDir).multiplyScalar(120).add(player.position);
     sun.target.position.copy(player.position);
-    moonLight.intensity = look.night * 0.35;
+    moonLight.intensity = look.night * 0.75;
     moonLight.position.copy(look.sunDir).multiplyScalar(-100).add(player.position);
     moonLight.position.y = Math.abs(moonLight.position.y) + 40;
     hemi.intensity = look.hemiI + look.lanterns * 0.05;
-    hemi.color.copy(look.horizon).lerp(C.setRGB(1, 1, 1), 0.3);
+    hemi.color.copy(look.horizon).lerp(C.setRGB(1, 1, 1), 0.3).lerp(C.setRGB(0.45, 0.55, 0.85), look.night * 0.5);
     hemi.groundColor.copy(look.tint).multiply(C.setRGB(0.35, 0.45, 0.28));
     terrain.setSnow(look.snowCover);
     terrain.setTint(look.tint);
@@ -1047,7 +1052,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const groundCol = look.tint.clone();
     for (const f of foliageMats) f.mat.color.copy(look.foliage[f.kind]).multiply(groundCol).lerp(C.setRGB(0.92, 0.94, 0.97), look.snowCover * 0.5);
     for (const f of spawnMats) f.mat.color.copy(look.foliage[f.kind]).multiply(groundCol).lerp(C.setRGB(0.92, 0.94, 0.97), look.snowCover * 0.5);
-    renderer.toneMappingExposure = 1.05 - look.night * 0.25 + flash * 0.6;
+    renderer.toneMappingExposure = 1.05 - look.night * 0.1 + flash * 0.6;
   }
 
   // ---- where feet go ---------------------------------------------------------
