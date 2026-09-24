@@ -29,14 +29,17 @@ import magicianQr from "@/assets/magician-qr.jpg.asset.json";
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
 const SUGGESTIONS = [
+  "put a game where you catch falling stars on the screen",
   "make it rain",
+  "I wish for a peaceful night",
   "sunset, please",
+  "feed the koi",
   "a cherry forest around me",
-  "snow",
   "northern lights",
+  "fireworks on the screen",
+  "snow",
   "attack me with fireballs",
-  "purple sky",
-  "take me to the shrine",
+  "take me to the bridge",
   "let's play oni siege",
   "become a wizard",
 ];
