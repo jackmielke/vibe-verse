@@ -1297,7 +1297,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         bursts.spawn("sparkle", vibey.position.x, vibey.position.y + 1.2, vibey.position.z);
         // And the spell leaves: a ribbon up into the sky that blooms there.
         if (!/^(emote|game_status|look_around|shield|blast)$/.test(name)) {
-          spells.cast(V.copy(vibey.position).setY(vibey.position.y + 1.1), spellColour(name), (at) => bursts.spawn("sparkle", at.x, at.y, at.z));
+          const aim = new THREE.Vector3(-Math.sin(player.yaw()), 0, -Math.cos(player.yaw()));
+          spells.cast(V.copy(vibey.position).setY(vibey.position.y + 1.1), aim, spellColour(name), (at) => bursts.spawn("sparkle", at.x, at.y, at.z));
           ambience.play("sparkle", { x: vibey.position.x, z: vibey.position.z });
         }
         if (name !== "emote" && performance.now() - lastEmote > 1500) {
@@ -1447,6 +1448,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     grass: () => grass.stats(),
+    spells: () => spells.group.children.map((c) => ({ visible: c.visible, head: Array.from(((c as THREE.Points).geometry.attributes.position.array as Float32Array).slice(0, 3)).map((v) => +v.toFixed(2)) })),
+    vibeyAt: () => [vibey.position.x, vibey.position.y, vibey.position.z].map((v) => +v.toFixed(2)),
     screen: () => ({ title: screen.title(), error: screenError, busy: screenBusy, playing }),
     river: () => ({ ...river.debug(), waterY: terrain.waterY(), player: [player.position.x, player.position.y, player.position.z].map((v) => +v.toFixed(2)) }),
     listen: (seconds: number) => new Promise<{ png: string; rms: number[]; peak: number; state: string }>((resolve) => {
@@ -1527,6 +1530,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         hotaruLevel = Math.max(0, (look.night - 0.4) / 0.4) * (state.season === "summer" || state.season === "spring" ? 1 : 0) * (/rain|storm|snow/.test(state.weather) ? 0 : 1);
         hotaru.setLevel(Math.min(1, hotaruLevel));
         hotaru.update(0.1, time, terrain.waterY());
+        spells.update(0.1);
         grass.update(0.1, time, player.position, { windDir: state.windDirection, wind: state.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
         for (const p of fixed) p.update?.(0.1, time, propCtx);
         for (const sp of spawned.values()) { sp.obj.update?.(0.1, time, propCtx); sp.obj.group.scale.setScalar(sp.prop.scale); }
@@ -1560,6 +1564,8 @@ declare global {
       peers(): { connected: boolean; count: number; id: string | null };
       grass(): { chunks: number; blades: number };
       river(): unknown;
+      spells(): unknown;
+      vibeyAt(): number[];
       screen(): { title: string; error: string | null; busy: boolean; playing: boolean };
       listen(seconds: number): Promise<{ png: string; rms: number[]; peak: number; state: string }>;
       budget(): Record<string, number>;

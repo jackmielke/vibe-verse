@@ -13,13 +13,16 @@ import * as THREE from "three";
 
 export interface SpellFx {
   group: THREE.Group;
-  /** Send a ribbon up from `from`. `onBloom` fires when it reaches the top. */
-  cast(from: THREE.Vector3, color: THREE.ColorRepresentation, onBloom?: (at: THREE.Vector3) => void): void;
+  /**
+   * Send a ribbon from `from` out along `toward` (where the visitor is
+   * looking) and up, so it is seen going; `onBloom` fires where it ends.
+   */
+  cast(from: THREE.Vector3, toward: THREE.Vector3, color: THREE.ColorRepresentation, onBloom?: (at: THREE.Vector3) => void): void;
   update(dt: number): void;
   dispose(): void;
 }
 
-const TRAIL = 56;
+const TRAIL = 140;
 
 /** The colour a kind of spell leaves in the air. */
 export function spellColour(tool: string): string {
@@ -60,6 +63,9 @@ export function createSpellFx(): SpellFx {
     radius: number;
     height: number;
     lean: THREE.Vector3;
+    ctrl: THREE.Vector3;
+    end: THREE.Vector3;
+    side: THREE.Vector3;
     bloomed: boolean;
     onBloom?: (at: THREE.Vector3) => void;
     live: boolean;
@@ -76,14 +82,14 @@ export function createSpellFx(): SpellFx {
     points.frustumCulled = false;
     points.visible = false;
     group.add(points);
-    ribbons.push({ points, pos, col, base: new THREE.Color(), from: new THREE.Vector3(), history: [], t: 0, spin: 1, radius: 1, height: 14, lean: new THREE.Vector3(), bloomed: false, live: false });
+    ribbons.push({ points, pos, col, base: new THREE.Color(), from: new THREE.Vector3(), history: [], t: 0, spin: 1, radius: 1, height: 14, lean: new THREE.Vector3(), ctrl: new THREE.Vector3(), end: new THREE.Vector3(), side: new THREE.Vector3(), bloomed: false, live: false });
   }
   const head = new THREE.Vector3();
-  const LIFE = 1.9;
+  const LIFE = 2.6;
 
   return {
     group,
-    cast(from, color, onBloom) {
+    cast(from, toward, color, onBloom) {
       const r = ribbons.find((x) => !x.live) ?? ribbons[0];
       r.live = true;
       r.t = 0;
@@ -93,9 +99,14 @@ export function createSpellFx(): SpellFx {
       r.from.copy(from);
       r.history.length = 0;
       r.spin = Math.random() < 0.5 ? 1 : -1;
-      r.radius = 0.7 + Math.random() * 0.6;
-      r.height = 12 + Math.random() * 6;
-      r.lean.set((Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6);
+      r.radius = 0.5 + Math.random() * 0.4;
+      // Out over the valley in front of the visitor, rising, a little aside.
+      const fwd = new THREE.Vector3(toward.x, 0, toward.z).normalize();
+      r.side.set(-fwd.z, 0, fwd.x);
+      const reach = 18 + Math.random() * 10;
+      const aside = (Math.random() - 0.5) * 10;
+      r.end.copy(from).addScaledVector(fwd, reach).addScaledVector(r.side, aside).setY(from.y + 8 + Math.random() * 5);
+      r.ctrl.copy(from).addScaledVector(fwd, reach * 0.35).setY(from.y + 5 + Math.random() * 3);
       r.points.visible = true;
     },
     update(dt) {
@@ -103,16 +114,28 @@ export function createSpellFx(): SpellFx {
         if (!r.live) continue;
         r.t += dt;
         const k = Math.min(1, r.t / (LIFE * 0.62));
-        // The head: a widening spiral that rises fast then slows at the top.
-        const ease = 1 - Math.pow(1 - k, 2.2);
-        const ang = r.spin * (ease * Math.PI * 5);
-        const rad = r.radius * (0.4 + ease * 1.8);
+        // The head rides a curve out and up, eased in and out, turning a
+        // spiral round the curve that widens as it goes.
+        const ease = k * k * (3 - 2 * k);
+        const a = 1 - ease;
+        const ang = r.spin * ease * Math.PI * 6;
+        const rad = r.radius * (0.3 + ease * 1.6);
         head.set(
-          r.from.x + Math.cos(ang) * rad + r.lean.x * ease,
-          r.from.y + ease * r.height,
-          r.from.z + Math.sin(ang) * rad + r.lean.z * ease,
+          a * a * r.from.x + 2 * a * ease * r.ctrl.x + ease * ease * r.end.x,
+          a * a * r.from.y + 2 * a * ease * r.ctrl.y + ease * ease * r.end.y,
+          a * a * r.from.z + 2 * a * ease * r.ctrl.z + ease * ease * r.end.z,
         );
+        head.addScaledVector(r.side, Math.cos(ang) * rad);
+        head.y += Math.sin(ang) * rad;
         if (r.t < LIFE * 0.62) {
+          // Fill in by distance, not by frame, so the ribbon stays a ribbon
+          // on a phone at thirty frames or a busy headset.
+          const last = r.history[0];
+          if (last) {
+            const gap = last.distanceTo(head);
+            const n = Math.min(40, Math.floor(gap / 0.1));
+            for (let j = 1; j <= n; j++) r.history.unshift(last.clone().lerp(head, j / (n + 1)));
+          }
           r.history.unshift(head.clone());
           if (r.history.length > TRAIL) r.history.length = TRAIL;
         } else if (!r.bloomed) {
