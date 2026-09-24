@@ -88,6 +88,14 @@ export function castSpell(input: string): SpellCall[] {
   if (/\bshield\b|\bprotect me\b/.test(t)) return [{ name: "shield", args: {} }];
   if (/\bblast\b|\bnuke\b|\bkill them all\b/.test(t)) return [{ name: "blast", args: {} }];
 
+  // The river: wish lanterns and koi. Checked before anything that would
+  // read "lantern" as the stone kind or as the village lights.
+  if (/\bfeed (the )?(koi|fish)\b|\bkoi\b.*\bfood\b/.test(t)) return [{ name: "feed_koi", args: {} }];
+  const wish = input.match(/\b(?:wish(?:ing)?(?: for| that)?|lanterns? (?:for|reading|that says))\s+(.+)$/i);
+  if (wish || /\bfloat(ing)? (a |some )?lanterns?|\blanterns? (on|down) the (river|water)|\btoro nagashi|\bwish lanterns?/.test(t)) {
+    return [{ name: "release_lantern", args: { wish: wish?.[1]?.trim() ?? "a wish", count: countIn(t) ?? 1 } }];
+  }
+
   // Time
   if (/\bmidnight\b/.test(t)) calls.push({ name: "set_time", args: { hour: 0 } });
   else if (/\bdawn\b|\bsunrise\b/.test(t)) calls.push({ name: "set_time", args: { hour: 5.6 } });

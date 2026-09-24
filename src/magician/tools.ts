@@ -41,7 +41,7 @@ export interface ToolDefinition {
 /** Where things are in the valley, in metres. `heightAt` is applied by the renderer. */
 export const LANDMARKS: Record<Exclude<Place, "here" | "around">, { x: number; z: number; yaw?: number }> = {
   village: { x: 0, z: 0 },
-  bridge: { x: 24, z: -6 },
+  bridge: { x: 22, z: -0.8, yaw: -1.1 },
   torii: { x: -30, z: -34 },
   shrine: { x: -46, z: -62, yaw: Math.PI },
   paddies: { x: 42, z: 30 },
@@ -65,6 +65,8 @@ export interface MagicianStore {
   burst(kind: "sparkle" | "smoke" | "flash", x?: number, z?: number): void;
   /** Swap the companion's body to a roster character id. */
   become(id: string): void;
+  /** Throw food to the koi, walking to the bridge first if needed. */
+  feedKoi?(): string;
   /** The game layer. */
   game: {
     start(mode: "siege" | "spirits" | "dragon"): void;
@@ -286,6 +288,26 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: "function",
     name: "reset_world",
     description: "Put the valley back the way it was when the visitor arrived: golden afternoon, spring, clear, nothing conjured.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "release_lantern",
+    description:
+      "Set a glowing paper wish lantern (toro nagashi) on the river at the red drum bridge. It drifts downstream to the lake over a few minutes and everyone in the valley sees it. Use when the visitor makes a wish, remembers someone, or asks for lanterns on the water. Write their wish on it in a few words.",
+    parameters: {
+      type: "object",
+      properties: {
+        wish: { type: "string", description: "What is written on the lantern, a few words, in the visitor's language." },
+        count: { type: "number", description: "How many lanterns, 1-8. Default 1." },
+      },
+      required: ["wish"],
+    },
+  },
+  {
+    type: "function",
+    name: "feed_koi",
+    description: "Scatter food on the river for the koi under the drum bridge; they race for it. Takes the visitor to the bridge first if they are not there.",
     parameters: { type: "object", properties: {} },
   },
 ];
@@ -528,10 +550,24 @@ export function runTool(name: string, rawArgs: unknown, store: MagicianStore, rn
       return { output: `${describeState(s)}\nPlayer at x=${p.x.toFixed(0)} z=${p.z.toFixed(0)}.`, toast: null };
     }
     case "reset_world": {
-      store.patch({ ...DEFAULT_STATE, props: [] });
+      // Lanterns already on the water are other people's wishes; they stay.
+      store.patch({ ...DEFAULT_STATE, props: [], wishes: store.get().wishes });
       store.burst("flash");
       store.sound("gong");
       return { output: "The valley is back to how it was.", toast: "reset" };
+    }
+    case "release_lantern": {
+      const text = String(args.wish ?? "").trim().slice(0, 60) || "a wish";
+      const n = Math.max(1, Math.min(8, Math.round(Number(args.count ?? 1)) || 1));
+      const now = Date.now();
+      const made = Array.from({ length: n }, (_, i) => ({ id: Math.floor(rnd() * 1e9), text, born: now + i * 2500 }));
+      store.patch({ wishes: [...store.get().wishes, ...made] });
+      store.sound("chime");
+      return { output: `${n === 1 ? "A lantern is" : `${n} lanterns are`} on the river at the bridge, reading "${text}". ${n === 1 ? "It drifts" : "They drift"} down to the lake over the next few minutes.`, toast: `🏮 "${text}"` };
+    }
+    case "feed_koi": {
+      if (!store.feedKoi) return { output: "There are no koi here.", toast: null };
+      return { output: store.feedKoi(), toast: "🐟 feeding the koi" };
     }
     default:
       return { output: `Unknown tool ${name}.`, toast: null };

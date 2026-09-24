@@ -41,10 +41,11 @@ import { fbm, heightAt, riverCentre, riverDistance, WATER_LEVEL } from "./noise"
 import { createTerrain, pathAt } from "./terrain";
 import { createGrass } from "./grass";
 import { createSky } from "./sky";
-import { buildBoard, buildBridge, buildForest, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject, type TreeKind } from "./props";
+import { buildBoard, buildForest, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject, type TreeKind } from "./props";
 import { createBursts, createFireflies, createLightning, createPetals, createRain, createSnow } from "./weather";
 import { createFireballs } from "./fireballs";
 import { createAmbience, type Surface } from "./audio";
+import { buildTaikoBridge, createRiverLife } from "./bridge";
 import { createVibey, type Vibey } from "./vibey";
 import { readCompanion, writeCompanion } from "../companions";
 import { createGameRunner, type HouseState } from "../game/runner";
@@ -79,6 +80,14 @@ export interface MagicianEvents {
   onSelect?(): void;
   /** The visitor held the trigger or the pinch: leave VR. */
   onExitVR?(): void;
+  /** What there is to do right here (feed the koi, float a wish, ...). */
+  onActions?(actions: WorldAction[]): void;
+}
+
+/** Something to do where the visitor is standing, shown as a button. */
+export interface WorldAction {
+  id: "feed" | "wish";
+  label: string;
 }
 
 export interface MagicianWorld {
@@ -110,6 +119,10 @@ export interface MagicianWorld {
   setMuted(m: boolean): void;
   /** Call from a user gesture to start the ambience. */
   wake(): void;
+  /** Do one of the actions offered by `onActions`. `text` is the wish. */
+  act(id: WorldAction["id"], text?: string): void;
+  actions(): WorldAction[];
+  setMusic(on: boolean): void;
   /** Render one frame and return it as a data URL. For scripts. */
   snapshot(): string;
   inVR(): boolean;
@@ -219,6 +232,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const BODY = 0.35;
   const trunks: Array<{ x: number; z: number; r: number }> = [];
   const solveWalls = (pos: THREE.Vector3) => {
+    bridge.solve(pos);
     for (const t of trunks) {
       const dx = pos.x - t.x, dz = pos.z - t.z;
       const d2 = dx * dx + dz * dz;
@@ -251,7 +265,13 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   place("torii", LANDMARKS.torii.x, LANDMARKS.torii.z, 0.1, 1.1);
   place("torii", -40, -48, 0.5, 1);
   place("pagoda", -70, -20, 0.4, 1.1);
-  scene.add(buildBridge(LANDMARKS.bridge.x, LANDMARKS.bridge.z));
+  // The drum bridge and the river's life under it. See bridge.ts.
+  const BRIDGE_Z = -6;
+  const bridge = buildTaikoBridge(BRIDGE_Z);
+  scene.add(bridge.group);
+  for (const p of bridge.posts) fixed.push(p);
+  const river = createRiverLife(BRIDGE_Z);
+  scene.add(river.group);
   place("windmill", 62, 12, 0, 1);
   // Lanterns along the shrine path and the square.
   for (let i = 0; i < 7; i++) {
@@ -335,7 +355,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
 
   // The sign by the bridge.
   const sign = buildSign();
-  sign.group.position.set(LANDMARKS.bridge.x - 14, heightAt(LANDMARKS.bridge.x - 14, LANDMARKS.bridge.z + 3), LANDMARKS.bridge.z + 3);
+  sign.group.position.set(12, heightAt(12, 1.5), 1.5);
   sign.group.rotation.y = -0.6;
   scene.add(sign.group);
 
@@ -483,6 +503,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   scene.add(vibey.group);
   applyFov();
   const ambience = createAmbience();
+  ambience.setChimes(bridge.chimes);
 
   // ---- other players --------------------------------------------------------
   const peers = createPeers();
@@ -536,6 +557,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     patch(p: Patch) {
       state = applyPatch(state, p);
       if (p.props) syncProps(state.props, state.season);
+      if (p.wishes) river.syncWishes(state.wishes);
       if (p.sign !== undefined) sign.setText(state.sign);
       events.onState?.(state);
       // Our own patches go to the room; theirs came from it.
@@ -561,6 +583,18 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       writeCompanion(id);
       void vibey.setBody(id).then(() => events.onCompanion?.(id));
     },
+    feedKoi() {
+      if (!onBridge()) {
+        // Downstream from the top of the arch: the koi below, the lanterns' way.
+        const c = bridge.centre;
+        const slope = riverCentre(c.z + 0.5) - riverCentre(c.z - 0.5);
+        player.teleport(c.x, c.z, Math.atan2(-slope, -1));
+        player.position.y = c.y;
+      }
+      river.feed(player.position, player.yaw());
+      ambience.play("whoosh", { x: player.position.x, z: player.position.z });
+      return "Food is on the water under the drum bridge and the koi are racing for it.";
+    },
     burst(kind, x, z) {
       const px = x ?? player.position.x - Math.sin(player.yaw()) * 3;
       const pz = z ?? player.position.z - Math.cos(player.yaw()) * 3;
@@ -569,6 +603,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     },
   };
   sign.setText(state.sign);
+  river.onEat = (x, z) => ambience.play("plop", { x, z });
+  river.syncWishes(state.wishes);
   let flash = 0;
 
   // ---- shooting -----------------------------------------------------------
@@ -759,36 +795,62 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     renderer.toneMappingExposure = 1.05 - look.night * 0.25 + flash * 0.6;
   }
 
+  // ---- where feet go ---------------------------------------------------------
+  /**
+   * The floor under somebody: the ground, the bridge's planks if they are up
+   * on it (somebody wading underneath stays in the water), and in deep water
+   * a float that keeps the head out.
+   */
+  function groundAt(x: number, z: number): number {
+    let h = heightAt(x, z);
+    const d = bridge.deckAt(x, z);
+    if (d !== null && player.position.y > d - 0.7) h = Math.max(h, d);
+    const wy = terrain.waterY();
+    if (h < wy - 1.3) h = wy - 1.3;
+    return h;
+  }
+  const onBridge = () => {
+    const d = bridge.deckAt(player.position.x, player.position.z);
+    return d !== null && player.position.y > d - 0.3;
+  };
+  let wasWet = false;
+
   // ---- the soundscape ---------------------------------------------------------
   /** What the ground is made of where somebody stands, for their footsteps. */
   function surfaceAt(x: number, z: number, y: number): Surface {
-    if (y < WATER_LEVEL + state.flood * 7 + 0.1) return "water";
+    if (onBridge()) return "wood";
+    if (y < terrain.waterY() - 0.05) return "water";
     if (pathAt(x, z) > 0.35) return "stone";
     return "grass";
   }
   let stepDist = 0;
+  let actionTick = 0, actionKey = "", actionsNow: WorldAction[] = [];
   const lastFeet = new THREE.Vector3();
   function soundscape() {
     const s = state;
     const p = player.position;
     const dayish = 1 - look.night;
     const wet = look.rain;
-    const river = Math.max(0, 1 - Math.max(0, riverDistance(p.x, p.z) - 4) / 38);
+    const riverNear = Math.max(0, 1 - Math.max(0, riverDistance(p.x, p.z) - 4) / 38);
     const warm = s.season === "summer" ? 1 : s.season === "spring" ? 0.7 : s.season === "autumn" ? 0.35 : 0;
     ambience.listener(p.x, p.z, player.yaw());
     ambience.set({
       rain: wet, wind: s.wind, night: look.night * (s.season === "winter" ? 0.1 : 1), storm: s.weather === "storm" ? 1 : 0,
-      water: Math.max(river, s.flood > 0.2 ? 0.5 : 0),
+      water: Math.max(riverNear, s.flood > 0.2 ? 0.5 : 0),
       leaves: leavesAt(p.x, p.z) * (s.season === "winter" ? 0.3 : 1),
       birds: dayish * (1 - wet) * (s.weather === "storm" ? 0 : 1) * (0.3 + 0.5 * warm),
-      frogs: river * warm * Math.min(1, look.night * 1.2 + wet * 0.6) * 0.8,
+      frogs: riverNear * warm * Math.min(1, look.night * 1.2 + wet * 0.6) * 0.8,
       cicadas: s.season === "summer" ? dayish * (1 - wet) : 0,
     });
     // Footsteps: a step every stride of ground actually covered.
     const moved = Math.hypot(p.x - lastFeet.x, p.z - lastFeet.z);
     lastFeet.copy(p);
     if (moved > 3) { stepDist = 0; return; } // a teleport, not a stride
-    const grounded = p.y - heightAt(p.x, p.z) < 0.08;
+    const inWater = p.y < terrain.waterY() - 0.2;
+    if (inWater && !wasWet) { ambience.play("splash", { x: p.x, z: p.z }); river.ripple(p.x, p.z, 1.6); }
+    wasWet = inWater;
+    if (inWater && moved > 0.01 && Math.random() < 0.08) river.ripple(p.x, p.z, 0.9);
+    const grounded = p.y - groundAt(p.x, p.z) < 0.08;
     if (!grounded || renderer.xr.isPresenting && moved < 0.002) return;
     stepDist += moved;
     const stride = 0.72 / s.giant;
@@ -811,7 +873,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const s = state;
     const xr = renderer.xr.isPresenting ? renderer.xr.getSession() : null;
     const eye = 1 / s.giant;
-    player.update(dt, heightAt, { gravity: s.gravity, speed: s.speed * eye, eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
+    const wading = player.position.y < terrain.waterY() - 0.4 ? 0.55 : 1;
+    player.update(dt, groundAt, { gravity: s.gravity, speed: s.speed * eye * wading, eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
     for (const p of fixed) p.update?.(dt, time, propCtx);
@@ -824,6 +887,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     sky.update(dt, time, s.wind, s.windDirection);
     terrain.update(dt, time);
     forest.update(time, s.windDirection, s.wind);
+    bridge.update(dt, time, s.wind, s.windDirection);
+    river.update(dt, time, { waterY: terrain.waterY(), player: player.position, onBridge: onBridge(), night: look.night });
     grass.update(dt, time, player.position, { windDir: s.windDirection, wind: s.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
     V.copy(player.position);
     V.y += 1.6;
@@ -848,6 +913,13 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     game.update(dt, time, lanternSpots);
     updateLampPool(dt);
     soundscape();
+    actionTick -= dt;
+    if (actionTick <= 0) {
+      actionTick = 0.3;
+      const next: WorldAction[] = onBridge() ? [{ id: "feed", label: "Feed the koi" }, { id: "wish", label: "Float a wish" }] : [];
+      const key = next.map((a) => a.id).join();
+      if (key !== actionKey) { actionKey = key; actionsNow = next; events.onActions?.(next); }
+    }
     room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false);
     peers.update(dt, time, heightAt);
     const gh = game.hud();
@@ -935,6 +1007,12 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     },
     setMuted(m) { ambience.setMuted(m); },
     wake() { ambience.resume(); },
+    act(id, text) {
+      if (id === "feed") { river.feed(player.position, player.yaw()); ambience.play("whoosh", { x: player.position.x, z: player.position.z }); }
+      else if (id === "wish") runTool("release_lantern", { wish: text ?? "" }, store);
+    },
+    actions: () => actionsNow,
+    setMusic(on) { ambience.setMusic(on); },
     snapshot() {
       renderer.render(scene, camera);
       return renderer.domElement.toDataURL("image/jpeg", 0.85);
@@ -1001,6 +1079,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     grass: () => grass.stats(),
+    river: () => ({ ...river.debug(), waterY: terrain.waterY(), player: [player.position.x, player.position.y, player.position.z].map((v) => +v.toFixed(2)) }),
     listen: (seconds: number) => new Promise<{ png: string; rms: number[]; peak: number; state: string }>((resolve) => {
       // A spectrogram of the ambience mix, drawn here, for checking sound in
       // a sandbox with no speakers: wind should swell and fall, not sit flat.
@@ -1074,6 +1153,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         fireflies.update(0.1, time, V, state.wind * 0.3, state.windDirection);
         propCtx.lanterns = look.lanterns > 0.5;
         forest.update(time, state.windDirection, state.wind);
+        bridge.update(0.1, time, state.wind, state.windDirection);
+        river.update(0.1, time, { waterY: terrain.waterY(), player: player.position, onBridge: onBridge(), night: look.night });
         grass.update(0.1, time, player.position, { windDir: state.windDirection, wind: state.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
         for (const p of fixed) p.update?.(0.1, time, propCtx);
         for (const sp of spawned.values()) { sp.obj.update?.(0.1, time, propCtx); sp.obj.group.scale.setScalar(sp.prop.scale); }
@@ -1106,6 +1187,7 @@ declare global {
       player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
       peers(): { connected: boolean; count: number; id: string | null };
       grass(): { chunks: number; blades: number };
+      river(): unknown;
       listen(seconds: number): Promise<{ png: string; rms: number[]; peak: number; state: string }>;
       budget(): Record<string, number>;
       /** The last frame's cost, for checking the headset budget. */

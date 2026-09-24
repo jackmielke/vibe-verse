@@ -925,32 +925,6 @@ export function buildBoard(): Board {
 }
 
 /** The bridge over the river at the east end of the village road. */
-export function buildBridge(x: number, z: number): THREE.Group {
-  const g = new THREE.Group();
-  const rc = riverCentre(z);
-  const span = 24;
-  const deck = mesh(new THREE.BoxGeometry(span, 0.25, 3), wood, 0, 0, 0);
-  deck.receiveShadow = true;
-  g.add(deck);
-  for (let i = -1; i <= 1; i += 2) {
-    const rail = mesh(new THREE.BoxGeometry(span, 0.08, 0.08), darkWood, 0, 1, i * 1.4);
-    g.add(rail);
-    for (let k = -5; k <= 5; k++) {
-      const p = mesh(geo("bpost", () => new THREE.BoxGeometry(0.1, 1, 0.1)), darkWood, k * (span / 11), 0.5, i * 1.4);
-      g.add(p);
-    }
-  }
-  // Pilings down into the water.
-  for (let k = -2; k <= 2; k++) {
-    const p = mesh(geo("piling", () => new THREE.CylinderGeometry(0.16, 0.18, 3, 6)), darkWood, k * 5, -1.4, 0);
-    g.add(p);
-  }
-  const y = Math.max(heightAt(rc - 12, z), heightAt(rc + 12, z)) + 0.35;
-  g.position.set(rc, Math.max(y, WATER_LEVEL + 1.4), z);
-  void x;
-  return g;
-}
-
 export function disposeSharedProps(): void {
   for (const g of geoCache.values()) g.dispose();
   geoCache.clear();

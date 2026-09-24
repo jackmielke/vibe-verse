@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { createMagician, type MagicianWorld } from "@/magician/world/Magician";
+import { createMagician, type MagicianWorld, type WorldAction } from "@/magician/world/Magician";
 import { createVoiceSession, voiceBudget, type Engine, type LimitInfo, type VoiceBudget, type VoiceSession, type VoiceStatus } from "@/magician/voice/session";
 import { DEFAULT_STATE, type WorldState } from "@/magician/state";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
@@ -88,6 +88,10 @@ export default function Magician() {
   // A phone: narrow, touch-first. The HUD folds into one menu and a stick.
   const [phone, setPhone] = useState<boolean>(() => (typeof window !== "undefined" ? window.matchMedia("(max-width: 640px), (pointer: coarse) and (max-width: 900px)").matches : false));
   const [menuOpen, setMenuOpen] = useState(false);
+  // What there is to do right here: feed the koi, float a wish.
+  const [actions, setActions] = useState<WorldAction[]>([]);
+  const [wishOpen, setWishOpen] = useState(false);
+  const [wishText, setWishText] = useState("");
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 640px), (pointer: coarse) and (max-width: 900px)");
@@ -105,6 +109,28 @@ export default function Magician() {
   }, []);
   const idRef = useRef(1);
   const lastFizzleRef = useRef(0);
+  const doAction = useCallback((id: WorldAction["id"]) => {
+    if (id === "wish") { document.exitPointerLock?.(); setWishOpen(true); return; }
+    worldRef.current?.act(id);
+  }, []);
+  const sendWish = useCallback(() => {
+    const w = wishText.trim();
+    worldRef.current?.act("wish", w || "a wish");
+    setWishText("");
+    setWishOpen(false);
+  }, [wishText]);
+  // E does the first thing on offer, the way every game has taught people;
+  // R the second.
+  useEffect(() => {
+    if (!entered) return;
+    const on = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.tagName === "INPUT") return;
+      const a = e.code === "KeyE" ? actions[0] : e.code === "KeyR" ? actions[1] : undefined;
+      if (a) { e.preventDefault(); doAction(a.id); }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [entered, actions, doAction]);
 
   useWorldStamp("/magician", "The Magician");
 
@@ -144,6 +170,7 @@ export default function Magician() {
     if (!host) return;
     const world = createMagician(host, {
       onPeers: (list, connected) => setPeers({ names: list.map((p) => p.name), connected }),
+      onActions: (a) => setActions(a),
       onSelect: () => { if (statusRef.current === "idle" || statusRef.current === "closed" || statusRef.current === "error") startVoiceRef.current(); },
       onToast: (t) => {
         const id = idRef.current++;
@@ -459,6 +486,45 @@ export default function Magician() {
 
       {entered && !hudHidden && (
         <>
+          {/* What there is to do right here. */}
+          {actions.length > 0 && !wishOpen && (
+            <div className={`absolute left-1/2 z-10 flex -translate-x-1/2 gap-2 ${phone ? "top-28" : "bottom-44"}`} data-ui="1">
+              {actions.map((a, i) => (
+                <button
+                  key={a.id}
+                  onClick={() => doAction(a.id)}
+                  className="rounded-full border border-[#ffd9a0]/50 bg-[#2a1a10]/60 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-[#ffe9c8] shadow-[0_0_24px_rgba(255,180,90,0.25)] backdrop-blur-sm hover:bg-[#3a2414]/70"
+                >
+                  {!phone && i < 2 && <span className="mr-2 rounded-sm border border-[#ffd9a0]/40 px-1.5 py-0.5 text-[9px]">{i === 0 ? "E" : "R"}</span>}
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {wishOpen && (
+            <form
+              onSubmit={(e) => { e.preventDefault(); sendWish(); }}
+              className="absolute left-1/2 top-1/3 z-30 w-[min(92vw,26rem)] -translate-x-1/2 rounded-xl border border-[#ffd9a0]/30 bg-[#1d130c]/90 p-4 text-[#ffe9c8] shadow-[0_0_60px_rgba(255,170,80,0.25)] backdrop-blur-md"
+              data-ui="1"
+            >
+              <div className="font-serif text-lg">Write on the lantern</div>
+              <div className="mt-1 text-xs text-[#ffe9c8]/60">It drifts down the river to the lake, and everyone in the valley sees it.</div>
+              <input
+                autoFocus
+                value={wishText}
+                maxLength={60}
+                onChange={(e) => setWishText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setWishOpen(false); }}
+                placeholder="a wish, a name, a thank-you"
+                className="mt-3 h-10 w-full rounded-md border border-[#ffd9a0]/30 bg-black/30 px-3 text-sm text-white outline-none placeholder:text-white/30"
+              />
+              <div className="mt-3 flex justify-end gap-2 text-[11px] uppercase tracking-[0.18em]">
+                <button type="button" onClick={() => setWishOpen(false)} className="rounded-md px-3 py-2 text-white/50">not now</button>
+                <button type="submit" className="rounded-md border border-[#ffd9a0]/50 bg-[#ffb45c]/25 px-4 py-2 text-[#fff1dc]">set it on the river</button>
+              </div>
+            </form>
+          )}
+
           {/* Top-left: the place and its state. Sits under the app's home chip. */}
           <div className="pointer-events-none absolute left-4 top-16 z-10 select-none sm:left-5">
             <div className="font-serif text-xl text-white/90 drop-shadow sm:text-2xl">{state.title}</div>

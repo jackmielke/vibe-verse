@@ -72,11 +72,6 @@ export function heightAt(x: number, z: number): number {
   // Shrine hill: a rounded knoll to the south-west.
   const sd = Math.hypot(x + 46, z + 62);
   h += Math.max(0, 1 - sd / 34) ** 1.6 * 11;
-  // River channel.
-  const rc = riverCentre(z);
-  const rd = Math.abs(x - rc);
-  const channel = Math.max(0, 1 - rd / 9) ** 1.4 * 2.6;
-  h -= channel;
   // Paddies: a terrace to the south-east, gently stepped.
   const pd = Math.hypot((x - 42) / 1.4, z - 30);
   if (pd < 34) {
@@ -87,7 +82,25 @@ export function heightAt(x: number, z: number): number {
   // The lake bed.
   const ld = Math.hypot(x - 60, z - 56);
   if (ld < 22) h -= Math.max(0, 1 - ld / 22) ** 1.2 * 3.5;
+  // The river, carved last so nothing fills it back in. It used to be a
+  // dent subtracted early, and the paddies' terraces blended it away: the
+  // river was dry for most of its length. Now it is a bed below the water
+  // line with banks that ease up to whatever the land is, fading out where
+  // the land is high, which is where it springs from.
+  const rd = Math.abs(x - riverCentre(z));
+  if (rd < 11) {
+    const bed = WATER_LEVEL - 0.3 - 0.9 * Math.max(0, 1 - (rd / 4.2) ** 2);
+    const bank = smoothstep(3.4, 11, rd);
+    const carved = bed + (h - bed) * bank;
+    const strength = 1 - smoothstep(6, 13, h);
+    if (carved < h) h += (carved - h) * strength;
+  }
   return h;
+}
+
+function smoothstep(a: number, b: number, v: number): number {
+  const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 export const WATER_LEVEL = -0.35;

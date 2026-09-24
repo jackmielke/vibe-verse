@@ -61,6 +61,14 @@ export interface Prop {
   yaw: number;
 }
 
+/** A paper lantern set on the river with a wish written on it. */
+export interface Wish {
+  id: number;
+  text: string;
+  /** Wall-clock ms when it was released: where it has drifted is a function of this. */
+  born: number;
+}
+
 export interface Palette {
   /** Zenith colour. */
   sky: string;
@@ -109,6 +117,8 @@ export interface WorldState {
   meteors: number;
   /** The scene scale for the "make everything tiny/giant" trick, 0.5–2. */
   giant: number;
+  /** Lanterns floating down the river, everybody's. */
+  wishes: Wish[];
 }
 
 export const DEFAULT_STATE: WorldState = {
@@ -134,6 +144,7 @@ export const DEFAULT_STATE: WorldState = {
   aurora: 0,
   meteors: 0,
   giant: 1,
+  wishes: [],
 };
 
 export type Patch = Partial<Omit<WorldState, "props">> & { props?: Prop[] };
@@ -156,6 +167,9 @@ export function applyPatch(state: WorldState, patch: Patch): WorldState {
   if (typeof next.petals === "number") next.petals = clamp(next.petals, 0, 1);
   next.fireballs = { on: !!next.fireballs.on, rate: clamp(next.fireballs.rate, 0.1, 5) };
   if (next.props.length > 400) next.props = next.props.slice(next.props.length - 400);
+  // A lantern lives five minutes; the river holds forty at most.
+  const now = Date.now();
+  next.wishes = (next.wishes ?? []).filter((w) => now - w.born < 300_000).slice(-40);
   return next;
 }
 

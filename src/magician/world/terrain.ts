@@ -7,7 +7,7 @@
  * rather than a rebuild of 130k vertices.
  */
 import * as THREE from "three";
-import { fbm, heightAt, riverDistance, WATER_LEVEL, WORLD_HALF } from "./noise";
+import { fbm, heightAt, riverCentre, riverDistance, WATER_LEVEL, WORLD_HALF } from "./noise";
 
 export interface Terrain {
   group: THREE.Group;
@@ -19,6 +19,8 @@ export interface Terrain {
   setWater(level: number): void;
   /** Wet ground darkens and shines a little. */
   setWet(v: number): void;
+  /** Where the water surface is right now, flood included. */
+  waterY(): number;
   update(dt: number, time: number): void;
   dispose(): void;
 }
@@ -49,7 +51,7 @@ export function pathAt(x: number, z: number): number {
 export function createTerrain(): Terrain {
   const group = new THREE.Group();
   const size = WORLD_HALF * 2;
-  const segs = 190;
+  const segs = 230;
   const geo = new THREE.PlaneGeometry(size, size, segs, segs);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -130,6 +132,8 @@ export function createTerrain(): Terrain {
   const waterGeo = new THREE.PlaneGeometry(size, size, 1, 1);
   waterGeo.rotateX(-Math.PI / 2);
   const waterMat = new THREE.MeshPhysicalMaterial({
+    // No depth: what swims just under the surface (the koi) draws over it.
+    depthWrite: false,
     color: "#3f86a8",
     transparent: true,
     opacity: 0.78,
@@ -147,17 +151,29 @@ export function createTerrain(): Terrain {
 
   // Paddies: thin sheets of water on the terraces, each its own level.
   const paddyMat = new THREE.MeshPhysicalMaterial({ color: "#5aa0b8", transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.2 });
+  // Each terrace is split where the river runs through it, so the water
+  // sheet never roofs over the channel.
+  const bundMat = new THREE.MeshStandardMaterial({ color: "#7d6a48", roughness: 1 });
+  const paddyGeos: THREE.BufferGeometry[] = [];
   for (let row = -3; row <= 3; row++) {
     const z0 = 30 + row * 9;
-    const g = new THREE.PlaneGeometry(58, 7.6, 1, 1);
-    g.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(g, paddyMat);
-    m.position.set(42, 0.6 + (row + 3) * 0.35 + 0.1, z0 + 4.5);
-    group.add(m);
-    // Paddy bund (the earth wall between terraces).
-    const bund = new THREE.Mesh(new THREE.BoxGeometry(58, 0.5, 0.7), new THREE.MeshStandardMaterial({ color: "#7d6a48", roughness: 1 }));
-    bund.position.set(42, 0.6 + (row + 3) * 0.35 + 0.05, z0);
-    group.add(bund);
+    const y = 0.6 + (row + 3) * 0.35;
+    const rc = riverCentre(z0 + 4.5);
+    for (const [a, b] of [[13, rc - 8.5], [rc + 8.5, 71]]) {
+      if (b - a < 2) continue;
+      const g = new THREE.PlaneGeometry(b - a, 7.6, 1, 1);
+      g.rotateX(-Math.PI / 2);
+      paddyGeos.push(g);
+      const m = new THREE.Mesh(g, paddyMat);
+      m.position.set((a + b) / 2, y + 0.1, z0 + 4.5);
+      group.add(m);
+      // Paddy bund (the earth wall between terraces).
+      const bg = new THREE.BoxGeometry(b - a, 0.5, 0.7);
+      paddyGeos.push(bg);
+      const bund = new THREE.Mesh(bg, bundMat);
+      bund.position.set((a + b) / 2, y + 0.05, z0);
+      group.add(bund);
+    }
   }
 
   const tintColor = new THREE.Color(1, 1, 1);
@@ -169,6 +185,7 @@ export function createTerrain(): Terrain {
     setTint(col) { tintColor.copy(col); mat.color.copy(col); },
     setWater(level) { floodLevel = level; },
     setWet(v) { uniforms.uWet.value = v; },
+    waterY: () => water.position.y,
     update(dt, time) {
       t += dt;
       const target = WATER_LEVEL + floodLevel;
@@ -182,6 +199,8 @@ export function createTerrain(): Terrain {
       waterGeo.dispose();
       waterMat.dispose();
       paddyMat.dispose();
+      bundMat.dispose();
+      for (const g of paddyGeos) g.dispose();
     },
   };
 }

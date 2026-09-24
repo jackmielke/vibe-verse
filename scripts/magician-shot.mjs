@@ -94,6 +94,8 @@ for (const spell of spells) {
 }
 // A shader that fails to compile is a silently missing mesh, and three only
 // says so on the console. So the console is part of the result.
+// EVAL="window.__magician.river()" prints whatever that expression returns.
+if (process.env.EVAL) console.log("eval", JSON.stringify(await page.evaluate((e) => eval(e), process.env.EVAL)));
 if (errors.length) { console.log("console/page errors:"); for (const e of errors.slice(0, 20)) console.log("  ", e); process.exitCode = 2; }
 await browser.close();
 server?.kill();
