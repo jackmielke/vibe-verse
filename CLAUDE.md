@@ -544,3 +544,12 @@ The shape of it, because it is the shape the next voice world should copy:
   headset maps it to the right and left grips and shows it on the VR strip.
 - **The dials** (`ui/Dials.tsx`) write the same patches as a spoken wish, and
   `turn_dial` is the voice's way to set one exactly.
+- **A spell is seen leaving** (`world/spell.ts`): a ribbon arcs out ahead of
+  the visitor and blooms in the sky. Its trail fills in by distance, not by
+  frame; the first version went straight up out of view and was scattered
+  dots at a low frame rate. Sky lanterns are `wishes` with a `sky` origin,
+  positioned by the clock like the river's.
+- **The arrival shot** runs after Enter (a six-second sweep from over the
+  valley into the visitor's eyes) and is skipped under `navigator.webdriver`,
+  so every script starts where it always did; `?intro` forces it for a
+  capture, which is how the hub card was taken.
