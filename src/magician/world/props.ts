@@ -11,6 +11,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { heightAt, riverCentre, WATER_LEVEL } from "./noise";
 import { buildMinka, disposeMinkaMaterials } from "./house";
+import { buildInterior, type Interior } from "./interior";
 import { disposeSurfaces, surfaceMaterial } from "./textures";
 import type { PropKind, Season } from "../state";
 
@@ -31,6 +32,8 @@ export interface PropObject {
   lamp?: { glow: THREE.Material; at: THREE.Vector3; color: THREE.Color; power: number; level: number };
   /** Half extents, in the prop's own frame and scale, of a footprint the player cannot walk through. */
   solid?: [number, number];
+  /** A house you can walk into: its wall segments, its room and what is in it. */
+  house?: { walls: Array<[number, number, number, number]>; room: NonNullable<ReturnType<typeof buildMinka>["room"]>; interior: Interior };
   dispose(): void;
 }
 
@@ -100,13 +103,15 @@ function blobCanopy(mat: THREE.Material, r: number, y: number, n = 4): THREE.Gro
   return g;
 }
 
-export function buildProp(kind: PropKind, season: Season, color?: string): PropObject {
+export function buildProp(kind: PropKind, season: Season, color?: string, opts: { open?: boolean } = {}): PropObject {
   const group = new THREE.Group();
   const mats: THREE.Material[] = [];
   const own: THREE.Material[] = [];
   let update: PropObject["update"];
   let lamp: PropObject["lamp"];
   let solid: PropObject["solid"];
+  let house: PropObject["house"];
+  let lampAlways = false;
   const disposers: Array<() => void> = [];
   const sway: THREE.Object3D[] = [];
 
@@ -221,10 +226,29 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
     }
     case "house": {
       // A full minka, merged to a handful of draw calls. See house.ts.
-      const minka = buildMinka(Math.floor(Math.random() * 1e9));
+      const seed = Math.floor(Math.random() * 1e9);
+      const minka = buildMinka(seed, { open: opts.open });
       group.add(minka.group);
-      lamp = { glow: minka.glow, at: minka.lampAt.clone(), color: new THREE.Color("#ffb866"), power: 1.8, level: 0 };
-      solid = minka.half;
+      if (opts.open && minka.walls && minka.room) {
+        // A house you can walk into: the hearth is its lamp, always lit, and
+        // the shoji glow a little all day from the fire behind them.
+        const interior = buildInterior(minka.room, seed);
+        group.add(interior.group);
+        house = { walls: minka.walls, room: minka.room, interior };
+        disposers.push(() => interior.dispose());
+        const l = { glow: minka.glow, at: interior.hearth.clone(), color: new THREE.Color("#ff9048"), power: 2.6, level: 0.9 };
+        lamp = l;
+        lampAlways = true;
+        let shoji = 0;
+        update = (dt, time, ctx) => {
+          shoji += ((ctx.lanterns ? 1 : 0.22) - shoji) * Math.min(1, dt * 2);
+          minka.glow.emissiveIntensity = shoji * (1.5 + Math.sin(time * 5.3) * 0.08);
+          l.level = 0.85 + Math.sin(time * 7.1) * 0.06 + Math.sin(time * 13.7) * 0.04;
+        };
+      } else {
+        lamp = { glow: minka.glow, at: minka.lampAt.clone(), color: new THREE.Color("#ffb866"), power: 1.8, level: 0 };
+        solid = minka.half;
+      }
       disposers.push(() => minka.dispose());
       break;
     }
@@ -570,7 +594,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
       const a = Math.sin(time * (1.1 + ctx.wind * 2) + swayPhase) * (0.01 + ctx.wind * 0.07);
       for (const s of sway) { s.rotation.z = a * Math.cos(ctx.windDir); s.rotation.x = a * Math.sin(ctx.windDir); }
     }
-    if (lamp) {
+    if (lamp && !lampAlways) {
       const target = ctx.lanterns ? 0.8 + Math.sin(time * 6 + swayPhase) * 0.1 + Math.sin(time * 17 + swayPhase * 3) * 0.05 : 0;
       lamp.level += (target - lamp.level) * Math.min(1, dt * 3);
       (lamp.glow as THREE.MeshStandardMaterial).emissiveIntensity = lamp.level * 1.6;
@@ -583,6 +607,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
     foliage: mats,
     lamp,
     solid,
+    house,
     dispose() {
       for (const f of disposers) f();
       for (const m of own) m.dispose();

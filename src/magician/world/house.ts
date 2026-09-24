@@ -26,6 +26,10 @@ export interface Minka {
   lampAt: THREE.Vector3;
   /** Half extents of the walls, for collision: x, z. */
   half: [number, number];
+  /** An open house can be walked into: its walls as segments (x1, z1, x2, z2) in house space, with a doorway gap. */
+  walls?: Array<[number, number, number, number]>;
+  /** The inside, for the interior builder: floor height, wall height, footprint and door. */
+  room?: { FH: number; WH: number; w: number; d: number; doorX: number; ceiling: number };
   dispose(): void;
 }
 
@@ -38,7 +42,28 @@ function mat(key: Exclude<MatKey, "glow">): THREE.MeshStandardMaterial {
   switch (key) {
     case "ridge": m = new THREE.MeshStandardMaterial({ color: "#3a2e22", roughness: 0.95 }); break;
     case "dark": m = new THREE.MeshStandardMaterial({ color: "#1e1712", roughness: 0.9 }); break;
-    case "noren": m = new THREE.MeshStandardMaterial({ color: "#26345a", roughness: 0.95, side: THREE.DoubleSide }); break;
+    case "noren": {
+      // Indigo cloth in three panels with a white crest across them; the
+      // slits are what make it read as a curtain and not as a closed door.
+      const cv = document.createElement("canvas");
+      cv.width = 256; cv.height = 110;
+      const g = cv.getContext("2d")!;
+      g.clearRect(0, 0, 256, 110);
+      for (let i = 0; i < 3; i++) {
+        g.fillStyle = "#2e4a86";
+        g.fillRect(i * 86 + 2, 0, 80, 110);
+        g.fillStyle = "rgba(0,0,0,0.12)";
+        for (let y = 0; y < 110; y += 4) g.fillRect(i * 86 + 2, y, 80, 1);
+      }
+      g.strokeStyle = "#f4efe4"; g.lineWidth = 7;
+      g.beginPath(); g.arc(128, 50, 28, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "#f4efe4"; g.font = "bold 34px serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("星", 128, 52);
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      m = new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.5, roughness: 0.95, side: THREE.DoubleSide });
+      break;
+    }
     case "tiles": m = surfaceMaterial("tiles", { roughness: 0.55, bumpScale: 1.2 }); break;
     case "thatch": m = surfaceMaterial("thatch", { roughness: 1, bumpScale: 1.4 }); break;
     case "stone": m = surfaceMaterial("stone", { bumpScale: 1.2 }); break;
@@ -52,7 +77,7 @@ function mat(key: Exclude<MatKey, "glow">): THREE.MeshStandardMaterial {
 }
 
 export function disposeMinkaMaterials(): void {
-  for (const m of shared.values()) m.dispose();
+  for (const [k, m] of shared) { if (k === "noren") m.map?.dispose(); m.dispose(); }
   shared.clear();
 }
 
@@ -112,10 +137,12 @@ function hipRoof(W: number, D: number, H: number, T: number, tile: number, droop
   return g;
 }
 
-export function buildMinka(seed: number, opts: { roof?: "thatch" | "tiles"; wall?: string } = {}): Minka {
+export function buildMinka(seed: number, opts: { roof?: "thatch" | "tiles"; wall?: string; open?: boolean } = {}): Minka {
   const r = rng(seed);
-  const w = 6 + r() * 1.4;
-  const d = 4.4 + r() * 0.7;
+  // A house you can walk into is a little bigger, so a room fits inside.
+  const w = opts.open ? 7.8 : 6 + r() * 1.4;
+  const d = opts.open ? 5.8 : 4.4 + r() * 0.7;
+  const open = !!opts.open;
   const roof = opts.roof ?? (r() < 0.55 ? "thatch" : "tiles");
   const FH = 0.55; // floor height
   const WH = 2.45; // wall height above floor
@@ -148,7 +175,20 @@ export function buildMinka(seed: number, opts: { roof?: "thatch" | "tiles"; wall
     { len: d, x: w / 2 - inset, z: 0, ry: Math.PI / 2 },
     { len: d, x: -w / 2 + inset, z: 0, ry: -Math.PI / 2 },
   ];
+  // The door is chosen first, because an open house leaves a gap for it.
+  const doorX = open ? -w * 0.18 : (r() - 0.5) * w * 0.3;
+  const DOOR_W = 1.5, DOOR_H = 1.95;
+  const g0 = doorX - DOOR_W / 2, g1 = doorX + DOOR_W / 2;
   for (const s of sides) {
+    if (open && s.ry === 0) {
+      // Front wall in two pieces either side of the doorway, a lintel above.
+      for (const [a, b] of [[-w / 2, g0], [g1, w / 2]]) {
+        box("boards", b - a, SK, t, (a + b) / 2, FH + SK / 2, s.z, 0);
+        box("plaster", b - a, WH - SK, t, (a + b) / 2, FH + SK + (WH - SK) / 2, s.z, 0);
+      }
+      box("plaster", DOOR_W, WH - DOOR_H, t, doorX, FH + DOOR_H + (WH - DOOR_H) / 2, s.z, 0);
+      continue;
+    }
     box("boards", s.len, SK, t, s.x, FH + SK / 2, s.z, s.ry);
     box("plaster", s.len, WH - SK, t, s.x, FH + SK + (WH - SK) / 2, s.z, s.ry);
   }
@@ -160,8 +200,11 @@ export function buildMinka(seed: number, opts: { roof?: "thatch" | "tiles"; wall
     for (let i = 0; i < n; i++) {
       const a = -len / 2 + (i / (n - 1)) * len;
       const x = alongX ? a : fixed, z = alongX ? fixed : a;
+      // Nothing stands in the doorway.
+      if (open && alongX && fixed > 0 && a > g0 - 0.15 && a < g1 + 0.15) continue;
       box("timber", post, WH, post, x, FH + WH / 2, z);
     }
+    if (open && alongX && fixed > 0) for (const a of [g0 - 0.08, g1 + 0.08]) box("timber", post, WH, post, a, FH + WH / 2, fixed);
   };
   addPosts(w, d / 2, true);
   addPosts(w, -d / 2, true);
@@ -170,14 +213,23 @@ export function buildMinka(seed: number, opts: { roof?: "thatch" | "tiles"; wall
   for (const s of sides) {
     const outX = s.ry === Math.PI / 2 ? 0.05 : s.ry === -Math.PI / 2 ? -0.05 : 0;
     const outZ = s.ry === 0 ? 0.05 : s.ry === Math.PI ? -0.05 : 0;
-    box("timber", s.len + post, 0.12, 0.14, s.x + outX, FH + SK, s.z + outZ, s.ry);
+    if (open && s.ry === 0) {
+      for (const [a, b] of [[-w / 2 - post / 2, g0], [g1, w / 2 + post / 2]]) box("timber", b - a, 0.12, 0.14, (a + b) / 2, FH + SK, s.z + outZ, 0);
+    } else box("timber", s.len + post, 0.12, 0.14, s.x + outX, FH + SK, s.z + outZ, s.ry);
     box("timber", s.len + post + 0.3, 0.22, 0.2, s.x + outX, FH + WH, s.z + outZ, s.ry);
   }
 
   // Front: sliding doors off centre, a noren over them, shoji either side.
-  const doorX = (r() - 0.5) * w * 0.3;
-  box("dark", 1.5, 1.95, 0.06, doorX, FH + 0.98, d / 2 + 0.03);
-  box("timber", 0.06, 1.95, 0.08, doorX, FH + 0.98, d / 2 + 0.06); // the meeting stile
+  if (open) {
+    // The sliding doors stand open, pushed aside over the wall.
+    box("dark", DOOR_W / 2, DOOR_H, 0.05, g0 - DOOR_W / 4 - 0.05, FH + DOOR_H / 2, d / 2 + 0.06);
+    box("timber", 0.06, DOOR_H, 0.08, g0 - 0.06, FH + DOOR_H / 2, d / 2 + 0.08);
+    box("timber", DOOR_W + 0.1, 0.1, 0.12, doorX, FH + DOOR_H + 0.05, d / 2 + 0.02); // the lintel's rail
+    box("timber", DOOR_W, 0.05, t + 0.06, doorX, FH + 0.025, d / 2 - inset); // the sill
+  } else {
+    box("dark", 1.5, 1.95, 0.06, doorX, FH + 0.98, d / 2 + 0.03);
+    box("timber", 0.06, 1.95, 0.08, doorX, FH + 0.98, d / 2 + 0.06); // the meeting stile
+  }
   const noren = new THREE.PlaneGeometry(1.4, 0.6, 3, 1);
   add("noren", noren, doorX, FH + 1.75, d / 2 + 0.12);
   // Shoji windows sit in the plaster band; the glow material is theirs alone.
@@ -255,11 +307,14 @@ export function buildMinka(seed: number, opts: { roof?: "thatch" | "tiles"; wall
     group.add(m);
   }
 
+  const wx = w / 2, wz = d / 2;
   return {
     group,
     glow,
     lampAt: new THREE.Vector3(doorX, FH + 1.9, d / 2 + 0.9),
     half: [w / 2 + 0.3, d / 2 + 0.3],
+    walls: open ? [[-wx, -wz, wx, -wz], [-wx, -wz, -wx, wz], [wx, -wz, wx, wz], [-wx, wz, g0, wz], [g1, wz, wx, wz]] : undefined,
+    room: open ? { FH, WH, w, d, doorX, ceiling: roofY - T } : undefined,
     dispose() {
       for (const g of merged) g.dispose();
       glow.dispose();

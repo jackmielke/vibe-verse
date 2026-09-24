@@ -90,7 +90,7 @@ export interface MagicianEvents {
 
 /** Something to do where the visitor is standing, shown as a button. */
 export interface WorldAction {
-  id: "feed" | "wish" | "play" | "program";
+  id: "feed" | "wish" | "play" | "program" | "sit" | "pet";
   label: string;
 }
 
@@ -213,8 +213,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const fixed: PropObject[] = [];
   const foliageMats: Array<{ mat: THREE.MeshStandardMaterial; kind: "tree" | "sakura" | "maple" | "pine" | "bamboo" }> = [];
   const state0 = applyPatch(DEFAULT_STATE, {});
-  function place(kind: Parameters<typeof buildProp>[0], x: number, z: number, yaw = Math.random() * Math.PI * 2, scale = 1, color?: string): PropObject {
-    const p = buildProp(kind, state0.season, color);
+  function place(kind: Parameters<typeof buildProp>[0], x: number, z: number, yaw = Math.random() * Math.PI * 2, scale = 1, color?: string, opts: { open?: boolean } = {}): PropObject {
+    const p = buildProp(kind, state0.season, color, opts);
     p.group.position.set(x, heightAt(x, z), z);
     p.group.rotation.y = yaw;
     p.group.scale.setScalar(scale);
@@ -230,13 +230,67 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     [-9, 9, Math.PI], [6, 11, Math.PI], [-14, -10, 0.2], [8, -12, -0.2], [17, 4, -Math.PI / 2], [-19, 1, Math.PI / 2], [0, 22, Math.PI], [14, 18, Math.PI * 0.8],
   ];
   const houses: HouseState[] = [];
-  for (const [x, z, yaw] of houseSpots) { const p = place("house", x, z, yaw); houses.push({ x, z, group: p.group, hp: 3, alive: true, fire: null }); }
+  // The two facing the square can be walked into. See interior.ts.
+  houseSpots.forEach(([x, z, yaw], i) => { const p = place("house", x, z, yaw, 1, undefined, { open: i < 2 }); houses.push({ x, z, group: p.group, hp: 3, alive: true, fire: null }); });
+  const openHouses = fixed.filter((p) => p.house);
+  /** A point in an open house's own frame. */
+  const houseLocal = (p: PropObject, x: number, z: number) => {
+    const g = p.group, c = Math.cos(g.rotation.y), sn = Math.sin(g.rotation.y);
+    const dx = x - g.position.x, dz = z - g.position.z;
+    return { lx: c * dx - sn * dz, lz: sn * dx + c * dz, c, sn };
+  };
+  /** The floor of an open house at (x, z), in world height, or -Infinity outside it. */
+  const houseFloorAt = (x: number, z: number): number => {
+    let best = -Infinity;
+    for (const p of openHouses) {
+      if (!p.group.visible) continue;
+      const { lx, lz } = houseLocal(p, x, z);
+      const r = p.house!.room;
+      const y0 = p.group.position.y;
+      let h = -Infinity;
+      if (Math.abs(lx) < r.w / 2 && Math.abs(lz) < r.d / 2) h = r.FH + 0.01;
+      else if (Math.abs(lx) < r.w / 2 + 0.15 && lz > 0 && lz < r.d / 2 + 0.95) h = r.FH - 0.015;
+      else if (Math.abs(lx) < r.w / 2 + 0.25 && Math.abs(lz) < r.d / 2 + 0.25) h = 0.4;
+      else if (Math.abs(lx - r.doorX) < 0.45 && Math.abs(lz - (r.d / 2 + 1.25)) < 0.25) h = 0.18;
+      if (h > -Infinity) best = Math.max(best, y0 + h);
+    }
+    return best;
+  };
+  /** The open house somebody is inside, if any. */
+  const insideHouse = (x: number, z: number): PropObject | null => {
+    for (const p of openHouses) {
+      if (!p.group.visible) continue;
+      const { lx, lz } = houseLocal(p, x, z);
+      if (Math.abs(lx) < p.house!.room.w / 2 && Math.abs(lz) < p.house!.room.d / 2) return p;
+    }
+    return null;
+  };
   // Footprints the player is pushed out of, so the camera never ends up
   // inside a wall. A burnt house stops blocking: its group is hidden.
   const BODY = 0.35;
   const trunks: Array<{ x: number; z: number; r: number }> = [];
   const solveWalls = (pos: THREE.Vector3) => {
     bridge.solve(pos);
+    // Open houses: their walls are segments with a doorway between them.
+    for (const p of openHouses) {
+      if (!p.group.visible) continue;
+      const g = p.group;
+      const { lx, lz, c, sn } = houseLocal(p, pos.x, pos.z);
+      if (Math.abs(lx) > p.house!.room.w / 2 + 1.5 || Math.abs(lz) > p.house!.room.d / 2 + 1.5) continue;
+      let x = lx, z = lz;
+      for (const [x1, z1, x2, z2] of p.house!.walls) {
+        const vx = x2 - x1, vz = z2 - z1;
+        const len2 = vx * vx + vz * vz;
+        const t = Math.max(0, Math.min(1, ((x - x1) * vx + (z - z1) * vz) / len2));
+        const qx = x1 + vx * t, qz = z1 + vz * t;
+        const ex = x - qx, ez = z - qz;
+        const dd = Math.hypot(ex, ez);
+        const R = BODY + 0.05;
+        if (dd < R && dd > 1e-6) { x = qx + (ex / dd) * R; z = qz + (ez / dd) * R; }
+        else if (dd <= 1e-6) { z = qz + R; }
+      }
+      if (x !== lx || z !== lz) { pos.x = g.position.x + c * x + sn * z; pos.z = g.position.z - sn * x + c * z; }
+    }
     for (const t of trunks) {
       const dx = pos.x - t.x, dz = pos.z - t.z;
       const d2 = dx * dx + dz * dz;
@@ -721,6 +775,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // pointing at the picture with the mouse, a finger or the crosshair is the
   // program's pointer.
   let playing = false;
+  let sitting = false;
   let screenB = false;
   const screenPtr = { x: 0.5, y: 0.5, pressed: false };
   const screenRay = new THREE.Raycaster();
@@ -947,9 +1002,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     terrain.setTint(look.tint);
     terrain.setWater(s.flood * 7);
     terrain.setWet(look.wet);
-    rain.setDensity(look.rain);
-    snow.setDensity(look.snow);
-    petals.setDensity(look.petals);
+    // Under a roof, the weather stays outside.
+    const dry = 1 - indoorsNow;
+    rain.setDensity(look.rain * dry);
+    snow.setDensity(look.snow * dry);
+    petals.setDensity(look.petals * dry);
     petalMat.color.set(s.season === "autumn" ? "#e0742a" : "#ffc0dc");
     fireflies.setDensity(look.fireflies);
     const groundCol = look.tint.clone();
@@ -968,6 +1025,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     let h = heightAt(x, z);
     const d = bridge.deckAt(x, z);
     if (d !== null && player.position.y > d - 0.7) h = Math.max(h, d);
+    h = Math.max(h, houseFloorAt(x, z));
     const wy = terrain.waterY();
     if (h < wy - 1.3) h = wy - 1.3;
     return h;
@@ -982,11 +1040,18 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   /** What the ground is made of where somebody stands, for their footsteps. */
   function surfaceAt(x: number, z: number, y: number): Surface {
     if (onBridge()) return "wood";
+    const home = insideHouse(x, z);
+    if (home) {
+      const { lz } = houseLocal(home, x, z);
+      return lz > home.house!.room.d / 2 - 1.4 ? "wood" : "tatami";
+    }
+    if (houseFloorAt(x, z) > heightAt(x, z) + 0.1) return "wood";
     if (y < terrain.waterY() - 0.05) return "water";
     if (pathAt(x, z) > 0.35) return "stone";
     return "grass";
   }
   let stepDist = 0;
+  let indoorsNow = 0, fireNow = 0;
   let actionTick = 0, actionKey = "", actionsNow: WorldAction[] = [];
   const lastFeet = new THREE.Vector3();
   function soundscape() {
@@ -996,6 +1061,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const wet = look.rain;
     const riverNear = Math.max(0, 1 - Math.max(0, riverDistance(p.x, p.z) - 4) / 38);
     const warm = s.season === "summer" ? 1 : s.season === "spring" ? 0.7 : s.season === "autumn" ? 0.35 : 0;
+    const home = insideHouse(p.x, p.z);
+    indoorsNow += ((home ? 1 : 0) - indoorsNow) * 0.08;
+    let fireTarget = 0;
+    if (home) fireTarget = Math.max(0, 1 - home.group.localToWorld(V.copy(home.house!.interior.hearth)).distanceTo(p) / 5);
+    fireNow += (fireTarget - fireNow) * 0.08;
     ambience.listener(p.x, p.z, player.yaw());
     ambience.set({
       rain: wet, wind: s.wind, night: look.night * (s.season === "winter" ? 0.1 : 1), storm: s.weather === "storm" ? 1 : 0,
@@ -1004,6 +1074,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       birds: dayish * (1 - wet) * (s.weather === "storm" ? 0 : 1) * (0.3 + 0.5 * warm),
       frogs: riverNear * warm * Math.min(1, look.night * 1.2 + wet * 0.6) * 0.8,
       cicadas: s.season === "summer" ? dayish * (1 - wet) : 0,
+      indoors: indoorsNow,
+      fire: fireNow,
     });
     // Footsteps: a step every stride of ground actually covered.
     const moved = Math.hypot(p.x - lastFeet.x, p.z - lastFeet.z);
@@ -1037,7 +1109,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const xr = renderer.xr.isPresenting ? renderer.xr.getSession() : null;
     const eye = 1 / s.giant;
     const wading = player.position.y < terrain.waterY() - 0.4 ? 0.55 : 1;
-    player.update(dt, groundAt, { frozen: playing, gravity: s.gravity, speed: s.speed * eye * wading, eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
+    player.update(dt, groundAt, { frozen: playing || sitting, gravity: s.gravity, speed: s.speed * eye * wading, eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
     for (const p of fixed) p.update?.(dt, time, propCtx);
@@ -1052,6 +1124,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     forest.update(time, s.windDirection, s.wind);
     bridge.update(dt, time, s.wind, s.windDirection);
     screen.update(dt, time, player.position);
+    for (const h of openHouses) h.house!.interior.update(dt, time, h.group.visible && h.group.position.distanceTo(player.position) < 30);
     if (playing) {
       const c = player.controls();
       if (document.pointerLockElement === container || xr) aimScreen(0, 0, true);
@@ -1086,7 +1159,12 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (actionTick <= 0) {
       actionTick = 0.3;
       if (playing && !nearScreen()) setPlaying(false);
-      const next: WorldAction[] = onBridge()
+      const home = insideHouse(player.position.x, player.position.z);
+      if (sitting && !home) sitting = false;
+      const catNear = home && home.group.localToWorld(V.copy(home.house!.interior.cat)).distanceTo(player.position) < 2.4;
+      const next: WorldAction[] = home
+        ? [{ id: "sit", label: sitting ? "Stand up" : "Sit by the fire" }, ...(catNear ? [{ id: "pet" as const, label: "Pet the cat" }] : [])]
+        : onBridge()
         ? [{ id: "feed", label: "Feed the koi" }, { id: "wish", label: "Float a wish" }]
         : nearScreen()
           ? [{ id: "play", label: playing ? "Stop playing" : "Play on the screen" }, { id: "program", label: "Make something" }]
@@ -1185,6 +1263,25 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       if (id === "feed") { river.feed(player.position, player.yaw()); ambience.play("whoosh", { x: player.position.x, z: player.position.z }); }
       else if (id === "wish") runTool("release_lantern", { wish: text ?? "" }, store);
       else if (id === "play") { setPlaying(!playing); actionKey = ""; }
+      else if (id === "sit") {
+        sitting = !sitting;
+        actionKey = "";
+        const home = insideHouse(player.position.x, player.position.z);
+        if (sitting && home) {
+          // Sit facing the fire.
+          const h = home.group.localToWorld(V.copy(home.house!.interior.hearth));
+          player.teleport(player.position.x, player.position.z, Math.atan2(-(h.x - player.position.x), -(h.z - player.position.z)));
+        }
+      } else if (id === "pet") {
+        const home = insideHouse(player.position.x, player.position.z);
+        if (home) {
+          home.house!.interior.pet();
+          const c = home.group.localToWorld(V.copy(home.house!.interior.cat));
+          ambience.play("purr", { x: c.x, z: c.z });
+          if (Math.random() < 0.5) setTimeout(() => ambience.play("mew", { x: c.x, z: c.z }), 2600);
+          bursts.spawn("sparkle", c.x, c.y + 0.3, c.z);
+        }
+      }
       else if (id === "program" && text?.trim()) {
         const change = !!state.screen && /\b(make it|change it|make the|faster|slower|bigger|smaller|instead|add a|add some|more)\b/i.test(text);
         runTool("program_screen", { request: text.trim(), change }, store);

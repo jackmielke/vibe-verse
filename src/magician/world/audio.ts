@@ -48,7 +48,7 @@ export interface AmbienceLevels {
   fire?: number;
 }
 
-export type SoundName = "bell" | "gong" | "thunder" | "chime" | "whoosh" | "hit" | "fizz" | "roar" | "pop" | "splash" | "sparkle" | "plop" | "furin";
+export type SoundName = "bell" | "gong" | "thunder" | "chime" | "whoosh" | "hit" | "fizz" | "roar" | "pop" | "splash" | "sparkle" | "plop" | "furin" | "purr" | "mew";
 
 export interface Ambience {
   /** Must be called from a user gesture at least once. */
@@ -309,6 +309,37 @@ export function createAmbience(): Ambience {
     src.start(t, Math.random() * 2, dur + 0.05);
   }
 
+  /** A cat's purr: low noise pulsed about twenty-five times a second, breathing in and out. */
+  function purr(at?: { x: number; z: number }) {
+    const c = ensure();
+    if (!c || !white) return;
+    const { gain: dg, pan } = place(at, 4);
+    const t = c.currentTime;
+    const src = c.createBufferSource();
+    src.buffer = white;
+    const fl = c.createBiquadFilter();
+    fl.type = "lowpass"; fl.frequency.value = 180; fl.Q.value = 2;
+    const am = c.createGain();
+    am.gain.value = 0;
+    const lfo = c.createOscillator();
+    lfo.frequency.value = 26;
+    const depth = c.createGain();
+    depth.gain.value = 0.5;
+    lfo.connect(depth).connect(am.gain);
+    const out = voice("dry", pan, false);
+    if (!out) return;
+    out.gain.setValueAtTime(0, t);
+    for (let i = 0; i < 3; i++) {
+      out.gain.linearRampToValueAtTime(0.5 * dg, t + i * 1.1 + 0.5);
+      out.gain.linearRampToValueAtTime(0.22 * dg, t + i * 1.1 + 1.05);
+    }
+    out.gain.linearRampToValueAtTime(0, t + 3.6);
+    src.connect(fl).connect(am).connect(out);
+    src.start(t, Math.random(), 3.7);
+    lfo.start(t);
+    lfo.stop(t + 3.7);
+  }
+
   function crack(level: number) {
     burst(0.02 + Math.random() * 0.03, 0.12 * level, 1800 + Math.random() * 2500, "bandpass", { q: 2, sweep: 0.6 });
   }
@@ -427,6 +458,8 @@ export function createAmbience(): Ambience {
         case "splash": burst(0.5, 0.3, 2600, "bandpass", { ...o, q: 0.6, sweep: 0.3 }); later(() => burst(0.25, 0.12, 1800, "bandpass", o), 120); break;
         case "plop": tone(420, 0.12, 0.12, "sine", 0, { ...o, bend: 2.2 }); burst(0.08, 0.06, 1500, "bandpass", o); break;
         case "furin": furin(at, 1); break;
+        case "purr": purr(at); break;
+        case "mew": tone(620, 0.35, 0.05, "triangle", 0, { ...o, bend: 1.45, attack: 0.05 }); tone(900, 0.4, 0.035, "triangle", 0, { ...o, delay: 0.3, bend: 0.62, attack: 0.04 }); break;
       }
     },
     beep(freq, dur, type = "square", gain = 0.05, at) {
