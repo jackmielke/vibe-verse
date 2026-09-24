@@ -188,7 +188,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     // On a narrow screen the companion stands nearer the middle, further off,
     // so the caption above its head stays on screen.
     const narrow = Math.max(0, Math.min(1, (1.2 - aspect) / 0.8));
-    vibey.setStance(2.6 + narrow * 0.8, 1.3 - narrow * 0.9);
+    vibey.setStance(3.3 + narrow * 0.5, 1.9 - narrow * 1.4);
   }
 
   // ---- light --------------------------------------------------------------
@@ -1287,7 +1287,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     events.onGame?.(gh);
     vrHud.visible = renderer.xr.isPresenting;
     if (vrHud.visible) drawVrHud(gh);
-    vibey.update(dt, time, player.position, player.yaw(), heightAt);
+    vibey.update(dt, time, player.position, player.yaw(), (x, z) => Math.max(heightAt(x, z), houseFloorAt(x, z), bridge.deckAt(x, z) ?? -Infinity));
     renderer.toneMappingExposure += lastHitFlash * 0.5;
     arrival(dt);
     renderer.render(scene, camera);
