@@ -22,7 +22,7 @@ import { createRecorder, type Recorder } from "@/magician/record";
 import { DONATE_URL, loadSupporters, openDonate, recentlyDonated, signBoard, type Supporter } from "@/magician/support";
 import { deviceId } from "@/magician/voice/session";
 import { Button } from "@/components/ui/button";
-import spiritGate from "@/assets/magician-spirit-gate.jpg";
+import valleyShot from "@/assets/magician-valley.jpg";
 import magicianQr from "@/assets/magician-qr.jpg.asset.json";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
@@ -385,11 +385,11 @@ export default function Magician() {
       {!entered && (
         <div className="magician-splash absolute inset-0 z-20 flex items-center justify-center overflow-hidden px-5 py-16 sm:px-8">
           <img
-            src={spiritGate}
-            alt="A moonlit spirit gate in the mountains of Japan"
+            src={valleyShot}
+            alt="Hoshimura at golden hour: lanterns lit, cedar hills, the shrine on its hill"
             width={1920}
             height={1080}
-            className="magician-splash__scene absolute inset-0 h-full w-full object-cover"
+            className="magician-splash__scene absolute inset-0 h-full w-full object-cover object-[22%_50%] sm:object-center"
           />
           <div className="magician-splash__veil absolute inset-0" />
           <div className="magician-splash__mist magician-splash__mist--one absolute inset-x-0 bottom-0 h-2/3" />

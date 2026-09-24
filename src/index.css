@@ -159,7 +159,7 @@
 
 .magician-splash__scene {
   animation: magician-scene-arrive 4s cubic-bezier(0.22, 1, 0.36, 1) both;
-  filter: saturate(0.68) contrast(0.96) brightness(0.9);
+  filter: saturate(0.9) contrast(1) brightness(0.94);
 }
 
 .magician-splash__veil {
