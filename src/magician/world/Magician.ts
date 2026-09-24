@@ -46,6 +46,10 @@ import { createBursts, createFireflies, createLightning, createPetals, createRai
 import { createFireballs } from "./fireballs";
 import { createAmbience, type Surface } from "./audio";
 import { buildTaikoBridge, createRiverLife } from "./bridge";
+import { createMagicScreen } from "./screen";
+import { CHANNELS, findChannel } from "../screen/library";
+import { writeProgram } from "../screen/coder";
+import { NO_INPUT } from "../screen/runtime";
 import { createVibey, type Vibey } from "./vibey";
 import { readCompanion, writeCompanion } from "../companions";
 import { createGameRunner, type HouseState } from "../game/runner";
@@ -86,7 +90,7 @@ export interface MagicianEvents {
 
 /** Something to do where the visitor is standing, shown as a button. */
 export interface WorldAction {
-  id: "feed" | "wish";
+  id: "feed" | "wish" | "play" | "program";
   label: string;
 }
 
@@ -119,7 +123,7 @@ export interface MagicianWorld {
   setMuted(m: boolean): void;
   /** Call from a user gesture to start the ambience. */
   wake(): void;
-  /** Do one of the actions offered by `onActions`. `text` is the wish. */
+  /** Do one of the actions offered by `onActions`. `text` is the wish, or what to put on the screen. */
   act(id: WorldAction["id"], text?: string): void;
   actions(): WorldAction[];
   setMusic(on: boolean): void;
@@ -272,6 +276,16 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   for (const p of bridge.posts) fixed.push(p);
   const river = createRiverLife(BRIDGE_Z);
   scene.add(river.group);
+  // The Magic Screen at the edge of the square, facing it. See screen.ts.
+  const SCREEN_AT = { x: -2, z: -19 };
+  const screenCoarse = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+  const screen = createMagicScreen({
+    x: SCREEN_AT.x, z: SCREEN_AT.z, y: heightAt(SCREEN_AT.x, SCREEN_AT.z), yaw: Math.atan2(-SCREEN_AT.x, -SCREEN_AT.z),
+    fps: screenCoarse ? 15 : 24,
+    onBeep: (f, sec, type, v) => ambience.beep(f, sec, type, 0.015 + v * 0.05, SCREEN_AT),
+  });
+  scene.add(screen.prop.group);
+  fixed.push(screen.prop);
   place("windmill", 62, 12, 0, 1);
   // Lanterns along the shrine path and the square.
   for (let i = 0; i < 7; i++) {
@@ -366,6 +380,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const noGrass: Array<{ x: number; z: number; r: number }> = [
     ...houseSpots.map(([x, z]) => ({ x, z, r: 5 })),
     { x: LANDMARKS.shrine.x, z: LANDMARKS.shrine.z, r: 4.5 },
+    { x: SCREEN_AT.x, z: SCREEN_AT.z, r: 4.5 },
     { x: -70, z: -20, r: 3.5 },
     { x: 62, z: 12, r: 2.2 },
     { x: 6, z: -3, r: 1.6 },
@@ -558,6 +573,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       state = applyPatch(state, p);
       if (p.props) syncProps(state.props, state.season);
       if (p.wishes) river.syncWishes(state.wishes);
+      if (p.screen !== undefined) syncScreen();
+      if (p.screenWriting !== undefined && !screenBusy) {
+        const w = state.screenWriting;
+        screen.writing(w && Date.now() - w.at < 60_000 ? { request: w.request, code: w.code } : null);
+      }
       if (p.sign !== undefined) sign.setText(state.sign);
       events.onState?.(state);
       // Our own patches go to the room; theirs came from it.
@@ -583,6 +603,20 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       writeCompanion(id);
       void vibey.setBody(id).then(() => events.onCompanion?.(id));
     },
+    programScreen(request, change) {
+      if (screenBusy) return "The screen is already being written; it will be there in a moment.";
+      // Walk the visitor over so they see it being made.
+      if (Math.hypot(player.position.x - SCREEN_AT.x, player.position.z - SCREEN_AT.z) > 28) {
+        const l = LANDMARKS.screen;
+        player.teleport(l.x, l.z, l.yaw);
+      }
+      const channel = change ? null : findChannel(request);
+      void writeScreen(request, change && state.screen ? state.screen.code : null, null);
+      if (channel && request.split(/\s+/).length <= 7) return `The Magic Screen now shows ${channel.title}.`;
+      return change
+        ? "Changing the program on the Magic Screen now; the new version lands in about ten seconds and everyone can watch the code being written."
+        : "Writing it for the Magic Screen now; it appears in about ten seconds and everyone can watch the code being written. Say something fun meanwhile.";
+    },
     feedKoi() {
       if (!onBridge()) {
         // Downstream from the top of the arch: the koi below, the lanterns' way.
@@ -603,9 +637,138 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     },
   };
   sign.setText(state.sign);
+
+  // ---- the magic screen's programs ------------------------------------------------
+  // Only the device that asked talks to the coder; everyone else gets the
+  // finished program (and a draft every second and a half) through the room.
+  let screenBusy = false;
+  let screenShown = -1;
+  let screenMine = 0;
+  let screenFixes = 0;
+  function syncScreen() {
+    const p = state.screen;
+    const key = p ? p.at : 0;
+    if (key === screenShown) return;
+    screenShown = key;
+    screenError = null;
+    if (p) screen.run(p.code, p.at, p.title);
+    else screen.run(CHANNELS[0].code, Date.now(), CHANNELS[0].title);
+  }
+  async function writeScreen(request: string, previous: string | null, error: string | null): Promise<void> {
+    screenBusy = true;
+    const at = Date.now();
+    const channel = previous || error ? null : findChannel(request);
+    // A plain "put pong on the screen" is a channel we already have: instant.
+    if (channel && request.split(/\s+/).length <= 7) {
+      screenBusy = false;
+      store.patch({ screen: { code: channel.code, title: channel.title, request, at }, screenWriting: null });
+      ambience.play("sparkle", SCREEN_AT);
+      return;
+    }
+    screen.writing({ request: error ? `fixing: ${request}` : request, code: "" });
+    store.patch({ screenWriting: { request, code: "", at } });
+    let lastSent = 0;
+    try {
+      const prog = await writeProgram({ request, previous, error }, (draft) => {
+        screen.writing({ request: error ? `fixing: ${request}` : request, code: draft });
+        const now = performance.now();
+        if (now - lastSent > 1500) { lastSent = now; store.patch({ screenWriting: { request, code: draft.slice(-1400), at } }); }
+      });
+      if (disposed) return;
+      screenMine = Date.now();
+      if (!error) screenFixes = 0;
+      screen.writing(null);
+      store.patch({ screen: { code: prog.code, title: prog.title, request, at: screenMine }, screenWriting: null });
+      ambience.play("sparkle", SCREEN_AT);
+      bursts.spawn("sparkle", SCREEN_AT.x, heightAt(SCREEN_AT.x, SCREEN_AT.z) + 3, SCREEN_AT.z);
+      events.onToast?.(`📺 ${prog.title}`);
+      events.onNotify?.(`The Magic Screen now shows "${prog.title}"${error ? " (fixed)" : ""}. Say so in one short, delighted line${/game|play|catch|snake|pong|quiz/i.test(request) ? "; they can walk up to it and press Play" : ""}.`);
+    } catch (err) {
+      if (disposed) return;
+      screen.writing(null);
+      store.patch({ screenWriting: null });
+      const fallback = findChannel(request);
+      if (fallback && !previous) {
+        store.patch({ screen: { code: fallback.code, title: fallback.title, request, at: Date.now() } });
+        events.onNotify?.(`The screen's coder could not be reached, so the screen shows the "${fallback.title}" channel instead. Mention it lightly.`);
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        events.onToast?.("📺 the spell fizzled");
+        events.onNotify?.(`Writing the screen program failed (${msg.slice(0, 160)}). Tell the visitor in one short line and offer to try again.`);
+      }
+    } finally {
+      screenBusy = false;
+    }
+  }
+  // A program we wrote that falls over gets one automatic repair.
+  let screenError: string | null = null;
+  screen.onError = (message) => {
+    screenError = message;
+    const p = state.screen;
+    if (!p || p.at !== screenMine || screenBusy || screenFixes >= 1) return;
+    screenFixes++;
+    void writeScreen(p.request, p.code, message);
+  };
+  syncScreen();
+
   river.onEat = (x, z) => ambience.play("plop", { x, z });
   river.syncWishes(state.wishes);
   let flash = 0;
+
+  // ---- playing the screen -----------------------------------------------------
+  // Walk up to the Magic Screen and press Play: the walking controls (keys,
+  // stick, VR thumbstick, jump) drive the program instead of the player, and
+  // pointing at the picture with the mouse, a finger or the crosshair is the
+  // program's pointer.
+  let playing = false;
+  let screenB = false;
+  const screenPtr = { x: 0.5, y: 0.5, pressed: false };
+  const screenRay = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  function nearScreen(): boolean {
+    const dx = player.position.x - screen.centre.x, dz = player.position.z - screen.centre.z;
+    const along = dx * screen.normal.x + dz * screen.normal.z;
+    return along > 1.2 && along < 18 && Math.hypot(dx, dz) < 19;
+  }
+  function setPlaying(on: boolean) {
+    playing = on;
+    screenPtr.pressed = false;
+    if (on) {
+      // Stand where the whole picture fits the view, and face it.
+      const px = screen.centre.x + screen.normal.x * 8.5, pz = screen.centre.z + screen.normal.z * 8.5;
+      const dx = screen.centre.x - px, dz = screen.centre.z - pz;
+      player.teleport(px, pz, Math.atan2(-dx, -dz));
+      events.onToast?.("🎮 playing: arrows or stick to move, space to jump, E to stop");
+    } else screen.input(NO_INPUT);
+  }
+  function aimScreen(clientX: number, clientY: number, centre = false): boolean {
+    const r = renderer.domElement.getBoundingClientRect();
+    if (centre) ndc.set(0, 0);
+    else ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+    screenRay.setFromCamera(ndc, cam);
+    const h = screen.hit(screenRay.ray.origin, screenRay.ray.direction);
+    if (h) { screenPtr.x = h.x; screenPtr.y = h.y; }
+    return !!h;
+  }
+  const onScreenDown = (e: PointerEvent) => {
+    if (!playing || (e.target as HTMLElement).closest("button, input, a, select, [data-ui]")) return;
+    screenPtr.pressed = aimScreen(e.clientX, e.clientY, document.pointerLockElement === container);
+  };
+  const onScreenMove = (e: PointerEvent) => { if (playing && screenPtr.pressed) aimScreen(e.clientX, e.clientY, document.pointerLockElement === container); };
+  const onScreenUp = () => { screenPtr.pressed = false; };
+  const onScreenKey = (down: boolean) => (e: KeyboardEvent) => {
+    if (!playing || (e.target as HTMLElement | null)?.tagName === "INPUT") return;
+    if (e.code === "Enter" || e.code === "ShiftLeft") screenB = down;
+    if (down && e.code === "Escape") setPlaying(false);
+    if (e.code.startsWith("Arrow") || e.code === "Space") e.preventDefault();
+  };
+  const onScreenKeyDown = onScreenKey(true), onScreenKeyUp = onScreenKey(false);
+  container.addEventListener("pointerdown", onScreenDown);
+  window.addEventListener("pointermove", onScreenMove);
+  window.addEventListener("pointerup", onScreenUp);
+  window.addEventListener("keydown", onScreenKeyDown);
+  window.addEventListener("keyup", onScreenKeyUp);
 
   // ---- shooting -----------------------------------------------------------
   // Desktop: a click (while locked, or a click with no drag) fires down the
@@ -874,7 +1037,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const xr = renderer.xr.isPresenting ? renderer.xr.getSession() : null;
     const eye = 1 / s.giant;
     const wading = player.position.y < terrain.waterY() - 0.4 ? 0.55 : 1;
-    player.update(dt, groundAt, { gravity: s.gravity, speed: s.speed * eye * wading, eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
+    player.update(dt, groundAt, { frozen: playing, gravity: s.gravity, speed: s.speed * eye * wading, eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
     for (const p of fixed) p.update?.(dt, time, propCtx);
@@ -888,6 +1051,12 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     terrain.update(dt, time);
     forest.update(time, s.windDirection, s.wind);
     bridge.update(dt, time, s.wind, s.windDirection);
+    screen.update(dt, time, player.position);
+    if (playing) {
+      const c = player.controls();
+      if (document.pointerLockElement === container || xr) aimScreen(0, 0, true);
+      screen.input({ left: c.x < -0.35, right: c.x > 0.35, up: c.y > 0.35, down: c.y < -0.35, a: c.jump, b: screenB, x: screenPtr.x, y: screenPtr.y, pressed: screenPtr.pressed });
+    }
     river.update(dt, time, { waterY: terrain.waterY(), player: player.position, onBridge: onBridge(), night: look.night });
     grass.update(dt, time, player.position, { windDir: s.windDirection, wind: s.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
     V.copy(player.position);
@@ -916,8 +1085,13 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     actionTick -= dt;
     if (actionTick <= 0) {
       actionTick = 0.3;
-      const next: WorldAction[] = onBridge() ? [{ id: "feed", label: "Feed the koi" }, { id: "wish", label: "Float a wish" }] : [];
-      const key = next.map((a) => a.id).join();
+      if (playing && !nearScreen()) setPlaying(false);
+      const next: WorldAction[] = onBridge()
+        ? [{ id: "feed", label: "Feed the koi" }, { id: "wish", label: "Float a wish" }]
+        : nearScreen()
+          ? [{ id: "play", label: playing ? "Stop playing" : "Play on the screen" }, { id: "program", label: "Make something" }]
+          : [];
+      const key = next.map((a) => a.label).join();
       if (key !== actionKey) { actionKey = key; actionsNow = next; events.onActions?.(next); }
     }
     room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false);
@@ -1010,6 +1184,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     act(id, text) {
       if (id === "feed") { river.feed(player.position, player.yaw()); ambience.play("whoosh", { x: player.position.x, z: player.position.z }); }
       else if (id === "wish") runTool("release_lantern", { wish: text ?? "" }, store);
+      else if (id === "play") { setPlaying(!playing); actionKey = ""; }
+      else if (id === "program" && text?.trim()) {
+        const change = !!state.screen && /\b(make it|change it|make the|faster|slower|bigger|smaller|instead|add a|add some|more)\b/i.test(text);
+        runTool("program_screen", { request: text.trim(), change }, store);
+      }
     },
     actions: () => actionsNow,
     setMusic(on) { ambience.setMusic(on); },
@@ -1041,6 +1220,14 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       peers.dispose();
       container.removeEventListener("mousedown", onDown);
       container.removeEventListener("mouseup", onUp);
+      container.removeEventListener("pointerdown", onScreenDown);
+      window.removeEventListener("pointermove", onScreenMove);
+      window.removeEventListener("pointerup", onScreenUp);
+      window.removeEventListener("keydown", onScreenKeyDown);
+      window.removeEventListener("keyup", onScreenKeyUp);
+      screen.dispose();
+      bridge.dispose();
+      river.dispose();
       container.removeEventListener("touchstart", onTouchStart);
       container.removeEventListener("touchend", onTouchEnd);
       controllers.forEach((c, i) => { c.removeEventListener("selectstart", selectHandlers[i].h); c.removeEventListener("selectend", selectHandlers[i].e); });
@@ -1079,6 +1266,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     grass: () => grass.stats(),
+    screen: () => ({ title: screen.title(), error: screenError, busy: screenBusy, playing }),
     river: () => ({ ...river.debug(), waterY: terrain.waterY(), player: [player.position.x, player.position.y, player.position.z].map((v) => +v.toFixed(2)) }),
     listen: (seconds: number) => new Promise<{ png: string; rms: number[]; peak: number; state: string }>((resolve) => {
       // A spectrogram of the ambience mix, drawn here, for checking sound in
@@ -1188,6 +1376,7 @@ declare global {
       peers(): { connected: boolean; count: number; id: string | null };
       grass(): { chunks: number; blades: number };
       river(): unknown;
+      screen(): { title: string; error: string | null; busy: boolean; playing: boolean };
       listen(seconds: number): Promise<{ png: string; rms: number[]; peak: number; state: string }>;
       budget(): Record<string, number>;
       /** The last frame's cost, for checking the headset budget. */

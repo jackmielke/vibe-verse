@@ -96,6 +96,13 @@ export function castSpell(input: string): SpellCall[] {
     return [{ name: "release_lantern", args: { wish: wish?.[1]?.trim() ?? "a wish", count: countIn(t) ?? 1 } }];
   }
 
+  // The Magic Screen: anything said about the screen or the TV is for it.
+  if (/\b(go|take me|teleport|travel|send me|bring me|walk me)\b.*\b(screen|tv)\b/.test(t)) return [{ name: "teleport", args: { place: "screen" } }];
+  if (/\b(on|to|onto) the (magic |big )?(screen|tv|telly)\b|\b(screen|tv) (show|play)|\btelevision\b/.test(t)) {
+    const change = /\b(make it|change it|make the|faster|slower|bigger|smaller|instead|add a|add some|more)\b/.test(t) && !/\bput\b/.test(t);
+    return [{ name: "program_screen", args: { request: input.trim(), change } }];
+  }
+
   // Time
   if (/\bmidnight\b/.test(t)) calls.push({ name: "set_time", args: { hour: 0 } });
   else if (/\bdawn\b|\bsunrise\b/.test(t)) calls.push({ name: "set_time", args: { hour: 5.6 } });

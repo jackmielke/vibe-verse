@@ -45,8 +45,8 @@ export const PROP_KINDS: PropKind[] = [
 ];
 
 /** Named places in the valley the player (or a spawn) can be sent to. */
-export type Place = "village" | "shrine" | "bridge" | "torii" | "paddies" | "hilltop" | "lake" | "here" | "around";
-export const PLACES: Place[] = ["village", "shrine", "bridge", "torii", "paddies", "hilltop", "lake", "here", "around"];
+export type Place = "village" | "shrine" | "bridge" | "screen" | "torii" | "paddies" | "hilltop" | "lake" | "here" | "around";
+export const PLACES: Place[] = ["village", "shrine", "bridge", "screen", "torii", "paddies", "hilltop", "lake", "here", "around"];
 
 export interface Prop {
   id: number;
@@ -59,6 +59,16 @@ export interface Prop {
   color?: string;
   /** Yaw in radians. */
   yaw: number;
+}
+
+/** What the Magic Screen in the square is running: code a model wrote a moment ago. */
+export interface ScreenProgram {
+  code: string;
+  title: string;
+  /** What was asked for, in the asker's words. */
+  request: string;
+  /** Wall-clock ms it started, so every viewer's clock agrees. */
+  at: number;
 }
 
 /** A paper lantern set on the river with a wish written on it. */
@@ -119,6 +129,10 @@ export interface WorldState {
   giant: number;
   /** Lanterns floating down the river, everybody's. */
   wishes: Wish[];
+  /** The Magic Screen's program; null is its own welcome card. */
+  screen: ScreenProgram | null;
+  /** Somebody is having a program written: the request and the draft so far. */
+  screenWriting: { request: string; code: string; at: number } | null;
 }
 
 export const DEFAULT_STATE: WorldState = {
@@ -145,6 +159,8 @@ export const DEFAULT_STATE: WorldState = {
   meteors: 0,
   giant: 1,
   wishes: [],
+  screen: null,
+  screenWriting: null,
 };
 
 export type Patch = Partial<Omit<WorldState, "props">> & { props?: Prop[] };
@@ -170,6 +186,9 @@ export function applyPatch(state: WorldState, patch: Patch): WorldState {
   // A lantern lives five minutes; the river holds forty at most.
   const now = Date.now();
   next.wishes = (next.wishes ?? []).filter((w) => now - w.born < 300_000).slice(-40);
+  if (next.screen === undefined) next.screen = null;
+  if (next.screen && next.screen.code.length > 40000) next.screen = null;
+  if (next.screenWriting === undefined) next.screenWriting = null;
   return next;
 }
 
@@ -264,5 +283,6 @@ export function describeState(state: WorldState): string {
     `Gravity ${state.gravity}, speed x${state.speed}, flood ${Math.round(state.flood * 100)}%, aurora ${Math.round(state.aurora * 100)}%, meteors ${Math.round(state.meteors * 100)}%, scale x${state.giant}.`,
     `Palette ${state.palette ? `custom (sky ${state.palette.sky}, horizon ${state.palette.horizon}, ground ${state.palette.ground})` : "natural"}.`,
     `Spawned by magic: ${spawned}. The sign reads: "${state.sign}".`,
+    `The Magic Screen in the square shows ${state.screen ? `"${state.screen.title}"` : "its welcome card"}${state.screenWriting ? `; a new program is being written ("${state.screenWriting.request}")` : ""}. Lanterns on the river: ${state.wishes.length}.`,
   ].join("\n");
 }

@@ -90,7 +90,7 @@ export default function Magician() {
   const [menuOpen, setMenuOpen] = useState(false);
   // What there is to do right here: feed the koi, float a wish.
   const [actions, setActions] = useState<WorldAction[]>([]);
-  const [wishOpen, setWishOpen] = useState(false);
+  const [wishOpen, setWishOpen] = useState<null | "wish" | "program">(null);
   const [wishText, setWishText] = useState("");
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -110,15 +110,16 @@ export default function Magician() {
   const idRef = useRef(1);
   const lastFizzleRef = useRef(0);
   const doAction = useCallback((id: WorldAction["id"]) => {
-    if (id === "wish") { document.exitPointerLock?.(); setWishOpen(true); return; }
+    if (id === "wish" || id === "program") { document.exitPointerLock?.(); setWishOpen(id); return; }
     worldRef.current?.act(id);
   }, []);
   const sendWish = useCallback(() => {
     const w = wishText.trim();
-    worldRef.current?.act("wish", w || "a wish");
+    if (wishOpen === "program") { if (w) worldRef.current?.act("program", w); }
+    else worldRef.current?.act("wish", w || "a wish");
     setWishText("");
-    setWishOpen(false);
-  }, [wishText]);
+    setWishOpen(null);
+  }, [wishText, wishOpen]);
   // E does the first thing on offer, the way every game has taught people;
   // R the second.
   useEffect(() => {
@@ -507,20 +508,20 @@ export default function Magician() {
               className="absolute left-1/2 top-1/3 z-30 w-[min(92vw,26rem)] -translate-x-1/2 rounded-xl border border-[#ffd9a0]/30 bg-[#1d130c]/90 p-4 text-[#ffe9c8] shadow-[0_0_60px_rgba(255,170,80,0.25)] backdrop-blur-md"
               data-ui="1"
             >
-              <div className="font-serif text-lg">Write on the lantern</div>
-              <div className="mt-1 text-xs text-[#ffe9c8]/60">It drifts down the river to the lake, and everyone in the valley sees it.</div>
+              <div className="font-serif text-lg">{wishOpen === "program" ? "What should the screen show?" : "Write on the lantern"}</div>
+              <div className="mt-1 text-xs text-[#ffe9c8]/60">{wishOpen === "program" ? "A game, an animation, art, anything. Vibey writes the code live and everyone in the valley sees it." : "It drifts down the river to the lake, and everyone in the valley sees it."}</div>
               <input
                 autoFocus
                 value={wishText}
-                maxLength={60}
+                maxLength={wishOpen === "program" ? 300 : 60}
                 onChange={(e) => setWishText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Escape") setWishOpen(false); }}
-                placeholder="a wish, a name, a thank-you"
+                onKeyDown={(e) => { if (e.key === "Escape") setWishOpen(null); }}
+                placeholder={wishOpen === "program" ? "a game where you catch falling stars" : "a wish, a name, a thank-you"}
                 className="mt-3 h-10 w-full rounded-md border border-[#ffd9a0]/30 bg-black/30 px-3 text-sm text-white outline-none placeholder:text-white/30"
               />
               <div className="mt-3 flex justify-end gap-2 text-[11px] uppercase tracking-[0.18em]">
-                <button type="button" onClick={() => setWishOpen(false)} className="rounded-md px-3 py-2 text-white/50">not now</button>
-                <button type="submit" className="rounded-md border border-[#ffd9a0]/50 bg-[#ffb45c]/25 px-4 py-2 text-[#fff1dc]">set it on the river</button>
+                <button type="button" onClick={() => setWishOpen(null)} className="rounded-md px-3 py-2 text-white/50">not now</button>
+                <button type="submit" className="rounded-md border border-[#ffd9a0]/50 bg-[#ffb45c]/25 px-4 py-2 text-[#fff1dc]">{wishOpen === "program" ? "make it" : "set it on the river"}</button>
               </div>
             </form>
           )}

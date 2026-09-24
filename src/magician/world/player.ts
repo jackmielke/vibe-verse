@@ -18,7 +18,9 @@ export interface Player {
   position: THREE.Vector3;
   /** Heading in radians, 0 looks down -z. */
   yaw(): number;
-  update(dt: number, groundAt: (x: number, z: number) => number, opts: { gravity: Gravity; speed: number; eye: number; xr: XRSession | null; xrCamera: THREE.Camera | null; solve?: (p: THREE.Vector3) => void }): void;
+  update(dt: number, groundAt: (x: number, z: number) => number, opts: { gravity: Gravity; speed: number; eye: number; xr: XRSession | null; xrCamera: THREE.Camera | null; solve?: (p: THREE.Vector3) => void; frozen?: boolean }): void;
+  /** The controls as they were last frame, even while frozen: x right, y forward, -1..1. */
+  controls(): { x: number; y: number; jump: boolean };
   teleport(x: number, z: number, yaw?: number): void;
   /** Whether the pointer is locked / a touch is active — input is bound. */
   active(): boolean;
@@ -49,6 +51,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
   let jumpQueued = false;
   let pinchFn: ((ratio: number) => void) | null = null;
   let pinch0 = 0;
+  const lastCtl = { x: 0, y: 0, jump: false };
 
   const onKey = (down: boolean) => (e: KeyboardEvent) => {
     if (e.target && (e.target as HTMLElement).tagName === "INPUT") return;
@@ -184,6 +187,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
     setStick(x, y) { stick.x = Math.max(-1, Math.min(1, x)); stick.y = Math.max(-1, Math.min(1, y)); },
     jump() { jumpQueued = true; },
     onPinch(fn) { pinchFn = fn; },
+    controls: () => lastCtl,
     active() { return locked || touches.size > 0; },
     update(dt, groundAt, opts) {
       let mx = 0, mz = 0, jump = false;
@@ -242,6 +246,9 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
         head.rotation.x = pitch;
         headYawXr = 0;
       }
+      // Held still (playing the screen): the controls are read, not walked.
+      lastCtl.x = Math.max(-1, Math.min(1, mx)); lastCtl.y = Math.max(-1, Math.min(1, -mz)); lastCtl.jump = jump || keys.has("Space");
+      if (opts.frozen) { vel.set(0, 0, 0); jump = false; }
       const run = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 1.8 : 1;
       const speed = 4.2 * opts.speed * run;
       rig.position.x += vel.x * speed * dt;

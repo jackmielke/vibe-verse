@@ -42,6 +42,7 @@ export interface ToolDefinition {
 export const LANDMARKS: Record<Exclude<Place, "here" | "around">, { x: number; z: number; yaw?: number }> = {
   village: { x: 0, z: 0 },
   bridge: { x: 22, z: -0.8, yaw: -1.1 },
+  screen: { x: -1.2, z: -8.6, yaw: 0.08 },
   torii: { x: -30, z: -34 },
   shrine: { x: -46, z: -62, yaw: Math.PI },
   paddies: { x: 42, z: 30 },
@@ -67,6 +68,8 @@ export interface MagicianStore {
   become(id: string): void;
   /** Throw food to the koi, walking to the bridge first if needed. */
   feedKoi?(): string;
+  /** Have a program written for the Magic Screen. Returns at once; the program lands seconds later. */
+  programScreen?(request: string, change: boolean): string;
   /** The game layer. */
   game: {
     start(mode: "siege" | "spirits" | "dragon"): void;
@@ -302,6 +305,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         count: { type: "number", description: "How many lanterns, 1-8. Default 1." },
       },
       required: ["wish"],
+    },
+  },
+  {
+    type: "function",
+    name: "program_screen",
+    description:
+      "Put anything on the Magic Screen, the big screen in the village square that everyone in the valley can see: a game (snake, pong, a catching game, a quiz), an animation, generative art, a clock, fireworks, a message. A coder writes real code for it in about ten seconds, and the screen shows the code being written. Use change=true when the visitor wants to change what is on it now (\"make the snake faster\", \"add a second ball\", \"make it purple\"). Describe the request richly: what it is, how it looks, how it is played.",
+    parameters: {
+      type: "object",
+      properties: {
+        request: { type: "string", description: "What the screen should show, in plain words, with any detail the visitor gave." },
+        change: { type: "boolean", description: "True to modify the program already on the screen; false for something new." },
+      },
+      required: ["request"],
     },
   },
   {
@@ -564,6 +581,12 @@ export function runTool(name: string, rawArgs: unknown, store: MagicianStore, rn
       store.patch({ wishes: [...store.get().wishes, ...made] });
       store.sound("chime");
       return { output: `${n === 1 ? "A lantern is" : `${n} lanterns are`} on the river at the bridge, reading "${text}". ${n === 1 ? "It drifts" : "They drift"} down to the lake over the next few minutes.`, toast: `🏮 "${text}"` };
+    }
+    case "program_screen": {
+      const request = String(args.request ?? "").trim().slice(0, 400);
+      if (!request) return { output: "Say what the screen should show.", toast: null };
+      if (!store.programScreen) return { output: "There is no screen here.", toast: null };
+      return { output: store.programScreen(request, args.change === true), toast: `📺 ${request.slice(0, 40)}` };
     }
     case "feed_koi": {
       if (!store.feedKoi) return { output: "There are no koi here.", toast: null };
