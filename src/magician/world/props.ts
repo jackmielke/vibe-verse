@@ -654,6 +654,7 @@ function crownMaterial(color: string, uniforms: Record<string, THREE.IUniform>):
 
 export function buildForest(trees: TreeSpec[], season: Season): Forest {
   const group = new THREE.Group();
+  group.name = "forest";
   const windUniforms = { uTime: { value: 0 }, uWind: { value: new THREE.Vector2(1, 0) }, uWindStrength: { value: 0.25 } };
   const foliage = {
     tree: crownMaterial(FOLIAGE[season].tree, windUniforms),

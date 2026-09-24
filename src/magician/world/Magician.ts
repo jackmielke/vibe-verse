@@ -812,7 +812,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // A headset has a mobile GPU and two eyes. Halve the shadow map for the
   // session and put it back after.
   const onXrStart = () => {
-    grass.setQuality(9, 22);
+    grass.setQuality(8, 20);
     sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
@@ -950,6 +950,23 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     grass: () => grass.stats(),
+    budget: () => {
+      // Triangles per top-level object, instancing included: where the frame goes.
+      const out: Record<string, number> = {};
+      scene.children.forEach((c, i) => {
+        let t = 0;
+        c.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || !m.visible) return;
+          const g = m.geometry;
+          const n = (g.index ? g.index.count : g.attributes.position?.count ?? 0) / 3;
+          t += n * ((m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 1);
+        });
+        if (t > 5000) out[`${i}:${c.name || c.type}`] = Math.round(t);
+      });
+      return out;
+    },
+    render: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, programs: renderer.info.programs?.length ?? 0, textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries }),
     settle: (seconds = 6) => {
       // Fast-forward the eased look, for scripts on machines that render at
       // one frame a second. Physics and the player are left alone.
@@ -996,6 +1013,9 @@ declare global {
       player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
       peers(): { connected: boolean; count: number; id: string | null };
       grass(): { chunks: number; blades: number };
+      budget(): Record<string, number>;
+      /** The last frame's cost, for checking the headset budget. */
+      render(): { calls: number; triangles: number; programs: number; textures: number; geometries: number };
       settle(seconds?: number): void;
     };
   }

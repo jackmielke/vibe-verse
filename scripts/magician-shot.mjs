@@ -70,7 +70,9 @@ async function shot(name) {
   writeFileSync(file, buf);
   const counts = await page.evaluate(() => window.__magician.counts());
   const st = await page.evaluate(() => { const s = window.__magician.state(); return { time: s.timeOfDay, weather: s.weather, season: s.season, props: s.props.length }; });
-  console.log(file, `${buf.length} bytes`, JSON.stringify({ ...counts, ...st }));
+  const render = await page.evaluate(() => window.__magician.render?.());
+  if (process.env.BUDGET) console.log("budget", JSON.stringify(await page.evaluate(() => window.__magician.budget?.())));
+  console.log(file, `${buf.length} bytes`, JSON.stringify({ ...counts, ...st }), render ? `render ${JSON.stringify(render)}` : "");
 }
 
 await shot("magician-0");
