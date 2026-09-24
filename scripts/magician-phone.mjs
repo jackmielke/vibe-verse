@@ -16,7 +16,7 @@ page.on("pageerror", (e) => errors.push(String(e)));
 await page.goto("http://127.0.0.1:5177/magician?net=off", { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${OUT}/magician-phone-entry.png` });
-await page.getByRole("button", { name: /enter the valley/i }).click();
+await page.getByRole("button", { name: /enter (the valley|hoshimura)/i }).click();
 await page.waitForFunction(() => Boolean(window.__magician), null, { timeout: 60000 });
 await page.waitForTimeout(5000);
 await page.evaluate(() => { window.__magician.cast("make it rain"); window.__magician.caption("Rain, coming right up. Want fireflies with that?"); window.__magician.settle(4); });

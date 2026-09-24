@@ -1,7 +1,81 @@
 {
-  "generated_at": "2026-09-19T21:37:19.957Z",
+  "generated_at": "2026-09-24T04:55:09.477Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "b0e1a749",
+      "date": "2026-09-19",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "84f6370f",
+      "date": "2026-09-19",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "65819be3",
+      "date": "2026-09-19",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "44085e9d",
+      "date": "2026-09-19",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "2bc71dca",
+      "date": "2026-09-19",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "bea14424",
+      "date": "2026-09-19",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "0e6c32a2",
+      "date": "2026-09-19",
+      "subject": "Work in progress",
+      "lede": "",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "f0528ca9",
+      "date": "2026-09-19",
+      "subject": "CLAUDE.md: the soft cap, the daily ceiling, the board",
+      "lede": "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "fa0fe855",
+      "date": "2026-09-19",
+      "subject": "The Magician runs on donations: soft cap, a Stripe link, a supporters' board",
+      "lede": "The ten free minutes are a nudge now, not a wall. When they run out the page asks once, gently, and the visitor may keep talking. What is hard is the valley's day: past four hours of talking across every device in a rolling 24 hours, the function stops minting until it rolls off, so a link that travels further than expected costs a bounded amount.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 8
+    },
     {
       "sha": "cebaac5e",
       "date": "2026-09-19",
@@ -923,78 +997,6 @@
       "lede": "A new world at /empyrean, built from a reference painting: a cluster of iridescent towers on a floating island four hundred metres over a frozen lake, in a sunset that runs navy-and-stars at the zenith through jade and gold to rose on the horizon. You fly it with Vibe City's jetpack, as whichever character you already picked anywhere else in the vibeverse.",
       "places": [],
       "files": 15
-    },
-    {
-      "sha": "07bca5b8",
-      "date": "2026-08-19",
-      "subject": "Towers meet the ground now, and the card art stopped being a rooftop",
-      "lede": "Every generated tower ran as one banded box from the pavement to the parapet, which is a shape no tower has and the one part of it you stand next to. Walk down Market — where the world opens — and both sides were forty storeys of identical window courses meeting the ground with nothing at all: no lobby, no entrance, no way in, no change of material. It reads as scenery from six feet away, on the most-looked-at facade",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "6db5ac35",
-      "date": "2026-08-19",
-      "subject": "npm run stamp",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "57ae7cce",
-      "date": "2026-08-19",
-      "subject": "Streets that are lit at night, and headlights on the traffic",
-      "lede": "Nine thousand glowing window courses turned the skyline into San Francisco from the air the day they went in, and from the pavement the roads stayed a black void with a few bright dots floating over them — which is what a power cut looks like, not a city. Four things fix it.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "8db6bf86",
-      "date": "2026-08-19",
-      "subject": "build-log.json has been serving a merge conflict",
-      "lede": "`public/build-log.json` is published at myvibeverse.com/build-log.json, and the committed copy contains `<<<<<<< HEAD` and `=======` — a conflict resolved by committing both sides. It has not been parseable JSON since.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "093a863d",
-      "date": "2026-08-19",
-      "subject": "The lido's pools: water that behaves like water",
-      "lede": "They were a MeshStandardMaterial with a low roughness, an environment map and a constant alpha, which is physically reasonable and photographed as a flat sheet of turquoise paint. A perfectly flat surface with a static reflection has nothing in it that moves or that changes with angle, and those are the two things that say \"water\" before anything else does.",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "50850953",
-      "date": "2026-08-19",
-      "subject": "Document the lido and the ground probe; refresh stamps",
-      "lede": "The lido's boot position is load-bearing — it has to come up before props and vegetation, because neither knows the park is coming and both plant into open ground. Run it after them and there are trees in the wave pool. That was worth writing down next to the rest of the load order rather than leaving it as a line in boot.ts that looks reorderable.",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "805dc285",
-      "date": "2026-08-19",
-      "subject": "dz-ground: ask the world what is under a dark pixel",
-      "lede": "Three captures came back with a large near-black field across the near and middle ground and correctly-lit terrain beyond it, and four different theories about it all predicted the same photograph: dark ground cover, a canopy underside, a shadow-map artifact and a metalness bug are indistinguishable in a frame. Two of the four were confidently wrong.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "614eefa0",
-      "date": "2026-08-19",
-      "subject": "Drop Zero: give it back its home button",
-      "lede": "`AppChrome` decides whether a world owns the viewport by asking `CHROMELESS_ROUTES.has(pathname)`, and a pathname never carries a query. Drop Zero's registry route is `/drop-zero?mode=classic`, so the set held a string no URL could ever equal: the nav pill rendered over the crosshair, and — the worse half — the chromeless branch is also the branch that hands a fullscreen world its HomeButton, so the classic mode had ",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "7b67b96f",
-      "date": "2026-08-19",
-      "subject": "THE LIDO, a realism pass, and one bot out of two",
-      "lede": "A separate realm in the same world: a municipal water park on the island's NE shelf. A 28 m tower of flumes into three splash pools, a wave pool with a shelving floor you can walk into, a 163 m lazy river whose current actually carries you, splash pads with a bucket always tipping, a diving stack, cabins, a kiosk, a car park, and twenty-two signs in one draw call. 1,319 colliders. Built BEFORE props and vegetation in",
-      "places": [],
-      "files": 8
     }
   ]
 }

@@ -52,12 +52,12 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 page.on("console", (m) => {
   const t = m.text();
-  if (/Router Future Flag|ERR_CERT|ERR_TUNNEL|Failed to load resource/.test(t)) return;
+  if (/Router Future Flag|ERR_CERT|ERR_TUNNEL|Failed to load resource|WebSocket connection/.test(t)) return;
   if (m.type() === "error" || m.type() === "warning") errors.push(`[${m.type()}] ${t.slice(0, 400)}`);
 });
 
 await page.goto(`${BASE}/magician`, { waitUntil: "domcontentloaded" });
-await page.getByRole("button", { name: /enter the valley/i }).click({ timeout: 30000 });
+await page.getByRole("button", { name: /enter (the valley|hoshimura)/i }).click({ timeout: 30000 });
 await page.waitForFunction(() => Boolean(window.__magician), null, { timeout: 60000 });
 // Let the model load and the first frames settle.
 await page.waitForTimeout(Number(process.env.SETTLE ?? 6000));

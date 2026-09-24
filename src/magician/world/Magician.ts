@@ -37,8 +37,9 @@ import {
 } from "../state";
 import { LANDMARKS, runTool, type MagicianStore, type ToolResult } from "../tools";
 import { castSpell } from "../spellbook";
-import { heightAt, riverCentre, WATER_LEVEL } from "./noise";
+import { heightAt, riverCentre, riverDistance, WATER_LEVEL } from "./noise";
 import { createTerrain, pathAt } from "./terrain";
+import { createGrass } from "./grass";
 import { createSky } from "./sky";
 import { buildBoard, buildBridge, buildForest, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject, type TreeKind } from "./props";
 import { createBursts, createFireflies, createLightning, createPetals, createRain, createSnow } from "./weather";
@@ -272,6 +273,34 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   sign.group.position.set(LANDMARKS.bridge.x - 14, heightAt(LANDMARKS.bridge.x - 14, LANDMARKS.bridge.z + 3), LANDMARKS.bridge.z + 3);
   sign.group.rotation.y = -0.6;
   scene.add(sign.group);
+
+  // ---- grass -------------------------------------------------------------
+  // Everywhere the ground is meadow: not on paths, water, paddies, the lake,
+  // under a building or up the bare mountain. Density eases off near each
+  // edge so the field thins out instead of stopping at a line.
+  const noGrass: Array<{ x: number; z: number; r: number }> = [
+    ...houseSpots.map(([x, z]) => ({ x, z, r: 3.4 })),
+    { x: LANDMARKS.shrine.x, z: LANDMARKS.shrine.z, r: 4.5 },
+    { x: -70, z: -20, r: 3.5 },
+    { x: 62, z: 12, r: 2.2 },
+    { x: 6, z: -3, r: 1.6 },
+  ];
+  const grassDensity = (x: number, z: number): number => {
+    const h = heightAt(x, z);
+    if (h < WATER_LEVEL + 0.35) return 0;
+    let d = 1;
+    d *= Math.min(1, Math.max(0, (riverDistance(x, z) - 5) / 4));
+    d *= 1 - Math.min(1, pathAt(x, z) * 1.6);
+    const paddy = Math.hypot((x - 42) / 1.4, z - 30);
+    d *= Math.min(1, Math.max(0, (paddy - 33) / 4));
+    d *= Math.min(1, Math.max(0, (Math.hypot(x - 60, z - 56) - 23) / 4));
+    for (const o of noGrass) d *= Math.min(1, Math.max(0, (Math.hypot(x - o.x, z - o.z) - o.r) / 1.5));
+    if (h > 45) d *= Math.max(0, 1 - (h - 45) / 25);
+    return d;
+  };
+  const coarse = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+  const grass = createGrass({ heightAt, density: grassDensity, perSquareMetre: coarse ? 10 : 22, radius: coarse ? 24 : 32 });
+  scene.add(grass.group);
 
   // The supporters' board, on the square, where everyone arrives.
   const board = buildBoard();
@@ -644,6 +673,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     }
     sky.update(dt, time, s.wind, s.windDirection);
     terrain.update(dt, time);
+    grass.update(dt, time, player.position, { windDir: s.windDirection, wind: s.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
     V.copy(player.position);
     V.y += 1.6;
     rain.update(dt, time, V, s.wind, s.windDirection);
@@ -680,6 +710,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // A headset has a mobile GPU and two eyes. Halve the shadow map for the
   // session and put it back after.
   const onXrStart = () => {
+    grass.setQuality(9, 22);
     sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
@@ -687,6 +718,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     renderer.shadowMap.needsUpdate = true;
   };
   const onXrEnd = () => {
+    grass.setQuality(coarse ? 10 : 22, coarse ? 24 : 32);
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.map?.dispose();
     sun.shadow.map = null;
@@ -763,6 +795,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       vibey.dispose();
       ambience.dispose();
       terrain.dispose();
+      grass.dispose();
       sky.dispose();
       rain.dispose(); snow.dispose(); petals.dispose(); fireflies.dispose(); bursts.dispose(); fireballs.dispose();
       sign.dispose();
@@ -814,6 +847,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     companion: () => vibey.debug(),
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
+    grass: () => grass.stats(),
     settle: (seconds = 6) => {
       // Fast-forward the eased look, for scripts on machines that render at
       // one frame a second. Physics and the player are left alone.
@@ -827,6 +861,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         petals.update(0.1, time, V, state.wind, state.windDirection);
         fireflies.update(0.1, time, V, state.wind * 0.3, state.windDirection);
         propCtx.lanterns = look.lanterns > 0.5;
+        grass.update(0.1, time, player.position, { windDir: state.windDirection, wind: state.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
         for (const p of fixed) p.update?.(0.1, time, propCtx);
         for (const sp of spawned.values()) { sp.obj.update?.(0.1, time, propCtx); sp.obj.group.scale.setScalar(sp.prop.scale); }
         bursts.update(0.1);
@@ -857,6 +892,7 @@ declare global {
       companion(): ReturnType<Vibey["debug"]>;
       player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
       peers(): { connected: boolean; count: number; id: string | null };
+      grass(): { chunks: number; blades: number };
       settle(seconds?: number): void;
     };
   }
