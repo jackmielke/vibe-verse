@@ -79,7 +79,7 @@ export function buildInterior(room: { FH: number; WH: number; w: number; d: numb
   const boards = keep(new THREE.MeshStandardMaterial({ color: "#7a5a3c", roughness: 0.8 }));
   const darkWood = keep(new THREE.MeshStandardMaterial({ color: "#2a1c14", roughness: 0.75 }));
   const beam = keep(new THREE.MeshStandardMaterial({ color: "#3a2819", roughness: 0.9 }));
-  const ash = keep(new THREE.MeshStandardMaterial({ color: "#8e8a84", roughness: 1 }));
+  const ash = keep(new THREE.MeshStandardMaterial({ color: "#5e5a56", roughness: 1 }));
   const ember = keep(new THREE.MeshStandardMaterial({ color: "#3a1a0c", emissive: new THREE.Color("#ff5a1a"), emissiveIntensity: 1.6, roughness: 1 }));
   const iron = keep(new THREE.MeshStandardMaterial({ color: "#23211f", roughness: 0.5, metalness: 0.6 }));
   const bamboo = keep(new THREE.MeshStandardMaterial({ color: "#8a7a3e", roughness: 0.7 }));
@@ -221,7 +221,9 @@ export function buildInterior(room: { FH: number; WH: number; w: number; d: numb
   let petted = 0;
   return {
     group,
-    hearth: new THREE.Vector3(hx, floorY + 0.5, hz),
+    // The light sits above the hearth, so the walls and beams catch the fire
+    // and the ash right under it does not burn out to white.
+    hearth: new THREE.Vector3(hx, floorY + 1.35, hz),
     cat: catAt.clone(),
     hw, hd,
     floor: floorY,

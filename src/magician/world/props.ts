@@ -236,7 +236,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string, opts: 
         group.add(interior.group);
         house = { walls: minka.walls, room: minka.room, interior };
         disposers.push(() => interior.dispose());
-        const l = { glow: minka.glow, at: interior.hearth.clone(), color: new THREE.Color("#ff9048"), power: 2.6, level: 0.9 };
+        const l = { glow: minka.glow, at: interior.hearth.clone(), color: new THREE.Color("#ff9048"), power: 3.6, level: 0.9 };
         lamp = l;
         lampAlways = true;
         let shoji = 0;
