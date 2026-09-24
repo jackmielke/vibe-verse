@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createMagician, type MagicianWorld, type WorldAction } from "@/magician/world/Magician";
+import { Dials } from "@/magician/ui/Dials";
 import { createVoiceSession, voiceBudget, type Engine, type LimitInfo, type VoiceBudget, type VoiceSession, type VoiceStatus } from "@/magician/voice/session";
 import { DEFAULT_STATE, type WorldState } from "@/magician/state";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
@@ -92,6 +93,12 @@ export default function Magician() {
   const [actions, setActions] = useState<WorldAction[]>([]);
   const [wishOpen, setWishOpen] = useState<null | "wish" | "program">(null);
   const [wishText, setWishText] = useState("");
+  const [dialsOpen, setDialsOpen] = useState(false);
+  const [music, setMusic] = useState<boolean>(() => { try { return localStorage.getItem("magician.music") !== "off"; } catch { return true; } });
+  useEffect(() => {
+    worldRef.current?.setMusic(music);
+    try { localStorage.setItem("magician.music", music ? "on" : "off"); } catch { /* private mode */ }
+  }, [music, entered]);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 640px), (pointer: coarse) and (max-width: 900px)");
@@ -487,6 +494,12 @@ export default function Magician() {
 
       {entered && !hudHidden && (
         <>
+          {dialsOpen && (
+            <div className={`absolute z-20 ${phone ? "left-1/2 top-16 -translate-x-1/2" : "left-4 top-32 sm:left-5"}`}>
+              <Dials state={state} patch={(p) => worldRef.current?.store.patch(p)} music={music} onMusic={setMusic} onClose={() => setDialsOpen(false)} />
+            </div>
+          )}
+
           {/* What there is to do right here. */}
           {actions.length > 0 && !wishOpen && (
             <div className={`absolute left-1/2 z-10 flex -translate-x-1/2 gap-2 ${phone ? "top-28" : "bottom-44"}`} data-ui="1">
@@ -563,6 +576,9 @@ export default function Magician() {
                 <option key={c.id} value={c.id} className="bg-[#1a1030] text-white">{c.emoji} {c.label}</option>
               ))}
             </select>
+            <button onClick={() => { document.exitPointerLock?.(); setDialsOpen((d) => !d); }} className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${dialsOpen ? "border-[#ffd6a0]/60 bg-[#ffd6a0]/20 text-[#fff1dc]" : "border-white/20 bg-black/30 text-white/70 hover:text-white"}`}>
+              dials
+            </button>
             <button onClick={() => setMuted((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
               {muted ? "sound off" : "sound on"}
             </button>
@@ -599,6 +615,7 @@ export default function Magician() {
               </select>
               <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] uppercase tracking-[0.15em]">
                 <button onClick={() => setMuted((m) => !m)} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">{muted ? "sound off" : "sound on"}</button>
+                <button onClick={() => { setDialsOpen(true); setMenuOpen(false); }} className="rounded-md border border-[#ffd6a0]/40 bg-[#ffd6a0]/15 px-2 py-2 text-[#fff1dc]">dials</button>
                 <button onClick={invite} className="rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">{copied ? "copied" : "invite"}</button>
                 <button onClick={() => void toggleRecording()} className={`col-span-2 rounded-md border px-2 py-2 ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/80"}`}>{recording ? `● recording ${recSeconds}s · stop and share` : "record a clip"}</button>
                 <button onClick={() => { setShowSupport(true); setMenuOpen(false); }} className="col-span-2 rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">support the valley · the board</button>

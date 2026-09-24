@@ -309,6 +309,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     type: "function",
+    name: "turn_dial",
+    description:
+      "Turn one of the valley's dials to an exact value; the visitor can see the same dials on their screen. Dials: time (hour 0-24), wind (0-1), bearing (compass degrees the wind blows toward, 0-360), fog (0-1), aurora (0-1), meteors (0-1), petals (0-1), flood (0-1), speed (walk speed 0.3-4), scale (world scale 0.4-2.5). Use for precise asks like 'wind to 80 percent' or 'make it exactly 3pm'.",
+    parameters: {
+      type: "object",
+      properties: {
+        dial: { type: "string", enum: ["time", "wind", "bearing", "fog", "aurora", "meteors", "petals", "flood", "speed", "scale"] },
+        value: { type: "number" },
+      },
+      required: ["dial", "value"],
+    },
+  },
+  {
+    type: "function",
     name: "program_screen",
     description:
       "Put anything on the Magic Screen, the big screen in the village square that everyone in the valley can see: a game (snake, pong, a catching game, a quiz), an animation, generative art, a clock, fireworks, a message. A coder writes real code for it in about ten seconds, and the screen shows the code being written. Use change=true when the visitor wants to change what is on it now (\"make the snake faster\", \"add a second ball\", \"make it purple\"). Describe the request richly: what it is, how it looks, how it is played.",
@@ -581,6 +595,19 @@ export function runTool(name: string, rawArgs: unknown, store: MagicianStore, rn
       store.patch({ wishes: [...store.get().wishes, ...made] });
       store.sound("chime");
       return { output: `${n === 1 ? "A lantern is" : `${n} lanterns are`} on the river at the bridge, reading "${text}". ${n === 1 ? "It drifts" : "They drift"} down to the lake over the next few minutes.`, toast: `🏮 "${text}"` };
+    }
+    case "turn_dial": {
+      const v = Number(args.value);
+      if (!Number.isFinite(v)) return { output: "A dial needs a number.", toast: null };
+      const dial = String(args.dial);
+      const map: Record<string, Patch> = {
+        time: { timeOfDay: v }, wind: { wind: v }, bearing: { windDirection: (v * Math.PI) / 180 }, fog: { fog: v },
+        aurora: { aurora: v }, meteors: { meteors: v }, petals: { petals: v }, flood: { flood: v }, speed: { speed: v }, scale: { giant: v },
+      };
+      const p = map[dial];
+      if (!p) return { output: `No dial called ${dial}.`, toast: null };
+      store.patch(p);
+      return { output: `The ${dial} dial is at ${v}.`, toast: `◐ ${dial} ${v}` };
     }
     case "program_screen": {
       const request = String(args.request ?? "").trim().slice(0, 400);
