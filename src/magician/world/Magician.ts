@@ -1158,6 +1158,46 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   let lastHitFlash = 0;
   const propCtx = { wind: 0, windDir: 0, season: state.season, lanterns: false, night: 0, snow: 0 };
 
+  // ---- arrival -------------------------------------------------------------
+  // The first thing a visitor sees: the camera high over the valley, sweeping
+  // down over the river and the village into their own eyes, with the temple
+  // bell. Any key or tap skips it; it never runs in a headset or under a
+  // script (navigator.webdriver), where it would only get in the way.
+  const INTRO = 6;
+  let intro = /[?&]intro\b/.test(location.search) || (typeof navigator !== "undefined" && !navigator.webdriver && !/[?&]nointro\b/.test(location.search)) ? 0 : -1;
+  const introFrom = new THREE.Vector3(46, 38, 40), introCtrl = new THREE.Vector3(14, 18, 26), introLook0 = new THREE.Vector3(-12, 6, -22);
+  const introEye = new THREE.Vector3(), introLook = new THREE.Vector3(), introPos = new THREE.Vector3();
+  const playerHead = player.rig.children[0] as THREE.Object3D;
+  const endIntro = () => {
+    if (intro < 0) return;
+    intro = -1;
+    playerHead.add(camera);
+    camera.position.set(0, 0, 0);
+    camera.rotation.set(0, 0, 0);
+  };
+  const skipIntro = () => { if (intro > 0.4) endIntro(); };
+  window.addEventListener("keydown", skipIntro);
+  window.addEventListener("pointerdown", skipIntro);
+  function arrival(dt: number) {
+    if (intro < 0) return;
+    if (renderer.xr.isPresenting) { endIntro(); return; }
+    if (intro === 0) { scene.add(camera); ambience.play("bonsho"); }
+    intro += dt;
+    const k = Math.min(1, intro / INTRO);
+    const e = k * k * (3 - 2 * k);
+    const a = 1 - e;
+    introEye.copy(player.position).setY(player.position.y + 1.62 / state.giant);
+    introPos.set(
+      a * a * introFrom.x + 2 * a * e * introCtrl.x + e * e * introEye.x,
+      a * a * introFrom.y + 2 * a * e * introCtrl.y + e * e * introEye.y,
+      a * a * introFrom.z + 2 * a * e * introCtrl.z + e * e * introEye.z,
+    );
+    camera.position.copy(introPos);
+    introLook.set(introEye.x - Math.sin(player.yaw()) * 12, introEye.y, introEye.z - Math.cos(player.yaw()) * 12);
+    camera.lookAt(introLook0.clone().lerp(introLook, Math.min(1, e * 1.15)));
+    if (k >= 1) endIntro();
+  }
+
   function frame() {
     if (disposed) return;
     const dt = Math.min(0.1, clock.getDelta());
@@ -1168,7 +1208,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const xr = renderer.xr.isPresenting ? renderer.xr.getSession() : null;
     const eye = 1 / s.giant;
     const wading = player.position.y < terrain.waterY() - 0.4 ? 0.55 : 1;
-    player.update(dt, groundAt, { frozen: playing || sitting, gravity: s.gravity, speed: s.speed * eye * wading, eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
+    player.update(dt, groundAt, { frozen: playing || sitting || intro >= 0, gravity: s.gravity, speed: s.speed * eye * wading, eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
     for (const p of fixed) p.update?.(dt, time, propCtx);
@@ -1249,6 +1289,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (vrHud.visible) drawVrHud(gh);
     vibey.update(dt, time, player.position, player.yaw(), heightAt);
     renderer.toneMappingExposure += lastHitFlash * 0.5;
+    arrival(dt);
     renderer.render(scene, camera);
   }
   renderer.setAnimationLoop(frame);
@@ -1401,6 +1442,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       container.removeEventListener("mousedown", onDown);
       container.removeEventListener("mouseup", onUp);
       container.removeEventListener("pointerdown", onScreenDown);
+      window.removeEventListener("keydown", skipIntro);
+      window.removeEventListener("pointerdown", skipIntro);
       window.removeEventListener("pointermove", onScreenMove);
       window.removeEventListener("pointerup", onScreenUp);
       window.removeEventListener("keydown", onScreenKeyDown);
