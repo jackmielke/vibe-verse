@@ -44,7 +44,7 @@ import { createSky } from "./sky";
 import { buildBoard, buildBridge, buildForest, buildProp, buildSign, disposeSharedProps, FOLIAGE, type PropObject, type TreeKind } from "./props";
 import { createBursts, createFireflies, createLightning, createPetals, createRain, createSnow } from "./weather";
 import { createFireballs } from "./fireballs";
-import { createAmbience } from "./audio";
+import { createAmbience, type Surface } from "./audio";
 import { createVibey, type Vibey } from "./vibey";
 import { readCompanion, writeCompanion } from "../companions";
 import { createGameRunner, type HouseState } from "../game/runner";
@@ -308,6 +308,21 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     cedars++;
   }
   const forest = buildForest(forestTrees, state0.season);
+  // How leafy it is around any point, for the rustle in the wind.
+  const LEAF_CELL = 8, LEAF_N = 64;
+  const leafGrid = new Float32Array(LEAF_N * LEAF_N);
+  for (const t of forestTrees) {
+    const i = Math.floor(t.x / LEAF_CELL + LEAF_N / 2), j = Math.floor(t.z / LEAF_CELL + LEAF_N / 2);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const ii = i + a, jj = j + b;
+      if (ii >= 0 && jj >= 0 && ii < LEAF_N && jj < LEAF_N) leafGrid[jj * LEAF_N + ii] += a === 0 && b === 0 ? 1 : 0.4;
+    }
+  }
+  const leavesAt = (x: number, z: number) => {
+    const i = Math.floor(x / LEAF_CELL + LEAF_N / 2), j = Math.floor(z / LEAF_CELL + LEAF_N / 2);
+    if (i < 0 || j < 0 || i >= LEAF_N || j >= LEAF_N) return 0;
+    return Math.min(1, leafGrid[j * LEAF_N + i] / 4);
+  };
   // Trunks block too; otherwise the camera walks into a crown and the frame
   // is one big leaf.
   for (const t of forestTrees) if (!t.far) trunks.push({ x: t.x, z: t.z, r: 0.45 * t.scale + 0.35 });
@@ -742,7 +757,42 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     for (const f of foliageMats) f.mat.color.copy(look.foliage[f.kind]).multiply(groundCol).lerp(C.setRGB(0.92, 0.94, 0.97), look.snowCover * 0.5);
     for (const f of spawnMats) f.mat.color.copy(look.foliage[f.kind]).multiply(groundCol).lerp(C.setRGB(0.92, 0.94, 0.97), look.snowCover * 0.5);
     renderer.toneMappingExposure = 1.05 - look.night * 0.25 + flash * 0.6;
-    ambience.set({ rain: look.rain, wind: s.wind, night: look.night, storm: s.weather === "storm" ? 1 : 0, water: 0.6 });
+  }
+
+  // ---- the soundscape ---------------------------------------------------------
+  /** What the ground is made of where somebody stands, for their footsteps. */
+  function surfaceAt(x: number, z: number, y: number): Surface {
+    if (y < WATER_LEVEL + state.flood * 7 + 0.1) return "water";
+    if (pathAt(x, z) > 0.35) return "stone";
+    return "grass";
+  }
+  let stepDist = 0;
+  const lastFeet = new THREE.Vector3();
+  function soundscape() {
+    const s = state;
+    const p = player.position;
+    const dayish = 1 - look.night;
+    const wet = look.rain;
+    const river = Math.max(0, 1 - Math.max(0, riverDistance(p.x, p.z) - 4) / 38);
+    const warm = s.season === "summer" ? 1 : s.season === "spring" ? 0.7 : s.season === "autumn" ? 0.35 : 0;
+    ambience.listener(p.x, p.z, player.yaw());
+    ambience.set({
+      rain: wet, wind: s.wind, night: look.night * (s.season === "winter" ? 0.1 : 1), storm: s.weather === "storm" ? 1 : 0,
+      water: Math.max(river, s.flood > 0.2 ? 0.5 : 0),
+      leaves: leavesAt(p.x, p.z) * (s.season === "winter" ? 0.3 : 1),
+      birds: dayish * (1 - wet) * (s.weather === "storm" ? 0 : 1) * (0.3 + 0.5 * warm),
+      frogs: river * warm * Math.min(1, look.night * 1.2 + wet * 0.6) * 0.8,
+      cicadas: s.season === "summer" ? dayish * (1 - wet) : 0,
+    });
+    // Footsteps: a step every stride of ground actually covered.
+    const moved = Math.hypot(p.x - lastFeet.x, p.z - lastFeet.z);
+    lastFeet.copy(p);
+    if (moved > 3) { stepDist = 0; return; } // a teleport, not a stride
+    const grounded = p.y - heightAt(p.x, p.z) < 0.08;
+    if (!grounded || renderer.xr.isPresenting && moved < 0.002) return;
+    stepDist += moved;
+    const stride = 0.72 / s.giant;
+    if (stepDist > stride) { stepDist = 0; ambience.step(surfaceAt(p.x, p.z, p.y)); }
   }
 
   // ---- loop -----------------------------------------------------------------
@@ -797,6 +847,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     }
     game.update(dt, time, lanternSpots);
     updateLampPool(dt);
+    soundscape();
     room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false);
     peers.update(dt, time, heightAt);
     const gh = game.hud();
@@ -950,6 +1001,48 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     grass: () => grass.stats(),
+    listen: (seconds: number) => new Promise<{ png: string; rms: number[]; peak: number; state: string }>((resolve) => {
+      // A spectrogram of the ambience mix, drawn here, for checking sound in
+      // a sandbox with no speakers: wind should swell and fall, not sit flat.
+      // Rendering stops meanwhile: a software renderer starves the sampling.
+      ambience.resume();
+      soundscape();
+      renderer.setAnimationLoop(null);
+      const an = ambience.analyser();
+      const cols: Float32Array[] = [];
+      const rms: number[] = [];
+      let peak = 0, sq = 0, count = 0;
+      const buf = new Float32Array(2048);
+      const t0 = performance.now();
+      const id = window.setInterval(() => {
+        if (!an) return;
+        const spec = new Float32Array(an.frequencyBinCount);
+        an.getFloatFrequencyData(spec);
+        cols.push(spec);
+        an.getFloatTimeDomainData(buf);
+        for (const v of buf) { peak = Math.max(peak, Math.abs(v)); sq += v * v; count++; }
+        if (performance.now() - t0 > (rms.length + 1) * 1000) { rms.push(Math.round(10 * Math.log10(sq / Math.max(1, count) + 1e-12) * 10) / 10); sq = 0; count = 0; }
+        if (performance.now() - t0 > seconds * 1000) {
+          clearInterval(id);
+          const H = 256, W = cols.length;
+          const cv = document.createElement("canvas");
+          cv.width = Math.max(1, W); cv.height = H;
+          const g2 = cv.getContext("2d")!;
+          const img = g2.createImageData(cv.width, H);
+          const bins = an.frequencyBinCount, nyq = 24000;
+          for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) {
+            const hz = 40 * Math.pow(nyq / 40, 1 - y / H);
+            const v = cols[x][Math.min(bins - 1, Math.floor((hz / nyq) * bins))];
+            const k = Math.max(0, Math.min(255, (v + 110) * 3.2));
+            const o = (y * cv.width + x) * 4;
+            img.data[o] = k; img.data[o + 1] = k * 0.7; img.data[o + 2] = 255 - k * 0.6; img.data[o + 3] = 255;
+          }
+          g2.putImageData(img, 0, 0);
+          renderer.setAnimationLoop(frame);
+          resolve({ png: cv.toDataURL("image/png"), rms, peak: Math.round(20 * Math.log10(peak + 1e-9) * 10) / 10, state: (an.context as AudioContext).state });
+        }
+      }, 50);
+    }),
     budget: () => {
       // Triangles per top-level object, instancing included: where the frame goes.
       const out: Record<string, number> = {};
@@ -1013,6 +1106,7 @@ declare global {
       player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
       peers(): { connected: boolean; count: number; id: string | null };
       grass(): { chunks: number; blades: number };
+      listen(seconds: number): Promise<{ png: string; rms: number[]; peak: number; state: string }>;
       budget(): Record<string, number>;
       /** The last frame's cost, for checking the headset budget. */
       render(): { calls: number; triangles: number; programs: number; textures: number; geometries: number };
