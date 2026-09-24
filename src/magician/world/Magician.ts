@@ -214,6 +214,37 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   ];
   const houses: HouseState[] = [];
   for (const [x, z, yaw] of houseSpots) { const p = place("house", x, z, yaw); houses.push({ x, z, group: p.group, hp: 3, alive: true, fire: null }); }
+  // Footprints the player is pushed out of, so the camera never ends up
+  // inside a wall. A burnt house stops blocking: its group is hidden.
+  const BODY = 0.35;
+  const trunks: Array<{ x: number; z: number; r: number }> = [];
+  const solveWalls = (pos: THREE.Vector3) => {
+    for (const t of trunks) {
+      const dx = pos.x - t.x, dz = pos.z - t.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= t.r * t.r || d2 < 1e-6) continue;
+      const d = Math.sqrt(d2);
+      pos.x = t.x + (dx / d) * t.r;
+      pos.z = t.z + (dz / d) * t.r;
+    }
+    for (const p of fixed) {
+      if (!p.solid || !p.group.visible) continue;
+      const g = p.group;
+      const dx = pos.x - g.position.x, dz = pos.z - g.position.z;
+      const sc = g.scale.x;
+      const hx = p.solid[0] * sc + BODY, hz = p.solid[1] * sc + BODY;
+      if (dx * dx + dz * dz > (hx + hz) * (hx + hz)) continue;
+      const c = Math.cos(g.rotation.y), sn = Math.sin(g.rotation.y);
+      // Into the prop's frame (three's y rotation: local x = c*dx - s*dz).
+      const lx = c * dx - sn * dz, lz = sn * dx + c * dz;
+      const px = hx - Math.abs(lx), pz = hz - Math.abs(lz);
+      if (px <= 0 || pz <= 0) continue;
+      let nx = lx, nz = lz;
+      if (px < pz) nx = Math.sign(lx || 1) * hx; else nz = Math.sign(lz || 1) * hz;
+      pos.x = g.position.x + c * nx + sn * nz;
+      pos.z = g.position.z - sn * nx + c * nz;
+    }
+  };
   const lanternSpots: Array<{ x: number; z: number }> = [];
   // Shrine on its hill, torii on the way, the bridge, the pagoda far side.
   place("shrine", LANDMARKS.shrine.x, LANDMARKS.shrine.z, 0.35, 1.2);
@@ -277,6 +308,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     cedars++;
   }
   const forest = buildForest(forestTrees, state0.season);
+  // Trunks block too; otherwise the camera walks into a crown and the frame
+  // is one big leaf.
+  for (const t of forestTrees) if (!t.far) trunks.push({ x: t.x, z: t.z, r: 0.45 * t.scale + 0.35 });
   scene.add(forest.group);
   for (const kind of ["tree", "sakura", "maple", "pine"] as const) foliageMats.push({ mat: forest.foliage[kind], kind });
   // The mountain's mouth: where the fireballs come from.
@@ -477,7 +511,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     toast: (t) => events.onToast?.(t),
     caption: (t) => vibey.setCaption(t),
     emote: (c) => vibey.emote(c),
-    teleport: (x, z, yaw) => player.teleport(x, z, yaw),
+    teleport: (x, z, yaw) => { player.teleport(x, z, yaw); solveWalls(player.position); },
     houses,
     lightning: () => lightning.flash,
     time: () => time,
@@ -493,7 +527,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       if (!applyingRemote && room?.connected) room.patch(p);
     },
     playerPosition: () => ({ x: player.position.x, z: player.position.z, yaw: player.yaw() }),
-    teleport(x, z, yaw) { player.teleport(x, z, yaw); },
+    teleport(x, z, yaw) { player.teleport(x, z, yaw); solveWalls(player.position); },
     emote(clip) { vibey.emote(clip); },
     sound(name) { ambience.play(name); },
     game: {
@@ -661,7 +695,10 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     // readable rather than black.
     const sunUp = Math.max(0, Math.min(1, (elev + 0.04) / 0.14));
     look.sunI += ((0.4 + 2.1 * Math.sqrt(Math.max(0, elev))) * sunUp * (1 - grey * 0.75) - look.sunI) * k;
-    look.hemiI += ((0.55 + Math.max(0, elev) * 0.35) * (1 - night * 0.62) - look.hemiI) * k;
+    // A low sun leaves every wall facing away from it in its own shade; the
+    // bright sky around a sunset fills those, or houses go to silhouettes.
+    const lowSun = Math.max(0, 1 - Math.abs(elev) / 0.3);
+    look.hemiI += ((0.55 + Math.max(0, elev) * 0.35 + lowSun * 0.3) * (1 - night * 0.62) - look.hemiI) * k;
     look.fog += (fogDensity(s) - look.fog) * k;
     look.rain += (rainAmount(s) - look.rain) * k;
     look.snow += (snowAmount(s) - look.snow) * k;
@@ -724,7 +761,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const s = state;
     const xr = renderer.xr.isPresenting ? renderer.xr.getSession() : null;
     const eye = 1 / s.giant;
-    player.update(dt, heightAt, { gravity: s.gravity, speed: s.speed * eye, eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null });
+    player.update(dt, heightAt, { gravity: s.gravity, speed: s.speed * eye, eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
     for (const p of fixed) p.update?.(dt, time, propCtx);
@@ -903,7 +940,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     run: (name: string, args: unknown) => world.run(name, args),
     cast: (text: string) => world.cast(text),
     snapshot: () => world.snapshot(),
-    teleport: (x: number, z: number, yaw?: number) => player.teleport(x, z, yaw),
+    teleport: (x: number, z: number, yaw?: number) => { player.teleport(x, z, yaw); solveWalls(player.position); },
     counts: () => ({ props: spawned.size, fixed: fixed.length, fireballs: fireballs.count(), fizzled: fireballs.fizzled(), hits: state.hits }),
     caption: (t: string) => vibey.setCaption(t),
     become: (id: string) => store.become(id),

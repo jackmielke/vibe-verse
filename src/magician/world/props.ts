@@ -29,6 +29,8 @@ export interface PropObject {
    * current glow, 0 to 1, for the pool to copy.
    */
   lamp?: { glow: THREE.Material; at: THREE.Vector3; color: THREE.Color; power: number; level: number };
+  /** Half extents, in the prop's own frame and scale, of a footprint the player cannot walk through. */
+  solid?: [number, number];
   dispose(): void;
 }
 
@@ -104,6 +106,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
   const own: THREE.Material[] = [];
   let update: PropObject["update"];
   let lamp: PropObject["lamp"];
+  let solid: PropObject["solid"];
   const disposers: Array<() => void> = [];
   const sway: THREE.Object3D[] = [];
 
@@ -221,10 +224,12 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
       const minka = buildMinka(Math.floor(Math.random() * 1e9));
       group.add(minka.group);
       lamp = { glow: minka.glow, at: minka.lampAt.clone(), color: new THREE.Color("#ffb866"), power: 1.8, level: 0 };
+      solid = minka.half;
       disposers.push(() => minka.dispose());
       break;
     }
     case "shrine": {
+      solid = [2.1, 1.8];
       const plinth = mesh(new THREE.BoxGeometry(4.2, 0.5, 3.6), stone, 0, 0.25, 0);
       const steps = mesh(new THREE.BoxGeometry(2, 0.25, 0.9), stone, 0, 0.12, 2.2);
       const body = mesh(new THREE.BoxGeometry(3, 2.2, 2.6), wood, 0, 1.6, 0);
@@ -577,6 +582,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
     update,
     foliage: mats,
     lamp,
+    solid,
     dispose() {
       for (const f of disposers) f();
       for (const m of own) m.dispose();
@@ -693,7 +699,7 @@ export function buildForest(trees: TreeSpec[], season: Season): Forest {
       // Shade: dark underneath and deep inside, bright on top and outside.
       const up = Math.max(0, Math.min(1, (v.y - (crown.y - crownR)) / (crownR * 2)));
       const outside = Math.min(1, out2.length() / crownR);
-      const shade = (0.5 + 0.45 * up) * (0.72 + 0.35 * outside) * tone;
+      const shade = (0.62 + 0.38 * up) * (0.78 + 0.3 * outside) * tone;
       c[i * 3] = shade; c[i * 3 + 1] = shade; c[i * 3 + 2] = shade * 0.96;
       sway[i] = Math.max(0, Math.min(1, (v.y - treeBase) / Math.max(0.1, treeTop - treeBase))) ** 1.5;
     }

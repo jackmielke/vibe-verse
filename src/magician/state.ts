@@ -175,7 +175,9 @@ export function isNight(state: WorldState): boolean {
 }
 
 export function lanternsOn(state: WorldState): boolean {
-  if (state.lanternsLit === "auto") return nightness(state.timeOfDay) > 0.35 || state.weather === "fog" || state.weather === "storm";
+  // Lit from golden hour, the way a village lights up while the sky is still
+  // bright: the glow against a sunset is the whole picture.
+  if (state.lanternsLit === "auto") return nightness(state.timeOfDay) > 0.35 || (state.timeOfDay >= 17 && state.timeOfDay < 19.5) || state.weather === "fog" || state.weather === "storm";
   return state.lanternsLit;
 }
 

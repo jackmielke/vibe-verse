@@ -18,7 +18,7 @@ export interface Player {
   position: THREE.Vector3;
   /** Heading in radians, 0 looks down -z. */
   yaw(): number;
-  update(dt: number, groundAt: (x: number, z: number) => number, opts: { gravity: Gravity; speed: number; eye: number; xr: XRSession | null; xrCamera: THREE.Camera | null }): void;
+  update(dt: number, groundAt: (x: number, z: number) => number, opts: { gravity: Gravity; speed: number; eye: number; xr: XRSession | null; xrCamera: THREE.Camera | null; solve?: (p: THREE.Vector3) => void }): void;
   teleport(x: number, z: number, yaw?: number): void;
   /** Whether the pointer is locked / a touch is active — input is bound. */
   active(): boolean;
@@ -249,6 +249,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
       const limit = 230;
       rig.position.x = Math.max(-limit, Math.min(limit, rig.position.x));
       rig.position.z = Math.max(-limit, Math.min(limit, rig.position.z));
+      opts.solve?.(rig.position);
       const g = opts.gravity === "moon" ? 3.2 : opts.gravity === "heavy" ? 24 : 16;
       const jumpV = opts.gravity === "moon" ? 6.5 : opts.gravity === "heavy" ? 5.5 : 6.2;
       const ground = groundAt(rig.position.x, rig.position.z);
