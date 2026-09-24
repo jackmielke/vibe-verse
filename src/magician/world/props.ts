@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { heightAt, riverCentre, WATER_LEVEL } from "./noise";
 import { buildMinka, disposeMinkaMaterials } from "./house";
-import { disposeSurfaces } from "./textures";
+import { disposeSurfaces, surfaceMaterial } from "./textures";
 import type { PropKind, Season } from "../state";
 
 export interface PropObject {
@@ -21,7 +21,14 @@ export interface PropObject {
   /** Whether this thing has foliage that follows the season. */
   foliage?: THREE.Material[];
   /** Lights that follow `lanternsLit`. */
-  lamp?: { light: THREE.PointLight; glow: THREE.Material; base: number };
+  /**
+   * Something that glows at dusk. It has no light of its own: the world
+   * keeps a small pool of point lights and moves them to the lamps nearest
+   * the player, because twenty lights in a forward renderer cost twenty
+   * lights on every pixel, which a headset cannot pay. `level` is the
+   * current glow, 0 to 1, for the pool to copy.
+   */
+  lamp?: { glow: THREE.Material; at: THREE.Vector3; color: THREE.Color; power: number; level: number };
   dispose(): void;
 }
 
@@ -43,6 +50,12 @@ const plaster = new THREE.MeshStandardMaterial({ color: "#e9e2d0", roughness: 0.
 const tile = new THREE.MeshStandardMaterial({ color: "#3d4550", roughness: 0.7 });
 const vermilion = new THREE.MeshStandardMaterial({ color: "#c8342a", roughness: 0.6 });
 const bambooMat = new THREE.MeshStandardMaterial({ color: "#7fae4e", roughness: 0.7 });
+let lanternStoneMat: THREE.MeshStandardMaterial | null = null;
+/** Weathered granite with moss, shared by every lantern. */
+function lanternStone(): THREE.MeshStandardMaterial {
+  if (!lanternStoneMat) lanternStoneMat = surfaceMaterial("stone", { color: "#b8b2a6", roughness: 0.95, bumpScale: 1.4 });
+  return lanternStoneMat;
+}
 
 export const FOLIAGE: Record<Season, { tree: string; sakura: string; maple: string; pine: string; bamboo: string }> = {
   spring: { tree: "#6fbf5a", sakura: "#ffb7d5", maple: "#8cc46a", pine: "#2f6b45", bamboo: "#7fae4e" },
@@ -151,19 +164,44 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
       break;
     }
     case "lantern": {
-      const base = mesh(geo("lbase", () => new THREE.BoxGeometry(0.7, 0.3, 0.7)), stone, 0, 0.15, 0);
-      const post = mesh(geo("lpost", () => new THREE.CylinderGeometry(0.12, 0.16, 1.1, 8)), stone, 0, 0.85, 0);
-      const box = mesh(geo("lbox", () => new THREE.BoxGeometry(0.46, 0.5, 0.46)), stone, 0, 1.65, 0);
-      const glowMat = new THREE.MeshStandardMaterial({ color: color ?? "#ffd28a", emissive: color ?? "#ffb347", emissiveIntensity: 0, roughness: 0.5 });
+      // A kasuga-doro: hexagonal base, a slender post with a collar, a
+      // platform, the fire box with its paper windows, a wide roof with
+      // flared eaves, and the jewel on top. About 1.9 m tall.
+      const stoneM = lanternStone();
+      const hex = (r0: number, r1: number, h: number) => geo(`hex${r0}-${r1}-${h}`, () => new THREE.CylinderGeometry(r0, r1, h, 6));
+      const collar = mesh(geo("lcollar", () => new THREE.TorusGeometry(0.115, 0.025, 6, 12)), stoneM, 0, 0.62, 0);
+      collar.rotation.x = Math.PI / 2;
+      group.add(
+        mesh(hex(0.34, 0.4, 0.14), stoneM, 0, 0.07, 0),
+        mesh(hex(0.26, 0.32, 0.12), stoneM, 0, 0.2, 0),
+        mesh(geo("lpost", () => new THREE.CylinderGeometry(0.1, 0.12, 0.75, 10)), stoneM, 0, 0.63, 0),
+        collar,
+        mesh(hex(0.3, 0.24, 0.13), stoneM, 0, 1.06, 0),
+      );
+      const glowMat = new THREE.MeshStandardMaterial({ color: color ?? "#f6e2b8", emissive: color ?? "#ffb04a", emissiveIntensity: 0, roughness: 0.7 });
       own.push(glowMat);
-      const glow = mesh(geo("lglow", () => new THREE.BoxGeometry(0.5, 0.4, 0.5)), glowMat, 0, 1.65, 0);
-      glow.castShadow = false;
-      const roof = mesh(geo("lroof", () => new THREE.ConeGeometry(0.62, 0.45, 4)), stone, 0, 2.12, 0);
-      roof.rotation.y = Math.PI / 4;
-      const light = new THREE.PointLight(color ?? "#ffb347", 0, 9, 2);
-      light.position.set(0, 1.7, 0);
-      group.add(base, post, box, glow, roof, light);
-      lamp = { light, glow: glowMat, base: 2.6 };
+      const fire = mesh(hex(0.17, 0.17, 0.3), glowMat, 0, 1.28, 0);
+      fire.castShadow = false;
+      group.add(fire);
+      // Six stone posts around the fire box, so the paper shows between them.
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+        group.add(mesh(geo("lcorner", () => new THREE.BoxGeometry(0.05, 0.32, 0.05)), stoneM, Math.cos(a) * 0.19, 1.28, Math.sin(a) * 0.19));
+      }
+      const roofMesh = mesh(geo("lkasa", () => {
+        const g = new THREE.CylinderGeometry(0.06, 0.5, 0.26, 6, 2);
+        // Flare the eaves: push the bottom ring out and up at the corners.
+        const p = g.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < p.count; i++) {
+          if (p.getY(i) < -0.12) p.setXYZ(i, p.getX(i) * 1.08, p.getY(i) + 0.05, p.getZ(i) * 1.08);
+        }
+        g.computeVertexNormals();
+        return g;
+      }), stoneM, 0, 1.56, 0);
+      group.add(roofMesh);
+      group.add(mesh(geo("ljewel", () => new THREE.SphereGeometry(0.075, 10, 8)), stoneM, 0, 1.74, 0));
+      group.add(mesh(geo("ltip", () => new THREE.ConeGeometry(0.04, 0.09, 8)), stoneM, 0, 1.83, 0));
+      lamp = { glow: glowMat, at: new THREE.Vector3(0, 1.3, 0), color: new THREE.Color(color ?? "#ffb04a"), power: 2.4, level: 0 };
       break;
     }
     case "torii": {
@@ -182,10 +220,7 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
       // A full minka, merged to a handful of draw calls. See house.ts.
       const minka = buildMinka(Math.floor(Math.random() * 1e9));
       group.add(minka.group);
-      const light = new THREE.PointLight("#ffb866", 0, 8, 2);
-      light.position.copy(minka.lampAt);
-      group.add(light);
-      lamp = { light, glow: minka.glow, base: 1.4 };
+      lamp = { glow: minka.glow, at: minka.lampAt.clone(), color: new THREE.Color("#ffb866"), power: 1.8, level: 0 };
       disposers.push(() => minka.dispose());
       break;
     }
@@ -531,9 +566,9 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
       for (const s of sway) { s.rotation.z = a * Math.cos(ctx.windDir); s.rotation.x = a * Math.sin(ctx.windDir); }
     }
     if (lamp) {
-      const target = ctx.lanterns ? lamp.base * (0.75 + Math.sin(time * 6 + swayPhase) * 0.12) : 0;
-      lamp.light.intensity += (target - lamp.light.intensity) * Math.min(1, dt * 3);
-      (lamp.glow as THREE.MeshStandardMaterial).emissiveIntensity = lamp.light.intensity / lamp.base;
+      const target = ctx.lanterns ? 0.8 + Math.sin(time * 6 + swayPhase) * 0.1 + Math.sin(time * 17 + swayPhase * 3) * 0.05 : 0;
+      lamp.level += (target - lamp.level) * Math.min(1, dt * 3);
+      (lamp.glow as THREE.MeshStandardMaterial).emissiveIntensity = lamp.level * 1.6;
     }
   };
 
@@ -556,11 +591,21 @@ export function buildProp(kind: PropKind, season: Season, color?: string): PropO
 /**
  * A forest as a handful of draw calls.
  *
- * Two hundred and forty trees built one at a time are seventeen hundred
- * meshes, which is fine on a desktop GPU and a slideshow on a headset. So the
- * fixed forest is merged: one geometry per species for the canopies (so the
- * season can still recolour each species through its one material) and one
- * for all the trunks. These trees do not sway; the conjured ones still do.
+ * Hundreds of trees built one at a time would be thousands of meshes, fine on
+ * a desktop and a slideshow on a headset. So the fixed forest is merged: one
+ * geometry per species for the crowns (so a season recolours a species
+ * through its one material) and one for every trunk.
+ *
+ * The crowns are what make or break a landscape, so each is built the way a
+ * painter would: a cluster of lumpy clumps on an ellipsoid, lit as one soft
+ * volume (normals point out from the crown's centre, not from each facet),
+ * darker underneath and inside, lighter where the sky reaches, each clump a
+ * little different in tone. Japanese cedar (sugi) is a stack of narrowing
+ * tiers. Everything sways in the vertex shader, more at the top of a tree
+ * than at the bottom, along the world's own wind.
+ *
+ * `far` trees are cheap three-tier cedars for the hillsides: a valley's
+ * walls read as forest only when there are hundreds of them.
  */
 export type TreeKind = "tree" | "sakura" | "maple" | "pine";
 
@@ -568,60 +613,181 @@ export interface Forest {
   group: THREE.Group;
   /** One material per species, for the season to recolour. */
   foliage: Record<TreeKind, THREE.MeshStandardMaterial>;
+  /** Advance the sway. */
+  update(time: number, windDir: number, wind: number): void;
   dispose(): void;
 }
 
-export function buildForest(trees: Array<{ kind: TreeKind; x: number; z: number; yaw: number; scale: number }>, season: Season): Forest {
+interface TreeSpec { kind: TreeKind; x: number; z: number; yaw: number; scale: number; far?: boolean }
+
+const FOREST_WIND_VERT_HEAD = /* glsl */ `
+uniform float uTime;
+uniform vec2 uWind;
+uniform float uWindStrength;
+attribute float aSway;
+`;
+const FOREST_WIND_VERT = /* glsl */ `
+#include <begin_vertex>
+float ph = transformed.x * 0.13 + transformed.z * 0.11;
+float sway = (sin(uTime * 1.1 + ph) * 0.6 + sin(uTime * 2.3 + ph * 1.7) * 0.25) * (0.05 + uWindStrength * 0.32) * aSway;
+transformed.xz += uWind * sway;
+transformed.xz += vec2(sin(uTime * 3.1 + ph * 5.0), cos(uTime * 2.7 + ph * 4.0)) * 0.025 * aSway * (0.3 + uWindStrength);
+`;
+
+function crownMaterial(color: string, uniforms: Record<string, THREE.IUniform>): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ color, roughness: 0.92, vertexColors: true });
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\n" + FOREST_WIND_VERT_HEAD)
+      .replace("#include <begin_vertex>", FOREST_WIND_VERT);
+  };
+  m.customProgramCacheKey = () => "magician-crown";
+  return m;
+}
+
+export function buildForest(trees: TreeSpec[], season: Season): Forest {
   const group = new THREE.Group();
+  const windUniforms = { uTime: { value: 0 }, uWind: { value: new THREE.Vector2(1, 0) }, uWindStrength: { value: 0.25 } };
   const foliage = {
-    tree: canopyMaterial(FOLIAGE[season].tree),
-    sakura: canopyMaterial(FOLIAGE[season].sakura),
-    maple: canopyMaterial(FOLIAGE[season].maple),
-    pine: canopyMaterial(FOLIAGE[season].pine),
+    tree: crownMaterial(FOLIAGE[season].tree, windUniforms),
+    sakura: crownMaterial(FOLIAGE[season].sakura, windUniforms),
+    maple: crownMaterial(FOLIAGE[season].maple, windUniforms),
+    pine: crownMaterial(FOLIAGE[season].pine, windUniforms),
   };
-  const canopyParts: Record<TreeKind, THREE.BufferGeometry[]> = { tree: [], sakura: [], maple: [], pine: [] };
-  const trunkParts: THREE.BufferGeometry[] = [];
-  const blob = new THREE.IcosahedronGeometry(1, 1);
-  const cone = new THREE.ConeGeometry(1, 1, 8);
-  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.22, 1, 7);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
-  const p = new THREE.Vector3();
-  const tree = new THREE.Matrix4();
-  const part = (g: THREE.BufferGeometry, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
-    m.compose(p.set(x, y, z), q.identity(), s.set(sx, sy, sz)).premultiply(tree);
-    const c = g.clone();
-    c.applyMatrix4(m);
-    return c;
-  };
-  let seed = 7;
+  const barkMat = surfaceMaterial("timber", { color: "#8a7462", roughness: 0.95 });
+  const crowns: Record<TreeKind, THREE.BufferGeometry[]> = { tree: [], sakura: [], maple: [], pine: [] };
+  const trunks: THREE.BufferGeometry[] = [];
+
+  let seed = 11;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-  for (const t of trees) {
-    tree.compose(p.set(t.x, heightAt(t.x, t.z), t.z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw), s.set(t.scale, t.scale, t.scale));
-    if (t.kind === "pine") {
-      const h = 3 + rnd() * 2;
-      trunkParts.push(part(trunkGeo, 0, h * 0.35, 0, 1, h * 0.7, 1));
-      for (let i = 0; i < 3; i++) canopyParts.pine.push(part(cone, 0, h * 0.45 + i * h * 0.22, 0, 1.5 - i * 0.35, h * 0.45, 1.5 - i * 0.35));
-    } else {
-      const h = 2.2 + rnd() * 1.2;
-      trunkParts.push(part(trunkGeo, 0, h / 2, 0, 1, h, 1));
-      const r = t.kind === "sakura" ? 1.7 : 1.5;
-      const y = h - 0.4;
-      const n = 5;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + 0.7;
-        const k = r * (0.7 + (i % 3) * 0.12);
-        canopyParts[t.kind].push(part(blob, Math.cos(a) * r * 0.45, y + (i % 2) * r * 0.3, Math.sin(a) * r * 0.45, k, k, k));
-      }
-      canopyParts[t.kind].push(part(blob, 0, y + r * 0.5, 0, r * 0.85, r * 0.85, r * 0.85));
+  const blobHi = new THREE.IcosahedronGeometry(1, 1);
+  const blobLo = new THREE.IcosahedronGeometry(1, 0);
+  const coneG = new THREE.ConeGeometry(1, 1, 9, 1).toNonIndexed();
+  const coneLo = new THREE.ConeGeometry(1, 1, 6, 1).toNonIndexed();
+  const trunkG = new THREE.CylinderGeometry(0.7, 1, 1, 7, 1);
+
+  /**
+   * One clump: a lumpy sphere at (cx, cy, cz) of radius r, with normals and
+   * shade taken relative to the crown centre (ox, oy, oz), so the whole crown
+   * lights as one volume.
+   */
+  const clump = (out: THREE.BufferGeometry[], lo: boolean, cx: number, cy: number, cz: number, r: number, crown: THREE.Vector3, crownR: number, treeBase: number, treeTop: number, tone: number) => {
+    const g = (lo ? blobLo : blobHi).clone();
+    const p = g.attributes.position as THREE.BufferAttribute;
+    const n = new Float32Array(p.count * 3);
+    const c = new Float32Array(p.count * 3);
+    const sway = new Float32Array(p.count);
+    const v = new THREE.Vector3();
+    const j = rnd() * 100;
+    for (let i = 0; i < p.count; i++) {
+      v.set(p.getX(i), p.getY(i), p.getZ(i));
+      // Position-keyed lumps, so duplicated corners of the non-indexed
+      // geometry move together and the clump never tears.
+      const bump = 0.82 + 0.3 * Math.abs(Math.sin(v.x * 7.1 + v.y * 5.3 + v.z * 3.7 + j));
+      v.multiplyScalar(r * bump).add(new THREE.Vector3(cx, cy, cz));
+      p.setXYZ(i, v.x, v.y, v.z);
+      const out2 = v.clone().sub(crown);
+      const nn = out2.clone().normalize();
+      n[i * 3] = nn.x; n[i * 3 + 1] = nn.y * 0.8 + 0.2; n[i * 3 + 2] = nn.z;
+      // Shade: dark underneath and deep inside, bright on top and outside.
+      const up = Math.max(0, Math.min(1, (v.y - (crown.y - crownR)) / (crownR * 2)));
+      const outside = Math.min(1, out2.length() / crownR);
+      const shade = (0.5 + 0.45 * up) * (0.72 + 0.35 * outside) * tone;
+      c[i * 3] = shade; c[i * 3 + 1] = shade; c[i * 3 + 2] = shade * 0.96;
+      sway[i] = Math.max(0, Math.min(1, (v.y - treeBase) / Math.max(0.1, treeTop - treeBase))) ** 1.5;
     }
+    g.setAttribute("normal", new THREE.BufferAttribute(n, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+    g.setAttribute("aSway", new THREE.BufferAttribute(sway, 1));
+    g.deleteAttribute("uv");
+    out.push(g);
+  };
+
+  const cone = (out: THREE.BufferGeometry[], lo: boolean, cx: number, cy: number, cz: number, r: number, h: number, base: number, top: number, tone: number) => {
+    const g = (lo ? coneLo : coneG).clone();
+    g.scale(r, h, r);
+    g.translate(cx, cy, cz);
+    g.computeVertexNormals();
+    const p = g.attributes.position as THREE.BufferAttribute;
+    const c = new Float32Array(p.count * 3);
+    const sway = new Float32Array(p.count);
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      const up = Math.max(0, Math.min(1, (y - base) / Math.max(0.1, top - base)));
+      const rim = Math.min(1, Math.hypot(p.getX(i) - cx, p.getZ(i) - cz) / Math.max(0.01, r));
+      const shade = (0.55 + 0.4 * up) * (0.8 + 0.25 * rim) * tone;
+      c[i * 3] = shade; c[i * 3 + 1] = shade; c[i * 3 + 2] = shade;
+      sway[i] = up ** 1.5;
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+    g.setAttribute("aSway", new THREE.BufferAttribute(sway, 1));
+    g.deleteAttribute("uv");
+    out.push(g);
+  };
+
+  const trunk = (x: number, y: number, z: number, r: number, h: number, lean: number, yaw: number) => {
+    const g = trunkG.clone();
+    g.scale(r, h, r);
+    g.translate(0, h / 2, 0);
+    g.rotateZ(lean);
+    g.rotateY(yaw);
+    g.translate(x, y, z);
+    trunks.push(g);
+  };
+
+  for (const t of trees) {
+    const gy = heightAt(t.x, t.z) - 0.05;
+    const s = t.scale;
+    const lo = Boolean(t.far);
+    const tone = 0.85 + rnd() * 0.3;
+    if (t.kind === "pine") {
+      // Sugi: a straight trunk and narrowing tiers.
+      const H = (t.far ? 9 + rnd() * 6 : 6 + rnd() * 3) * s;
+      trunk(t.x, gy, t.z, 0.28 * s, H * 0.5, 0, 0);
+      const tiers = t.far ? 3 : 6;
+      for (let i = 0; i < tiers; i++) {
+        const f = i / tiers;
+        const r = (1.5 - f * 1.15) * s * (t.far ? 1.3 : 1);
+        const cy = gy + H * (0.28 + f * 0.68);
+        const jx = (rnd() - 0.5) * 0.25 * s, jz = (rnd() - 0.5) * 0.25 * s;
+        cone(crowns.pine, lo, t.x + jx, cy, t.z + jz, r, H * (t.far ? 0.42 : 0.26), gy + H * 0.2, gy + H, tone * (0.85 + f * 0.2));
+      }
+      continue;
+    }
+    const sakura = t.kind === "sakura";
+    const maple = t.kind === "maple";
+    const H = (sakura ? 2.2 : maple ? 2.6 : 3) * s + rnd() * 0.8;
+    const rx = (sakura ? 2.7 : maple ? 1.9 : 2.2) * s;
+    const ry = (sakura ? 1.35 : 1.6) * s;
+    const lean = (rnd() - 0.5) * (sakura ? 0.25 : 0.12);
+    const yaw = rnd() * Math.PI * 2;
+    trunk(t.x, gy, t.z, (sakura ? 0.2 : 0.22) * s, H + ry * 0.4, lean, yaw);
+    // Two or three limbs reaching into the crown.
+    const limbs = sakura ? 3 : 2;
+    for (let k = 0; k < limbs; k++) trunk(t.x, gy + H * 0.55, t.z, 0.09 * s, ry * 1.6, 0.55 + rnd() * 0.35, yaw + (k / limbs) * Math.PI * 2);
+    const crown = new THREE.Vector3(t.x + Math.sin(yaw) * lean * H, gy + H + ry * 0.55, t.z + Math.cos(yaw) * lean * H);
+    const count = sakura ? 11 : maple ? 10 : 9;
+    for (let k = 0; k < count; k++) {
+      // Points on the crown's ellipsoid by a golden spiral, pulled in a bit.
+      const f = (k + 0.5) / count;
+      const phi = Math.acos(1 - 2 * f);
+      const th = k * 2.39996 + yaw;
+      const px = Math.sin(phi) * Math.cos(th) * rx * 0.62;
+      const py = Math.cos(phi) * ry * 0.6;
+      const pz = Math.sin(phi) * Math.sin(th) * rx * 0.62;
+      const r = (sakura ? 0.95 : 0.9) * s * (0.8 + rnd() * 0.4);
+      clump(crowns[t.kind], lo, crown.x + px, crown.y + py, crown.z + pz, r, crown, Math.max(rx, ry), gy, crown.y + ry, tone * (0.9 + rnd() * 0.2));
+    }
+    clump(crowns[t.kind], lo, crown.x, crown.y + ry * 0.55, crown.z, rx * 0.5, crown, Math.max(rx, ry), gy, crown.y + ry, tone);
   }
+
   const merged: THREE.BufferGeometry[] = [];
-  for (const kind of Object.keys(canopyParts) as TreeKind[]) {
-    const parts = canopyParts[kind];
+  for (const kind of Object.keys(crowns) as TreeKind[]) {
+    const parts = crowns[kind];
     if (!parts.length) continue;
     const g = mergeGeometries(parts, false);
+    for (const pg of parts) pg.dispose();
     if (!g) continue;
     const mesh = new THREE.Mesh(g, foliage[kind]);
     mesh.castShadow = true;
@@ -629,26 +795,32 @@ export function buildForest(trees: Array<{ kind: TreeKind; x: number; z: number;
     mesh.name = `forest-${kind}`;
     group.add(mesh);
     merged.push(g);
-    for (const pg of parts) pg.dispose();
   }
-  if (trunkParts.length) {
-    const g = mergeGeometries(trunkParts, false);
+  if (trunks.length) {
+    const g = mergeGeometries(trunks, false);
+    for (const pg of trunks) pg.dispose();
     if (g) {
-      const mesh = new THREE.Mesh(g, trunk);
+      const mesh = new THREE.Mesh(g, barkMat);
       mesh.castShadow = true;
+      mesh.receiveShadow = true;
       mesh.name = "forest-trunks";
       group.add(mesh);
       merged.push(g);
     }
-    for (const pg of trunkParts) pg.dispose();
   }
-  blob.dispose(); cone.dispose(); trunkGeo.dispose();
+  blobHi.dispose(); blobLo.dispose(); coneG.dispose(); coneLo.dispose(); trunkG.dispose();
   return {
     group,
     foliage,
+    update(time, windDir, wind) {
+      windUniforms.uTime.value = time;
+      windUniforms.uWind.value.set(Math.sin(windDir), Math.cos(windDir));
+      windUniforms.uWindStrength.value = wind;
+    },
     dispose() {
       for (const g of merged) g.dispose();
       for (const mat of Object.values(foliage)) mat.dispose();
+      barkMat.dispose();
     },
   };
 }
@@ -714,9 +886,7 @@ export function buildBoard(): Board {
   const boardMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 });
   const board = mesh(new THREE.BoxGeometry(2.1, 1.75, 0.06), boardMat, 0, 1.75, 0);
   const roof = mesh(new THREE.BoxGeometry(2.4, 0.08, 0.5), tile, 0, 2.68, 0);
-  const lamp = new THREE.PointLight("#ffd28a", 0.8, 5, 2);
-  lamp.position.set(0, 2.5, 0.5);
-  group.add(board, roof, lamp);
+  group.add(board, roof);
   const draw = (title: string, lines: string[]) => {
     const c = canvas.getContext("2d")!;
     c.fillStyle = "#8a6238";
@@ -778,5 +948,7 @@ export function disposeSharedProps(): void {
   for (const g of geoCache.values()) g.dispose();
   geoCache.clear();
   disposeMinkaMaterials();
+  lanternStoneMat?.dispose();
+  lanternStoneMat = null;
   disposeSurfaces();
 }

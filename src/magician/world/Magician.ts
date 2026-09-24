@@ -37,7 +37,7 @@ import {
 } from "../state";
 import { LANDMARKS, runTool, type MagicianStore, type ToolResult } from "../tools";
 import { castSpell } from "../spellbook";
-import { heightAt, riverCentre, riverDistance, WATER_LEVEL } from "./noise";
+import { fbm, heightAt, riverCentre, riverDistance, WATER_LEVEL } from "./noise";
 import { createTerrain, pathAt } from "./terrain";
 import { createGrass } from "./grass";
 import { createSky } from "./sky";
@@ -241,7 +241,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // Trees: sakura around the village and up the shrine path, maples by the
   // lake, pines on the slopes, generic trees everywhere else.
   const treeCount = 260;
-  const forestTrees: Array<{ kind: TreeKind; x: number; z: number; yaw: number; scale: number }> = [];
+  const forestTrees: Array<{ kind: TreeKind; x: number; z: number; yaw: number; scale: number; far?: boolean }> = [];
   let placed = 0, tries = 0;
   while (placed < treeCount && tries++ < 4000) {
     const x = (Math.random() - 0.5) * 380;
@@ -259,6 +259,22 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const kind: TreeKind = r < 60 && Math.random() < 0.55 ? "sakura" : Math.hypot(x - 60, z - 56) < 45 && Math.random() < 0.6 ? "maple" : h > 30 || Math.random() < 0.35 ? "pine" : "tree";
     forestTrees.push({ kind, x, z, yaw: Math.random() * 6.28, scale: 0.9 + Math.random() * 0.5 });
     placed++;
+  }
+  // Cedar forest on the hills: the dark sugi stands that make the slopes of a
+  // Japanese valley read as mountains rather than green bumps. Cheap far
+  // trees, clumped by noise so the slopes have groves and clearings.
+  let cedars = 0; tries = 0;
+  while (cedars < 700 && tries++ < 9000) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 70 + Math.random() * 160;
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const h = heightAt(x, z);
+    if (h < 12 || h > 110) continue;
+    if (fbm(x * 0.018 + 7, z * 0.018 - 3, 3) < 0.45) continue;
+    if (Math.abs(x - riverCentre(z)) < 12) continue;
+    if (Math.hypot(x - 110, z + 120) < 16) continue;
+    forestTrees.push({ kind: "pine", x, z, yaw: Math.random() * 6.28, scale: 1.1 + Math.random() * 0.7, far: true });
+    cedars++;
   }
   const forest = buildForest(forestTrees, state0.season);
   scene.add(forest.group);
@@ -308,13 +324,55 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   board.group.rotation.y = 2.4;
   scene.add(board.group);
 
+  // ---- lamp light pool -----------------------------------------------------
+  // Every lantern and window glows by its own material; only the few nearest
+  // the player also throw real light on the ground. The pool is a fixed
+  // number of lights, so three never recompiles a shader as the player walks.
+  const LAMP_POOL = 4;
+  const lampLights: THREE.PointLight[] = [];
+  for (let i = 0; i < LAMP_POOL; i++) {
+    const l = new THREE.PointLight("#ffb04a", 0, 11, 2);
+    lampLights.push(l);
+    scene.add(l);
+  }
+  const lampWorld = new Map<PropObject, THREE.Vector3>();
+  const lampOf = (p: PropObject): THREE.Vector3 | null => {
+    if (!p.lamp) return null;
+    let v = lampWorld.get(p);
+    if (!v) { p.group.updateMatrixWorld(true); v = p.group.localToWorld(p.lamp.at.clone()); lampWorld.set(p, v); }
+    return v;
+  };
+  const lampRank: Array<{ p: PropObject; d: number }> = [];
+  let lampTick = 0;
+  function updateLampPool(dt: number) {
+    lampTick -= dt;
+    if (lampTick <= 0) {
+      // Re-rank a few times a second; lamps do not move.
+      lampTick = 0.25;
+      lampRank.length = 0;
+      const consider = (p: PropObject) => { const v = lampOf(p); if (v) lampRank.push({ p, d: v.distanceToSquared(player.position) }); };
+      for (const p of fixed) consider(p);
+      for (const sp of spawned.values()) consider(sp.obj);
+      lampRank.sort((a, b) => a.d - b.d);
+    }
+    for (let i = 0; i < LAMP_POOL; i++) {
+      const l = lampLights[i];
+      const r = lampRank[i];
+      if (!r || !r.p.lamp) { l.intensity = 0; continue; }
+      const v = lampOf(r.p)!;
+      l.position.copy(v);
+      l.color.copy(r.p.lamp.color);
+      l.intensity = r.p.lamp.level * r.p.lamp.power;
+    }
+  }
+
   // ---- conjured things ------------------------------------------------------
   const spawned = new Map<number, { obj: PropObject; prop: Prop }>();
   const spawnMats: Array<{ mat: THREE.MeshStandardMaterial; kind: "tree" | "sakura" | "maple" | "pine" | "bamboo" }> = [];
   function syncProps(props: Prop[], season: WorldState["season"]) {
     const ids = new Set(props.map((p) => p.id));
     for (const [id, s] of spawned) {
-      if (!ids.has(id)) { scene.remove(s.obj.group); s.obj.dispose(); spawned.delete(id); }
+      if (!ids.has(id)) { scene.remove(s.obj.group); s.obj.dispose(); spawned.delete(id); lampWorld.delete(s.obj); }
     }
     for (const p of props) {
       if (spawned.has(p.id)) continue;
@@ -678,6 +736,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     }
     sky.update(dt, time, s.wind, s.windDirection);
     terrain.update(dt, time);
+    forest.update(time, s.windDirection, s.wind);
     grass.update(dt, time, player.position, { windDir: s.windDirection, wind: s.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
     V.copy(player.position);
     V.y += 1.6;
@@ -700,6 +759,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       events.onState?.(state);
     }
     game.update(dt, time, lanternSpots);
+    updateLampPool(dt);
     room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false);
     peers.update(dt, time, heightAt);
     const gh = game.hud();
@@ -866,6 +926,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
         petals.update(0.1, time, V, state.wind, state.windDirection);
         fireflies.update(0.1, time, V, state.wind * 0.3, state.windDirection);
         propCtx.lanterns = look.lanterns > 0.5;
+        forest.update(time, state.windDirection, state.wind);
         grass.update(0.1, time, player.position, { windDir: state.windDirection, wind: state.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
         for (const p of fixed) p.update?.(0.1, time, propCtx);
         for (const sp of spawned.values()) { sp.obj.update?.(0.1, time, propCtx); sp.obj.group.scale.setScalar(sp.prop.scale); }
