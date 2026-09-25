@@ -1,7 +1,55 @@
 {
-  "generated_at": "2026-09-25T03:24:49.065Z",
+  "generated_at": "2026-09-25T03:28:03.188Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "d38e3be9",
+      "date": "2026-09-25",
+      "subject": "Stamp the worlds' last-changed dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "30cb1d49",
+      "date": "2026-09-25",
+      "subject": "Magician: pick a character, see everyone as theirs, and play tag in the valley",
+      "lede": "- The splash is now a character shuffler (portraits spin and land; shuffle again or walk back and forward through the ones you passed) and a name, shared with /oni. The voice-engine picker is gone; ?engine=live remains. - Everybody in the valley is their roster character (Oni's avatars), and you see yourself over the shoulder, further back on a portrait phone, dropping to first person indoors, sitting, at the screen ",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "17448162",
+      "date": "2026-09-25",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "bcc7a1cb",
+      "date": "2026-09-25",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "d1a2ecb8",
+      "date": "2026-09-25",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "05ed1e5c",
+      "date": "2026-09-25",
+      "subject": "Work in progress",
+      "lede": "",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "926baa9a",
       "date": "2026-09-25",
@@ -946,54 +994,6 @@
     },
     {
       "sha": "4c56fb78",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "7240652a",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "e899d1d8",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "48847af5",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "9455eb08",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "6854bb74",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "844e70b1",
       "date": "2026-08-20",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
