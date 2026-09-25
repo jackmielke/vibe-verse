@@ -11,15 +11,11 @@ struct ContentView: View {
             VerseWebView(model: model)
                 // Keep clear of the Dynamic Island; the page doesn't pad for it.
                 .ignoresSafeArea(edges: .bottom)
-                .opacity(model.loaded ? 1 : 0)
-                .animation(.easeOut(duration: 0.5), value: model.loaded)
+                .opacity(model.loaded && model.minTimeElapsed ? 1 : 0)
+                .animation(.easeOut(duration: 0.5), value: model.loaded && model.minTimeElapsed)
 
-            if !model.loaded && model.error == nil {
-                VStack(spacing: 16) {
-                    Text("Vibe Verse").font(.system(size: 32, weight: .bold, design: .rounded)).foregroundStyle(.white)
-                    ProgressView().tint(.white)
-                }
-                .transition(.opacity)
+            if !(model.loaded && model.minTimeElapsed) && model.error == nil {
+                SplashView().transition(.opacity)
             }
 
             if let error = model.error {
@@ -38,7 +34,16 @@ struct ContentView: View {
 final class WebModel: ObservableObject {
     @Published var loaded = false
     @Published var error: String?
+    /// Hold the splash long enough to be seen, even on a warm cache.
+    @Published var minTimeElapsed = false
     weak var web: WKWebView?
+
+    init() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(.easeOut(duration: 0.5)) { minTimeElapsed = true }
+        }
+    }
 
     func reload() {
         error = nil

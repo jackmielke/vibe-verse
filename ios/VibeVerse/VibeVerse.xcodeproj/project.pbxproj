@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2E026CB2DA511CA72D1B7029 /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCB0CB928D935ED5AC13338 /* SplashView.swift */; };
 		2FEB746DEAA6A2536D0923CE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7A06B0911EACBC64D9D1DE /* ContentView.swift */; };
 		441BBF28D050D344CB6D29BF /* VibeVerseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C7CA920A3EF0C9E83B2780 /* VibeVerseApp.swift */; };
 		53CCA0EF073FA5033E3313D2 /* VerseWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05B89B6A6342F38BF0B2E51 /* VerseWebView.swift */; };
@@ -17,6 +18,7 @@
 		5729C2648C5A33D91A5E68C3 /* VibeVerse.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VibeVerse.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5C7A06B0911EACBC64D9D1DE /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		62C7CA920A3EF0C9E83B2780 /* VibeVerseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeVerseApp.swift; sourceTree = "<group>"; };
+		7DCB0CB928D935ED5AC13338 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
 		B05B89B6A6342F38BF0B2E51 /* VerseWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerseWebView.swift; sourceTree = "<group>"; };
 		D34F10B9731AB4975894C3AC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F658BAF5BAF284BEA5B525B2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -45,6 +47,7 @@
 				F658BAF5BAF284BEA5B525B2 /* Assets.xcassets */,
 				5C7A06B0911EACBC64D9D1DE /* ContentView.swift */,
 				D34F10B9731AB4975894C3AC /* Info.plist */,
+				7DCB0CB928D935ED5AC13338 /* SplashView.swift */,
 				B05B89B6A6342F38BF0B2E51 /* VerseWebView.swift */,
 				62C7CA920A3EF0C9E83B2780 /* VibeVerseApp.swift */,
 			);
@@ -123,6 +126,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2FEB746DEAA6A2536D0923CE /* ContentView.swift in Sources */,
+				2E026CB2DA511CA72D1B7029 /* SplashView.swift in Sources */,
 				53CCA0EF073FA5033E3313D2 /* VerseWebView.swift in Sources */,
 				441BBF28D050D344CB6D29BF /* VibeVerseApp.swift in Sources */,
 			);
