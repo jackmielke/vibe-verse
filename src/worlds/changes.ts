@@ -310,6 +310,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "42322506", iso: "2026-06-12T02:52:26+00:00", subject: "Changes" },
     { sha: "efe0b65f", iso: "2026-06-12T02:00:05+00:00", subject: "Changes" },
   ],
+  "oni": [
+    { sha: "745d9fdf", iso: "2026-09-25T02:42:52+00:00", subject: "Oni: infection tag for the whole room, on phones, laptops and VR" },
+  ],
   "orbit": [
     { sha: "08687746", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
   ],
