@@ -272,12 +272,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "21f5a459", iso: "2026-06-24T21:05:46+00:00", subject: "Changes" },
   ],
   "magician": [
+    { sha: "9256e736", iso: "2026-09-25T03:26:38+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
     { sha: "640c50cf", iso: "2026-09-25T02:58:04+00:00", subject: "Magician VR: point at the ground and pull the trigger to walk there" },
     { sha: "29bac927", iso: "2026-09-24T19:32:50+00:00", subject: "Magician: Vibey stands a little further off, and on the same floors you do" },
     { sha: "10d645c3", iso: "2026-09-24T19:28:48+00:00", subject: "Magician: sky lanterns" },
     { sha: "a7f7aa85", iso: "2026-09-24T19:22:41+00:00", subject: "Magician: arrive from the sky" },
     { sha: "cab9d6d9", iso: "2026-09-24T19:15:31+00:00", subject: "Magician: the spell ribbon arcs out over the valley where you can see it" },
-    { sha: "f3ef2991", iso: "2026-09-24T19:02:30+00:00", subject: "Magician: spells you can see leave, hotaru over the river, channels, a temple bell" },
   ],
   "manifesto": [
     { sha: "56590fb9", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
@@ -311,6 +311,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "efe0b65f", iso: "2026-06-12T02:00:05+00:00", subject: "Changes" },
   ],
   "oni": [
+    { sha: "9256e736", iso: "2026-09-25T03:26:38+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
     { sha: "e5e81273", iso: "2026-09-25T02:49:46+00:00", subject: "Oni: point and click to run, in VR and on the flat" },
     { sha: "745d9fdf", iso: "2026-09-25T02:42:52+00:00", subject: "Oni: infection tag for the whole room, on phones, laptops and VR" },
   ],
