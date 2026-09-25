@@ -33,14 +33,14 @@ function tagTexture(name: string, oni: boolean, big: boolean): THREE.CanvasTextu
   const c = document.createElement("canvas");
   c.width = 512; c.height = 128;
   const g = c.getContext("2d")!;
-  const label = (oni ? "👹 " : "") + name.slice(0, 16);
+  const label = (oni ? "🧟 " : "") + name.slice(0, 16);
   g.font = `600 ${big ? 58 : 50}px system-ui, sans-serif`;
   const w = Math.min(500, g.measureText(label).width + 56);
-  g.fillStyle = oni ? "rgba(200,30,30,0.85)" : "rgba(12,14,24,0.62)";
+  g.fillStyle = oni ? "rgba(52,138,38,0.9)" : "rgba(12,14,24,0.62)";
   g.beginPath();
   g.roundRect(256 - w / 2, 18, w, 92, 46);
   g.fill();
-  g.fillStyle = oni ? "#fff2e0" : "#f5f0ff";
+  g.fillStyle = oni ? "#f0ffe6" : "#f5f0ff";
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.fillText(label, 256, 66);
@@ -62,7 +62,7 @@ function emojiTexture(e: string): THREE.CanvasTexture {
 }
 
 // Shared by every avatar.
-let shared: { horn: THREE.ConeGeometry; band: THREE.TorusGeometry; hornMat: THREE.MeshStandardMaterial; bandMat: THREE.MeshStandardMaterial; glow: THREE.CanvasTexture; capsule: THREE.CapsuleGeometry; users: number } | null = null;
+let shared: { glow: THREE.CanvasTexture; capsule: THREE.CapsuleGeometry; users: number } | null = null;
 function acquire() {
   if (!shared) {
     const c = document.createElement("canvas");
@@ -74,10 +74,6 @@ function acquire() {
     gr.addColorStop(1, "rgba(255,255,255,0)");
     g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
     shared = {
-      horn: new THREE.ConeGeometry(0.09, 0.42, 10),
-      band: new THREE.TorusGeometry(0.2, 0.035, 6, 20),
-      hornMat: new THREE.MeshStandardMaterial({ color: "#ff3b2a", emissive: "#ff2a10", emissiveIntensity: 0.9, roughness: 0.4 }),
-      bandMat: new THREE.MeshStandardMaterial({ color: "#ffd35a", emissive: "#6a4a00", roughness: 0.4, metalness: 0.2 }),
       glow: new THREE.CanvasTexture(c),
       capsule: new THREE.CapsuleGeometry(0.3, 0.9, 6, 12),
       users: 0,
@@ -89,7 +85,7 @@ function acquire() {
 function release() {
   if (!shared) return;
   if (--shared.users > 0) return;
-  shared.horn.dispose(); shared.band.dispose(); shared.hornMat.dispose(); shared.bandMat.dispose(); shared.glow.dispose(); shared.capsule.dispose();
+  shared.glow.dispose(); shared.capsule.dispose();
   shared = null;
 }
 
@@ -110,22 +106,16 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
   placeholder.position.y = 0.8;
   body.add(placeholder);
 
-  // Horns on a gold band, only while oni.
-  const horns = new THREE.Group();
-  const band = new THREE.Mesh(s.band, s.bandMat);
-  band.rotation.x = Math.PI / 2;
-  horns.add(band);
-  for (const side of [-1, 1]) {
-    const h = new THREE.Mesh(s.horn, s.hornMat);
-    h.position.set(side * 0.13, 0.2, 0);
-    h.rotation.z = -side * 0.35;
-    horns.add(h);
-  }
-  horns.visible = false;
-  body.add(horns);
+  // A zombie is the same character gone green: every material of this body
+  // is our own copy (so one player turning never tints another), and the
+  // tint eases in over half a second.
+  const skins: Array<{ mat: THREE.MeshStandardMaterial; color: THREE.Color; emissive: THREE.Color; emissiveIntensity: number }> = [];
+  const ZOMBIE = new THREE.Color("#7fae5a");
+  const ZOMBIE_GLOW = new THREE.Color("#173f0e");
+  let zombieMix = 0;
 
-  // The glow under an oni's feet.
-  const glowMat = new THREE.MeshBasicMaterial({ map: s.glow, color: "#ff3a20", transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+  // The glow under a zombie's feet.
+  const glowMat = new THREE.MeshBasicMaterial({ map: s.glow, color: "#5cff3a", transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), glowMat);
   glow.rotation.x = -Math.PI / 2;
   glow.position.y = 0.03;
@@ -176,6 +166,20 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
       r.object.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(r.object);
       const top = box.isEmpty() ? r.size.y : Math.min(r.size.y, box.max.y);
+      for (const k of skins) k.mat.dispose();
+      skins.length = 0;
+      r.object.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const own = (m: THREE.Material) => {
+          const c = m.clone();
+          const std = c as THREE.MeshStandardMaterial;
+          if (std.color && std.emissive) skins.push({ mat: std, color: std.color.clone(), emissive: std.emissive.clone(), emissiveIntensity: std.emissiveIntensity });
+          return c;
+        };
+        mesh.material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
+      });
+      zombieMix = -1; // repaint on the next frame
       body.add(r.object);
       placeholder.visible = false;
       headY = Math.max(0.6, top * 0.94);
@@ -191,11 +195,9 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
         if (runClip && runClip !== idleClip) { run = r.mixer.clipAction(runClip); run.setLoop(THREE.LoopRepeat, Infinity); run.play(); run.weight = 0; }
         if (jumpClip) { jumpAct = r.mixer.clipAction(jumpClip); jumpAct.setLoop(THREE.LoopRepeat, Infinity); jumpAct.play(); jumpAct.weight = 0; }
       }
-      horns.position.y = headY;
     }).catch(() => { /* stays a capsule */ });
   }
   load(char);
-  horns.position.y = headY;
 
   function redrawTag() {
     const old = tagTex;
@@ -214,7 +216,6 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
     setOni(on) {
       if (on === oni) return;
       oni = on;
-      horns.visible = on;
       redrawTag();
       if (on) pulse = 1;
     },
@@ -241,14 +242,23 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
         if (jumpAct) jumpAct.weight = j;
       }
       if (!rig) placeholder.position.y = 0.8 + Math.abs(Math.sin(performance.now() / 90)) * 0.08 * loco;
-      // Oni are a little bigger, and swell for a moment when they turn.
+      // Zombies are a little bigger, shamble side to side, and swell for a moment when they turn.
       pulse = Math.max(0, pulse - dt * 1.6);
       const target = (oni ? 1.12 : 1) + pulse * 0.35 * Math.sin(pulse * 14);
       scale += (target - scale) * Math.min(1, dt * 12);
       body.scale.setScalar(scale);
       const t = performance.now() / 1000;
-      glowMat.opacity = oni ? 0.55 + Math.sin(t * 7) * 0.15 : 0;
-      horns.children[1].rotation.x = horns.children[2].rotation.x = oni ? Math.sin(t * 9) * 0.05 : 0;
+      glowMat.opacity = oni ? 0.5 + Math.sin(t * 5) * 0.15 : 0;
+      body.rotation.z = oni ? Math.sin(t * 5.5) * 0.09 * (0.4 + loco) : 0;
+      const want = oni ? 1 : 0;
+      if (zombieMix < 0 || Math.abs(want - zombieMix) > 0.001) {
+        zombieMix = zombieMix < 0 ? want : zombieMix + (want - zombieMix) * Math.min(1, dt * 5);
+        for (const k of skins) {
+          k.mat.color.copy(k.color).lerp(ZOMBIE, zombieMix * 0.55);
+          k.mat.emissive.copy(k.emissive).lerp(ZOMBIE_GLOW, zombieMix);
+          k.mat.emissiveIntensity = k.emissiveIntensity + zombieMix * 0.45;
+        }
+      }
       tag.position.y = BODY_HEIGHT * scale + 0.6;
       for (let i = emotes.length - 1; i >= 0; i--) {
         const e = emotes[i];
@@ -263,6 +273,7 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
     dispose() {
       disposed = true;
       rig?.dispose();
+      for (const k of skins) k.mat.dispose();
       placeholderMat.dispose();
       glowMat.dispose(); (glow.geometry as THREE.BufferGeometry).dispose();
       ringMat.dispose(); (ring.geometry as THREE.BufferGeometry).dispose();

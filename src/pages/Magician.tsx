@@ -593,10 +593,10 @@ export default function Magician() {
             <button
               onClick={startTag}
               disabled={!!tagHud && (tagHud.phase === "countdown" || tagHud.phase === "play")}
-              title="Infection tag round the village, with everybody here"
+              title="Zombie tag round the village, with everybody here"
               className="rounded-sm border border-[#ff6a4a]/60 bg-[#ff6a4a]/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-[#ffe0d8] hover:bg-[#ff6a4a]/35 disabled:opacity-40"
             >
-              👹 tag
+              🧟 zombie tag
             </button>
             <button onClick={() => setMenuOpen((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70">
               {menuOpen ? "close" : "menu"}
@@ -672,7 +672,7 @@ export default function Magician() {
             </div>
           )}
           {tagHud?.me?.oni && (tagHud.phase === "play" || tagHud.phase === "countdown") && (
-            <div className="pointer-events-none absolute inset-0 z-[5]" style={{ boxShadow: "inset 0 0 120px 30px rgba(220,30,20,0.5)" }} />
+            <div className="pointer-events-none absolute inset-0 z-[5]" style={{ boxShadow: "inset 0 0 120px 30px rgba(60,190,40,0.5)" }} />
           )}
 
           {/* Game HUD */}

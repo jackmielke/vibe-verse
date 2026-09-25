@@ -15,16 +15,16 @@ export function OniLobbyCard({ className = "" }: { className?: string }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-sm">
           <div className="text-[10px] uppercase tracking-[0.35em] text-[#ffb89a]">Play together · live now</div>
-          <h2 className="mt-1 font-heading text-2xl font-bold">👹 Oni <span className="text-base font-normal text-white/60">鬼ごっこ</span></h2>
+          <h2 className="mt-1 font-heading text-2xl font-bold">🧟 Zombie Tag</h2>
           <p className="mt-1 text-[13px] leading-snug text-white/70">
-            Infection tag for the whole room. Everyone gets a random character; the oni has horns and anyone it touches grows them too. Last one without horns wins. Phones, laptops and VR in one square.
+            Tag for the whole room, with a twist: one player starts as a zombie, and anyone it touches turns too. Last human standing wins. Everyone gets a random character; phones, laptops and VR in one square.
           </p>
           <div className="mt-2 flex gap-3 text-[11px] text-white/50">
-            <a href="/oni?show" className="underline decoration-dotted underline-offset-4 hover:text-white">projector view</a>
-            <a href="/oni?bots=6" className="underline decoration-dotted underline-offset-4 hover:text-white">practice with bots</a>
+            <a href="/zombies?show" className="underline decoration-dotted underline-offset-4 hover:text-white">projector view</a>
+            <a href="/zombies?bots=6" className="underline decoration-dotted underline-offset-4 hover:text-white">practice with bots</a>
           </div>
         </div>
-        <JoinCard onJoin={() => navigate("/oni?go=1")} cta="Join" size={84} />
+        <JoinCard onJoin={() => navigate("/zombies?go=1")} cta="Join" size={84} />
       </div>
     </section>
   );

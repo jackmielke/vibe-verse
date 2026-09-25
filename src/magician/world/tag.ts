@@ -102,14 +102,14 @@ export function createValleyTag(o: ValleyTagOptions): ValleyTag {
         const rad = oni ? 3 : 12 + ((h >>> 12) % 60) / 10;
         const x = TAG_CENTRE.x + Math.cos(a) * rad, z = TAG_CENTRE.z + Math.sin(a) * rad;
         o.teleport(x, z, Math.atan2(x - TAG_CENTRE.x, z - TAG_CENTRE.z) + (oni ? Math.PI : 0));
-        o.onFeed(`Tag! ${r.first.map(NameOf).join(" and ")} ${r.first.length > 1 ? "are" : "is"} the oni 👹`);
+        o.onFeed(`Zombie tag! ${r.first.map(NameOf).join(" and ")} ${r.first.length > 1 ? "are" : "is"} the zombie 🧟`);
       },
       onTag(t) {
         const close = t.victim === o.myId || t.by === o.myId;
         sfx.tag(close);
         if (t.victim === o.myId) { try { navigator.vibrate?.([80, 40, 160]); } catch { /* none */ } }
         const by = t.by && t.by !== "?" ? NameOf(t.by) : null;
-        o.onFeed(by ? `${by} caught ${nameOf(t.victim)} 👹` : `${NameOf(t.victim)} turned oni 👹`);
+        o.onFeed(by ? `${by} bit ${nameOf(t.victim)} 🧟` : `${NameOf(t.victim)} turned zombie 🧟`);
       },
       onEmote(id, e) { o.peers.emote(id, e); sfx.honk(); },
       onOver(_r, res) {
@@ -118,7 +118,7 @@ export function createValleyTag(o: ValleyTagOptions): ValleyTag {
         const line = res.lastStanding ? `${NameOf(res.lastStanding.id)} ${res.lastStanding.id === o.myId ? "were" : "was"} the last one standing!`
           : res.survivors.length ? `Time! ${res.survivors.map(NameOf).join(", ")} survived` : "Round over";
         o.onFeed(line);
-        o.onNotify?.(`A game of tag in the village just ended: ${line}. Congratulate them in one short line.`);
+        o.onNotify?.(`A game of zombie tag in the village just ended: ${line}. Congratulate them in one short line.`);
       },
     },
   });
@@ -140,7 +140,7 @@ export function createValleyTag(o: ValleyTagOptions): ValleyTag {
     const t = new THREE.CanvasTexture(c);
     return t;
   })();
-  const ringMat = new THREE.MeshBasicMaterial({ map: ringTex, color: "#ff6a3a", transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+  const ringMat = new THREE.MeshBasicMaterial({ map: ringTex, color: "#5cff4a", transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
   const ringGeo = new THREE.CylinderGeometry(TAG_RADIUS_M, TAG_RADIUS_M, 14, 128, 1, true);
   const ring = new THREE.Mesh(ringGeo, ringMat);
   ring.position.set(TAG_CENTRE.x, o.groundAt(TAG_CENTRE.x, TAG_CENTRE.z) - 3, TAG_CENTRE.z);
@@ -186,7 +186,7 @@ export function createValleyTag(o: ValleyTagOptions): ValleyTag {
         const n = Math.ceil((round.start - now) / 1000);
         if (n !== lastCount && n <= 3) { lastCount = n; sfx.count(n); }
       }
-      if (phase === "play" && lastPhase === "countdown") { sfx.gong(); o.onFeed(meOni ? "Go! You're the oni: catch them!" : "Go! Run!"); }
+      if (phase === "play" && lastPhase === "countdown") { sfx.gong(); o.onFeed(meOni ? "Go! You're the zombie: get them!" : "Go! Run!"); }
       if (phase === "play" && round) {
         const left = (round.end - now) / 1000;
         sfx.drum(true, left < 20 ? 1 - left / 20 : 0);

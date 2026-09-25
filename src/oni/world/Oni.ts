@@ -88,7 +88,7 @@ interface Remote {
 interface Bot { id: string; name: string; char: string; x: number; z: number; y: number; vy: number; vx: number; vz: number; yaw: number; wander: number }
 
 const BOT_NAMES = ["Kenji", "Hana", "Momo", "Taro", "Yuki", "Sora", "Riku", "Aoi", "Mochi", "Daifuku"];
-const EMOTES = ["😂", "👋", "🏃", "💨", "😱", "🥳", "👹", "🙈"];
+const EMOTES = ["😂", "👋", "🏃", "💨", "😱", "🥳", "🧟", "🙈"];
 
 export function createOni(opts: OniOptions): OniEngine {
   const { container } = opts;
@@ -134,7 +134,7 @@ export function createOni(opts: OniOptions): OniEngine {
     vrText = text;
     const g = vrCanvas.getContext("2d")!;
     g.clearRect(0, 0, 1024, 192);
-    g.fillStyle = red ? "rgba(190,30,30,0.8)" : "rgba(10,12,24,0.7)";
+    g.fillStyle = red ? "rgba(50,130,35,0.85)" : "rgba(10,12,24,0.7)";
     g.beginPath(); g.roundRect(40, 30, 944, 132, 60); g.fill();
     g.fillStyle = "#fff"; g.font = "600 64px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText(text, 512, 98);
@@ -192,7 +192,7 @@ export function createOni(opts: OniOptions): OniEngine {
   const burstVel = new Float32Array(BURST * 3);
   const burstGeo = new THREE.BufferGeometry();
   burstGeo.setAttribute("position", new THREE.BufferAttribute(burstPos, 3));
-  const burstMat = new THREE.PointsMaterial({ color: "#ff5a3a", size: 0.18, transparent: true, opacity: 0, depthWrite: false });
+  const burstMat = new THREE.PointsMaterial({ color: "#8dff5a", size: 0.18, transparent: true, opacity: 0, depthWrite: false });
   const burst = new THREE.Points(burstGeo, burstMat);
   burst.frustumCulled = false;
   scene.add(burst);
@@ -215,7 +215,7 @@ export function createOni(opts: OniOptions): OniEngine {
   arrowShape.lineTo(-0.12, -0.35); arrowShape.lineTo(-0.12, 0.05); arrowShape.lineTo(-0.32, 0); arrowShape.closePath();
   const arrowGeo = new THREE.ShapeGeometry(arrowShape);
   arrowGeo.rotateX(-Math.PI / 2);
-  const arrowMat = new THREE.MeshBasicMaterial({ color: "#ff4a2a", transparent: true, opacity: 0.85, depthWrite: false });
+  const arrowMat = new THREE.MeshBasicMaterial({ color: "#6dff3a", transparent: true, opacity: 0.85, depthWrite: false });
   const arrow = new THREE.Mesh(arrowGeo, arrowMat);
   arrow.visible = false;
   scene.add(arrow);
@@ -238,7 +238,7 @@ export function createOni(opts: OniOptions): OniEngine {
         }
         for (const b of bots) { const s = spawnFor(b.id, r); b.x = s.x; b.z = s.z; b.yaw = s.yaw; }
         const first = r.first.map(NameOf).join(" and ");
-        feed(`New round! ${first} ${r.first.length > 1 ? "are" : "is"} the oni`, "round");
+        feed(`New round! ${first} ${r.first.length > 1 ? "are" : "is"} the zombie 🧟`, "round");
         lastCount = -1;
       },
       onTag(t: Tag) {
@@ -252,7 +252,7 @@ export function createOni(opts: OniOptions): OniEngine {
           try { navigator.vibrate?.([80, 40, 160]); } catch { /* no vibration */ }
         }
         const by = t.by && t.by !== "?" ? NameOf(t.by) : null;
-        feed(by ? `${by} caught ${nameOf(t.victim)} 👹` : `${NameOf(t.victim)} turned oni 👹`, "tag");
+        feed(by ? `${by} bit ${nameOf(t.victim)} 🧟` : `${NameOf(t.victim)} turned zombie 🧟`, "tag");
       },
       onEmote(id, e) {
         if (id === myId) myAvatar?.emote(e);
@@ -564,7 +564,7 @@ export function createOni(opts: OniOptions): OniEngine {
       const n = Math.ceil((round.start - now) / 1000);
       if (n !== lastCount && n <= 3) { lastCount = n; sfx.count(n); }
     }
-    if (phase === "play" && lastPhase === "countdown") { sfx.gong(); feed(meOni ? "Go! You're the oni, catch them!" : "Go! Run!", "round"); }
+    if (phase === "play" && lastPhase === "countdown") { sfx.gong(); feed(meOni ? "Go! You're the zombie: get them!" : "Go! Run!", "round"); }
     if (phase === "play" && round) {
       const left = (round.end - now) / 1000;
       sfx.drum(true, left < 20 ? 1 - left / 20 : 0);
@@ -741,8 +741,8 @@ export function createOni(opts: OniOptions): OniEngine {
     }
     if (inVR() && round) {
       const left = Math.max(0, Math.ceil((round.end - now) / 1000));
-      const text = phase === "countdown" ? `${meOni ? "You're the ONI" : "Get ready"} · ${Math.ceil((round.start - now) / 1000)}`
-        : phase === "play" ? `${meOni ? "👹 CATCH THEM" : "🏃 RUN"} · ${left}s`
+      const text = phase === "countdown" ? `${meOni ? "You're the ZOMBIE" : "Get ready"} · ${Math.ceil((round.start - now) / 1000)}`
+        : phase === "play" ? `${meOni ? "🧟 GET THEM" : "🏃 RUN"} · ${left}s`
         : "Round over";
       drawVrHud(text, meOni && phase !== "over");
     } else if (inVR()) drawVrHud(remotes.size ? "Point + trigger to run · next round soon" : "Point + trigger to run · waiting for players", false);

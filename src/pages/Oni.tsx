@@ -33,7 +33,7 @@ function params() {
 
 function joinUrl(room: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "https://myvibeverse.com";
-  return room === "matsuri" ? `${origin}/oni` : `${origin}/oni?room=${room}`;
+  return room === "matsuri" ? `${origin}/zombies` : `${origin}/zombies?room=${room}`;
 }
 
 function QrCode({ text, size }: { text: string; size: number }) {
@@ -47,7 +47,7 @@ function QrCode({ text, size }: { text: string; size: number }) {
 
 
 export default function Oni() {
-  useWorldStamp("/oni", "Oni");
+  useWorldStamp("/zombies", "Zombie Tag");
   const q = params();
   const watch = q.has("show");
   const bots = Math.max(0, Math.min(9, parseInt(q.get("bots") ?? "0", 10) || 0));
@@ -92,7 +92,7 @@ export default function Oni() {
   useEffect(() => {
     const oni = !!hud?.me?.oni;
     if (oni && !wasOni.current && hud?.phase === "play") {
-      setFlash("You got caught! Now you're the oni 👹");
+      setFlash("You got bitten! Now you're a zombie 🧟");
       const t = window.setTimeout(() => setFlash(null), 2200);
       wasOni.current = oni;
       return () => clearTimeout(t);
@@ -117,14 +117,14 @@ export default function Oni() {
   if (!joined) {
     return (
       <div className="relative flex min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden px-4 py-10 text-white" style={{ background: "radial-gradient(120% 90% at 50% 0%, #6b3a5a 0%, #2a1a38 45%, #120c1c 100%)" }}>
-        <div className="mb-1 text-sm tracking-[0.5em] text-[#ffb89a]">鬼ごっこ</div>
-        <h1 className="font-heading text-5xl font-bold tracking-wide sm:text-6xl">ONI</h1>
-        <p className="mt-2 max-w-sm text-center text-sm text-white/65">Infection tag at a summer festival. The oni has horns; anyone it touches grows them too. Last one without horns wins.</p>
+        <div className="mb-1 text-sm tracking-[0.5em] text-[#b6ff9a]">🧟 · 🏃 · 🏃</div>
+        <h1 className="font-heading text-5xl font-bold tracking-wide sm:text-6xl">ZOMBIE TAG</h1>
+        <p className="mt-2 max-w-sm text-center text-sm text-white/65">Tag at a summer festival, with a twist: one zombie, and anyone it touches turns too. Last human standing wins.</p>
         <div className="mt-6 w-full max-w-sm rounded-3xl border border-white/10 bg-black/30 p-5 backdrop-blur">
           <JoinCard onJoin={(name, c) => { setChar(c); setJoined({ name, char: c }); }} size={phone ? 120 : 140} autoFocus={!phone} />
         </div>
         <div className="mt-4 text-xs text-white/40">Room: {room} · works on phones, laptops and VR headsets</div>
-        <a href={`/oni?bots=6${room !== "matsuri" ? `&room=${room}` : ""}`} className="mt-2 text-xs text-white/45 underline decoration-dotted underline-offset-4 hover:text-white/80">or practice against bots</a>
+        <a href={`/zombies?bots=6${room !== "matsuri" ? `&room=${room}` : ""}`} className="mt-2 text-xs text-white/45 underline decoration-dotted underline-offset-4 hover:text-white/80">or practice against bots</a>
       </div>
     );
   }
@@ -143,9 +143,9 @@ export default function Oni() {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/55 via-transparent to-black/45" />
         <div className="absolute left-6 top-20 flex flex-col items-start gap-4">
           <div>
-            <div className="text-lg tracking-[0.5em] text-[#ffb89a]">鬼ごっこ</div>
-            <div className="font-heading text-6xl font-bold leading-none">ONI</div>
-            <div className="mt-1 text-sm text-white/70">Infection tag. Don't get touched.</div>
+            <div className="text-lg tracking-[0.5em] text-[#b6ff9a]">🧟 · 🏃 · 🏃</div>
+            <div className="font-heading text-6xl font-bold leading-none">ZOMBIE TAG</div>
+            <div className="mt-1 text-sm text-white/70">One zombie. Don't get bitten.</div>
           </div>
           <div className="rounded-2xl bg-white p-3 shadow-2xl">
             <QrCode text={url} size={260} />
@@ -166,8 +166,8 @@ export default function Oni() {
             </div>
             <div className="flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto">
               {(hud?.players ?? []).map((p) => (
-                <div key={p.id} className={`flex items-center gap-2 rounded-lg px-2 py-1 ${p.oni ? "bg-[#c8261e]/60" : "bg-white/5"}`}>
-                  <span className="text-lg">{p.oni ? "👹" : findCharacter(p.char).emoji}</span>
+                <div key={p.id} className={`flex items-center gap-2 rounded-lg px-2 py-1 ${p.oni ? "bg-[#2f7a22]/70" : "bg-white/5"}`}>
+                  <span className="text-lg">{p.oni ? "🧟" : findCharacter(p.char).emoji}</span>
                   <span className="truncate text-sm">{p.name}</span>
                 </div>
               ))}
@@ -197,7 +197,7 @@ export default function Oni() {
     <div className="fixed inset-0 select-none overflow-hidden bg-[#120c1c] text-white" onPointerDown={() => engineRef.current?.resumeAudio()}>
       <div ref={containerRef} className="absolute inset-0" />
       {/* Red at the edges while you're oni. */}
-      <div className="pointer-events-none absolute inset-0 transition-opacity duration-500" style={{ opacity: meOni ? 1 : 0, boxShadow: "inset 0 0 120px 30px rgba(220,30,20,0.55)" }} />
+      <div className="pointer-events-none absolute inset-0 transition-opacity duration-500" style={{ opacity: meOni ? 1 : 0, boxShadow: "inset 0 0 120px 30px rgba(60,190,40,0.55)" }} />
 
       <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-3" data-ui="1">
         <PhaseBanner hud={hud} big={false} />
@@ -263,12 +263,12 @@ export default function Oni() {
             <div className="font-mono text-xs text-white/60">{url.replace(/^https?:\/\//, "")}</div>
             <div className="flex gap-2">
               <button
-                onClick={() => { if (navigator.share) void navigator.share({ title: "Play Oni with me", url }).catch(() => {}); else void navigator.clipboard?.writeText(url); }}
+                onClick={() => { if (navigator.share) void navigator.share({ title: "Play Zombie Tag with me", url }).catch(() => {}); else void navigator.clipboard?.writeText(url); }}
                 className="rounded-full bg-[#e8402c] px-4 py-2 text-sm font-semibold"
               >
                 Share link
               </button>
-              <a href={`/oni?show${room !== "matsuri" ? `&room=${room}` : ""}`} target="_blank" rel="noreferrer" className="rounded-full border border-white/25 px-4 py-2 text-sm">Projector view</a>
+              <a href={`/zombies?show${room !== "matsuri" ? `&room=${room}` : ""}`} target="_blank" rel="noreferrer" className="rounded-full border border-white/25 px-4 py-2 text-sm">Projector view</a>
             </div>
           </div>
         </div>

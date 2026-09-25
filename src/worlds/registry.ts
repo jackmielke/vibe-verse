@@ -36,7 +36,7 @@
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
-  "oni",                 // the room game: everybody's phone, one square, infection tag
+  "oni",                 // the room game: everybody's phone, one square, zombie tag
   "magician",            // …then the valley you talk to, which rebuilds itself as you speak
   "better-fortnite",     // …then the battle royale with everything in it
   "splash-royale",       // …and the water fight, which is the one you send to a friend
@@ -147,13 +147,13 @@ export interface WorldEntry {
 const WORLDS_RAW: WorldEntry[] = [
   {
     key: "oni",
-    route: "/oni",
-    aliases: ["/tag", "/oni-gokko"],
-    name: "Oni",
-    emoji: "👹",
+    route: "/zombies",
+    aliases: ["/zombie", "/oni", "/tag", "/oni-gokko"],
+    name: "Zombie Tag",
+    emoji: "🧟",
     kind: "game",
     blurb:
-      "Infection tag at a summer festival, for everybody in the room at once. Type a name, get a random character, and run. The oni has horns; anyone it touches grows them too. Last one without horns wins. Phones, laptops and VR headsets in the same square.",
+      "Tag at a summer festival for everybody in the room at once, with a twist: one player starts as a zombie, and anyone it touches turns too. Type a name, get a random character, and run. Last human standing wins. Phones, laptops and VR headsets in the same square.",
     status: "Playable — multiplayer, phone, laptop or VR; ?show for the projector",
     accent: "#ff5a3c",
     backdrop: "#120c1c",

@@ -556,7 +556,7 @@ The shape of it, because it is the shape the next voice world should copy:
   engine picker is gone from the splash; `?engine=live` still selects Live.
 - **Tag in the valley** (`world/tag.ts`) is Oni's rules and match carried
   over the valley's own channel as `g` messages, with `auto: false`: a
-  round only starts when somebody presses 👹 tag, because most visitors are
+  round only starts when somebody presses 🧟 zombie tag, because most visitors are
   here to wander. A ring of light round the village square (centre 6, 0,
   radius 27) keeps a round small; everybody runs faster in it and the oni a
   little faster still. `node scripts/magician-tag.mjs <dir>` plays one
@@ -571,11 +571,17 @@ The shape of it, because it is the shape the next voice world should copy:
   so every script starts where it always did; `?intro` forces it for a
   capture, which is how the hub card was taken.
 
-## Oni
+## Zombie Tag (the code says Oni)
 
-`/oni` is infection tag for a whole room at once: phones, laptops and a
-headset in one festival square, a random roster character each, and the
-projector at `/oni?show` with a QR code that opens the join page. The front
+`/zombies` (also `/oni`, `/tag`) is infection tag for a whole room at once:
+phones, laptops and a headset in one festival square, a random roster
+character each, and the projector at `/zombies?show` with a QR code that
+opens the join page. It shipped as Oni, after Japanese tag, and was renamed
+because nobody knew what an oni was; the code, the registry key and the
+card art's key still say `oni`, and every word a player reads says zombie.
+A zombie is the same character tinted green (each avatar owns copies of
+its materials, so one player turning never tints another), shambling, with
+a green glow and a groan when it turns. The front
 page's first card (`src/oni/ui/LobbyCard.tsx`) is the lobby: name, character,
 join.
 

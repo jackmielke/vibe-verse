@@ -56,6 +56,24 @@ export function createSfx() {
     o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
   }
 
+  // "Braaains": a sawtooth sliding down through a vowel-ish band-pass, wobbling.
+  function groan() {
+    const c = ac(); if (!c || !master) return;
+    const t = c.currentTime;
+    const o = c.createOscillator(); o.type = "sawtooth";
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(92, t + 0.9);
+    const lfo = c.createOscillator(); lfo.frequency.value = 7;
+    const lfoGain = c.createGain(); lfoGain.gain.value = 6;
+    lfo.connect(lfoGain).connect(o.frequency);
+    const f = c.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 5;
+    f.frequency.setValueAtTime(750, t);
+    f.frequency.exponentialRampToValueAtTime(380, t + 0.9);
+    const g = c.createGain(); env(g, t, 0.35, 0.08, 0.9);
+    o.connect(f).connect(g).connect(master);
+    o.start(t); lfo.start(t); o.stop(t + 1.05); lfo.stop(t + 1.05);
+  }
+
   let drumTimer: number | null = null;
   let drumUrgency = 0;
   const drumLoop = () => {
@@ -70,10 +88,10 @@ export function createSfx() {
     resume() { const c = ac(); if (c && c.state === "suspended") void c.resume(); },
     setMuted(m: boolean) { muted = m; if (master) master.gain.value = m ? 0 : 0.8; },
     muted: () => muted,
-    /** Somebody got tagged; louder if it was us or by us. */
+    /** Somebody got bitten; louder if it was us or by us, with a groan. */
     tag(close: boolean) {
       taiko(close ? 1.2 : 0.55, close ? 0.9 : 1.1);
-      if (close) { taiko(0.9, 0.8, 0.12); tone(220, 0.5, "sawtooth", 0.08); tone(165, 0.6, "sawtooth", 0.06, 0.08); }
+      if (close) { taiko(0.9, 0.8, 0.12); groan(); }
     },
     count(n: number) { tone(n > 0 ? 660 : 990, n > 0 ? 0.18 : 0.5, "triangle", 0.25); },
     gong() {

@@ -1,7 +1,55 @@
 {
-  "generated_at": "2026-09-25T03:28:03.188Z",
+  "generated_at": "2026-09-25T17:13:17.602Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "f9f365c1",
+      "date": "2026-09-25",
+      "subject": "magician-tag: W and H choose the viewport, for captures at video size",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "ff909b0c",
+      "date": "2026-09-24",
+      "subject": "iOS shell: animated starfield splash",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "c46dbbe9",
+      "date": "2026-09-24",
+      "subject": "iOS shell: keep web view below the Dynamic Island",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "0664353e",
+      "date": "2026-09-24",
+      "subject": "Add Vibe Verse iOS shell app (whole site, XcodeGen)",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+      "places": [],
+      "files": 13
+    },
+    {
+      "sha": "88fb2e57",
+      "date": "2026-09-25",
+      "subject": "Changes",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "a4ded1c0",
+      "date": "2026-09-25",
+      "subject": "Refresh the build log with today's commits",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "d38e3be9",
       "date": "2026-09-25",
@@ -946,54 +994,6 @@
     },
     {
       "sha": "8aab423e",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "e5a0107e",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "3e5fcaa0",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "49ee9670",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "10e71005",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "b7242969",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "4c56fb78",
       "date": "2026-08-20",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
