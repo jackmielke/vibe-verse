@@ -22,6 +22,9 @@ export interface Player {
   /** The controls as they were last frame, even while frozen: x right, y forward, -1..1. */
   controls(): { x: number; y: number; jump: boolean };
   teleport(x: number, z: number, yaw?: number): void;
+  /** Walk to a spot on our own (a trigger pointed at the ground); any stick or key input cancels it. */
+  moveTo(x: number, z: number): void;
+  target(): { x: number; z: number } | null;
   /** Whether the pointer is locked / a touch is active — input is bound. */
   active(): boolean;
   /** A virtual joystick: x right, y forward, each -1..1. Zero to release. */
@@ -177,6 +180,9 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
   let snapCooldown = 0;
   let xrJumpLatch = false;
   let headYawXr = 0;
+  let target: { x: number; z: number } | null = null;
+  let targetBest = Infinity;
+  let targetStuck = 0;
 
   return {
     rig,
@@ -189,6 +195,8 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
     onPinch(fn) { pinchFn = fn; },
     controls: () => lastCtl,
     active() { return locked || touches.size > 0; },
+    moveTo(x, z) { target = { x, z }; targetBest = Infinity; targetStuck = 0; },
+    target: () => target,
     update(dt, groundAt, opts) {
       let mx = 0, mz = 0, jump = false;
       if (opts.xr && opts.xrCamera) {
@@ -246,6 +254,19 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
         head.rotation.x = pitch;
         headYawXr = 0;
       }
+      // Walking to a pointed-at spot, until a stick or a key says otherwise.
+      if (target) {
+        const dx = target.x - rig.position.x, dz = target.z - rig.position.z;
+        const d = Math.hypot(dx, dz);
+        if (vel.lengthSq() > 0.02 || d < 0.4 || opts.frozen) target = null;
+        else {
+          const ease = Math.min(1, d / 1.2);
+          vel.set((dx / d) * ease, 0, (dz / d) * ease);
+          // A spot behind a wall or up a cliff is given up, not walked into forever.
+          if (d < targetBest - 0.05) { targetBest = d; targetStuck = 0; } else targetStuck += dt;
+          if (targetStuck > 1.5) target = null;
+        }
+      }
       // Held still (playing the screen): the controls are read, not walked.
       lastCtl.x = Math.max(-1, Math.min(1, mx)); lastCtl.y = Math.max(-1, Math.min(1, -mz)); lastCtl.jump = jump || keys.has("Space");
       if (opts.frozen) { vel.set(0, 0, 0); jump = false; }
@@ -273,6 +294,7 @@ export function createPlayer(container: HTMLElement, camera: THREE.PerspectiveCa
       } else { head.position.y = 0; rig.scale.setScalar(opts.eye); }
     },
     teleport(x, z, y) {
+      target = null;
       rig.position.x = x;
       rig.position.z = z;
       vy = 0;

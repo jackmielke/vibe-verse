@@ -569,6 +569,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
   const rayMat = new THREE.LineBasicMaterial({ color: "#b98cff", transparent: true, opacity: 0.6 });
   const controllers: THREE.Group[] = [];
+  const rays: THREE.Line[] = [];
   for (let i = 0; i < 2; i++) {
     const grip = renderer.xr.getControllerGrip(i);
     grip.add(controllerFactory.createControllerModel(grip));
@@ -577,6 +578,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const ray = new THREE.Line(rayGeo, rayMat);
     ray.scale.z = 3;
     ctrl.add(ray);
+    rays.push(ray);
     player.rig.add(ctrl);
     controllers.push(ctrl);
   }
@@ -887,6 +889,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       screenPtr.pressed = true;
       return;
     }
+    const hit = groundHits[controllers.indexOf(c)];
+    if (hit && !game.active()) { walkTo(hit); return; }
     if (game.active()) {
       c.getWorldPosition(ctrlPos);
       ctrlDir.set(0, 0, -1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
@@ -910,6 +914,71 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const h = screen.hit(ctrlPos, ctrlDir);
     if (h) { screenPtr.x = h.x; screenPtr.y = h.y; }
   }
+  // ---- walking by pointing ---------------------------------------------------
+  // A controller (or hand) pointed at the ground shows a ring where it lands
+  // and its ray turns gold: the trigger or a pinch walks you there. Pointed at
+  // the sky the ray stays violet and the trigger talks, as it always did.
+  const walkRayMat = new THREE.LineBasicMaterial({ color: "#ffd98a", transparent: true, opacity: 0.85 });
+  const reticleGeo = new THREE.RingGeometry(0.2, 0.3, 28);
+  reticleGeo.rotateX(-Math.PI / 2);
+  const reticleMat = new THREE.MeshBasicMaterial({ color: "#fff4d8", transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+  const targetMat = new THREE.MeshBasicMaterial({ color: "#ffd98a", transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+  const reticles = controllers.map(() => { const m = new THREE.Mesh(reticleGeo, reticleMat); m.visible = false; scene.add(m); return m; });
+  const walkMarker = new THREE.Mesh(reticleGeo, targetMat);
+  walkMarker.visible = false;
+  scene.add(walkMarker);
+  const groundHits: Array<THREE.Vector3 | null> = controllers.map(() => null);
+  const WALK_RANGE = 30;
+  const headW = new THREE.Vector3();
+  function updateWalkPointers(inXr: boolean) {
+    controllers.forEach((c, i) => {
+      const hitNow = inXr && !playing && !game.active() ? pointAtGround(c) : null;
+      groundHits[i] = hitNow;
+      reticles[i].visible = !!hitNow;
+      rays[i].material = hitNow ? walkRayMat : rayMat;
+      if (hitNow) {
+        reticles[i].position.set(hitNow.x, hitNow.y + 0.05, hitNow.z);
+        c.getWorldPosition(ctrlPos);
+        rays[i].scale.z = ctrlPos.distanceTo(hitNow) / Math.max(0.01, player.rig.scale.x);
+      } else rays[i].scale.z = 3;
+    });
+    const t = player.target();
+    walkMarker.visible = !!t;
+    if (t) {
+      walkMarker.position.set(t.x, groundAt(t.x, t.z) + 0.06, t.z);
+      walkMarker.scale.setScalar(1 + Math.sin(time * 6) * 0.08);
+    }
+  }
+  // March down the controller's ray until it goes under the ground.
+  function pointAtGround(c: THREE.Group): THREE.Vector3 | null {
+    c.getWorldPosition(ctrlPos);
+    ctrlDir.set(0, 0, -1).applyQuaternion(c.getWorldQuaternion(ctrlQ));
+    if (ctrlDir.y > -0.03) return null;
+    let prev = 0;
+    for (let t = 0.4; t <= WALK_RANGE; t += 0.4) {
+      const x = ctrlPos.x + ctrlDir.x * t, y = ctrlPos.y + ctrlDir.y * t, z = ctrlPos.z + ctrlDir.z * t;
+      if (y <= groundAt(x, z)) {
+        // Halve back to the surface.
+        let lo = prev, hi = t;
+        for (let k = 0; k < 6; k++) {
+          const m = (lo + hi) / 2;
+          if (ctrlPos.y + ctrlDir.y * m <= groundAt(ctrlPos.x + ctrlDir.x * m, ctrlPos.z + ctrlDir.z * m)) hi = m; else lo = m;
+        }
+        const hx = ctrlPos.x + ctrlDir.x * hi, hz = ctrlPos.z + ctrlDir.z * hi;
+        return new THREE.Vector3(hx, groundAt(hx, hz), hz);
+      }
+      prev = t;
+    }
+    return null;
+  }
+  function walkTo(hit: THREE.Vector3) {
+    // The target is for the rig; put the *head* on the spot, wherever the
+    // visitor happens to be standing in their room.
+    renderer.xr.getCamera().getWorldPosition(headW);
+    player.moveTo(hit.x - (headW.x - player.position.x), hit.z - (headW.z - player.position.z));
+    ambience.play("sparkle");
+  }
+
   // The grips do what the HUD's buttons do on a screen: the right grip the
   // first thing on offer, the left grip the second. Words (a wish, a program)
   // have no keyboard here, so a wish is written for you and the screen asks
@@ -1208,6 +1277,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const xr = renderer.xr.isPresenting ? renderer.xr.getSession() : null;
     const eye = 1 / s.giant;
     const wading = player.position.y < terrain.waterY() - 0.4 ? 0.55 : 1;
+    updateWalkPointers(!!xr);
     player.update(dt, groundAt, { frozen: playing || sitting || intro >= 0, gravity: s.gravity, speed: s.speed * eye * wading, eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
@@ -1435,6 +1505,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       forest.dispose();
       rayGeo.dispose();
       rayMat.dispose();
+      walkRayMat.dispose(); reticleGeo.dispose(); reticleMat.dispose(); targetMat.dispose();
       game.dispose();
       room?.close();
       room = null;
@@ -1489,6 +1560,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     fire: () => fireFromCamera(),
     companion: () => vibey.debug(),
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
+    /** Walk to a spot the way a trigger pointed at the ground does. */
+    walkTo: (x: number, z: number) => { player.moveTo(x, z); return player.target(); },
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
     grass: () => grass.stats(),
     spells: () => spells.group.children.map((c) => ({ visible: c.visible, head: Array.from(((c as THREE.Points).geometry.attributes.position.array as Float32Array).slice(0, 3)).map((v) => +v.toFixed(2)) })),
@@ -1604,6 +1677,7 @@ declare global {
       fire(): void;
       companion(): ReturnType<Vibey["debug"]>;
       player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
+      walkTo(x: number, z: number): { x: number; z: number } | null;
       peers(): { connected: boolean; count: number; id: string | null };
       grass(): { chunks: number; blades: number };
       river(): unknown;

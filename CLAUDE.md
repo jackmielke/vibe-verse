@@ -494,8 +494,10 @@ The shape of it, because it is the shape the next voice world should copy:
   the HUD's VR button is three's own `VRButton`. Vibey's captions are a
   canvas sprite above the head, so the words exist in the headset where there
   is no HTML, and a strip under the view says what the trigger does. In the
-  headset a trigger or a hand pinch *talks* (starts the voice session) when
-  no game is running and shoots when one is; holding it for two seconds
+  headset a trigger or a hand pinch pointed at the ground *walks* there (the
+  ray turns gold and a ring marks the spot; `player.moveTo`, cancelled by any
+  stick input); pointed at the sky it *talks* (starts the voice session) when
+  no game is running, and it shoots when one is; holding it for two seconds
   ends the XR session, which is the only way out with bare hands. A pinch is
   `buttons[0]` on a hand's gamepad, so nothing else may be bound to button 0
   or a pinch will do two things.
@@ -580,6 +582,11 @@ join.
   one player against bots). `window.__oni.settle(s)` runs the simulation
   without drawing and `teleport(x, z)` walks somebody into somebody else;
   the round clock is the wall clock, so wait out the countdown for real.
+- **Point to run.** In a headset each controller or hand casts a laser and
+  the trigger or a pinch runs you to where it meets the ground (holding it
+  keeps steering); a click or tap on the ground does the same on a laptop or
+  phone, and a drag still turns the camera. Nothing else in Oni is bound to
+  the trigger, so it can mean "go there" and nothing more.
 - **Bots are practice only** (`?bots=6`, network off). Their ids start with
   `~` so they sort after every real id and can never be the referee.
 - The QR encoder is vendored (`src/lib/vendor/qrcode.js`, MIT), not

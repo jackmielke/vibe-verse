@@ -1,7 +1,15 @@
 {
-  "generated_at": "2026-09-25T02:48:33.150Z",
+  "generated_at": "2026-09-25T02:56:50.035Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "e5e81273",
+      "date": "2026-09-25",
+      "subject": "Oni: point and click to run, in VR and on the flat",
+      "lede": "In a headset each controller (or hand) casts a laser with a ring where it meets the ground; the trigger or a pinch runs you there, and holding it keeps steering. On a laptop a click on the ground does the same and on a phone a tap does, while a drag still turns the camera. The stick or keys take over the moment they are used, and a spot you cannot reach is given up after a second without progress.",
+      "places": [],
+      "files": 3
+    },
     {
       "sha": "6016c4c0",
       "date": "2026-09-25",
@@ -991,14 +999,6 @@
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
       "places": [],
       "files": 2
-    },
-    {
-      "sha": "89a75dbe",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
     }
   ]
 }

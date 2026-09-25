@@ -218,7 +218,7 @@ export default function Magician() {
         if (s === "live") return "Listening. Just talk. Hold the trigger or pinch to leave VR.";
         if (s === "connecting") return "Connecting to Vibey…";
         if (s === "error") return "Voice failed. Take the headset off to see why.";
-        return "Pinch or pull the trigger to talk to Vibey. Hold it to leave VR.";
+        return "Point at the ground + trigger to walk. Point at the sky to talk to Vibey.";
       },
     });
     recorderRef.current = createRecorder(world.canvas(), () => [world.audioStream(), ...(sessionRef.current?.streams() ?? [])].filter((s): s is MediaStream => Boolean(s)));
