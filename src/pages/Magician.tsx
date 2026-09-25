@@ -709,7 +709,7 @@ export default function Magician() {
                 />
               </form>
             </div>
-            <div className={`max-w-xl gap-1.5 ${phone ? "flex w-full overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:none]" : "flex flex-wrap justify-center"}`}>
+            <div className="flex w-full max-w-xl gap-1.5 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:none]">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
@@ -725,11 +725,6 @@ export default function Magician() {
                 </button>
               ))}
             </div>
-            {!phone && (
-              <div className="text-[10px] tracking-wide text-white/35">
-                {status === "live" && detail ? detail : engine === "live" ? "gpt-live-1" : "gpt-realtime-2.1"} · {findCompanion(companion).label} beside you · say "become a wizard" · click the world to look around
-              </div>
-            )}
           </div>
         </>
       )}
