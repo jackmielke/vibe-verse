@@ -4238,6 +4238,39 @@ export type Database = {
         }
         Relationships: []
       }
+      vibe_magician_screen: {
+        Row: {
+          chars: number
+          code: string | null
+          created_at: string
+          device_id: string
+          id: number
+          ip: string | null
+          model: string
+          request: string
+        }
+        Insert: {
+          chars?: number
+          code?: string | null
+          created_at?: string
+          device_id: string
+          id?: number
+          ip?: string | null
+          model?: string
+          request?: string
+        }
+        Update: {
+          chars?: number
+          code?: string | null
+          created_at?: string
+          device_id?: string
+          id?: number
+          ip?: string | null
+          model?: string
+          request?: string
+        }
+        Relationships: []
+      }
       vibe_magician_supporters: {
         Row: {
           amount_cents: number | null
