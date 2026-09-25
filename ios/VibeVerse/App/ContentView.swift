@@ -9,7 +9,8 @@ struct ContentView: View {
             Color("LaunchBackground").ignoresSafeArea()
 
             VerseWebView(model: model)
-                .ignoresSafeArea()
+                // Keep clear of the Dynamic Island; the page doesn't pad for it.
+                .ignoresSafeArea(edges: .bottom)
                 .opacity(model.loaded ? 1 : 0)
                 .animation(.easeOut(duration: 0.5), value: model.loaded)
 
