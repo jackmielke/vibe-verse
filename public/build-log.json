@@ -1,7 +1,201 @@
 {
-  "generated_at": "2026-09-24T05:04:50.890Z",
+  "generated_at": "2026-09-25T02:37:41.347Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "56f99873",
+      "date": "2026-09-25",
+      "subject": "Add Hoshimura iOS app: a WKWebView shell on /magician, ready for TestFlight",
+      "lede": "SwiftUI app with a full-screen web view on myvibeverse.com/magician, the mic granted once for Vibey, sound that ignores the silent switch, screen kept awake, and outside links sent to Safari. Includes the Xcode project, shared scheme, icon, export options, an archive-and-upload script and a README with the TestFlight steps.",
+      "places": [],
+      "files": 16
+    },
+    {
+      "sha": "599da78c",
+      "date": "2026-09-24",
+      "subject": "Stamp the worlds' last-changed dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "515b4f42",
+      "date": "2026-09-24",
+      "subject": "Magician: the hub card is the valley from the arrival shot at golden hour",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "29bac927",
+      "date": "2026-09-24",
+      "subject": "Magician: Vibey stands a little further off, and on the same floors you do",
+      "lede": "On a wide screen the companion took a third of the view two and a half metres away and hid the Magic Screen from the square. It now stands 3.3 m ahead and 1.9 m aside (a portrait phone keeps it nearer the middle), and it follows the world's floors (bridge planks, house floors) instead of the bare terrain, so it no longer sinks into the bridge or a room.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "10d645c3",
+      "date": "2026-09-24",
+      "subject": "Magician: sky lanterns",
+      "lede": "\"Release lanterns into the sky\" sends up to thirty paper lanterns up from where the visitor stands: they lift off slowly, then climb and drift on the air, turning, and fade among the stars over three minutes. They are wishes like the river's, so everyone in the valley sees them, and their height is a function of the clock since release, so a newcomer sees them where they are. The voice's release_lantern takes sky=tru",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "a7f7aa85",
+      "date": "2026-09-24",
+      "subject": "Magician: arrive from the sky",
+      "lede": "After Enter the camera starts high over the valley (the village, the screen, the shrine on its hill, the red bridge and the river all in one frame), sweeps down over the river and into the visitor's eyes over six seconds, and the temple bell rings. Any key or tap skips it. It never runs in a headset or under an automated browser (navigator.webdriver), where every script would otherwise start mid-flight; ?intro forces",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "cab9d6d9",
+      "date": "2026-09-24",
+      "subject": "Magician: the spell ribbon arcs out over the valley where you can see it",
+      "lede": "It went straight up and left the top of the view in a third of a second, and at a low frame rate it was a few scattered dots. It now rides a curve out ahead of the visitor and up, eased in and out, spiralling round the curve, and its trail fills in by distance travelled rather than by frame, so it stays a ribbon on a phone at thirty frames or a busy headset.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "f3ef2991",
+      "date": "2026-09-24",
+      "subject": "Magician: spells you can see leave, hotaru over the river, channels, a temple bell",
+      "lede": "A spell now leaves Vibey's hands as a ribbon of light that spirals up into the sky and blooms, coloured by what it does (blue for weather, gold for time, amber for lanterns, violet for the screen), with a rising chime. On warm dry nights a cloud of fireflies hangs low over the river by the bridge, each on its own slow pulse. The Magic Screen gets Change channel (F) to flip through the built-in channels, which also de",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "0f463d3c",
+      "date": "2026-09-24",
+      "subject": "Magician: Vibey gives a thumbs up when a program lands and waves a lantern off",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "c0ec48c4",
+      "date": "2026-09-24",
+      "subject": "Magician: broadleaf trees in three shapes, some with a second lobe",
+      "lede": "Round, a tall vase like a zelkova, or a wide old umbrella like a camphor, each with a little size jitter, and near trees sometimes grow a lower second lobe to one side. Critic round three read one tree repeated as an asset pack's default.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "1398f9a3",
+      "date": "2026-09-24",
+      "subject": "Magician: the hearth lights the room",
+      "lede": "The fire's light sat half a metre above the embers, so the ash under it burnt out to white and the walls three metres away barely caught it. It now hangs above the hearth and is stronger, so the thatch overhead and the plaster glow warm at dusk, and the ash is a darker grey.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "3dd94bab",
+      "date": "2026-09-24",
+      "subject": "Magician: a moonlit night instead of a black one, and a worn edge to the square",
+      "lede": "Critic round three: past fifteen metres the night was flat black, lamps floating in a void. The night horizon and fog are now a blue mist the cedar hills stand against, the sky fill falls less at night and turns blue, the moon is twice as bright, and exposure drops less. The square's grass stopped at a ruled line; its edge now wanders with noise, a few tufts survive in the dirt, and the dirt itself varies from packed",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "c474bcfd",
+      "date": "2026-09-24",
+      "subject": "Magician: suggestions offer the screen, the lanterns and the koi",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "4691be75",
+      "date": "2026-09-24",
+      "subject": "Magician: VR grips for the new actions, lighter koi, notes for whoever is next",
+      "lede": "In the headset the right grip does the first thing on offer and the left grip the second (feed, float a wish, play, sit, pet); the VR strip says which. Playing the screen in VR, the trigger is its pointer, aimed down the controller. Koi are two draw calls each instead of four, interiors only update within 16 m, the phone's action chips clear the status pills, and from the top of the bridge the view is no longer a gol",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "e41c1796",
+      "date": "2026-09-24",
+      "subject": "Magician: the valley's dials, every knob by hand",
+      "lede": "A dials panel (desktop bar and the phone menu) with round knobs you drag for time, wind, wind bearing, fog, aurora, meteors, petals, flood, walk speed and world scale, and buttons for weather, season, lanterns, fireflies, gravity, the clock and the koto. Each control writes the same patch a spoken wish does, throttled to about ten a second, so a knob turned here moves the world for everyone in the room and a spell tu",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "5a873159",
+      "date": "2026-09-24",
+      "subject": "Magician: walk into the farmhouses, sit by the fire, pet the cat",
+      "lede": "The two minka facing the square are open: a doorway with the sliding doors pushed aside and a noren (now three indigo panels and a crest, so it reads as a curtain and not a closed door), walls as segments the player slides along with a gap for the door, and a floor you step up onto from the stone and the veranda.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "f4ebad16",
+      "date": "2026-09-24",
+      "subject": "Magician: the Magic Screen, a shared screen in the square that Vibey programs live",
+      "lede": "Say \"put a game of snake on the screen\" (or type it into Make something) and a fast OpenAI model writes a real program for it. The code streams back through vibe-magician-screen and the screen shows it being written, line by line, for everyone in the valley; a draft goes to the room every second and a half, and the finished program is world state, so every viewer runs the same thing on the same clock.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 14
+    },
+    {
+      "sha": "af4f6337",
+      "date": "2026-09-24",
+      "subject": "Magician: a red drum bridge you walk over, koi, and wish lanterns on a real river",
+      "lede": "The river was dry for most of its length: the paddies' terraces blended its channel away and water showed for ten metres at the bridge. It is now carved last, a bed below the water line all the way to the lake, and the paddy sheets split around it.",
+      "places": [],
+      "files": 12
+    },
+    {
+      "sha": "6e72fb56",
+      "date": "2026-09-24",
+      "subject": "Magician: wind that gusts, and the valley's small sounds",
+      "lede": "The wind was one band-passed hiss with a sine wobble. It is now three layers driven by one random gust process: a low brown-noise body whose cutoff opens with each gust, a howl that only sings when it really blows, and a fast leaf flutter that is loud near trees. Around it: a babbling river by distance, birds by day (the bush warbler's hokekyo among them), bell crickets and frogs at night, cicadas in summer, glass wi",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "1e296bf2",
+      "date": "2026-09-24",
+      "subject": "Magician: a triangle budget hook, lighter grass in the headset",
+      "lede": "window.__magician.render() reports the last frame's draw calls and triangles, and budget() splits triangles by top-level object; BUDGET=1 makes magician-shot print it. At the village it is about 1.06M triangles, 774k of them grass before culling, so the headset now drops grass a little further (8 per square metre out to 20 m).",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "766498ad",
+      "date": "2026-09-24",
+      "subject": "Magician: the splash and the hub card are the real valley at golden hour",
+      "lede": "The landing page showed a painted spirit gate that is not in the world. It now opens on a capture from the running valley (lanterns lit, windows glowing, cedar hills, the shrine on its hill), cropped toward the village on a phone, and the hub card uses the same frame.",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "f7f93963",
+      "date": "2026-09-24",
+      "subject": "Magician: walls and trunks block you, lanterns light at golden hour, sunset fill",
+      "lede": "Houses and the shrine push the player out of their footprint (and so do teleports), and near tree trunks do too, so the camera no longer ends up inside a wall or a crown. Lanterns come on from 17:00 while the sky is still bright, the sky fills shaded walls when the sun is low so houses keep their detail against a sunset, and crown undersides are lighter.",
+      "places": [],
+      "files": 4
+    },
+    {
+      "sha": "6a406a13",
+      "date": "2026-09-24",
+      "subject": "Magician: stone lanterns, a lamp light pool, layered tree crowns with wind, cedar hills",
+      "lede": "Lanterns are kasuga-doro built from the stone surface, and every lamp (lanterns and house windows) now feeds one pool of four point lights that follows the nearest lamps, instead of twenty-odd lights the shader paid for on every pixel. Tree crowns are clumped, shaded and sway in the state's wind; sugi are tiered cones; 700 far cedars in noise-clumped groves cover the hills so the slopes read as mountains.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "0c8e3180",
+      "date": "2026-09-24",
+      "subject": "The Magician: farmhouses, softer light, haze in the valley",
+      "lede": "Houses are minka now (src/magician/world/house.ts): a stone plinth, a raised floor, a dark timber frame with posts every metre and a half, charred cedar boards to waist height and white plaster above, shoji windows in wooden lattice that glow at dusk, sliding doors under an indigo noren, a veranda on short legs, a step stone, and either a thick thatched roof with a bundled ridge cap or a blue-grey tiled one with end ",
+      "places": [],
+      "files": 10
+    },
     {
       "sha": "ebc182d3",
       "date": "2026-09-24",
@@ -805,198 +999,6 @@
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "8cd085b2",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "5af23d70",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "7c217095",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "c64773d1",
-      "date": "2026-08-20",
-      "subject": "Regenerate the published build log",
-      "lede": "`prebuild` rewrites it on every `npm run build`, so it comes out of a verification run dirty and one commit behind. Regenerated against the tip so the copy served at myvibeverse.com/build-log.json matches what is on main.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "2767213d",
-      "date": "2026-08-20",
-      "subject": "Give the hour and the weather to the player",
-      "lede": "The world has had a full day cycle and five weather conditions since it was built, and until now the only thing that could reach either was a debug hook meant for a screenshot script. That is a strange thing to hide: the whole argument for a world painted at one specific minute of one specific sunset is that the light *is* the world, and moving it is five different places for the price of one.",
-      "places": [],
-      "files": 6
-    },
-    {
-      "sha": "91b06353",
-      "date": "2026-08-20",
-      "subject": "Glass, rather than a painting of glass",
-      "lede": "The towers were a bright painted gradient with 12% environment mixed over them at face-on. That is what plaster looks like. Glass is the other way round — a dark body under a bright reflection — and three things were missing before it could be:",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "290ede15",
-      "date": "2026-08-20",
-      "subject": "Bind the look drag where nothing can get above it",
-      "lede": "Jack cannot turn the camera by dragging — in this world *or* in Vibe Island, in an ordinary Chrome window, holding the left button. Two completely different bindings failing the same way says the fault is not in either one's arithmetic, so this stops relying on the part that can be taken away.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "5bab24ba",
-      "date": "2026-08-20",
-      "subject": "Regenerate the published build log",
-      "lede": "",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "5eae0835",
-      "date": "2026-08-20",
-      "subject": "Note what the recorder actually measured, and that the prompts were walked",
-      "lede": "`route-gif` refused this world — four distinct frames against a floor of eight — and the honest reading is not \"nothing moves here\": every frame it captured was distinct, and it only got four because SwiftShader renders the Empyrean at about a frame a second. The recorder cannot tell an inert world from a slow rasteriser. The still stands, but the reason is written down.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "382bbc28",
-      "date": "2026-08-20",
-      "subject": "Banners that read as banners",
-      "lede": "A banner run's accent panels were mixed thirty per cent toward cream, which turns the Spires' #8fd6ff into something within a few points of white. Hung on a five-centimetre cable against a navy sky, a two-metre near-white rectangle reads as a blank quad floating in the middle of the avenue — the comment beside the stiffening pole already says that is the thing to avoid, and the colour was doing it anyway. Twelve per ",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "fe9febbf",
-      "date": "2026-08-19",
-      "subject": "Teach route-perf to click past a menu, and measure what this costs",
-      "lede": "The first perf run on /empyrean came back **60.1 fps, 0 draws, 0 triangles**, printed as `ok`. That is a perfect score for a title card: route-perf clicks the middle of the viewport once, which is not where the Arrive button is, so the world never booted. `PERF_ENTER=<button text>` names it and retries — the handler is often attached after the button is painted under SwiftShader — and a route that holds a live WebGL ",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "ca5f877a",
-      "date": "2026-08-19",
-      "subject": "Recapture the card, and stamp the dates",
-      "lede": "The card art was taken before the shopfronts were fixed, so it had the curtain of stretched glazing hanging under the island in it — which is the one part of the picture the card is *about*. The keel is a keel now.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "b6f91e7c",
-      "date": "2026-08-19",
-      "subject": "Cut stone on the terrace faces, and a promenade you can see from",
-      "lede": "The wall you stand against on the promenade is a hundred metres of fascia two metres from the lens, and it was one flat mauve field with a soft vertical shimmer over it — a rhythm expressed as a 22% shading swing is a rhythm you can only read from a kilometre away. A retaining wall reads as masonry from three things: bays with real edges, courses across them, and a plinth and a cornice saying which way is up. All thr",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "3bac2332",
-      "date": "2026-08-19",
-      "subject": "Four hundred trees were black because green times green is not green",
-      "lede": "Every tree carries its leaf colour on `instanceColor`, and three multiplies that by the vertex colour — so tagging the canopy geometry green as well squared it: #4f8f4e rendered as #183618. In a city that is otherwise all warm light at dusk, four hundred black blobs along the avenues were the loudest wrong thing at street level, and the thing that looked wrong was the *shading*, which is in a different file.",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "af9a0aa9",
-      "date": "2026-08-19",
-      "subject": "The shopfronts were six hundred metres tall",
-      "lede": "`shopfront` takes a level and a height, and two of its four derived numbers confused the one for the other:",
-      "places": [],
-      "files": 4
-    },
-    {
-      "sha": "36e3199b",
-      "date": "2026-08-19",
-      "subject": "Step the nav graph by its clearance, not by a guess at a spacing",
-      "lede": "The crossing stitcher walked each candidate edge at a fixed interval and asked `surfaceAt` whether it was still on pavement. Five even samples let eighteen edges through a building; one every 1.2 m still let twenty through. Both were the same mistake — pick a spacing, hope no corner an avenue cuts off a block is thinner than it — and there is no spacing that is safe, because the sliver is as thin as the geometry happ",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "5efbbeb0",
-      "date": "2026-08-19",
-      "subject": "Untrack the scratch harnesses agents leave behind",
-      "lede": "`.tmp-t.mjs` and `__zz_vshot.mjs` are one-off Playwright drivers written to look at a frame and then forgotten. They got swept into a commit by a `git add -A` while their author was still using them, which is how a throwaway becomes a file somebody has to wonder about in six months.",
-      "places": [],
-      "files": 3
-    },
-    {
-      "sha": "0ba1c645",
-      "date": "2026-08-19",
-      "subject": "Two daylights, and a snowfield that fog could not touch",
-      "lede": "The lighting pass landed and it found two bugs it could not reach from its own files. Both were mine.",
-      "places": [],
-      "files": 22
-    },
-    {
-      "sha": "35052c54",
-      "date": "2026-08-19",
-      "subject": "A budget on what the world costs, and a clock that dwells",
-      "lede": "**`src/test/empyreanBudget.test.ts`** counts draw calls and triangles per system and holds a ceiling on each. Frame rate cannot be measured here — no GPU, so Chromium rasterises on the CPU — but the numbers that *cause* frame rate can, and they are exact: they are what the page asks the driver to do, and they are identical on real hardware.",
-      "places": [],
-      "files": 11
-    },
-    {
-      "sha": "c1bc8854",
-      "date": "2026-08-19",
-      "subject": "Unseal the café and the gallery; stop photographing the menu",
-      "lede": "Three things the last round turned up.",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "a5938dd2",
-      "date": "2026-08-19",
-      "subject": "A test that catches the bugs a green build cannot",
-      "lede": "`src/test/empyreanWorld.test.ts` builds every system that does not need a renderer, steps it two frames, and looks for the failures whose symptom is a black screen rather than an exception:",
-      "places": [],
-      "files": 14
-    },
-    {
-      "sha": "e32bc7fe",
-      "date": "2026-08-19",
-      "subject": "The city is standing: ten systems, integrated, and it renders",
-      "lede": "Still on the branch, not main — the frames show real problems and it is not worth a live deploy yet. But it typechecks, builds, and opening `/empyrean` gives you a street with kerbs, lit windows, trees, benches, a tram, birds and a five-hundred-metre Beacon at the end of it.",
-      "places": [],
-      "files": 30
-    },
-    {
-      "sha": "f5c5994d",
-      "date": "2026-08-19",
-      "subject": "WIP: the plan, and ten systems being built against it",
-      "lede": "Not on main, and not ready for it: this tree does not typecheck. `world.ts` imports systems that are still being written, and pushing it would take a live `main` down. It is here so the work is not sitting only in a container.",
-      "places": [],
-      "files": 40
-    },
-    {
-      "sha": "df3a2e07",
-      "date": "2026-08-19",
-      "subject": "npm run stamp, and a lockfile a fresh clone can actually install",
-      "lede": "Two things, and the second one is the one that matters.",
-      "places": [],
-      "files": 4
     }
   ]
 }

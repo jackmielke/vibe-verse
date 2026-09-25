@@ -38,6 +38,7 @@ import NotFound from "./pages/NotFound.tsx";
  */
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Magician = lazy(() => import("./pages/Magician.tsx"));
+const Oni = lazy(() => import("./pages/Oni.tsx"));
 const Unit7Playground = lazy(() => import("./pages/Unit7Playground.tsx"));
 const Lobby = lazy(() => import("./pages/Lobby.tsx"));
 const About = lazy(() => import("./pages/About.tsx"));
@@ -582,6 +583,12 @@ const App = () => (
               you speak. State, tools and renderer in src/magician. */}
           {["/magician", "/vibe-magician", "/hoshimura", "/genie"].map((path) => (
             <Route key={path} path={path} element={<Magician />} />
+          ))}
+          {/* ONI: infection tag at a summer festival, for a whole room at once.
+              Phones, laptops and headsets in one square; ?show is the
+              projector with the QR code. Rules, net and engine in src/oni. */}
+          {["/oni", "/tag", "/oni-gokko"].map((path) => (
+            <Route key={path} path={path} element={<Oni />} />
           ))}
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

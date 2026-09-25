@@ -74,6 +74,7 @@ import phanganArt from "@/assets/worlds/phangan.jpg";
 import coastRoadArt from "@/assets/worlds/coast-road.jpg";
 import beckRoadArt from "@/assets/worlds/beck-road.jpg";
 import magicianArt from "@/assets/worlds/magician.jpg";
+import oniArt from "@/assets/worlds/oni.jpg";
 
 export const WORLD_ART: Record<string, string> = {
   about: aboutArt,
@@ -89,6 +90,7 @@ export const WORLD_ART: Record<string, string> = {
   "coast-road": coastRoadArt,
   "beck-road": beckRoadArt,
   magician: magicianArt,
+  oni: oniArt,
   arcade: arcadeArt,
   orbit: orbitArt,
   shop: shopArt,

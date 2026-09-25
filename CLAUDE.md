@@ -553,3 +553,35 @@ The shape of it, because it is the shape the next voice world should copy:
   valley into the visitor's eyes) and is skipped under `navigator.webdriver`,
   so every script starts where it always did; `?intro` forces it for a
   capture, which is how the hub card was taken.
+
+## Oni
+
+`/oni` is infection tag for a whole room at once: phones, laptops and a
+headset in one festival square, a random roster character each, and the
+projector at `/oni?show` with a QR code that opens the join page. The front
+page's first card (`src/oni/ui/LobbyCard.tsx`) is the lobby: name, character,
+join.
+
+- **No host.** `rules.ts` is pure and every device reaches the same answer
+  from the same messages: the lowest id announces rounds (the "referee"), two
+  announced rounds resolve to the later start, tags only accumulate and the
+  earliest time per victim wins, and a player's own presence says whether
+  they have horns, so a lost tag heals on the next packet. Either side of a
+  touch may claim it; the runner's radius is larger because it sees the oni
+  late. `src/test/oniRules.test.ts` runs two and three matches on one fake
+  wire.
+- **The presence rate shrinks as the room grows** (`presenceHz`, about 72
+  packets a second across everybody) to stay under the project's Realtime
+  message rate, and receivers dead-reckon from the velocity in each packet.
+  The limit itself could not be read from here (the docs host is blocked),
+  so that number is a conservative guess, not a measurement.
+- **Verify with `node scripts/oni-shot.mjs`** (N players on the `local`
+  transport in one browser context, `SHOW=1` adds the projector, `BOTS=6`
+  one player against bots). `window.__oni.settle(s)` runs the simulation
+  without drawing and `teleport(x, z)` walks somebody into somebody else;
+  the round clock is the wall clock, so wait out the countdown for real.
+- **Bots are practice only** (`?bots=6`, network off). Their ids start with
+  `~` so they sort after every real id and can never be the referee.
+- The QR encoder is vendored (`src/lib/vendor/qrcode.js`, MIT), not
+  installed: bun could not reach its registry here, and a `package.json`
+  entry without a matching `bun.lock` is how a deploy breaks.

@@ -12,6 +12,7 @@
  * passport at the same moment, which is the entire reason the registry exists.
  */
 import { useCallback, useMemo, useState } from "react";
+import { OniLobbyCard } from "@/oni/ui/LobbyCard";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ChevronDown, Search, X } from "lucide-react";
@@ -504,6 +505,11 @@ export default function Game() {
 
           <TodaysPaper className="lg:mt-0" />
         </div>
+
+        {/* The room game, before the grid: at an event the front door's job is
+            to get a roomful of phones into one square, and this card is the
+            whole lobby. */}
+        <OniLobbyCard className="mt-5 sm:mt-8" />
 
         {/* One bar: how the list is ordered on the left, how to narrow it on
             the right. It used to be two stacked rows — a right-aligned search
