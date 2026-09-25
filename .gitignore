@@ -94,3 +94,4 @@ __scratch_*
 ios/build/
 ios/**/xcuserdata/
 ios/**/*.xcworkspace/xcuserdata/
+ios/VibeVerse/build/
