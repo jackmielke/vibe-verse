@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 const OUT = process.argv[2];
 const ROOM = "t" + Date.now().toString(36);
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--no-sandbox", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"] });
-const ctx = await browser.newContext({ viewport: { width: 640, height: 360 } });
+const ctx = await browser.newContext({ viewport: { width: Number(process.env.W ?? 640), height: Number(process.env.H ?? 360) } });
 const errs = [];
 const pages = [];
 for (const [name, i] of [["Jack", 0], ["Maya", 1]]) {
