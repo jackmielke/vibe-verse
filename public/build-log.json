@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-09-25T02:56:50.035Z",
+  "generated_at": "2026-09-25T03:24:49.065Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "926baa9a",
+      "date": "2026-09-25",
+      "subject": "Stamp the worlds' last-changed dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "640c50cf",
+      "date": "2026-09-25",
+      "subject": "Magician VR: point at the ground and pull the trigger to walk there",
+      "lede": "The trigger (or a pinch) already talks to Vibey, so the ray now says which one it will do: pointed at the ground it turns gold and puts a ring where it lands, and the trigger walks you there; pointed at the sky it stays violet and talks, as before. Holding it at the sky still leaves VR. The walk puts your head on the spot, gives up on somewhere it cannot reach, and any stick input takes over. The headset strip says s",
+      "places": [],
+      "files": 7
+    },
     {
       "sha": "e5e81273",
       "date": "2026-09-25",
@@ -983,22 +999,6 @@
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "d4bc1de6",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "8b239503",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 2
     }
   ]
 }

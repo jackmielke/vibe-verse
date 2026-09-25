@@ -97,7 +97,7 @@ export function colourFor(id: string): THREE.Color {
   return new THREE.Color().setHSL((hash(id) % 360) / 360, 0.7, 0.58);
 }
 
-export function createAvatar(opts: { id: string; name: string; char: string; big?: boolean }): Avatar {
+export function createAvatar(opts: { id: string; name: string; char: string; big?: boolean; noTag?: boolean }): Avatar {
   const s = acquire();
   const group = new THREE.Group();
   const body = new THREE.Group();
@@ -147,6 +147,8 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
   const tagScale = big ? 3.6 : 1.6;
   tag.scale.set(tagScale, tagScale / 4, 1);
   tag.position.y = BODY_HEIGHT + 0.65;
+  // Our own name over our own head, seen from behind, only gets in the way.
+  tag.visible = !opts.noTag;
   group.add(tag);
 
   const emotes: Array<{ sprite: THREE.Sprite; tex: THREE.CanvasTexture; t: number }> = [];
@@ -169,9 +171,14 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
       if (disposed || token !== loadToken) { r.dispose(); return; }
       if (rig) { body.remove(rig.object); rig.dispose(); }
       rig = r;
+      // Where the head actually is: the measured top of the body on its own,
+      // not the size the rig was asked for (code-built bodies come out shorter).
+      r.object.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(r.object);
+      const top = box.isEmpty() ? r.size.y : Math.min(r.size.y, box.max.y);
       body.add(r.object);
       placeholder.visible = false;
-      headY = Math.max(0.6, r.size.y * 0.96);
+      headY = Math.max(0.6, top * 0.94);
       idle = run = jumpAct = null;
       if (r.mixer && r.clips.length) {
         const find = (re: RegExp, not?: RegExp) => r.clips.find((c) => re.test(c.name) && !(not && not.test(c.name)));

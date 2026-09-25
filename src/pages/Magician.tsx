@@ -25,6 +25,11 @@ import { deviceId } from "@/magician/voice/session";
 import { Button } from "@/components/ui/button";
 import valleyShot from "@/assets/magician-valley.jpg";
 import magicianQr from "@/assets/magician-qr.jpg.asset.json";
+import { CharacterShuffle } from "@/oni/ui/CharacterShuffle";
+import { CharacterPortrait } from "@/oni/ui/JoinCard";
+import { PhaseBanner } from "@/oni/ui/PhaseBanner";
+import type { Hud } from "@/oni/world/Oni";
+import { randomCharacter, readCharacter, writeCharacter } from "@/oni/profile";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -44,7 +49,12 @@ export default function Magician() {
   const vrSlot = useRef<HTMLDivElement>(null);
   const [params] = useSearchParams();
   const [entered, setEntered] = useState(false);
-  const [engine, setEngine] = useState<Engine>(() => (params.get("engine") === "live" ? "live" : "realtime"));
+  // The voice engine: Realtime unless a link asks for Live (`?engine=live`).
+  const [engine] = useState<Engine>(() => (params.get("engine") === "live" ? "live" : "realtime"));
+  const [myChar, setMyChar] = useState<string>(readCharacter);
+  const [myName, setMyName] = useState<string>(() => { try { return localStorage.getItem("magician.name") ?? localStorage.getItem("oni.name") ?? ""; } catch { return ""; } });
+  const [tagHud, setTagHud] = useState<Hud | null>(null);
+  const [thirdPerson, setThirdPerson] = useState(true);
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [detail, setDetail] = useState<string>("");
   const [lines, setLines] = useState<Line[]>([]);
@@ -167,6 +177,27 @@ export default function Magician() {
     });
   }, []);
 
+  // ---- tag, and who we look like ------------------------------------------
+  const pushToast = useCallback((t: string) => {
+    const id = idRef.current++;
+    setToasts((prev) => [...prev, { id, text: t }].slice(-4));
+    setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 2600);
+  }, []);
+  const startTag = () => {
+    if (!worldRef.current?.startTag()) pushToast("Tag needs two people: tap invite and bring somebody into the valley");
+  };
+  const shuffleMe = () => {
+    const id = randomCharacter(myChar);
+    setMyChar(id);
+    writeCharacter(id);
+    worldRef.current?.setChar(id);
+  };
+  const toggleView = () => {
+    const v = !thirdPerson;
+    setThirdPerson(v);
+    worldRef.current?.setThirdPerson(v);
+  };
+
   // ---- world ------------------------------------------------------------
   useEffect(() => {
     if (!entered) return;
@@ -196,6 +227,7 @@ export default function Magician() {
       onState: (s) => setState(s),
       onCompanion: (id) => setCompanion(id),
       onNotify: (text) => sessionRef.current?.notify(text),
+      onTag: (h) => setTagHud(h ? { ...h } : null),
       onGame: (h) => {
         // The HUD object is rebuilt every frame; only re-render React when the
         // visible numbers change.
@@ -203,7 +235,8 @@ export default function Magician() {
         if (key !== lastGameRef.current) { lastGameRef.current = key; setGame(h ? { ...h } : null); }
       },
     }, {
-      name: (() => { try { return localStorage.getItem("magician.name") ?? localStorage.getItem("lobby.name") ?? `visitor-${Math.floor(Math.random() * 900 + 100)}`; } catch { return "visitor"; } })(),
+      name: myName.trim() || `visitor-${Math.floor(Math.random() * 900 + 100)}`,
+      char: myChar,
       talking: () => statusRef.current === "live",
       voiceLine: () => {
         const s = statusRef.current;
@@ -434,37 +467,38 @@ export default function Magician() {
               A quiet valley that listens. Speak softly, and the weather, lanterns, and forest will answer.
             </p>
 
-            <div className="mt-7 w-full max-w-md">
-              <p className="magician-splash__label mb-3 text-[9px] font-medium uppercase tracking-[0.3em]">Choose a voice</p>
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                onClick={() => setEngine("realtime")}
-                  className={`magician-splash__engine h-auto min-h-14 flex-col rounded-sm px-3 py-3 ${engine === "realtime" ? "is-active" : ""}`}
-              >
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Realtime 2.1</span>
-                  <span className="mt-1 text-[9px] font-normal uppercase tracking-[0.16em] opacity-60">Immediate magic</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                onClick={() => setEngine("live")}
-                  className={`magician-splash__engine h-auto min-h-14 flex-col rounded-sm px-3 py-3 ${engine === "live" ? "is-active" : ""}`}
-              >
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Live 1</span>
-                  <span className="mt-1 text-[9px] font-normal uppercase tracking-[0.16em] opacity-60">Experimental</span>
-                </Button>
-              </div>
+            {/* Who you'll be: the portraits spin and land on somebody; shuffle
+                again, or walk back through the ones you passed. Everybody in
+                the valley sees you as them. */}
+            <div className="mt-6 w-full max-w-md sm:mt-7">
+              <CharacterShuffle size={phone ? 150 : 176} onChange={(id) => setMyChar(id)} />
             </div>
 
-            <Button
-              type="button"
-              onClick={() => setEntered(true)}
-              className="magician-splash__enter mt-6 h-14 rounded-sm px-10 text-[11px] font-semibold uppercase tracking-[0.32em] sm:px-14"
+            <form
+              className="mt-5 flex w-full max-w-sm flex-col items-center gap-3 sm:mt-6"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = myName.trim().slice(0, 16);
+                try { if (n) { localStorage.setItem("magician.name", n); localStorage.setItem("oni.name", n); } } catch { /* private mode */ }
+                writeCharacter(myChar);
+                setEntered(true);
+              }}
             >
-              Enter Hoshimura
-            </Button>
+              <input
+                value={myName}
+                onChange={(e) => setMyName(e.target.value.slice(0, 16))}
+                placeholder="Your name"
+                maxLength={16}
+                enterKeyHint="go"
+                className="h-12 w-full rounded-sm border border-white/25 bg-black/35 px-4 text-center text-[16px] text-white outline-none backdrop-blur placeholder:text-white/40 focus:border-[#ffd6a0]"
+              />
+              <Button
+                type="submit"
+                className="magician-splash__enter h-14 w-full rounded-sm px-10 text-[11px] font-semibold uppercase tracking-[0.32em] sm:px-14"
+              >
+                Enter Hoshimura
+              </Button>
+            </form>
             <p className="magician-splash__help mt-5 max-w-lg text-[10px] leading-relaxed tracking-[0.08em] sm:text-[11px]">
               W A S D to walk · drag to look · space to jump · press Talk to cast
               {available === false && <span className="magician-splash__warning mt-2 block">Vibey's voice is sleeping here; the written spellbook still works.</span>}
@@ -479,7 +513,7 @@ export default function Magician() {
           <div className="magician-splash__corner magician-splash__corner--bottom absolute bottom-5 right-5 h-10 w-10 sm:bottom-8 sm:right-8" aria-hidden="true" />
           <a
             href="https://myvibeverse.com/magician"
-            className="magician-splash__qr absolute bottom-5 left-5 z-20 hidden items-center gap-3 sm:flex sm:bottom-8 sm:left-8"
+            className="magician-splash__qr absolute bottom-5 left-5 z-20 hidden items-center gap-3 sm:flex sm:bottom-8 sm:left-8 [@media(max-height:820px)]:!hidden"
             aria-label="Open The Magician on another device"
           >
             <img src={magicianQr.url} alt="QR code for The Magician" className="h-16 w-16" />
@@ -556,6 +590,14 @@ export default function Magician() {
             >
               {game ? "end game" : "play"}
             </button>
+            <button
+              onClick={startTag}
+              disabled={!!tagHud && (tagHud.phase === "countdown" || tagHud.phase === "play")}
+              title="Infection tag round the village, with everybody here"
+              className="rounded-sm border border-[#ff6a4a]/60 bg-[#ff6a4a]/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-[#ffe0d8] hover:bg-[#ff6a4a]/35 disabled:opacity-40"
+            >
+              👹 tag
+            </button>
             <button onClick={() => setMenuOpen((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70">
               {menuOpen ? "close" : "menu"}
             </button>
@@ -575,6 +617,8 @@ export default function Magician() {
                 ))}
               </select>
               <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] uppercase tracking-[0.15em]">
+                <button onClick={shuffleMe} className="flex items-center justify-center gap-1.5 rounded-md border border-white/20 bg-black/30 px-2 py-1 text-white/80"><CharacterPortrait id={myChar} size={26} /> shuffle me</button>
+                <button onClick={toggleView} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">{thirdPerson ? "1st person" : "3rd person"}</button>
                 <button onClick={() => setMuted((m) => !m)} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">{muted ? "sound off" : "sound on"}</button>
                 <button onClick={() => { setDialsOpen(true); setMenuOpen(false); }} className="rounded-md border border-[#ffd6a0]/40 bg-[#ffd6a0]/15 px-2 py-2 text-[#fff1dc]">dials</button>
                 <button onClick={invite} className="rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">{copied ? "copied" : "invite"}</button>
@@ -619,6 +663,16 @@ export default function Magician() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* Tag round the village */}
+          {tagHud && !game && (
+            <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3 sm:top-4">
+              <PhaseBanner hud={tagHud} big={false} />
+            </div>
+          )}
+          {tagHud?.me?.oni && (tagHud.phase === "play" || tagHud.phase === "countdown") && (
+            <div className="pointer-events-none absolute inset-0 z-[5]" style={{ boxShadow: "inset 0 0 120px 30px rgba(220,30,20,0.5)" }} />
           )}
 
           {/* Game HUD */}

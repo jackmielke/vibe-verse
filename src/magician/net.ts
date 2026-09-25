@@ -22,6 +22,7 @@
  * one person's rain arrives a second late.
  */
 import type { Patch, WorldState } from "./state";
+import type { OniWire } from "@/oni/net";
 
 export type NetMode = "off" | "local" | "online";
 
@@ -37,10 +38,19 @@ export interface PeerPresence {
   at: number;
   /** Whether they were talking (their voice session live). */
   talking: boolean;
+  /** Their roster character (the body everybody else sees). */
+  char?: string;
+  /** Tag: whether they say they have horns, and in which round. */
+  oni?: boolean;
+  round?: string;
 }
 
+/** What a player carries beyond where they are: who they look like, and tag. */
+export interface PresenceExtra { c: string; o: 0 | 1; r: string }
+
 export type Wire =
-  | { t: "p"; id: string; n: string; x: number; y: number; z: number; yaw: number; b: string; v: boolean }
+  | { t: "p"; id: string; n: string; x: number; y: number; z: number; yaw: number; b: string; v: boolean; c?: string; o?: 0 | 1; r?: string }
+  | { t: "g"; id: string; m: OniWire }
   | { t: "s"; id: string; patch: Patch }
   | { t: "hi"; id: string }
   | { t: "full"; id: string; to: string; state: WorldState }
@@ -49,7 +59,7 @@ export type Wire =
 export function isWire(v: unknown): v is Wire {
   if (!v || typeof v !== "object") return false;
   const w = v as { t?: unknown; id?: unknown };
-  return typeof w.t === "string" && typeof w.id === "string" && ["p", "s", "hi", "full", "bye"].includes(w.t);
+  return typeof w.t === "string" && typeof w.id === "string" && ["p", "s", "hi", "full", "bye", "g"].includes(w.t);
 }
 
 export interface Transport {
@@ -125,6 +135,8 @@ export interface RoomOptions {
   onLeave?(name: string): void;
   /** Answer a newcomer: the whole current state. */
   currentState(): WorldState;
+  /** A game message (tag) from somebody else. */
+  onGame?(msg: OniWire, from: string): void;
 }
 
 export interface Room {
@@ -133,7 +145,9 @@ export interface Room {
   /** Broadcast a patch we made. */
   patch(p: Patch): void;
   /** Send our presence. Call from the frame loop; it rate-limits itself. */
-  presence(x: number, y: number, z: number, yaw: number, body: string, talking: boolean): void;
+  presence(x: number, y: number, z: number, yaw: number, body: string, talking: boolean, extra?: PresenceExtra): void;
+  /** Send a game message (tag). */
+  game(m: OniWire): void;
   peers(): PeerPresence[];
   close(): void;
 }
@@ -182,10 +196,11 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
     id,
     connected: false,
     patch(p) { transport?.send({ t: "s", id, patch: p }); },
-    presence(x, y, z, yaw, body, talking) {
-      latest = { t: "p", id, n: opts.name, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(3), b: body, v: talking };
+    presence(x, y, z, yaw, body, talking, extra) {
+      latest = { t: "p", id, n: opts.name, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(3), b: body, v: talking, ...(extra ?? {}) };
       dirty = true;
     },
+    game(m) { transport?.send({ t: "g", id, m }); },
     peers: list,
     close() {
       closed = true;
@@ -205,8 +220,9 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
     switch (msg.t) {
       case "p": {
         const known = peers.get(msg.id);
-        peers.set(msg.id, { id: msg.id, name: msg.n, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, body: msg.b, at: performance.now(), talking: msg.v });
+        peers.set(msg.id, { id: msg.id, name: msg.n, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, body: msg.b, at: performance.now(), talking: msg.v, char: typeof msg.c === "string" ? msg.c : undefined, oni: msg.o === 1, round: typeof msg.r === "string" ? msg.r : "" });
         if (!known) { opts.onJoin?.(msg.n); opts.onPeers(list()); }
+        else if (known.char !== msg.c || known.name !== msg.n) opts.onPeers(list());
         break;
       }
       case "s":
@@ -217,6 +233,9 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
         break;
       case "full":
         if (msg.to === id && !gotFull) { gotFull = true; opts.onFull(msg.state); }
+        break;
+      case "g":
+        if (msg.m && typeof msg.m === "object") opts.onGame?.(msg.m, msg.id);
         break;
       case "bye": {
         const p = peers.get(msg.id);

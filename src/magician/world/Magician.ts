@@ -58,6 +58,9 @@ import { createGameRunner, type HouseState } from "../game/runner";
 import { MODE_INFO, type GameHud, type GameModeId } from "../game/types";
 import { joinRoom, readNetMode, readRoom, type PeerPresence, type Room } from "../net";
 import { createPeers } from "./peers";
+import { createValleyTag } from "./tag";
+import { createAvatar } from "@/oni/world/avatars";
+import type { Hud } from "@/oni/world/Oni";
 import { createPlayer } from "./player";
 
 export interface MagicianOptions {
@@ -67,6 +70,8 @@ export interface MagicianOptions {
   talking?(): boolean;
   /** One line about the voice for the headset HUD: "pinch to talk", "listening", … */
   voiceLine?(): string;
+  /** The visitor's roster character: what everybody else sees them as. */
+  char?: string;
 }
 
 export interface MagicianEvents {
@@ -88,6 +93,8 @@ export interface MagicianEvents {
   onExitVR?(): void;
   /** What there is to do right here (feed the koi, float a wish, ...). */
   onActions?(actions: WorldAction[]): void;
+  /** A game of tag: the banner's numbers, or null when none is on. */
+  onTag?(hud: Hud | null): void;
 }
 
 /** Something to do where the visitor is standing, shown as a button. */
@@ -132,6 +139,12 @@ export interface MagicianWorld {
   /** Render one frame and return it as a data URL. For scripts. */
   snapshot(): string;
   inVR(): boolean;
+  /** Start a game of tag round the village. False when alone. */
+  startTag(): boolean;
+  /** Change who we look like. */
+  setChar(id: string): void;
+  /** Over the shoulder (true) or through your own eyes. */
+  setThirdPerson(on: boolean): void;
   dispose(): void;
 }
 
@@ -593,13 +606,18 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   scene.add(peers.group);
   let room: Room | null = null;
   let applyingRemote = false;
+  const myId = Math.random().toString(36).slice(2, 10);
+  let myChar = options.char ?? "toadstool";
+  let peerList: PeerPresence[] = [];
   void joinRoom({
+    id: myId,
+    onGame: (m) => tag.handle(m),
     mode: readNetMode(),
     room: readRoom(),
     name: options.name ?? "visitor",
     onPatch: (p) => { applyingRemote = true; try { store.patch(p); } finally { applyingRemote = false; } },
     onFull: (s) => { applyingRemote = true; try { store.patch({ ...s, hits: state.hits }); } finally { applyingRemote = false; } },
-    onPeers: (list) => { peers.sync(list); events.onPeers?.(list, true); },
+    onPeers: (list) => { peerList = list; peers.sync(list); events.onPeers?.(list, true); },
     onJoin: (n) => events.onToast?.(`${n} arrived`),
     onLeave: (n) => events.onToast?.(`${n} left`),
     currentState: () => state,
@@ -608,6 +626,30 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     room = r;
     events.onPeers?.([], r.connected);
   });
+
+  // ---- tag, and our own body -------------------------------------------------
+  // Everybody else sees us as our roster character; over the shoulder, so do we.
+  const self = createAvatar({ id: myId, name: options.name ?? "you", char: myChar, noTag: true });
+  scene.add(self.group);
+  let thirdPerson = true;
+  let camBack = 0;
+  let lastSelf = new THREE.Vector3();
+  let selfSpeed = 0;
+  const tag = createValleyTag({
+    scene,
+    myId,
+    name: () => options.name ?? "you",
+    char: () => myChar,
+    room: () => room,
+    peerList: () => room?.peers() ?? peerList,
+    peers,
+    me: () => player.position,
+    teleport: (x, z, yaw) => { player.teleport(x, z, yaw); solveWalls(player.position); },
+    groundAt: (x, z) => groundAt(x, z),
+    onFeed: (t) => events.onToast?.(t),
+    onNotify: (t) => events.onNotify?.(t),
+  });
+  let lastTagHud: Hud | null = null;
 
   // ---- state ----------------------------------------------------------------
   let state: WorldState = applyPatch(DEFAULT_STATE, {});
@@ -1267,6 +1309,33 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (k >= 1) endIntro();
   }
 
+  // Our body under us, and the camera eased out behind it (or back into our
+  // eyes indoors, sitting, at the screen, in the arrival shot and in VR).
+  const camGround = new THREE.Vector3();
+  function updateSelf(dt: number, inXr: boolean) {
+    const p = player.position;
+    const moved = Math.hypot(p.x - lastSelf.x, p.z - lastSelf.z) / Math.max(dt, 1e-3);
+    lastSelf.copy(p);
+    selfSpeed += (Math.min(moved, 12) - selfSpeed) * Math.min(1, dt * 8);
+    self.group.position.copy(p);
+    self.group.rotation.y = player.yaw() + Math.PI;
+    self.setOni(tag.isOni(myId));
+    self.update(dt, selfSpeed, p.y - groundAt(p.x, p.z) > 0.25);
+    // A portrait phone sees much more up and down, so stand further back and higher.
+    const portrait = camera.aspect < 1;
+    const want = thirdPerson && !inXr && intro < 0 && !sitting && !playing && !insideHouse(p.x, p.z) ? (portrait ? 5.4 : 3.8) : 0;
+    camBack += (want - camBack) * Math.min(1, dt * 4);
+    if (intro < 0 && !inXr) {
+      camera.position.set(0, camBack * (portrait ? 0.24 : 0.14), camBack);
+      // Never under the hill behind us.
+      camera.updateMatrixWorld(true);
+      camGround.setFromMatrixPosition(camera.matrixWorld);
+      const floor = groundAt(camGround.x, camGround.z) + 0.35;
+      if (camGround.y < floor) camera.position.y += floor - camGround.y;
+    }
+    self.group.visible = camBack > 0.9 && !inXr;
+  }
+
   function frame() {
     if (disposed) return;
     const dt = Math.min(0.1, clock.getDelta());
@@ -1278,7 +1347,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const eye = 1 / s.giant;
     const wading = player.position.y < terrain.waterY() - 0.4 ? 0.55 : 1;
     updateWalkPointers(!!xr);
-    player.update(dt, groundAt, { frozen: playing || sitting || intro >= 0, gravity: s.gravity, speed: s.speed * eye * wading, eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: solveWalls });
+    player.update(dt, groundAt, { frozen: playing || sitting || intro >= 0 || tag.frozen(), gravity: s.gravity, speed: s.speed * eye * wading * tag.speed(), eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: (p) => { solveWalls(p); tag.clamp(p); } });
+    tag.update(dt, time);
+    const th = tag.hud();
+    if (th !== lastTagHud) { lastTagHud = th; events.onTag?.(th); }
+    updateSelf(dt, !!xr);
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
     for (const p of fixed) p.update?.(dt, time, propCtx);
@@ -1351,8 +1424,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       const key = next.map((a) => a.label).join();
       if (key !== actionKey) { actionKey = key; actionsNow = next; events.onActions?.(next); }
     }
-    room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false);
-    peers.update(dt, time, heightAt);
+    room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false, tag.presence());
+    peers.update(dt, time, groundAt, (id) => tag.isOni(id));
     const gh = game.hud();
     events.onGame?.(gh);
     vrHud.visible = renderer.xr.isPresenting;
@@ -1399,6 +1472,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const world: MagicianWorld = {
     store,
     vibey,
+    startTag: () => tag.start(),
+    setChar(id) { myChar = id; self.setChar(id); },
+    setThirdPerson(on) { thirdPerson = on; },
     run(name, args) {
       const r = runTool(name, args, store);
       if (r.toast) {
@@ -1510,6 +1586,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       room?.close();
       room = null;
       peers.dispose();
+      tag.dispose();
+      self.dispose();
       container.removeEventListener("mousedown", onDown);
       container.removeEventListener("mouseup", onUp);
       container.removeEventListener("pointerdown", onScreenDown);
@@ -1560,6 +1638,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     fire: () => fireFromCamera(),
     companion: () => vibey.debug(),
     player: () => ({ x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw(), fov: camera.fov, zoom: zoomLevel }),
+    /** Tag: the round as this device sees it. */
+    tag: () => ({ id: myId, phase: tag.phase(), oni: tag.isOni(myId), hud: tag.hud(), peers: peers.positions().map((p) => ({ ...p, oni: tag.isOni(p.id) })) }),
+    startTag: () => tag.start(),
     /** Walk to a spot the way a trigger pointed at the ground does. */
     walkTo: (x: number, z: number) => { player.moveTo(x, z); return player.target(); },
     peers: () => ({ connected: room?.connected ?? false, count: peers.count(), id: room?.id ?? null }),
@@ -1678,6 +1759,8 @@ declare global {
       companion(): ReturnType<Vibey["debug"]>;
       player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
       walkTo(x: number, z: number): { x: number; z: number } | null;
+      tag(): unknown;
+      startTag(): boolean;
       peers(): { connected: boolean; count: number; id: string | null };
       grass(): { chunks: number; blades: number };
       river(): unknown;

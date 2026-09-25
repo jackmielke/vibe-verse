@@ -54,6 +54,8 @@ export interface MatchOptions {
   peers(): Peer[];
   now?(): number;
   events?: MatchEvents;
+  /** Announce rounds on the referee's clock (default). Off in the valley, where tag is something you ask for. */
+  auto?: boolean;
 }
 
 export function createMatch(opts: MatchOptions): Match {
@@ -97,7 +99,7 @@ export function createMatch(opts: MatchOptions): Match {
     result: () => finished,
     endedAt: () => ended,
     nextAt() {
-      if (players().length < 2) return null;
+      if (players().length < 2 || opts.auto === false) return null;
       if (!round) return readySince === null ? null : readySince + LOBBY_MS;
       if (ended === null) return null;
       return ended + INTERMISSION_MS;
@@ -148,7 +150,7 @@ export function createMatch(opts: MatchOptions): Match {
         }
       }
       const me = opts.me;
-      if (me && referee(ids) === me && shouldAnnounce(now, round, ended, readySince, ids.length)) match.announce();
+      if ((opts.auto ?? true) && me && referee(ids) === me && shouldAnnounce(now, round, ended, readySince, ids.length)) match.announce();
     },
     claim(victim, by) {
       if (!round || !opts.me) return;

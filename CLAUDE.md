@@ -546,6 +546,21 @@ The shape of it, because it is the shape the next voice world should copy:
   headset maps it to the right and left grips and shows it on the VR strip.
 - **The dials** (`ui/Dials.tsx`) write the same patches as a spoken wish, and
   `turn_dial` is the voice's way to set one exactly.
+- **You are somebody, and so is everybody else.** The splash is a character
+  shuffler (`src/oni/ui/CharacterShuffle.tsx`: the portraits spin and land,
+  the arrows walk back and forward through everybody you landed on) and a
+  name; the pick is shared with /oni. Presence carries the character (`c`),
+  peers are drawn with Oni's `createAvatar`, and you see yourself over the
+  shoulder (further back on a portrait phone), dropping into your own eyes
+  indoors, sitting, at the screen, in the arrival shot and in VR. The voice
+  engine picker is gone from the splash; `?engine=live` still selects Live.
+- **Tag in the valley** (`world/tag.ts`) is Oni's rules and match carried
+  over the valley's own channel as `g` messages, with `auto: false`: a
+  round only starts when somebody presses 👹 tag, because most visitors are
+  here to wander. A ring of light round the village square (centre 6, 0,
+  radius 27) keeps a round small; everybody runs faster in it and the oni a
+  little faster still. `node scripts/magician-tag.mjs <dir>` plays one
+  between two tabs.
 - **A spell is seen leaving** (`world/spell.ts`): a ribbon arcs out ahead of
   the visitor and blooms in the sky. Its trail fills in by distance, not by
   frame; the first version went straight up out of view and was scattered
