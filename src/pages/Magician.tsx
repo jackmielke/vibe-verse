@@ -547,58 +547,23 @@ export default function Magician() {
             </div>
           </div>
 
-          {/* Top-right: VR, sound, out */}
-          <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center justify-end gap-1.5 sm:right-5 sm:top-4 sm:gap-2" data-ui="1">
+          {/* Top-right: VR, play, menu. Everything else lives in the menu. */}
+          <div className="absolute right-3 top-3 z-10 flex items-center justify-end gap-1.5 sm:right-5 sm:top-4 sm:gap-2" data-ui="1">
             <div ref={vrSlot} className="[&>button]:!rounded-sm [&>button]:!border [&>button]:!border-white/30 [&>button]:!bg-black/30 [&>button]:!px-3 [&>button]:!py-1.5 [&>button]:!text-[10px] [&>button]:!uppercase [&>button]:!tracking-[0.2em] [&>button]:!text-white/80 [&>button]:!font-sans [&>button]:!opacity-100" />
-            {phone && (
-              <button onClick={() => setMenuOpen((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70">
-                {menuOpen ? "close" : "menu"}
-              </button>
-            )}
             <button
               onClick={() => (game ? worldRef.current?.stopGame() : setShowModes(true))}
               className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${game ? "border-[#ff8a9a]/60 bg-[#ff8a9a]/20 text-[#ffd0d6]" : "border-[#b98cff]/60 bg-[#b98cff]/20 text-[#f3ecff] hover:bg-[#b98cff]/40"}`}
             >
               {game ? "end game" : "play"}
             </button>
-            {!phone && (<>
-            <select
-              value={companion}
-              onChange={(e) => { setCompanion(e.target.value); worldRef.current?.store.become(e.target.value); }}
-              title="Who floats beside you"
-              className="h-7 max-w-[9rem] rounded-sm border border-white/20 bg-black/30 px-2 text-[10px] uppercase tracking-[0.15em] text-white/80 outline-none"
-            >
-              {COMPANIONS.map((c) => (
-                <option key={c.id} value={c.id} className="bg-[#1a1030] text-white">{c.emoji} {c.label}</option>
-              ))}
-            </select>
-            <button onClick={() => { document.exitPointerLock?.(); setDialsOpen((d) => !d); }} className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${dialsOpen ? "border-[#ffd6a0]/60 bg-[#ffd6a0]/20 text-[#fff1dc]" : "border-white/20 bg-black/30 text-white/70 hover:text-white"}`}>
-              dials
+            <button onClick={() => setMenuOpen((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70">
+              {menuOpen ? "close" : "menu"}
             </button>
-            <button onClick={() => setMuted((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
-              {muted ? "sound off" : "sound on"}
-            </button>
-            <button onClick={() => setHudHidden(true)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
-              hide
-            </button>
-            <button onClick={invite} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
-              {copied ? "link copied" : "invite"}
-            </button>
-            <button onClick={() => void toggleRecording()} className={`rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/70 hover:text-white"}`}>
-              {recording ? `● ${recSeconds}s stop` : "record"}
-            </button>
-            <button onClick={() => setShowSupport(true)} className="rounded-sm border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-[#d8ffe9] hover:bg-[#73ffb8]/30">
-              support
-            </button>
-            <Link to="/" className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70 hover:text-white">
-              out
-            </Link>
-            </>)}
           </div>
 
-          {/* Phone menu: everything that is not walking, talking or playing. */}
-          {phone && menuOpen && (
-            <div className="absolute right-3 top-14 z-20 w-64 rounded-xl border border-white/15 bg-[#1b1633]/95 p-3 text-sm text-[#e9ddff] backdrop-blur-md" data-ui="1">
+          {/* Menu: companion, dials, sound, invite, record, support, hide, leave. */}
+          {menuOpen && (
+            <div className={`absolute right-3 z-20 w-64 rounded-xl border border-white/15 bg-[#1b1633]/95 p-3 text-sm text-[#e9ddff] backdrop-blur-md ${phone ? "top-14" : "top-14 sm:top-16"}`} data-ui="1">
               <label className="block text-[10px] uppercase tracking-[0.2em] text-white/50">Companion</label>
               <select
                 value={companion}
@@ -621,7 +586,7 @@ export default function Magician() {
               <div className="mt-3 text-[11px] leading-relaxed text-white/50">
                 {peers.connected ? `${peers.names.length + 1} in the valley${peers.names.length ? `: you, ${peers.names.join(", ")}` : ""}` : "playing alone"} · {engine === "live" ? "gpt-live-1" : "gpt-realtime-2.1"} · {findCompanion(companion).label}
               </div>
-              <div className="mt-2 text-[11px] text-white/40">Left stick walks · drag the right side to look · pinch to zoom</div>
+              {phone && <div className="mt-2 text-[11px] text-white/40">Left stick walks · drag the right side to look · pinch to zoom</div>}
             </div>
           )}
 
