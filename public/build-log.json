@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-09-25T02:37:41.347Z",
+  "generated_at": "2026-09-25T02:48:33.150Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "6016c4c0",
+      "date": "2026-09-25",
+      "subject": "Stamp Oni's last-changed date",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "745d9fdf",
+      "date": "2026-09-25",
+      "subject": "Oni: infection tag for the whole room, on phones, laptops and VR",
+      "lede": "A new world at /oni (also /tag): a summer festival square, everyone gets a random roster character, the oni has horns and anyone it touches grows them. Last one without horns wins; a round is a minute.",
+      "places": [],
+      "files": 22
+    },
     {
       "sha": "56f99873",
       "date": "2026-09-25",
@@ -978,22 +994,6 @@
     },
     {
       "sha": "89a75dbe",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "3d77d21f",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "e760a194",
       "date": "2026-08-20",
       "subject": "Changes",
       "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",

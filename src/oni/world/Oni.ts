@@ -233,6 +233,7 @@ export function createOni(opts: OniOptions): OniEngine {
         if (myId) {
           const s = spawnFor(myId, r);
           me.x = s.x; me.z = s.z; me.yaw = s.yaw; me.vx = me.vz = 0;
+          moveTarget = null;
           camYaw = s.yaw + Math.PI;
         }
         for (const b of bots) { const s = spawnFor(b.id, r); b.x = s.x; b.z = s.z; b.yaw = s.yaw; }
@@ -328,12 +329,37 @@ export function createOni(opts: OniOptions): OniEngine {
   };
   window.addEventListener("keydown", onKey);
   window.addEventListener("keyup", onKey);
-  const drag = { id: -1, x: 0, y: 0 };
+  // ---- where we are running to, if somewhere was tapped or pointed at -------------
+  let moveTarget: { x: number; z: number } | null = null;
+  let targetBest = Infinity;
+  let targetStuck = 0;
+  const setTarget = (x: number, z: number) => {
+    if (!myId) return;
+    const p = solve(x, z);
+    moveTarget = { x: p.x, z: p.z };
+    targetBest = Infinity;
+    targetStuck = 0;
+    markerPop = 1;
+  };
+  const markerMat = new THREE.MeshBasicMaterial({ color: "#ffe08a", transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+  const markerGeo = new THREE.RingGeometry(0.32, 0.46, 32);
+  markerGeo.rotateX(-Math.PI / 2);
+  const marker = new THREE.Mesh(markerGeo, markerMat);
+  marker.visible = false;
+  scene.add(marker);
+  let markerPop = 0;
+
+  // A tap or a click on the ground (one that did not turn into a drag) runs
+  // us there; a drag still turns the camera.
+  const drag = { id: -1, x: 0, y: 0, sx: 0, sy: 0, t: 0 };
   const el = renderer.domElement;
+  const tapRay = new THREE.Raycaster();
+  const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const tapHit = new THREE.Vector3();
   const onDown = (e: PointerEvent) => {
     sfx.resume();
     if (drag.id !== -1) return;
-    drag.id = e.pointerId; drag.x = e.clientX; drag.y = e.clientY;
+    drag.id = e.pointerId; drag.x = drag.sx = e.clientX; drag.y = drag.sy = e.clientY; drag.t = performance.now();
     try { el.setPointerCapture(e.pointerId); } catch { /* fine */ }
   };
   const onMove = (e: PointerEvent) => {
@@ -343,7 +369,15 @@ export function createOni(opts: OniOptions): OniEngine {
     camYaw -= dx * 0.006;
     camPitch = Math.max(0.15, Math.min(1.2, camPitch + dy * 0.004));
   };
-  const onUp = (e: PointerEvent) => { if (e.pointerId === drag.id) drag.id = -1; };
+  const onUp = (e: PointerEvent) => {
+    if (e.pointerId !== drag.id) return;
+    drag.id = -1;
+    const still = Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 10 && performance.now() - drag.t < 400;
+    if (!still || watch || inVR()) return;
+    const r = el.getBoundingClientRect();
+    tapRay.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+    if (tapRay.ray.intersectPlane(ground, tapHit) && Math.hypot(tapHit.x - me.x, tapHit.z - me.z) < 60) setTarget(tapHit.x, tapHit.z);
+  };
   const onWheel = (e: WheelEvent) => { camDist = Math.max(4.5, Math.min(18, camDist * (1 + Math.sign(e.deltaY) * 0.08))); };
   el.addEventListener("pointerdown", onDown);
   el.addEventListener("pointermove", onMove);
@@ -369,6 +403,61 @@ export function createOni(opts: OniOptions): OniEngine {
   const headWorld = new THREE.Vector3();
   const headDir = new THREE.Vector3();
   const inVR = () => renderer.xr.isPresenting;
+
+  // Point and pull the trigger (or pinch) to run to where the laser meets the
+  // ground; hold it to keep steering. Each controller, or hand, has its own.
+  interface Pointer { ctrl: THREE.Group; laser: THREE.Line; reticle: THREE.Mesh; hit: THREE.Vector3 | null; held: boolean; live: boolean }
+  const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+  const laserMat = new THREE.LineBasicMaterial({ color: "#ffe6d6", transparent: true, opacity: 0.75 });
+  const reticleGeo = new THREE.RingGeometry(0.18, 0.26, 28);
+  reticleGeo.rotateX(-Math.PI / 2);
+  const reticleMat = new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+  const pointers: Pointer[] = [];
+  for (let i = 0; i < 2; i++) {
+    const ctrl = renderer.xr.getController(i);
+    const laser = new THREE.Line(laserGeo, laserMat);
+    laser.visible = false;
+    ctrl.add(laser);
+    camRig.add(ctrl);
+    const reticle = new THREE.Mesh(reticleGeo, reticleMat);
+    reticle.visible = false;
+    scene.add(reticle);
+    const p: Pointer = { ctrl, laser, reticle, hit: null, held: false, live: false };
+    ctrl.addEventListener("connected", () => { p.live = true; });
+    ctrl.addEventListener("disconnected", () => { p.live = false; p.held = false; laser.visible = false; reticle.visible = false; });
+    ctrl.addEventListener("selectstart", () => { p.held = true; if (p.hit) setTarget(p.hit.x, p.hit.z); });
+    ctrl.addEventListener("selectend", () => { p.held = false; });
+    pointers.push(p);
+  }
+  const rayO = new THREE.Vector3();
+  const rayD = new THREE.Vector3();
+  function updatePointers() {
+    for (const p of pointers) {
+      const on = inVR() && p.live && !!myId;
+      p.laser.visible = on;
+      if (!on) { p.reticle.visible = false; p.hit = null; continue; }
+      p.ctrl.updateWorldMatrix(true, false);
+      rayO.setFromMatrixPosition(p.ctrl.matrixWorld);
+      rayD.set(0, 0, -1).transformDirection(p.ctrl.matrixWorld);
+      let len = 6;
+      p.hit = null;
+      if (rayD.y < -0.02) {
+        const t = -rayO.y / rayD.y;
+        if (t > 0 && t < 45) {
+          const c = solve(rayO.x + rayD.x * t, rayO.z + rayD.z * t);
+          p.hit = (p.hit ?? new THREE.Vector3()).set(c.x, 0, c.z);
+          len = t;
+        }
+      }
+      p.laser.scale.z = len;
+      p.reticle.visible = !!p.hit;
+      if (p.hit) {
+        p.reticle.position.set(p.hit.x, 0.04, p.hit.z);
+        p.reticle.scale.setScalar(p.held ? 1.4 : 1);
+        if (p.held) setTarget(p.hit.x, p.hit.z);
+      }
+    }
+  }
   renderer.xr.addEventListener("sessionstart", () => {
     vrYaw = me.yaw + Math.PI;
     vrHud.visible = true;
@@ -483,6 +572,7 @@ export function createOni(opts: OniOptions): OniEngine {
     lastPhase = phase;
 
     // ---- move us
+    updatePointers();
     if (myId) {
       let ix = 0, iy = 0;
       if (keys.has("w") || keys.has("arrowup")) iy += 1;
@@ -523,8 +613,22 @@ export function createOni(opts: OniOptions): OniEngine {
       // Forward is away from the camera.
       const fx = -Math.sin(yawBase), fz = -Math.cos(yawBase);
       const rx = Math.cos(yawBase), rz = -Math.sin(yawBase);
-      const tvx = (fx * iy + rx * ix) * speed, tvz = (fz * iy + rz * ix) * speed;
-      const k = Math.min(1, dt * (len > 0.05 ? 12 : 9));
+      let tvx = (fx * iy + rx * ix) * speed, tvz = (fz * iy + rz * ix) * speed;
+      if (moveTarget) {
+        const dx = moveTarget.x - me.x, dz = moveTarget.z - me.z;
+        const d = Math.hypot(dx, dz);
+        if (len > 0.1 || d < 0.3) moveTarget = null;
+        else {
+          // Ease in over the last metre, and give up on a spot we cannot reach.
+          const ease = Math.min(1, d / 1.1);
+          tvx = (dx / d) * speed * ease; tvz = (dz / d) * speed * ease;
+          if (speed > 0) {
+            if (d < targetBest - 0.05) { targetBest = d; targetStuck = 0; } else targetStuck += dt;
+            if (targetStuck > 1.2) moveTarget = null;
+          }
+        }
+      }
+      const k = Math.min(1, dt * (len > 0.05 || moveTarget ? 12 : 9));
       me.vx += (tvx - me.vx) * k; me.vz += (tvz - me.vz) * k;
       const p = solve(me.x + me.vx * dt, me.z + me.vz * dt);
       me.x = p.x; me.z = p.z;
@@ -574,6 +678,14 @@ export function createOni(opts: OniOptions): OniEngine {
     }
 
     if (phase === "play") checkTags(now);
+
+    marker.visible = !!moveTarget;
+    if (moveTarget) {
+      markerPop = Math.max(0, markerPop - dt * 3);
+      marker.position.set(moveTarget.x, 0.05, moveTarget.z);
+      marker.scale.setScalar(1 + markerPop * 0.8 + Math.sin(time * 6) * 0.06);
+      markerMat.opacity = 0.65 + Math.sin(time * 6) * 0.2;
+    }
 
     // Point an oni at the nearest runner, a couple of metres out in front of them.
     arrow.visible = false;
@@ -633,7 +745,7 @@ export function createOni(opts: OniOptions): OniEngine {
         : phase === "play" ? `${meOni ? "👹 CATCH THEM" : "🏃 RUN"} · ${left}s`
         : "Round over";
       drawVrHud(text, meOni && phase !== "over");
-    } else if (inVR()) drawVrHud(remotes.size ? "Waiting for the next round" : "Waiting for players", false);
+    } else if (inVR()) drawVrHud(remotes.size ? "Point + trigger to run · next round soon" : "Point + trigger to run · waiting for players", false);
 
     // ---- HUD
     if (time - lastHud > 0.15) {
@@ -691,6 +803,8 @@ export function createOni(opts: OniOptions): OniEngine {
         peers: [...remotes.values()].map((r) => ({ id: r.id, name: names.get(r.id), x: +r.x.toFixed(2), z: +r.z.toFixed(2), oni: match.isOni(r.id) })),
       };
     },
+    goTo(x: number, z: number) { setTarget(x, z); },
+    target() { return moveTarget; },
     teleport(x: number, z: number) { const p = solve(x, z); me.x = p.x; me.z = p.z; me.vx = me.vz = 0; },
     /** Run the simulation forward without drawing, for a machine with no GPU. */
     settle(seconds: number, dt = 1 / 20) { for (let t = 0; t < seconds; t += dt) step(dt); },
@@ -748,7 +862,8 @@ export function createOni(opts: OniOptions): OniEngine {
       remotes.clear();
       myAvatar?.dispose();
       arena.dispose();
-      burstGeo.dispose(); burstMat.dispose(); arrowGeo.dispose(); arrowMat.dispose();
+      burstGeo.dispose(); burstMat.dispose(); markerGeo.dispose(); markerMat.dispose();
+      laserGeo.dispose(); laserMat.dispose(); reticleGeo.dispose(); reticleMat.dispose(); arrowGeo.dispose(); arrowMat.dispose();
       vrTex.dispose(); (vrHud.material as THREE.Material).dispose(); vrHud.geometry.dispose();
       sfx.dispose();
       renderer.dispose();

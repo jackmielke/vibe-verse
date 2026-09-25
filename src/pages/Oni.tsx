@@ -229,7 +229,7 @@ export default function Oni() {
           <Joystick onMove={(x, y) => engineRef.current?.setStick(x, y)} size={124} />
         ) : (
           <div className="rounded-xl bg-black/35 px-3 py-2 text-[11px] leading-relaxed text-white/60 backdrop-blur">
-            WASD or arrows to run · drag to look · Space to jump · H to honk
+            Click the ground to run there, or WASD · drag to look · Space to jump · H to honk
           </div>
         )}
         <div className="flex items-end gap-2">
