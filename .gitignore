@@ -89,3 +89,8 @@ __scratch_*
 .tmp/
 .scratch/
 **/.scratch/
+
+# iOS shell build output
+ios/build/
+ios/**/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
