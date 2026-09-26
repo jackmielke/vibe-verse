@@ -1345,7 +1345,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
 
   function frame() {
     if (disposed) return;
-    const dt = Math.min(0.1, clock.getDelta());
+    const dt = fixedDt ?? Math.min(0.1, clock.getDelta());
     time += dt;
     flash = Math.max(0, flash - dt * 2.5);
     lastHitFlash = Math.max(0, lastHitFlash - dt * 3);
@@ -1442,6 +1442,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     arrival(dt);
     renderer.render(scene, camera);
   }
+  // Offline rendering for films: a script stops the loop and steps the whole
+  // engine a fixed slice of time per frame (`__magician.film`).
+  let fixedDt: number | null = null;
   renderer.setAnimationLoop(frame);
 
   // A headset has a mobile GPU and two eyes. Halve the shadow map for the
@@ -1637,6 +1640,15 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     run: (name: string, args: unknown) => world.run(name, args),
     cast: (text: string) => world.cast(text),
     snapshot: () => world.snapshot(),
+    /** Step the whole world exactly `dt` seconds and return the frame, with the live loop stopped. */
+    film: (dt = 1 / 24, quality = 0.9) => {
+      renderer.setAnimationLoop(null);
+      fixedDt = dt;
+      try { frame(); } finally { fixedDt = null; }
+      return renderer.domElement.toDataURL("image/jpeg", quality);
+    },
+    /** Hand the world back to its own clock after filming. */
+    live: () => { clock.getDelta(); renderer.setAnimationLoop(frame); },
     teleport: (x: number, z: number, yaw?: number) => { player.teleport(x, z, yaw); solveWalls(player.position); },
     counts: () => ({ props: spawned.size, fixed: fixed.length, fireballs: fireballs.count(), fizzled: fireballs.fizzled(), hits: state.hits }),
     caption: (t: string) => vibey.setCaption(t),
@@ -1766,6 +1778,8 @@ declare global {
       companion(): ReturnType<Vibey["debug"]>;
       player(): { x: number; y: number; z: number; yaw: number; fov: number; zoom: number };
       walkTo(x: number, z: number): { x: number; z: number } | null;
+      film(dt?: number, quality?: number): string;
+      live(): void;
       tag(): unknown;
       startTag(): boolean;
       peers(): { connected: boolean; count: number; id: string | null };

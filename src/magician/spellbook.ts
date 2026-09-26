@@ -128,7 +128,9 @@ export function castSpell(input: string): SpellCall[] {
   if (/\b(stop|freeze) (the )?(clock|time)\b/.test(t)) calls.push({ name: "set_time", args: { hour: NaN, run_clock: false } });
 
   // Weather
-  if (/\bthunder|\bstorm|\blightning/.test(t)) calls.push({ name: "set_weather", args: { weather: "storm" } });
+  // "Stop the rain" names rain, so the stopping has to be heard first.
+  if (/\b(stop|end|no more|enough) (the |this )?(rain|snow|storm|thunder|fog|drizzle)\b|\bclear (the )?(sky|skies|weather)\b/.test(t)) calls.push({ name: "set_weather", args: { weather: "clear" } });
+  else if (/\bthunder|\bstorm|\blightning/.test(t)) calls.push({ name: "set_weather", args: { weather: "storm" } });
   else if (/\bsnow(ing|y)?\b|\bblizzard/.test(t) && !/\bsnowman/.test(t)) calls.push({ name: "set_weather", args: { weather: "snow" } });
   else if (/\brain|\bdrizzle|\bpour/.test(t)) calls.push({ name: "set_weather", args: { weather: "rain" } });
   else if (/\bfog|\bmist|\bhaze/.test(t)) calls.push({ name: "set_weather", args: { weather: "fog" } });

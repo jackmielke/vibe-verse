@@ -95,3 +95,6 @@ ios/build/
 ios/**/xcuserdata/
 ios/**/*.xcworkspace/xcuserdata/
 ios/VibeVerse/build/
+
+# magician-shot.mjs writes here when OUT is not set
+/magician-*.jpg

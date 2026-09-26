@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-09-26T18:07:24.523Z",
+  "generated_at": "2026-09-26T19:18:56.378Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "49723cd5",
+      "date": "2026-09-26",
+      "subject": "Stamp the worlds' last-changed dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "5860ef00",
+      "date": "2026-09-26",
+      "subject": "Magician: Zombie Tag in the play menu and by voice; Vibey in front of you",
+      "lede": "- Zombie Tag is a card in the play menu beside the three games, and start_game takes mode 'zombies', so 'let's play zombie tag' works spoken or typed. The separate top-bar button is gone. - Vibey stands in front of the visitor, a touch right of centre and about four metres out, wandering slowly across the view, and hurries back into view when the visitor turns away. It used to park off to the right, with its captions",
+      "places": [],
+      "files": 8
+    },
     {
       "sha": "26ea27df",
       "date": "2026-09-25",
@@ -983,22 +999,6 @@
       "lede": "Nine glass tubes between tower crowns, chosen off the built lots. Rendered, the city grew one screen-filling near-black rectangle occluding everything in a forty-degree cone — and it survived a complete rewrite of the geometry, from `boxAt` on the glass bucket to `prism` with the pen's base, span and seed set the way `buildLot` sets them. The artefact did not change at all when the geometry it supposedly came from ch",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "6b6452b8",
-      "date": "2026-08-20",
-      "subject": "A moon you can believe, at the third size",
-      "lede": "The first one thresholded the dot product against 0.9993, which is four degrees across — eight moons wide — and with the halo on it the night sky had a searchlight in it. The dot product is the wrong quantity as well as the wrong number: cos is flat at zero, so every value that matters is within one part in a hundred thousand of 1.0 and the precision goes exactly where all the detail is. The chord between two unit ve",
-      "places": [],
-      "files": 1
-    },
-    {
-      "sha": "5c21874f",
-      "date": "2026-08-20",
-      "subject": "Back out an agent's half-written vehicles.ts that I pushed by accident",
-      "lede": "`git add -A src` while four subagents were mid-edit swept an unfinished `vehicles.ts` and three of their scratch test files into a commit about the sky, and I pushed it to a branch that deploys. `/empyrean` threw `flyerParts is not defined` out of `buildVehicles` before the world booted: a black screen on a live route, from a commit whose message is about the moon.",
-      "places": [],
-      "files": 5
     }
   ]
 }

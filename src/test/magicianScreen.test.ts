@@ -75,3 +75,14 @@ describe("built-in channels", () => {
     expect(findChannel("something nobody has made")).toBeNull();
   });
 });
+
+describe("spellbook: stopping the weather", () => {
+  it("hears 'stop the rain' as clear skies, not as rain", async () => {
+    const { castSpell: spellbook } = await import("@/magician/spellbook");
+    for (const said of ["stop the rain", "stop the rain, make it night and light the lanterns", "no more snow", "enough rain please"]) {
+      const w = spellbook(said).filter((c) => c.name === "set_weather").map((c) => c.args.weather);
+      expect(w, said).toEqual(["clear"]);
+    }
+    expect(spellbook("make it rain").find((c) => c.name === "set_weather")?.args.weather).toBe("rain");
+  });
+});

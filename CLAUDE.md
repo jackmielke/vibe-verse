@@ -536,6 +536,13 @@ The shape of it, because it is the shape the next voice world should copy:
   houses' floors, with a float in deep water. The two open minka have walls
   as segments with a doorway gap (`house.walls`), and their hearth is the
   house's lamp, always lit.
+- **Real footage, not screenshots:** `node scripts/magician-film.mjs <dir>
+  '<plan>'` stops the live loop and steps the whole engine one fixed slice
+  of time per frame through `window.__magician.film(dt)`, so rain falls,
+  spells fly and the sky eases exactly as they would at 60 fps; stitch the
+  JPEGs with ffmpeg. It is slow (about 13 s a frame at 960x540 here), and
+  **do not edit source while it runs**: Vite hot-reloads the page and the
+  film dies mid-take.
 - **Sound can be checked without speakers**: `node scripts/magician-listen.mjs
   "strong wind" "night"` has the page draw a spectrogram of the final mix and
   print the loudness per second. Wind should swell and fall; a flat band is a
