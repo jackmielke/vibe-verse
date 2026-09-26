@@ -272,12 +272,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "21f5a459", iso: "2026-06-24T21:05:46+00:00", subject: "Changes" },
   ],
   "magician": [
+    { sha: "85b66e42", iso: "2026-09-26T19:20:57+00:00", subject: "Magician: film real footage frame by frame; 'stop the rain' stops it" },
     { sha: "5860ef00", iso: "2026-09-26T18:09:58+00:00", subject: "Magician: Zombie Tag in the play menu and by voice; Vibey in front of you" },
     { sha: "ff4ffb4b", iso: "2026-09-25T17:15:09+00:00", subject: "Oni is Zombie Tag now: green zombies, not horned oni" },
     { sha: "30cb1d49", iso: "2026-09-25T03:27:57+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
     { sha: "17448162", iso: "2026-09-25T03:09:04+00:00", subject: "Changes" },
     { sha: "bcc7a1cb", iso: "2026-09-25T03:08:57+00:00", subject: "Changes" },
-    { sha: "d1a2ecb8", iso: "2026-09-25T03:08:38+00:00", subject: "Changes" },
   ],
   "manifesto": [
     { sha: "56590fb9", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
