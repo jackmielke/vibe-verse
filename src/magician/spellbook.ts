@@ -81,6 +81,7 @@ export function castSpell(input: string): SpellCall[] {
   if (/\breset\b|\bstart over\b|\bundo everything\b/.test(t)) return [{ name: "reset_world", args: {} }];
 
   // Games
+  if (/\bzombies?\b|\bplay tag\b|\btag game\b/.test(t)) return [{ name: "start_game", args: { mode: "zombies" } }];
   if (/\b(oni|siege)\b/.test(t)) return [{ name: "start_game", args: { mode: "siege" } }];
   if (/\bspirit lights?\b|\bspirits\b|\blights game\b/.test(t)) return [{ name: "start_game", args: { mode: "spirits" } }];
   if (/\bdragon'?s? breath\b|\bdragon game\b|\bbells? game\b/.test(t)) return [{ name: "start_game", args: { mode: "dragon" } }];

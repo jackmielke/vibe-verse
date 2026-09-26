@@ -184,7 +184,7 @@ export default function Magician() {
     setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 2600);
   }, []);
   const startTag = () => {
-    if (!worldRef.current?.startTag()) pushToast("Tag needs two people: tap invite and bring somebody into the valley");
+    if (!worldRef.current?.startTag()) pushToast("Zombie Tag needs two people: tap invite and bring somebody into the valley");
   };
   const shuffleMe = () => {
     const id = randomCharacter(myChar);
@@ -590,14 +590,6 @@ export default function Magician() {
             >
               {game ? "end game" : "play"}
             </button>
-            <button
-              onClick={startTag}
-              disabled={!!tagHud && (tagHud.phase === "countdown" || tagHud.phase === "play")}
-              title="Zombie tag round the village, with everybody here"
-              className="rounded-sm border border-[#ff6a4a]/60 bg-[#ff6a4a]/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-[#ffe0d8] hover:bg-[#ff6a4a]/35 disabled:opacity-40"
-            >
-              🧟 zombie tag
-            </button>
             <button onClick={() => setMenuOpen((m) => !m)} className="rounded-sm border border-white/20 bg-black/30 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-white/70">
               {menuOpen ? "close" : "menu"}
             </button>
@@ -703,7 +695,17 @@ export default function Magician() {
           {/* Mode picker */}
           {showModes && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/55 px-4" data-ui="1" onClick={() => setShowModes(false)}>
-              <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-3" onClick={(e) => e.stopPropagation()}>
+              <div className="grid max-h-[85vh] w-full max-w-4xl gap-3 overflow-y-auto sm:grid-cols-2 lg:grid-cols-4" onClick={(e) => e.stopPropagation()}>
+                {/* The one game for everybody here at once. */}
+                <button
+                  onClick={() => { setShowModes(false); startTag(); }}
+                  className="rounded-xl border border-[#6dff4a]/40 bg-[#14301a]/85 p-4 text-left backdrop-blur-sm transition hover:border-[#6dff4a]"
+                >
+                  <div className="text-2xl">🧟</div>
+                  <div className="mt-1 font-serif text-xl text-[#eaffe0]">Zombie Tag</div>
+                  <div className="mt-2 text-xs leading-relaxed text-[#c8e6bd]">Everybody in the valley plays. One player starts as a zombie; anyone it touches turns green and joins the hunt. Last human standing wins. A ring of light keeps it to the village.</div>
+                  <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-[#8fb07f]">{peers.names.length ? `${peers.names.length + 1} here, ready to run` : "Needs two people: invite a friend"}</div>
+                </button>
                 {(Object.keys(MODE_INFO) as GameModeId[]).map((id) => (
                   <button
                     key={id}

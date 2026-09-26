@@ -1,7 +1,23 @@
 {
-  "generated_at": "2026-09-25T17:13:17.602Z",
+  "generated_at": "2026-09-26T18:07:24.523Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "26ea27df",
+      "date": "2026-09-25",
+      "subject": "Stamp the worlds' last-changed dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_01PavHDRk7eocUKsZ3YRqKTx",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "ff4ffb4b",
+      "date": "2026-09-25",
+      "subject": "Oni is Zombie Tag now: green zombies, not horned oni",
+      "lede": "Nobody knew what an oni was. Everything a player reads says zombie: the page is Zombie Tag at /zombies (/oni and /tag still work), the lobby card, the projector, the banners, the feed, the VR strip, and the Magician's 🧟 zombie tag button. A zombie is the same character tinted a sickly green (each avatar owns copies of its materials, so one player turning never tints another), shambling side to side over a green glow",
+      "places": [],
+      "files": 13
+    },
     {
       "sha": "f9f365c1",
       "date": "2026-09-25",
@@ -983,22 +999,6 @@
       "lede": "`git add -A src` while four subagents were mid-edit swept an unfinished `vehicles.ts` and three of their scratch test files into a commit about the sky, and I pushed it to a branch that deploys. `/empyrean` threw `flyerParts is not defined` out of `buildVehicles` before the world booted: a black screen on a live route, from a commit whose message is about the moon.",
       "places": [],
       "files": 5
-    },
-    {
-      "sha": "2d78841a",
-      "date": "2026-08-20",
-      "subject": "A moon, a blue hour, and a dusk that ends",
-      "lede": "Now that the hour is somebody's to choose, the hours have to be worth choosing, and two of them were not.",
-      "places": [],
-      "files": 8
-    },
-    {
-      "sha": "8aab423e",
-      "date": "2026-08-20",
-      "subject": "Changes",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [],
-      "files": 1
     }
   ]
 }

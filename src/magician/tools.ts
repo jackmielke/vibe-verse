@@ -68,6 +68,8 @@ export interface MagicianStore {
   become(id: string): void;
   /** Throw food to the koi, walking to the bridge first if needed. */
   feedKoi?(): string;
+  /** Start Zombie Tag with everybody in the valley; says whether it could. */
+  zombieTag?(): string;
   /** Have a program written for the Magic Screen. Returns at once; the program lands seconds later. */
   programScreen?(request: string, change: boolean): string;
   /** The game layer. */
@@ -247,8 +249,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: "function",
     name: "start_game",
     description:
-      "Start a game in the valley. 'siege': Oni Siege, five waves of oni attack the village; the visitor shoots bolts and you fight beside them, and weather is a weapon (rain drowns fire oni, snow slows, storm lightning strikes them, flood drowns). 'spirits': Spirit Lights, gather 30 lights in two minutes while a yurei hunts the visitor; fog hides them, lit lanterns repel it. 'dragon': Dragon's Breath, the mountain throws fireballs faster and faster while the visitor rings three bells (bridge, torii, shrine); rain buys time. Use when the visitor wants to play, fight, or a game.",
-    parameters: { type: "object", properties: { mode: { type: "string", enum: ["siege", "spirits", "dragon"] } }, required: ["mode"] },
+      "Start a game in the valley. 'siege': Oni Siege, five waves of oni attack the village; the visitor shoots bolts and you fight beside them, and weather is a weapon (rain drowns fire oni, snow slows, storm lightning strikes them, flood drowns). 'spirits': Spirit Lights, gather 30 lights in two minutes while a yurei hunts the visitor; fog hides them, lit lanterns repel it. 'dragon': Dragon's Breath, the mountain throws fireballs faster and faster while the visitor rings three bells (bridge, torii, shrine); rain buys time. 'zombies': Zombie Tag with everybody in the valley: one player starts as a zombie, anyone it touches turns, last human standing wins; it needs at least two people here. Use when the visitor wants to play, fight, or a game.",
+    parameters: { type: "object", properties: { mode: { type: "string", enum: ["siege", "spirits", "dragon", "zombies"] } }, required: ["mode"] },
   },
   {
     type: "function",
@@ -553,6 +555,10 @@ export function runTool(name: string, rawArgs: unknown, store: MagicianStore, rn
       return { output: `Played ${n}.`, toast: null };
     }
     case "start_game": {
+      if (args.mode === "zombies") {
+        const out = store.zombieTag?.() ?? "Zombie tag is not available here.";
+        return { output: out, toast: /started/i.test(out) ? "zombie tag" : null };
+      }
       const mode = args.mode as "siege" | "spirits" | "dragon";
       if (!["siege", "spirits", "dragon"].includes(mode)) return { output: "Unknown mode. Use siege, spirits or dragon.", toast: null };
       store.game.start(mode);

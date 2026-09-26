@@ -556,11 +556,15 @@ The shape of it, because it is the shape the next voice world should copy:
   engine picker is gone from the splash; `?engine=live` still selects Live.
 - **Tag in the valley** (`world/tag.ts`) is Oni's rules and match carried
   over the valley's own channel as `g` messages, with `auto: false`: a
-  round only starts when somebody presses 🧟 zombie tag, because most visitors are
+  round only starts when somebody picks 🧟 Zombie Tag from the play menu (or asks Vibey: `start_game zombies`), because most visitors are
   here to wander. A ring of light round the village square (centre 6, 0,
   radius 27) keeps a round small; everybody runs faster in it and the oni a
   little faster still. `node scripts/magician-tag.mjs <dir>` plays one
   between two tabs.
+- **Vibey stands in front of you**, a touch right of centre and about four
+  metres out, wandering slowly across the view; when you turn away it
+  hurries back into view (`offAxis` in `world/vibey.ts`) and then drifts.
+  It used to park off to the right, where its captions were half off screen.
 - **A spell is seen leaving** (`world/spell.ts`): a ribbon arcs out ahead of
   the visitor and blooms in the sky. Its trail fills in by distance, not by
   frame; the first version went straight up out of view and was scattered

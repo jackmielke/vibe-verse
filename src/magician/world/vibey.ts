@@ -289,8 +289,8 @@ export function createVibey(initialId = "vibey"): Vibey {
   let bobPhase = Math.random() * 10;
   let facing = 0;
   let initialised = false;
-  let standAhead = 2.6;
-  let standSide = 1.3;
+  let standAhead = 4;
+  let standSide = 0.5;
 
   return {
     group,
@@ -298,11 +298,21 @@ export function createVibey(initialId = "vibey"): Vibey {
     update(dt, time, player, playerYaw, groundAt) {
       const fx = -Math.sin(playerYaw), fz = -Math.cos(playerYaw);
       const lx = -fz, lz = fx;
-      desired.set(player.x + fx * standAhead + lx * standSide, 0, player.z + fz * standAhead + lz * standSide);
+      // In front of the visitor, a touch to the right, and never quite still:
+      // a slow wander across the view reads as a companion pottering about,
+      // not a sticker glued to the screen.
+      const side = standSide + Math.sin(time * 0.23) * 0.6 + Math.sin(time * 0.61 + 2) * 0.2;
+      const ahead = standAhead + Math.sin(time * 0.17 + 1) * 0.45;
+      desired.set(player.x + fx * ahead + lx * side, 0, player.z + fz * ahead + lz * side);
       desired.y = groundAt(desired.x, desired.z);
       if (!initialised) { group.position.copy(desired); initialised = true; }
       const dist = tmp.copy(desired).sub(group.position).length();
-      const k = dist > 4.5 ? 2.2 : dist > 1.2 ? 0.9 : 0.15;
+      // How far round the visitor would have to look to see us. When they turn
+      // away, hurry back into view; once there, drift.
+      const vx = group.position.x - player.x, vz = group.position.z - player.z;
+      const vl = Math.hypot(vx, vz) || 1;
+      const offAxis = Math.acos(Math.max(-1, Math.min(1, (vx * fx + vz * fz) / vl)));
+      const k = offAxis > 0.5 ? 3.2 : dist > 4.5 ? 2.2 : dist > 1.2 ? 1.1 : 0.35;
       group.position.lerp(desired, Math.min(1, dt * k));
       const ground = groundAt(group.position.x, group.position.z);
       group.position.y += (ground - group.position.y) * Math.min(1, dt * 4);

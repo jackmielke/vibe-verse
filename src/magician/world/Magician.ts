@@ -198,10 +198,12 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     v = Math.max(55, Math.min(95, v)) * zoomLevel;
     camera.fov = Math.max(30, Math.min(115, v));
     camera.updateProjectionMatrix();
-    // On a narrow screen the companion stands nearer the middle, further off,
+    // The companion stands in front of the visitor, a touch right of centre, so
+    // they read its caption without looking away; on a narrow screen, nearer
+    // the middle and further off,
     // so the caption above its head stays on screen.
     const narrow = Math.max(0, Math.min(1, (1.2 - aspect) / 0.8));
-    vibey.setStance(3.3 + narrow * 0.5, 1.9 - narrow * 1.4);
+    vibey.setStance(4 + narrow * 0.6, 0.55 - narrow * 0.35);
   }
 
   // ---- light --------------------------------------------------------------
@@ -731,6 +733,11 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       return change
         ? "Changing the program on the Magic Screen now; the new version lands in about ten seconds and everyone can watch the code being written."
         : "Writing it for the Magic Screen now; it appears in about ten seconds and everyone can watch the code being written. Say something fun meanwhile.";
+    },
+    zombieTag() {
+      return tag.start()
+        ? "Zombie tag started for everyone in the valley: one zombie, everybody else runs, last human standing wins. It begins in five seconds."
+        : "Zombie tag needs at least two people in the valley. Ask the visitor to invite a friend with the invite button.";
     },
     feedKoi() {
       if (!onBridge()) {
