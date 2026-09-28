@@ -272,12 +272,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "21f5a459", iso: "2026-06-24T21:05:46+00:00", subject: "Changes" },
   ],
   "magician": [
+    { sha: "f59aaba5", iso: "2026-09-28T06:12:27+00:00", subject: "Magician: phones cast spells onto a projector; Vibey remembers you" },
     { sha: "85b66e42", iso: "2026-09-26T19:20:57+00:00", subject: "Magician: film real footage frame by frame; 'stop the rain' stops it" },
     { sha: "5860ef00", iso: "2026-09-26T18:09:58+00:00", subject: "Magician: Zombie Tag in the play menu and by voice; Vibey in front of you" },
     { sha: "ff4ffb4b", iso: "2026-09-25T17:15:09+00:00", subject: "Oni is Zombie Tag now: green zombies, not horned oni" },
     { sha: "30cb1d49", iso: "2026-09-25T03:27:57+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
     { sha: "17448162", iso: "2026-09-25T03:09:04+00:00", subject: "Changes" },
-    { sha: "bcc7a1cb", iso: "2026-09-25T03:08:57+00:00", subject: "Changes" },
   ],
   "manifesto": [
     { sha: "56590fb9", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
@@ -311,6 +311,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "efe0b65f", iso: "2026-06-12T02:00:05+00:00", subject: "Changes" },
   ],
   "oni": [
+    { sha: "f59aaba5", iso: "2026-09-28T06:12:27+00:00", subject: "Magician: phones cast spells onto a projector; Vibey remembers you" },
     { sha: "ff4ffb4b", iso: "2026-09-25T17:15:09+00:00", subject: "Oni is Zombie Tag now: green zombies, not horned oni" },
     { sha: "30cb1d49", iso: "2026-09-25T03:27:57+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
     { sha: "e5e81273", iso: "2026-09-25T02:49:46+00:00", subject: "Oni: point and click to run, in VR and on the flat" },
