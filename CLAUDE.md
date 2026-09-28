@@ -582,6 +582,29 @@ The shape of it, because it is the shape the next voice world should copy:
   so every script starts where it always did; `?intro` forces it for a
   capture, which is how the hub card was taken.
 
+- **Phones are wands** (`remote.ts`, `ui/Remote.tsx`, `ui/Projector.tsx`).
+  `/magician?show` is the projector: a camera circling the square
+  (`spectator: true`: no presence, no ghost, out of tag), a QR code, and a
+  feed of who cast what. The code opens `/magician?remote` on a phone: a
+  name and a grid of big spell buttons, no three.js. A button runs the same
+  tools against `headlessStore` (state is what the phone heard from the room,
+  a patch goes back to it), then a `c` message signs it so every valley
+  client shows "Maya made it snow" and Vibey cheers. Two rules hold it
+  together: a phone passes `currentState: () => null` so it **never answers a
+  newcomer's hello** with a stale world, and a typed wish from a phone only
+  reaches the world's look (`SAFE_TOOLS`), never a body, a game or a reset.
+  `node scripts/magician-wands.mjs <dir>` drives projector, walker and phone
+  in one browser context.
+- **Vibey remembers you** (`memory.ts`, localStorage `magician.memory`, this
+  device only). Visits, last visit, favourite spells and the look you left
+  with. It shows up four ways: the caption on arrival ("Welcome back, Jack.
+  Aurora again?"), the splash line, the voice's instructions
+  (`memoryPrompt`, and `greetingPrompt` for its first line), and
+  `like_last_time`, which restores the saved look. The bond grows with visits
+  (stranger, acquaintance, friend, old friend) and a quiet valley has a small
+  arc inside one visit (`milestone`, at 3, 8, 15 and 30 spells). The
+  greeting waits for the arrival shot; with the voice live, the voice greets.
+
 ## Zombie Tag (the code says Oni)
 
 `/zombies` (also `/oni`, `/tag`) is infection tag for a whole room at once:

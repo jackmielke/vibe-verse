@@ -17,7 +17,8 @@
  *
  * Wire: `{t:"p"}` presence at eight hertz (position, yaw, body); `{t:"s"}`
  * a patch; `{t:"hi"}` a newcomer asking; `{t:"full"}` someone answering
- * with the whole state. Nobody is the host: the first `full` a newcomer
+ * with the whole state; `{t:"c"}` somebody's spell, by name, so it can be
+ * credited ("Maya made it snow") while its patch does the actual work. Nobody is the host: the first `full` a newcomer
  * hears wins, which is fine for a world whose worst inconsistency is that
  * one person's rain arrives a second late.
  */
@@ -54,12 +55,16 @@ export type Wire =
   | { t: "s"; id: string; patch: Patch }
   | { t: "hi"; id: string }
   | { t: "full"; id: string; to: string; state: WorldState }
+  | { t: "c"; id: string; cast: CastNote }
   | { t: "bye"; id: string };
+
+/** Who cast what, for the toast and the projector's feed. The patch travels separately. */
+export interface CastNote { n: string; did: string; emoji: string }
 
 export function isWire(v: unknown): v is Wire {
   if (!v || typeof v !== "object") return false;
   const w = v as { t?: unknown; id?: unknown };
-  return typeof w.t === "string" && typeof w.id === "string" && ["p", "s", "hi", "full", "bye", "g"].includes(w.t);
+  return typeof w.t === "string" && typeof w.id === "string" && ["p", "s", "hi", "full", "bye", "g", "c"].includes(w.t);
 }
 
 export interface Transport {
@@ -133,8 +138,10 @@ export interface RoomOptions {
   /** Somebody joined or left, for the toast. */
   onJoin?(name: string): void;
   onLeave?(name: string): void;
-  /** Answer a newcomer: the whole current state. */
-  currentState(): WorldState;
+  /** Answer a newcomer: the whole current state. Null never answers (a spell remote, which only knows what it heard). */
+  currentState(): WorldState | null;
+  /** Somebody cast a spell and signed it. */
+  onCast?(note: CastNote, from: string): void;
   /** A game message (tag) from somebody else. */
   onGame?(msg: OniWire, from: string): void;
 }
@@ -148,6 +155,8 @@ export interface Room {
   presence(x: number, y: number, z: number, yaw: number, body: string, talking: boolean, extra?: PresenceExtra): void;
   /** Send a game message (tag). */
   game(m: OniWire): void;
+  /** Sign a spell we cast, after its patch. */
+  cast(note: CastNote): void;
   peers(): PeerPresence[];
   close(): void;
 }
@@ -191,16 +200,24 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
     }
   };
   let pumpTimer: number | null = null;
+  // The answer to our hello describes the world as it was when somebody
+  // read it, which on a slow machine is well before it arrives. Anything
+  // made or heard meanwhile is kept and laid back on top, or a phone's first
+  // spell is undone by a laptop that took four seconds to say hello.
+  let gotFull = false;
+  const meanwhile: Patch[] = [];
+  const remember = (p: Patch) => { if (!gotFull && meanwhile.length < 60) meanwhile.push(p); };
 
   const room: Room = {
     id,
     connected: false,
-    patch(p) { transport?.send({ t: "s", id, patch: p }); },
+    patch(p) { remember(p); transport?.send({ t: "s", id, patch: p }); },
     presence(x, y, z, yaw, body, talking, extra) {
       latest = { t: "p", id, n: opts.name, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(3), b: body, v: talking, ...(extra ?? {}) };
       dirty = true;
     },
     game(m) { transport?.send({ t: "g", id, m }); },
+    cast(note) { transport?.send({ t: "c", id, cast: { n: String(note.n).slice(0, 24), did: String(note.did).slice(0, 80), emoji: String(note.emoji).slice(0, 8) } }); },
     peers: list,
     close() {
       closed = true;
@@ -214,7 +231,6 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
   transport = await openTransport(opts.mode, opts.room);
   if (!transport || closed) { transport?.close(); return room; }
   room.connected = true;
-  let gotFull = false;
   transport.receive((msg) => {
     if (msg.id === id) return;
     switch (msg.t) {
@@ -226,16 +242,26 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
         break;
       }
       case "s":
+        remember(msg.patch);
         opts.onPatch(msg.patch);
         break;
-      case "hi":
-        transport?.send({ t: "full", id, to: msg.id, state: opts.currentState() });
+      case "hi": {
+        const state = opts.currentState();
+        if (state) transport?.send({ t: "full", id, to: msg.id, state });
         break;
+      }
       case "full":
-        if (msg.to === id && !gotFull) { gotFull = true; opts.onFull(msg.state); }
+        if (msg.to === id && !gotFull) {
+          gotFull = true;
+          opts.onFull(msg.state);
+          for (const p of meanwhile.splice(0)) opts.onPatch(p);
+        }
         break;
       case "g":
         if (msg.m && typeof msg.m === "object") opts.onGame?.(msg.m, msg.id);
+        break;
+      case "c":
+        if (msg.cast && typeof msg.cast.n === "string" && typeof msg.cast.did === "string") opts.onCast?.({ n: msg.cast.n.slice(0, 24), did: msg.cast.did.slice(0, 80), emoji: String(msg.cast.emoji ?? "✨").slice(0, 8) }, msg.id);
         break;
       case "bye": {
         const p = peers.get(msg.id);

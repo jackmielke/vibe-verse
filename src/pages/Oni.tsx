@@ -10,10 +10,10 @@
  *
  * The engine is `src/oni/world/Oni.ts`; the rules are `src/oni/rules.ts`.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { Joystick } from "@/magician/ui/Joystick";
-import { qrPath } from "@/lib/qr";
+import { QrCode } from "@/oni/ui/QrCode";
 import { findCharacter } from "@/lib/characters";
 import { createOni, type FeedLine, type Hud, type OniEngine } from "@/oni/world/Oni";
 import { readRoom } from "@/oni/net";
@@ -36,14 +36,6 @@ function joinUrl(room: string): string {
   return room === "matsuri" ? `${origin}/zombies` : `${origin}/zombies?room=${room}`;
 }
 
-function QrCode({ text, size }: { text: string; size: number }) {
-  const { path, size: n } = useMemo(() => qrPath(text, 2), [text]);
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${n} ${n}`} shapeRendering="crispEdges" className="rounded-xl bg-white">
-      <path d={path} fill="#16121f" />
-    </svg>
-  );
-}
 
 
 export default function Oni() {

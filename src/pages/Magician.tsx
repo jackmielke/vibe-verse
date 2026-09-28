@@ -30,6 +30,9 @@ import { CharacterPortrait } from "@/oni/ui/JoinCard";
 import { PhaseBanner } from "@/oni/ui/PhaseBanner";
 import type { Hud } from "@/oni/world/Oni";
 import { randomCharacter, readCharacter, writeCharacter } from "@/oni/profile";
+import { arrive, greeting, greetingPrompt, lookOf, memoryPrompt, milestone, readMemory, recordSpell, spellLabel, writeMemory, type Memory } from "@/magician/memory";
+import { MagicianRemote } from "@/magician/ui/Remote";
+import { MagicianProjector } from "@/magician/ui/Projector";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -42,7 +45,18 @@ const SUGGESTIONS = [
   "sunset, please",
 ];
 
-export default function Magician() {
+/**
+ * One route, three doors: the valley itself, `?show` for the projector in
+ * the room, and `?remote` for the phones that cast spells onto it.
+ */
+export default function MagicianRoute() {
+  const [params] = useSearchParams();
+  if (params.has("remote")) return <MagicianRemote />;
+  if (params.has("show")) return <MagicianProjector />;
+  return <Magician />;
+}
+
+function Magician() {
   const hostRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<MagicianWorld | null>(null);
   const sessionRef = useRef<VoiceSession | null>(null);
@@ -54,6 +68,11 @@ export default function Magician() {
   const [myChar, setMyChar] = useState<string>(readCharacter);
   const [myName, setMyName] = useState<string>(() => { try { return localStorage.getItem("magician.name") ?? localStorage.getItem("oni.name") ?? ""; } catch { return ""; } });
   const [tagHud, setTagHud] = useState<Hud | null>(null);
+  // What Vibey remembers: `memPrev` is you as of the last visit (what the
+  // greeting and "like last time" are about), `mem` is this visit, saved as it goes.
+  const [memPrev] = useState<Memory>(readMemory);
+  const memRef = useRef<Memory>(memPrev);
+  const spellsThisVisit = useRef(0);
   const [thirdPerson, setThirdPerson] = useState(true);
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [detail, setDetail] = useState<string>("");
@@ -122,6 +141,7 @@ export default function Magician() {
   }, []);
   const idRef = useRef(1);
   const lastFizzleRef = useRef(0);
+  const lastCastNotifyRef = useRef(0);
   const doAction = useCallback((id: WorldAction["id"]) => {
     if (id === "wish" || id === "program") { document.exitPointerLock?.(); setWishOpen(id); return; }
     worldRef.current?.act(id);
@@ -203,7 +223,27 @@ export default function Magician() {
     if (!entered) return;
     const host = hostRef.current;
     if (!host) return;
+    const name = myName.trim();
+    memRef.current = arrive(memPrev, name);
+    writeMemory(memRef.current);
     const world = createMagician(host, {
+      onSpell: (tool, args) => {
+        const label = spellLabel(tool, args);
+        if (!label) return;
+        memRef.current = recordSpell(memRef.current, label);
+        writeMemory(memRef.current);
+        const line = milestone(++spellsThisVisit.current, name);
+        // The voice has its own feelings; the milestones are for the quiet valley.
+        if (line && statusRef.current !== "live") setTimeout(() => { if (worldRef.current === world) { world.vibey.setCaption(line); world.vibey.emote("Yes"); } }, 2600);
+      },
+      onCast: (note) => {
+        pushToast(`${note.emoji} ${note.n} ${note.did}`);
+        const now = Date.now();
+        if (now - lastCastNotifyRef.current > 25000) {
+          lastCastNotifyRef.current = now;
+          sessionRef.current?.notify(`${note.n} just ${note.did} from their phone. Cheer them by name in a few words.`);
+        }
+      },
       onPeers: (list, connected) => setPeers({ names: list.map((p) => p.name), connected }),
       onActions: (a) => setActions(a),
       onSelect: () => { if (statusRef.current === "idle" || statusRef.current === "closed" || statusRef.current === "error") startVoiceRef.current(); },
@@ -246,6 +286,21 @@ export default function Magician() {
         return "Point at the ground + trigger to walk. Point at the sky to talk to Vibey.";
       },
     });
+    // "Like last time" is the look you left with, not the one you have now.
+    world.store.lastLook = () => memPrev.look;
+    // Save the look as it goes: leaving is a closed tab, and a closed tab says nothing.
+    const saveLook = window.setInterval(() => {
+      memRef.current = { ...memRef.current, look: lookOf(world.getState()) };
+      writeMemory(memRef.current);
+    }, 4000);
+    // Vibey says hello once you are down in the valley (after the arrival shot).
+    const hello = window.setTimeout(() => {
+      if (worldRef.current !== world || statusRef.current === "live") return;
+      const g = greeting(memPrev, name);
+      world.vibey.setCaption(g);
+      world.vibey.emote("Wave");
+      pushLine("vibey", g, true);
+    }, navigator.webdriver && !/[?&]intro\b/.test(location.search) ? 1200 : 6800);
     recorderRef.current = createRecorder(world.canvas(), () => [world.audioStream(), ...(sessionRef.current?.streams() ?? [])].filter((s): s is MediaStream => Boolean(s)));
     worldRef.current = world;
     world.wake();
@@ -263,6 +318,10 @@ export default function Magician() {
       vrSlot.current.appendChild(b);
     }).catch(() => undefined);
     return () => {
+      clearInterval(saveLook);
+      clearTimeout(hello);
+      memRef.current = { ...memRef.current, look: lookOf(world.getState()) };
+      writeMemory(memRef.current);
       sessionRef.current?.disconnect();
       sessionRef.current = null;
       world.dispose();
@@ -284,6 +343,8 @@ export default function Magician() {
     }
     const session = createVoiceSession({
       engine,
+      memory: memoryPrompt(memPrev, myName.trim()),
+      greeting: greetingPrompt(memPrev, myName.trim()),
       handlers: {
         onStatus: (s, d) => { setStatus(s); statusRef.current = s; setDetail(d ?? ""); if (s === "live") world.vibey.emote("Wave"); },
         onUserText: (t, final) => pushLine("you", t, final),
@@ -302,7 +363,7 @@ export default function Magician() {
     } catch {
       /* status handler already reported it */
     }
-  }, [engine, pushLine, status]);
+  }, [engine, pushLine, status, memPrev, myName]);
   useEffect(() => { startVoiceRef.current = () => { void startVoice(); }; }, [startVoice]);
 
   const toggleRecording = useCallback(async () => {
@@ -464,7 +525,9 @@ export default function Magician() {
             <h1 className="magician-splash__title mt-4 text-5xl font-medium sm:text-7xl lg:text-8xl">The Magician</h1>
             <div className="magician-splash__divider mt-5 h-px w-28" />
             <p className="magician-splash__premise mt-5 max-w-xl text-sm leading-relaxed sm:text-base">
-              A quiet valley that listens. Speak softly, and the weather, lanterns, and forest will answer.
+              {memPrev.visits > 0
+                ? `Welcome back${memPrev.name ? `, ${memPrev.name}` : ""}. Vibey remembers you.`
+                : "A quiet valley that listens. Speak softly, and the weather, lanterns, and forest will answer."}
             </p>
 
             {/* Who you'll be: the portraits spin and land on somebody; shuffle
@@ -617,6 +680,7 @@ export default function Magician() {
                 <button onClick={() => void toggleRecording()} className={`col-span-2 rounded-md border px-2 py-2 ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/80"}`}>{recording ? `● recording ${recSeconds}s · stop and share` : "record a clip"}</button>
                 <button onClick={() => { setShowSupport(true); setMenuOpen(false); }} className="col-span-2 rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">support the valley · the board</button>
                 <button onClick={() => { setHudHidden(true); setMenuOpen(false); }} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">hide hud</button>
+                <a href={`/magician?show${readRoom() !== "hoshimura" ? `&room=${readRoom()}` : ""}`} target="_blank" rel="noreferrer" className="col-span-2 rounded-md border border-[#ffd6a0]/40 bg-[#ffd6a0]/10 px-2 py-2 text-center text-[#fff1dc]">📽 projector · phones cast spells</a>
                 <Link to="/" className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-center text-white/80">leave</Link>
               </div>
               <div className="mt-3 text-[11px] leading-relaxed text-white/50">

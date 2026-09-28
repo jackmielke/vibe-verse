@@ -56,7 +56,7 @@ import { createVibey, type Vibey } from "./vibey";
 import { readCompanion, writeCompanion } from "../companions";
 import { createGameRunner, type HouseState } from "../game/runner";
 import { MODE_INFO, type GameHud, type GameModeId } from "../game/types";
-import { joinRoom, readNetMode, readRoom, type PeerPresence, type Room } from "../net";
+import { joinRoom, readNetMode, readRoom, type CastNote, type PeerPresence, type Room } from "../net";
 import { createPeers } from "./peers";
 import { createValleyTag } from "./tag";
 import { createAvatar } from "@/oni/world/avatars";
@@ -72,6 +72,11 @@ export interface MagicianOptions {
   voiceLine?(): string;
   /** The visitor's roster character: what everybody else sees them as. */
   char?: string;
+  /**
+   * The projector: nobody is standing here. A slow camera circles the
+   * village, nothing is sent as presence, and nobody sees a ghost for it.
+   */
+  spectator?: boolean;
 }
 
 export interface MagicianEvents {
@@ -95,6 +100,10 @@ export interface MagicianEvents {
   onActions?(actions: WorldAction[]): void;
   /** A game of tag: the banner's numbers, or null when none is on. */
   onTag?(hud: Hud | null): void;
+  /** Somebody cast a spell from their phone (or anywhere that signs it). */
+  onCast?(note: CastNote): void;
+  /** A spell of ours landed: the tool and its arguments, for Vibey's memory. */
+  onSpell?(name: string, args: Record<string, unknown>): void;
 }
 
 /** Something to do where the visitor is standing, shown as a button. */
@@ -613,7 +622,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   let peerList: PeerPresence[] = [];
   void joinRoom({
     id: myId,
-    onGame: (m) => tag.handle(m),
+    // The projector is not a player, so it stays out of tag entirely.
+    onGame: (m) => { if (!options.spectator) tag.handle(m); },
     mode: readNetMode(),
     room: readRoom(),
     name: options.name ?? "visitor",
@@ -622,6 +632,15 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     onPeers: (list) => { peerList = list; peers.sync(list); events.onPeers?.(list, true); },
     onJoin: (n) => events.onToast?.(`${n} arrived`),
     onLeave: (n) => events.onToast?.(`${n} left`),
+    onCast: (note) => {
+      // The patch already landed; this is the credit, and the flourish.
+      const aim = new THREE.Vector3(-Math.sin(player.yaw()), 0, -Math.cos(player.yaw()));
+      spells.cast(V.copy(vibey.position).setY(vibey.position.y + 1.1), aim, "#ffd98a", (at) => bursts.spawn("sparkle", at.x, at.y, at.z));
+      ambience.play("sparkle", { x: vibey.position.x, z: vibey.position.z });
+      vibey.setCaption(`${note.emoji} ${note.n} ${note.did}!`);
+      if (performance.now() - lastEmote > 1500) { lastEmote = performance.now(); vibey.emote("ThumbsUp"); }
+      events.onCast?.(note);
+    },
     currentState: () => state,
   }).then((r) => {
     if (disposed) { r.close(); return; }
@@ -1282,7 +1301,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // bell. Any key or tap skips it; it never runs in a headset or under a
   // script (navigator.webdriver), where it would only get in the way.
   const INTRO = 6;
-  let intro = /[?&]intro\b/.test(location.search) || (typeof navigator !== "undefined" && !navigator.webdriver && !/[?&]nointro\b/.test(location.search)) ? 0 : -1;
+  const spectator = !!options.spectator;
+  let intro = !spectator && (/[?&]intro\b/.test(location.search) || (typeof navigator !== "undefined" && !navigator.webdriver && !/[?&]nointro\b/.test(location.search))) ? 0 : -1;
   const introFrom = new THREE.Vector3(46, 38, 40), introCtrl = new THREE.Vector3(14, 18, 26), introLook0 = new THREE.Vector3(-12, 6, -22);
   const introEye = new THREE.Vector3(), introLook = new THREE.Vector3(), introPos = new THREE.Vector3();
   const playerHead = player.rig.children[0] as THREE.Object3D;
@@ -1316,6 +1336,23 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     if (k >= 1) endIntro();
   }
 
+  // The projector's camera: a slow circle round the village square from
+  // above the roofs, so the whole room can see the weather they are making.
+  // The (invisible) player stands in the square looking the way the camera
+  // does, which is what puts Vibey in the middle of the shot.
+  const PROJ = { x: 4, z: -2, r: 30, h: 13 };
+  let projAngle = 0.9;
+  function projectorCamera(dt: number) {
+    if (camera.parent !== scene) scene.add(camera);
+    projAngle += dt * 0.035;
+    const cx = PROJ.x + Math.sin(projAngle) * PROJ.r, cz = PROJ.z + Math.cos(projAngle) * PROJ.r;
+    const gy = heightAt(PROJ.x, PROJ.z);
+    camera.position.set(cx, Math.max(gy + PROJ.h, heightAt(cx, cz) + 4), cz);
+    camera.lookAt(PROJ.x, gy + 2.2, PROJ.z);
+    const yaw = Math.atan2(cx - PROJ.x, cz - PROJ.z);
+    player.teleport(PROJ.x + Math.sin(yaw) * 6, PROJ.z + Math.cos(yaw) * 6, yaw);
+  }
+
   // Our body under us, and the camera eased out behind it (or back into our
   // eyes indoors, sitting, at the screen, in the arrival shot and in VR).
   const camGround = new THREE.Vector3();
@@ -1340,7 +1377,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       const floor = groundAt(camGround.x, camGround.z) + 0.35;
       if (camGround.y < floor) camera.position.y += floor - camGround.y;
     }
-    self.group.visible = camBack > 0.9 && !inXr;
+    self.group.visible = camBack > 0.9 && !inXr && !spectator;
   }
 
   function frame() {
@@ -1354,7 +1391,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const eye = 1 / s.giant;
     const wading = player.position.y < terrain.waterY() - 0.4 ? 0.55 : 1;
     updateWalkPointers(!!xr);
-    player.update(dt, groundAt, { frozen: playing || sitting || intro >= 0 || tag.frozen(), gravity: s.gravity, speed: s.speed * eye * wading * tag.speed(), eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: (p) => { solveWalls(p); tag.clamp(p); } });
+    player.update(dt, groundAt, { frozen: spectator || playing || sitting || intro >= 0 || tag.frozen(), gravity: s.gravity, speed: s.speed * eye * wading * tag.speed(), eye: sitting ? eye * 0.52 : eye, xr, xrCamera: xr ? renderer.xr.getCamera() : null, solve: (p) => { solveWalls(p); tag.clamp(p); } });
     tag.update(dt, time);
     const th = tag.hud();
     if (th !== lastTagHud) { lastTagHud = th; events.onTag?.(th); }
@@ -1391,8 +1428,8 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     }
     river.update(dt, time, { waterY: terrain.waterY(), player: player.position, onBridge: onBridge(), night: look.night });
     grass.update(dt, time, player.position, { windDir: s.windDirection, wind: s.wind, snow: look.snowCover, tint: look.tint, sunDir: look.sunDir, sunColor: look.sunColor, night: look.night });
-    V.copy(player.position);
-    V.y += 1.6;
+    if (spectator) V.setFromMatrixPosition(camera.matrixWorld);
+    else { V.copy(player.position); V.y += 1.6; }
     rain.update(dt, time, V, s.wind, s.windDirection);
     snow.update(dt, time, V, s.wind, s.windDirection);
     petals.update(dt, time, V, s.wind, s.windDirection);
@@ -1431,7 +1468,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       const key = next.map((a) => a.label).join();
       if (key !== actionKey) { actionKey = key; actionsNow = next; events.onActions?.(next); }
     }
-    room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false, tag.presence());
+    if (!spectator) room?.presence(player.position.x, player.position.y, player.position.z, player.yaw(), vibey.bodyId(), options.talking?.() ?? false, tag.presence());
     peers.update(dt, time, groundAt, (id) => tag.isOni(id));
     const gh = game.hud();
     events.onGame?.(gh);
@@ -1440,6 +1477,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     vibey.update(dt, time, player.position, player.yaw(), (x, z) => Math.max(heightAt(x, z), houseFloorAt(x, z), bridge.deckAt(x, z) ?? -Infinity));
     renderer.toneMappingExposure += lastHitFlash * 0.5;
     arrival(dt);
+    if (spectator) projectorCamera(dt);
     renderer.render(scene, camera);
   }
   // Offline rendering for films: a script stops the loop and steps the whole
@@ -1489,6 +1527,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       const r = runTool(name, args, store);
       if (r.toast) {
         events.onToast?.(r.toast);
+        events.onSpell?.(name, (args && typeof args === "object" ? args : {}) as Record<string, unknown>);
         // A spell landed: sparkles at Vibey's hands and a flourish, unless the
         // model chose its own gesture this turn.
         bursts.spawn("sparkle", vibey.position.x, vibey.position.y + 1.2, vibey.position.z);

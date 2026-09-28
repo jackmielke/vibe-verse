@@ -79,6 +79,7 @@ export function castSpell(input: string): SpellCall[] {
   const calls: SpellCall[] = [];
 
   if (/\breset\b|\bstart over\b|\bundo everything\b/.test(t)) return [{ name: "reset_world", args: {} }];
+  if (/\b(like|same as|just like) last time\b|\bthe usual\b|\bhow i (had|left) it\b/.test(t)) return [{ name: "like_last_time", args: {} }];
 
   // Games
   if (/\bzombies?\b|\bplay tag\b|\btag game\b/.test(t)) return [{ name: "start_game", args: { mode: "zombies" } }];

@@ -101,9 +101,17 @@ export interface VoiceOptions {
   voice?: string;
   tools?: ToolDefinition[];
   handlers: VoiceHandlers;
+  /** What Vibey remembers about this visitor, appended to the instructions. */
+  memory?: string;
+  /** The first line's instruction, in place of the generic greeting. */
+  greeting?: string;
 }
 
 const FUNCTION_NAME = "vibe-magician-voice";
+
+function withMemory(prompt: string, memory?: string): string {
+  return memory ? `${prompt}\n\nWhat you remember:\n${memory.slice(0, 1200)}` : prompt;
+}
 
 interface FnResponse {
   engine?: string;
@@ -373,7 +381,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
       await pc.setLocalDescription(offer);
 
       if (opts.engine === "realtime") {
-        const minted = await callFunction({ action: "realtime", instructions: VIBEY_REALTIME_PROMPT, tools, voice: opts.voice ?? "marin" });
+        const minted = await callFunction({ action: "realtime", instructions: withMemory(VIBEY_REALTIME_PROMPT, opts.memory), tools, voice: opts.voice ?? "marin" });
         if (!minted.value) throw new Error("No client secret returned");
         armBudget(minted.secondsLeft ?? null);
         if (minted.overFree) handlers.onOverFree?.(Boolean(minted.insistent));
@@ -388,13 +396,13 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
         dc.onopen = () => {
           setStatus("live", minted.model);
           // Say hello. The greeting is a one-off instruction on the first response.
-          send({ type: "response.create", response: { instructions: VIBEY_GREETING } });
+          send({ type: "response.create", response: { instructions: opts.greeting ?? VIBEY_GREETING } });
         };
       } else {
         const opened = await callFunction({
           action: "live",
           sdp: offer.sdp,
-          instructions: VIBEY_VOICE_PROMPT,
+          instructions: withMemory(VIBEY_VOICE_PROMPT, opts.memory),
           backendInstructions: VIBEY_BACKEND_PROMPT,
           tools,
           voice: opts.voice ?? "marin",
@@ -405,7 +413,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
         await pc.setRemoteDescription({ type: "answer", sdp: opened.sdp });
         dc.onopen = () => {
           // session.started arrives on the channel and flips status to live.
-          send({ type: "session.commentary.append", delegation_id: null, content: "A visitor has just arrived in the valley. Greet them warmly in one sentence, wave, and invite a wish." });
+          send({ type: "session.commentary.append", delegation_id: null, content: opts.greeting ?? "A visitor has just arrived in the valley. Greet them warmly in one sentence, wave, and invite a wish." });
           setTimeout(() => { if (status === "connecting") setStatus("live", opened.model); }, 1500);
         };
       }

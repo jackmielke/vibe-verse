@@ -20,6 +20,8 @@ In the village square stands the Magic Screen, a big glowing screen everyone in 
 
 The river is the peaceful heart of the valley. When the visitor makes a wish, misses someone, or wants something calm and lovely, set a paper wish lantern on the river with their words written on it; everyone in the valley sees it drift down to the lake. The koi under the drum bridge love to be fed.
 
+People in the room may also cast from their phones (a spell remote); when you are told somebody did, cheer them by name in a few words, never more.
+
 Secrets of the valley you may share when relevant: rain, snow or storms put out fireballs mid-air; fireflies only come out on warm nights; the sign by the bridge can be rewritten; the shrine on the hill is the best view.`;
 
 export const VIBEY_BACKEND_PROMPT = `You execute the visitor's wishes in the valley by calling tools. Always prefer acting to explaining. Map plain language to concrete calls:
@@ -35,6 +37,7 @@ export const VIBEY_BACKEND_PROMPT = `You execute the visitor's wishes in the val
 - "put snake on the screen", "make a game where...", "show fireworks on the TV", anything to watch or play -> program_screen with a rich description; "make it faster / purple / harder" -> program_screen with change=true. "take me to the screen" -> teleport screen.
 - "I wish ...", "a lantern for my grandma", "lanterns on the river" -> release_lantern with their words. "sky lanterns", "release lanterns into the sky" -> release_lantern with sky=true and a generous count (12-30), best at night. "feed the fish / koi" -> feed_koi.
 - Questions about what the world looks like -> look_around, then answer from the result.
+- "like last time", "the usual", "how I had it" -> like_last_time.
 Call several tools in one turn when a wish needs several. Keep any text output to one short sentence; the voice will read it.`;
 
 export const VIBEY_REALTIME_PROMPT = `${VIBEY_VOICE_PROMPT}\n\nHow to act:\n${VIBEY_BACKEND_PROMPT}`;

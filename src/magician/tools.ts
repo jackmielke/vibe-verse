@@ -68,6 +68,8 @@ export interface MagicianStore {
   become(id: string): void;
   /** Throw food to the koi, walking to the bridge first if needed. */
   feedKoi?(): string;
+  /** How the valley looked when this visitor last left it (Vibey's memory), or null. */
+  lastLook?(): Patch | null;
   /** Start Zombie Tag with everybody in the valley; says whether it could. */
   zombieTag?(): string;
   /** Have a program written for the Magic Screen. Returns at once; the program lands seconds later. */
@@ -293,6 +295,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: "function",
     name: "reset_world",
     description: "Put the valley back the way it was when the visitor arrived: golden afternoon, spring, clear, nothing conjured.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "like_last_time",
+    description: "Put the valley's look (weather, season, time of day, aurora, sky colours) back the way this visitor had it when they last left. Use for 'like last time', 'the usual', 'how I had it before'.",
     parameters: { type: "object", properties: {} },
   },
   {
@@ -593,6 +601,14 @@ export function runTool(name: string, rawArgs: unknown, store: MagicianStore, rn
       store.burst("flash");
       store.sound("gong");
       return { output: "The valley is back to how it was.", toast: "reset" };
+    }
+    case "like_last_time": {
+      const look = store.lastLook?.() ?? null;
+      if (!look) return { output: "There is no last time to go back to: this is their first visit on this device. Offer something new instead.", toast: null };
+      store.patch(look);
+      store.burst("flash");
+      store.sound("chime");
+      return { output: `The valley is back the way they left it: ${look.weather ?? "same weather"}, ${look.season ?? "same season"}${Number(look.aurora) > 0.5 ? ", aurora up" : ""}.`, toast: "↺ like last time" };
     }
     case "release_lantern": {
       const text = String(args.wish ?? "").trim().slice(0, 60) || "a wish";
