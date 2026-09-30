@@ -1,7 +1,7 @@
 /**
  * The post. Things that happen to a cloud city, and what you do about them.
  *
- * Most of this is Atin's pitch, told back as incidents: the lunar mass driver,
+ * Most of this is the pitch for Venus, told back as incidents: the lunar mass driver,
  * Jed and his two Falcon 9s, the Burning Man shade structure, the Habsburg
  * season, jazz, Mercury as the Saudi Arabia of planets, and the one idea that
  * makes Venus the right place to be reckless — a failed experiment falls into

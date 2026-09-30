@@ -7,8 +7,6 @@
  * the houses are the balloons. Build a floating city, keep it in the band,
  * and quietly become the utopia nobody saw coming.
  *
- * Inspired by Atin, whose main life goal is to colonise Venus.
- *
  * A thin page: it owns the menus and the overlays. Everything that moves is
  * under `src/venus/`.
  */
@@ -215,7 +213,7 @@ export default function Venus() {
               </button>
             </div>
             <p className="mt-6 text-[11px] tracking-wide text-[#fff1da]/60">
-              For Atin, whose main life goal is to colonise Venus. · Drag to look, scroll to zoom.
+              Drag to look, scroll to zoom.
             </p>
           </div>
         </div>
