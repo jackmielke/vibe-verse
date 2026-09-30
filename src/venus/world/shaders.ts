@@ -321,7 +321,7 @@ void main() {
   // through the thin fabric at the rim, warmest underneath.
   vec3 lamp = mix(vec3(1.0, 0.62, 0.3), uColor * vec3(1.0, 0.8, 0.6), 0.35);
   col = mix(col, col * 0.35, uNight * 0.6);
-  col += lamp * uNight * (0.35 + 0.9 * rim + 0.5 * (1.0 - up)) * mix(1.0, 0.8, seam);
+  col += lamp * uNight * (0.22 + 0.6 * rim + 0.35 * (1.0 - up)) * mix(1.0, 0.75, seam);
   gl_FragColor = vec4(col, 1.0);
 }
 `;

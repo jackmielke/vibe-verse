@@ -218,7 +218,7 @@ export function buildModule(p: Palette, id: ModuleId, level = 1, seed = 1, plate
     g.add(mesh(G.hexPlate, id === "core" ? p.deckDark : p.deck, 0, -1.1, 0));
     const edge = mesh(G.hexEdge, p.trim, 0, 0.1, 0);
     g.add(edge);
-    const tr = mesh(G.truss, p.carbon, 0, -10, 0);
+    const tr = mesh(G.truss, p.deckDark, 0, -9, 0);
     tr.castShadow = false;
     g.add(tr);
     if (id !== "core") {
