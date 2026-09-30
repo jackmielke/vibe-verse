@@ -426,6 +426,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2eed69db", iso: "2026-08-02T10:07:34+00:00", subject: "The bridge talks to itself on a quiet watch" },
     { sha: "fb4e2dc9", iso: "2026-08-02T10:01:00+00:00", subject: "Two ways to end Balance of Terror, and one fewer way to lose unfairly" },
   ],
+  "venus": [
+    { sha: "572b7fdf", iso: "2026-09-30T19:25:42+00:00", subject: "Venus Rising: build a city floating 54 km up in the clouds of Venus" },
+  ],
   "vibestar": [
     { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
