@@ -174,6 +174,21 @@ const PLAN = {
       await shot(name);
     }
   },
+  /** Every module, up close, in a row round the core. */
+  async modules() {
+    await boot("&fresh");
+    await ev(() => window.__venus.go("play"));
+    await ev(() => {
+      const v = window.__venus, sim = v.sim;
+      sim.s.pop = 400;
+      for (const id of ["ballroom", "still", "moxie", "harvester", "biolab", "jazz"]) { sim.s.res = { carbon: 900, water: 10, air: 400, power: 200, science: 200, culture: 0 }; const s = sim.freeSlots()[0]; sim.build(id, s.q, s.r); }
+      sim.s.alt = sim.d.eqAlt;
+    });
+    for (const [n, yaw] of [["modules-a", 0.5], ["modules-b", 2.6], ["modules-c", 4.6]]) {
+      await ev((y) => { const v = window.__venus; v.day(0.3); v.view(y, 0.28, 150, 0, 12, 0); v.settle(2); }, yaw);
+      await shot(n);
+    }
+  },
   async postcard() {
     await boot("&fresh");
     await ev(() => window.__venus.go("play"));

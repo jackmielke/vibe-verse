@@ -33,7 +33,7 @@ export class Palette {
   trim = new THREE.MeshStandardMaterial({ color: 0xd9b36c, roughness: 0.28, metalness: 0.92 });
   ceramic = new THREE.MeshStandardMaterial({ color: 0xf1ebe1, roughness: 0.42, metalness: 0.05 });
   carbon = new THREE.MeshStandardMaterial({ color: 0x2a2623, roughness: 0.5, metalness: 0.3 });
-  copper = new THREE.MeshStandardMaterial({ color: 0xc27a42, roughness: 0.32, metalness: 0.88 });
+  copper = new THREE.MeshStandardMaterial({ color: 0xe0956a, roughness: 0.3, metalness: 0.8 });
   bronze = new THREE.MeshStandardMaterial({ color: 0xc8a070, roughness: 0.4, metalness: 0.6 });
   solar = new THREE.MeshStandardMaterial({ color: 0x2a4a8a, roughness: 0.16, metalness: 0.6, emissive: 0x0a1630, emissiveIntensity: 0.6 });
   grass = new THREE.MeshStandardMaterial({ color: 0x6f9c47, roughness: 0.9 });
@@ -348,13 +348,26 @@ export function buildModule(p: Palette, id: ModuleId, level = 1, seed = 1, plate
       break;
     }
     case "still": {
-      g.add(mesh(G.sphere, p.copper, -7, 8, -3, 6.5));
-      g.add(mesh(G.sphere, p.copper, 7, 7, 4, 5.5));
-      const col = mesh(G.cyl, p.water, 0, 11, 0, 2.4, 18 * L, 2.4);
+      // A condenser column in glass, two copper boilers on legs, and the
+      // cloud water, faintly blue, standing in the tube.
+      for (const [x, z, r] of [[-7.5, -3, 5.6], [7, 4, 4.8]] as const) {
+        for (let k = 0; k < 3; k++) {
+          const a = (k / 3) * Math.PI * 2;
+          g.add(mesh(G.cylLo, p.trim, x + Math.cos(a) * r * 0.6, r * 0.55, z + Math.sin(a) * r * 0.6, 0.35, r * 1.1, 0.35));
+        }
+        g.add(mesh(G.sphere, p.copper, x, r * 1.25, z, r));
+        g.add(mesh(G.torusFlat, p.trim, x, r * 1.25, z, r * 1.01, 8, r * 1.01));
+      }
+      const glass = new THREE.Mesh(G.cyl, p.glass);
+      glass.scale.set(3, 20 * L, 3);
+      glass.position.y = 10 * L + 1;
+      glass.renderOrder = 2;
+      g.add(glass);
+      const col = mesh(G.cyl, p.water, 0, 7 * L + 1, 0, 2.3, 14 * L, 2.3);
       col.castShadow = false;
       g.add(col);
-      g.add(mesh(G.torusFlat, p.trim, 0, 20 * L, 0, 3, 6, 3));
-      g.add(tether(new THREE.Vector3(-7, 8, -3), new THREE.Vector3(0, 12, 0), p.copper));
+      g.add(mesh(G.cyl, p.copper, 0, 20 * L + 1.6, 0, 3.3, 1.2, 3.3));
+      g.add(tether(new THREE.Vector3(-7.5, 8, -3), new THREE.Vector3(0, 12, 0), p.copper));
       g.add(tether(new THREE.Vector3(7, 7, 4), new THREE.Vector3(0, 9, 0), p.copper));
       break;
     }
@@ -425,14 +438,28 @@ export function buildModule(p: Palette, id: ModuleId, level = 1, seed = 1, plate
       break;
     }
     case "ballroom": {
-      g.add(mesh(G.box, p.palace, 0, 7 * L, 0, 28, 14 * L, 14));
-      g.add(mesh(G.box, p.white, 0, 14.4 * L, 0, 29, 1.2, 15));
-      for (let i = 0; i < 7; i++) {
-        g.add(mesh(G.cyl, p.white, -12 + i * 4, 6.5 * L, 7.6, 0.8, 13 * L, 0.8));
-        g.add(mesh(G.box, p.windowWarm, -12 + i * 4 + 2, 7 * L, 7.05, 1.8, 6 * L, 0.3));
+      // Schönbrunn yellow: a centre pavilion and two wings, white pilasters,
+      // a grey mansard roof, and a gilded cupola. Lit windows all round.
+      const H = 12 * L;
+      for (const [x, w, h] of [[0, 14, H + 4], [-12, 10, H], [12, 10, H]] as const) {
+        g.add(mesh(G.box, p.palace, x, h / 2, 0, w, h, 13));
+        g.add(mesh(G.box, p.white, x, h + 0.4, 0, w + 0.6, 0.8, 13.6));
+        const roof = mesh(G.cone, p.deckDark, x, h + 2.4, 0, w * 0.72, 3.2, 9.4);
+        roof.rotation.y = Math.PI / 4;
+        g.add(roof);
+        const n = Math.round(w / 3.4);
+        for (let i = 0; i < n; i++) {
+          const wx = x - w / 2 + (i + 0.5) * (w / n);
+          g.add(mesh(G.box, p.white, wx - (w / n) / 2 + 0.3, h / 2, 6.6, 0.6, h * 0.95, 0.4));
+          g.add(mesh(G.box, p.windowWarm, wx, h * 0.55, 6.55, 1.6, h * 0.42, 0.3));
+          g.add(mesh(G.box, p.windowWarm, wx, h * 0.55, -6.55, 1.6, h * 0.42, 0.3));
+        }
       }
-      g.add(mesh(G.hemi, p.gold, 0, 15 * L, 0, 6, 6, 6));
-      g.add(mesh(G.cone, p.gold, 0, 22 * L, 0, 0.8, 4, 0.8));
+      g.add(mesh(G.cyl, p.white, 0, H + 6.2, 0, 3.4, 2.2, 3.4));
+      g.add(mesh(G.hemi, p.gold, 0, H + 7.2, 0, 3.4, 4, 3.4));
+      g.add(mesh(G.cone, p.gold, 0, H + 12.4, 0, 0.5, 3, 0.5));
+      // A terrace of lanterns out front: the Season is outdoors too.
+      for (let i = 0; i < 6; i++) g.add(mesh(G.sphereLo, p.windowWarm, -12.5 + i * 5, 3.2, 10.5, 0.55));
       break;
     }
     case "skyport": {

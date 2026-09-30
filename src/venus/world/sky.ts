@@ -23,8 +23,11 @@ const KEYS: Key[] = [
   { e: -0.08, horizon: 0x6a2c2a, ceiling: 0x34182a, top: 0x6a3230, mid: 0x3c1c1c, low: 0x1a0c0c, sun: 0xff4a20, sunK: 0.6 },
   { e: 0.02, horizon: 0xff8450, ceiling: 0xc07a82, top: 0xf6a27a, mid: 0xa0503a, low: 0x44201a, sun: 0xff6a32, sunK: 2.2 },
   { e: 0.16, horizon: 0xffc08a, ceiling: 0xf6d0ac, top: 0xffe0b8, mid: 0xd89a66, low: 0x7a4428, sun: 0xffbe78, sunK: 2.3 },
-  { e: 0.45, horizon: 0xf6e0b8, ceiling: 0xfff1d8, top: 0xfff2d8, mid: 0xe8c490, low: 0xa87a4a, sun: 0xfff2dc, sunK: 2.1 },
-  { e: 1.0, horizon: 0xf4e6c4, ceiling: 0xfff8e8, top: 0xfff8e8, mid: 0xecd0a0, low: 0xb08a58, sun: 0xfff8ee, sunK: 2.2 },
+  // Late afternoon: apricot, the light everybody screenshots.
+  { e: 0.3, horizon: 0xffcc94, ceiling: 0xfbdcb2, top: 0xffe6c0, mid: 0xe2a468, low: 0x8e542c, sun: 0xffcf92, sunK: 2.35 },
+  { e: 0.5, horizon: 0xf4e2c0, ceiling: 0xfff1da, top: 0xfff2da, mid: 0xe8c490, low: 0xa87a4a, sun: 0xfff2dc, sunK: 2.1 },
+  // High noon under the ceiling: nearly white, pearly, flat.
+  { e: 1.0, horizon: 0xeee8d8, ceiling: 0xfffaf2, top: 0xfffaf0, mid: 0xeed8b0, low: 0xb09470, sun: 0xfffaf2, sunK: 2.2 },
 ];
 
 const tmpA = new THREE.Color(), tmpB = new THREE.Color();

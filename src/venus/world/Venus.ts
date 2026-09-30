@@ -257,6 +257,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
   const walk = { on: false, x: 0, z: 0, yaw: 0, pitch: 0.02, fwd: 0, side: 0, bob: 0 };
   const keys = new Set<string>();
   let tileSig = -1;
+  let focusedEvent: unknown = null;
   /** A script has posed the camera: stop drifting. */
   let held = false;
   let disposed = false;
@@ -545,8 +546,11 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     city.sync(sim.s.tiles, fresh ? time : 0);
     rig.tYaw = rig.yaw = 0.9;
     rig.tPitch = 0.34;
-    rig.tDist = sim.s.tiles.length > 12 ? 520 : 300;
-    rig.tTarget.set(0, 30, 0);
+    // A new city is a spire under a balloon: frame both, so the first image
+    // is not cables running up out of shot.
+    const small = sim.s.tiles.length <= 12;
+    rig.tDist = small ? 400 : 520;
+    rig.tTarget.set(0, small ? 75 : 30, 0);
     setPhase("play");
     opts.onCaption(null);
     opts.onTick();
@@ -653,6 +657,14 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       rig.tDist = 700;
     } else {
       cityRoot.position.y = Math.sin(time * 0.35) * 0.8;
+    }
+    // An event about a particular module looks at it.
+    const evTile = sim.event?.tile;
+    if (evTile && focusedEvent !== sim.event) {
+      focusedEvent = sim.event;
+      const w = hexToWorld(evTile.q, evTile.r);
+      rig.tTarget.set(w.x, 20, w.z);
+      rig.tDist = Math.min(rig.tDist, 260);
     }
     rig.idle += dt;
     if (walk.on && !s.fallen) updateWalk(dt);
