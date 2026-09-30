@@ -321,6 +321,26 @@ export function buildModule(p: Palette, id: ModuleId, level = 1, seed = 1, plate
       }
       break;
     }
+    case "kite": {
+      // A winch drum and a mast on deck; the kite itself flies below and
+      // behind, down in the slower air, on a long tether.
+      g.add(mesh(G.cyl, p.trim, 0, 2.5, 0, 4, 5, 4));
+      g.add(mesh(G.cyl, p.carbon, 0, 7, 0, 3.2, 4, 3.2));
+      g.add(mesh(G.cylLo, p.ceramic, 0, 14, 0, 0.6, 18, 0.6));
+      const kite = new THREE.Group();
+      const R = 9 * L;
+      const wing = mesh(G.halfCyl, p.envelope(0x9fffd0), 0, 0, 0, R * 2.6, R * 0.5, R);
+      wing.castShadow = false;
+      kite.add(wing);
+      kite.position.set(0, -95, 60);
+      kite.rotation.x = -0.35;
+      g.add(kite);
+      const tl = tether(new THREE.Vector3(0, -2, 0), new THREE.Vector3(0, -95, 60), p.carbon);
+      tl.castShadow = false;
+      g.add(tl);
+      bob = kite;
+      break;
+    }
     case "harvester": {
       // Slim white intake towers with copper caps and a glowing band: they
       // breathe the sky in and the carbon comes out as fibre.

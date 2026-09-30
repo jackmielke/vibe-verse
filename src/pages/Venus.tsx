@@ -41,7 +41,8 @@ function Outside({ world, compact }: { world: VenusWorld; compact: boolean }) {
         className="pointer-events-none absolute inset-0 z-10"
         style={{ background: "radial-gradient(ellipse 72% 64% at 50% 52%, rgba(255,210,140,0) 60%, rgba(40,18,6,0.55) 86%, rgba(14,6,2,0.92) 100%)" }}
       />
-      <div className="pointer-events-none absolute left-1/2 top-5 z-20 -translate-x-1/2 text-center" style={{ animation: "venusrise 1.2s ease-out" }}>
+      <div className={`pointer-events-none absolute inset-x-0 z-20 flex justify-center px-4 ${compact ? "top-16" : "top-5"}`}>
+      <div className="text-center" style={{ animation: "venusrise 1.2s ease-out" }}>
         <div className="text-[10px] uppercase tracking-[0.4em] text-[#ffe0a8]/80">Outside · {world.sim.s.cityName}</div>
         <div className="font-venus mt-1 text-[22px] text-white/90 drop-shadow-[0_1px_8px_rgba(0,0,0,0.7)] sm:text-[28px]">
           {air.tempC.toFixed(0)} °C · {air.pressure.toFixed(2)} bar · 0.90 g
@@ -49,6 +50,7 @@ function Outside({ world, compact }: { world: VenusWorld; compact: boolean }) {
         <div className="mt-1 max-w-md text-[12px] text-white/70 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]">
           A coat, goggles and a breathing mask. You could not do this anywhere else in the solar system.
         </div>
+      </div>
       </div>
       <button
         onClick={() => world.setWalk(false)}
@@ -280,7 +282,7 @@ export default function Venus() {
 
 
           {/* toasts */}
-          <div className={`pointer-events-none absolute z-20 flex flex-col gap-2 ${compact ? "left-2 right-2 top-[290px]" : "left-3 top-[344px] w-[260px]"}`}>
+          <div className={`pointer-events-none absolute z-20 flex flex-col gap-2 ${compact ? "left-2 right-2 bottom-[178px]" : "left-3 top-[380px] w-[260px]"}`}>
             {toasts.map((t) => (
               <div key={t.id} className={`${glass} px-3 py-2`} style={{ animation: "venusrise 0.5s ease-out" }}>
                 {t.title && <div className="font-venus text-[19px] leading-tight text-[#ffe8bf]">✦ {t.title}</div>}

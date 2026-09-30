@@ -12,7 +12,7 @@ import type { VenusWorld } from "../world/Venus";
 import { BUILDABLE, MODULES, type ModuleId, type ResourceId } from "../modules";
 import { BAND, FREEZE_ALT, HULL_STRESS_ALT, airAt, liftFactor } from "../atmosphere";
 import { MAX_LEVEL, VICTORY, type Tile } from "../sim";
-import { hintFor, tickerLines } from "../ticker";
+import { hint as hintOf, tickerLines } from "../ticker";
 
 const GOLD = "#f6d28b";
 const panel =
@@ -38,7 +38,8 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
     const id = setInterval(() => setTickIdx((i) => i + 1), 9000);
     return () => clearInterval(id);
   }, []);
-  const hint = hintFor(sim);
+  const h = hintOf(sim);
+  const hint = h?.text ?? null;
   const building = world.building;
   // The module whose weight the altimeter is previewing: hovered, or being placed.
   const [hoverId, setHoverId] = useState<ModuleId | null>(null);
@@ -144,7 +145,7 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
       </div>
 
       {/* ------------------------------------------------ hint */}
-      {hint && !selected && !sim.event && (
+      {hint && !selected && !sim.event && !building && (
         <div className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 ${compact ? "bottom-[128px] w-[92vw]" : "bottom-[150px] w-[min(560px,60vw)]"}`}>
           <div className={`${panel} px-4 py-2 text-center text-[12.5px] text-[#ffe9c6]`}>{hint}</div>
         </div>
@@ -154,7 +155,7 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
       {selected && <TilePanel world={world} tile={selected} compact={compact} />}
 
       {/* ------------------------------------------------ build bar */}
-      <BuildBar world={world} compact={compact} building={building} onHover={setHoverId} />
+      <BuildBar world={world} compact={compact} building={building} onHover={setHoverId} suggest={h?.act ?? null} />
 
     </>
   );
@@ -308,7 +309,7 @@ function yOfInv(alt: number) { return 100 - yOf(alt); }
 
 /* ------------------------------------------------------------ build bar */
 
-function BuildBar({ world, compact, building, onHover }: { world: VenusWorld; compact: boolean; building: ModuleId | null; onHover: (id: ModuleId | null) => void }) {
+function BuildBar({ world, compact, building, onHover, suggest }: { world: VenusWorld; compact: boolean; building: ModuleId | null; onHover: (id: ModuleId | null) => void; suggest: string | null }) {
   const sim = world.sim;
   return (
     <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2">
@@ -325,6 +326,7 @@ function BuildBar({ world, compact, building, onHover }: { world: VenusWorld; co
         className="mx-auto flex max-w-[1520px] gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]"
         style={{ maskImage: "linear-gradient(to right, black 92%, transparent)", WebkitMaskImage: "linear-gradient(to right, black 92%, transparent)" }}
         onMouseLeave={() => onHover(null)}
+        onWheel={(e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY; }}
       >
         {BUILDABLE.map((id) => {
           const m = MODULES[id];
@@ -339,9 +341,10 @@ function BuildBar({ world, compact, building, onHover }: { world: VenusWorld; co
               onMouseEnter={() => onHover(id)}
               disabled={!!why && !on}
               title={`${m.name}: ${m.detail}${why ? `\n\n${why}` : ""}`}
-              className={`group relative shrink-0 ${compact ? "w-[92px] p-1.5" : "w-[118px] p-2"} rounded-xl border text-left transition ${
-                on ? "border-[#fff] bg-[#f6d28b]/25" : "border-[#f6d28b]/20 bg-[#1b0f0a]/60 hover:border-[#f6d28b]/60"
+              className={`group relative shrink-0 ${compact ? "w-[92px] p-1.5" : "w-[104px] p-2"} rounded-xl border text-left transition ${
+                on ? "border-[#fff] bg-[#f6d28b]/25" : suggest === id && !why ? "border-[#9fffc8] bg-[#1b0f0a]/60" : "border-[#f6d28b]/20 bg-[#1b0f0a]/60 hover:border-[#f6d28b]/60"
               } backdrop-blur-md disabled:opacity-30 disabled:grayscale`}
+              style={suggest === id && !why && !on ? { animation: "venuspulse 1.8s infinite" } : undefined}
             >
               <div className="flex items-center justify-between">
                 <span className={compact ? "text-[18px]" : "text-[22px]"}>{locked ? "🔒" : m.icon}</span>

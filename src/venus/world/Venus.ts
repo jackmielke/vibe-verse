@@ -398,7 +398,8 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       if (free.some((f) => f.q === h.q && f.r === h.r)) {
         if (sim.build(building, h.q, h.r)) {
           audio.build();
-          if (sim.whyNot(building)) building = null;
+          // One at a time, unless you are holding shift to lay a row.
+          if (sim.whyNot(building) || !(keys.has("ShiftLeft") || keys.has("ShiftRight"))) building = null;
         }
       } else {
         const t = sim.tileAt(h.q, h.r);
@@ -491,7 +492,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       const { x, z } = hexToWorld(t.q, t.r);
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: lanternTex, color: new THREE.Color(2.4, 1.6, 0.9), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
       s.position.set(x + (Math.random() - 0.5) * 20, 12, z + (Math.random() - 0.5) * 20);
-      s.scale.setScalar(5 + Math.random() * 3);
+      s.scale.setScalar(2.6 + Math.random() * 1.6);
       cityRoot.add(s);
       lanterns.push({ s, v: new THREE.Vector3((Math.random() - 0.5) * 3, 6 + Math.random() * 6, (Math.random() - 0.5) * 3), t: 0 });
     }
@@ -590,8 +591,9 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     }
     const alt = DESIGN_ALT + entryY / KM;
     const canopy = capsule.getObjectByName("canopy")!;
-    const open = deployed ? Math.min(1, (time - deployAt) / 1.6) : 0.15;
-    canopy.scale.set(4 + open * 30, 2 + open * 14, 4 + open * 30);
+    const open = deployed ? Math.min(1, (time - deployAt) / 1.6) : 0;
+    // A small drogue until you pull the cord, then the whole envelope.
+    canopy.scale.set(3 + open * 31, 1.6 + open * 14.4, 3 + open * 31);
     {
       const sh = capsule.getObjectByName("shrouds") as THREE.LineSegments;
       const pos = sh.geometry.attributes.position as THREE.BufferAttribute;
@@ -632,6 +634,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       sim.give({ carbon: miss < 0.8 ? 40 : miss < 1.6 ? 20 : 0 });
     }
     audio.whoosh();
+    opts.onCaption({ kicker: "54 kilometres up", text: "Welcome to Venus.", sub: entryRating });
     // The canopy becomes the founding envelope: the spire grows in under it.
     cityRoot.visible = true;
     city.sync(sim.s.tiles, time);
@@ -722,12 +725,18 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     if (saveAcc > 15 && !s.fallen) { saveAcc = 0; writeSave(sim.snapshot()); }
   }
 
+  /** How close to a module's centre you can walk. Domes and greenhouses are parks: walk in. */
+  const FOOT: Partial<Record<ModuleId, number>> = {
+    core: 15, harvester: 12, still: 13, moxie: 12, biolab: 12, nanofab: 11, jazz: 13, ballroom: 17, skyport: 3, solar: 0, kite: 5, bladder: 4,
+  };
   function onDeck(x: number, z: number): boolean {
     const h = axialRound(((Math.sqrt(3) / 3) * x - (1 / 3) * z) / SLOT, ((2 / 3) * z) / SLOT);
-    if (!sim.tileAt(h.q, h.r)) return false;
-    // Inside the hex, with a rail's width to spare.
+    const t = sim.tileAt(h.q, h.r);
+    if (!t) return false;
+    // Inside the hex, with a rail's width to spare, and not inside a building.
     const c = hexToWorld(h.q, h.r);
-    return Math.hypot(x - c.x, z - c.z) < SLOT * 0.93;
+    const d = Math.hypot(x - c.x, z - c.z);
+    return d < SLOT * 0.93 && d > (FOOT[t.id] ?? 0);
   }
 
   function updateWalk(dt: number) {
@@ -980,7 +989,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       const ok = sim.build(building, at.q, at.r);
       if (ok) {
         audio.build();
-        if (sim.whyNot(building)) building = null;
+        building = null;
       }
       hover = null;
       refreshSlots();
@@ -1033,12 +1042,15 @@ export function createVenus(opts: VenusOptions): VenusWorld {
           const sc = (c.x * dx + c.z * dz) / n;
           if (sc > score) { score = sc; best = t; }
         }
+        // Stand at the sunward rail, but turned half round, so the frame is
+        // the city with the sun raking across it and the cloud sea beside.
         const c = hexToWorld(best.q, best.r);
-        walk.yaw = Math.atan2(-dx, -dz);
-        walk.x = c.x + (dx / n) * SLOT * 0.7;
-        walk.z = c.z + (dz / n) * SLOT * 0.7;
-        if (!onDeck(walk.x, walk.z)) { walk.x = c.x; walk.z = c.z; }
-        walk.pitch = -0.06;
+        walk.x = c.x + (dx / n) * SLOT * 0.8;
+        walk.z = c.z + (dz / n) * SLOT * 0.8;
+        if (!onDeck(walk.x, walk.z)) { walk.x = c.x + (dx / n) * SLOT * 0.6; walk.z = c.z + (dz / n) * SLOT * 0.6; }
+        const toCity = Math.atan2(walk.x, walk.z);
+        walk.yaw = toCity + 0.9;
+        walk.pitch = 0.12;
         camera.fov = 70;
       } else {
         camera.fov = 50;

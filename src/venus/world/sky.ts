@@ -212,7 +212,10 @@ export class Sky {
     u.uCeiling.value.lerp(tmpB.setRGB(0.7, 0.25, 0.1), this.heat * 0.45);
     u.uFogDensity.value = 0.00013 + this.heat * 0.0005 + Math.max(0, 50 - altKm) * 0.0002;
 
-    this.deckY = -(altKm - LOWER_DECK_ALT) * KM;
+    // Below 48 km the city is technically inside the lower deck. Drawing the
+    // floor above it would simply hide the city, so the floor stops just
+    // under the keel and the fog does the rest.
+    this.deckY = Math.min(-70, -(altKm - LOWER_DECK_ALT) * KM);
     this.ceilY = (UPPER_DECK_ALT - altKm) * KM;
     // Follow the camera in xz so the planes never show an edge.
     this.deck.position.set(camera.position.x, this.deckY, camera.position.z);

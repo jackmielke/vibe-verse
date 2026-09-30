@@ -136,11 +136,12 @@ function autopilot(sim: VenusSim): ModuleId | null {
   const tryOrder: ModuleId[] = [];
   const need = (id: ModuleId) => tryOrder.push(id);
   const heavyMargin = d.lift - d.mass;
-  if (d.eqAlt < DESIGN_ALT - 1 || heavyMargin < 40) need("bladder");
-  if (d.rates.power < 1 || (d.sun < 0.3 && s.res.power < 30)) need("solar");
+  if (d.eqAlt < BAND.low + 0.3 || heavyMargin < 40) need("bladder");
+  if (s.pop >= 30 && sim.count("kite") < 1 + Math.floor(s.pop / 200)) need("kite");
+  if (d.sun > 0.5 && d.rates.power < 2) need("solar");
   if (sim.count("harvester") < 1 + Math.floor(s.pop / 250)) need("harvester");
   if (sim.count("moxie") < 1 + Math.floor(s.pop / 300)) need("moxie");
-  if (sim.count("still") < 1) need("still");
+  if (sim.count("still") < 1 + Math.floor(s.pop / 350) || d.dry) need("still");
   if (d.food - s.pop < 20) need("greenhouse");
   if (d.housing - s.pop < 20) need("dome");
   if (sim.count("jazz") < 1 + Math.floor(s.pop / 400)) need("jazz");
@@ -212,6 +213,9 @@ describe("the long game", () => {
           } else if (h?.act === "cut") {
             const heavy = [...sim.s.tiles].filter((x) => x.id !== "core").sort((a, b) => MODULES[b.id].mass - MODULES[b.id].lift - (MODULES[a.id].mass - MODULES[a.id].lift))[0];
             if (heavy) sim.cutLoose(heavy.q, heavy.r);
+          } else if (h?.act === "recycle") {
+            const spare = sim.s.tiles.find((x) => x.id === "jazz" || x.id === "bladder");
+            if (spare) sim.recycle(spare.q, spare.r);
           } else if (h?.act && h.act !== "ballast" && !sim.whyNot(h.act)) {
             const [slot] = sim.freeSlots();
             sim.build(h.act, slot.q, slot.r);

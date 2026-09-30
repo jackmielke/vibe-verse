@@ -16,6 +16,7 @@ export type ModuleId =
   | "dome"
   | "bladder"
   | "solar"
+  | "kite"
   | "harvester"
   | "still"
   | "moxie"
@@ -122,8 +123,22 @@ export const MODULES: Record<ModuleId, ModuleDef> = {
     mass: 28,
     lift: 0,
     solar: 5,
-    battery: 80,
+    battery: 260,
     color: "#ffd35a",
+  },
+  kite: {
+    id: "kite",
+    name: "Wind Kite",
+    line: "Power all night, from the wind shear.",
+    detail:
+      "The city rides the super-rotation at 100 km/h, but the air a kilometre below is slower. A kite on a long tether sits in that shear and turns a generator, day and night. Heavy with cable.",
+    icon: "🪁",
+    cost: { carbon: 40 },
+    mass: 45,
+    lift: 0,
+    power: 3.2,
+    unlockPop: 30,
+    color: "#7affc0",
   },
   harvester: {
     id: "harvester",
@@ -224,7 +239,7 @@ export const MODULES: Record<ModuleId, ModuleDef> = {
     mass: 40,
     lift: 0,
     power: -0.8,
-    makes: { culture: 0.15 },
+    makes: { culture: 0.2 },
     color: "#ff9a5a",
   },
   ballroom: {
@@ -263,6 +278,7 @@ export const BUILDABLE: ModuleId[] = [
   "dome",
   "bladder",
   "solar",
+  "kite",
   "harvester",
   "still",
   "moxie",

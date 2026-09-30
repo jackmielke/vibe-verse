@@ -55,7 +55,7 @@ export function encodeLayout(tiles: Tile[]): string {
   return tiles.map((t) => `${t.id}:${t.q}:${t.r}:${t.level ?? 1}`).join(";");
 }
 
-const IDS = new Set<ModuleId>(["core", "dome", "bladder", "solar", "harvester", "still", "moxie", "greenhouse", "biolab", "nanofab", "jazz", "ballroom", "skyport"]);
+const IDS = new Set<ModuleId>(["core", "dome", "bladder", "solar", "kite", "harvester", "still", "moxie", "greenhouse", "biolab", "nanofab", "jazz", "ballroom", "skyport"]);
 
 /** Never trust a stranger's layout: known modules, small coordinates, capped. */
 export function decodeLayout(s: string): Array<{ id: ModuleId; q: number; r: number; level: number }> {

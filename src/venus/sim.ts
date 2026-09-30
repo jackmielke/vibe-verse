@@ -124,13 +124,13 @@ const EARTH_DAYS_PER_REV = 9;
 /** Water weighs this many tonnes a unit — it is the ballast. */
 export const WATER_TONNES = 1;
 
-export const VICTORY = { pop: 1000, culture: 1200, happiness: 0.7 } as const;
+export const VICTORY = { pop: 1000, culture: 1000, happiness: 0.7 } as const;
 /**
  * At night the air in every envelope cools and contracts, so the whole city
  * loses a few percent of its lift and sags on the dark side. Real, and it
  * makes night a thing the altimeter shows rather than just a dark screen.
  */
-export const NIGHT_SAG = 0.05;
+export const NIGHT_SAG = 0.1;
 /** Litres, abstractly: what a hundred people drink per second. */
 const DRINK = 0.12;
 
@@ -413,7 +413,8 @@ export class VenusSim {
     if (!c || c.disabled) return;
     const n = this.s.flags[`n:${this.eventDef.id}`] ?? 1;
     this.bonus = 1 / (1 + 0.35 * (n - 1));
-    const outcome = c.run(this);
+    let outcome = c.run(this);
+    if (this.bonus < 0.95 && /\+\d/.test(outcome)) outcome += ` (The novelty is wearing off: about ${Math.round(this.bonus * 100)}% of that, this time.)`;
     this.bonus = 1;
     this.event.outcome = outcome;
     this.derive();
@@ -686,6 +687,9 @@ export class VenusSim {
     }
 
     // ---- the post
+    // Nobody posts a letter to a city that is on fire.
+    const emergency = d.zone === "cook" || d.eqAlt < 50 || s.integrity < 0.9;
+    if (emergency && s.t >= s.nextEventAt) s.nextEventAt = s.t + 20;
     if (s.t >= s.nextEventAt) {
       s.nextEventAt = s.t + 55 + this.random() * 40;
       this.rollEvent();
