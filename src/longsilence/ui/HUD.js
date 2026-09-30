@@ -103,7 +103,7 @@ export function coachStep(c) {
   return {
     id: 'go',
     text: c.touch ? 'FOLD TO YOUR TARGET' : 'PRESS J TO FOLD TO YOUR TARGET',
-    sub: 'T picks another · 1-5 jump straight to a world · L lands',
+    sub: 'T picks another · 1-6 jump straight to a world · L lands',
   };
 }
 
@@ -134,7 +134,7 @@ export function keyReference(c) {
       ['J', 'fold — the fast way across a system'],
       ['L', 'land, or lift off again'],
       ['M', 'star map'],
-      ['1 - 5', 'jump straight to a vibeverse world'],
+      ['1 - 6', 'jump straight to a vibeverse world'],
       ['F', 'scan what you are looking at'],
     ]],
     ['THE SHIP', [
@@ -444,7 +444,7 @@ export class HUD {
           : [['E', fighting ? 'take the field' : 'step out'], ['L', 'lift off'], ['TAB', 'archive']];
       } else if (g.mode === 'walk') {
         keys = [['WASD', 'move'], ['MOUSE', 'look'], ['E', 'use'], ['SHIFT', 'run'],
-          ['1-5', 'jump to world'], ['?', 'all keys']];
+          ['1-6', 'jump to world'], ['?', 'all keys']];
       } else {
         /* Five chips, not ten. This row carried V, F, G, RMB, E and the number
            keys as well, on the reasoning that a control nobody can find is a

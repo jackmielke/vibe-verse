@@ -12,8 +12,8 @@ thousand years ago and you fly out alone to find out why. Here the premise is
 inverted — the band is crowded, every world is lit, and five of the stars on
 the chart are places you can actually go.
 
-- **`world/vibeworlds.js`** is the whole registry. Five entries today — San
-  Francisco, Seafair, Vibe Island II, EDM Town and Redline — each naming a star
+- **`world/vibeworlds.js`** is the whole registry. Six entries today — San
+  Francisco, Seafair, Vibe Island II, EDM Town, Redline and Venus — each naming a star
   system, fixing its place on the chart, and hand-authoring the planet inside
   it: palette, sea level, cloud deck, night-side city lights. EDM Town carries
   its own lamp colours, so its night side burns magenta and cyan rather than

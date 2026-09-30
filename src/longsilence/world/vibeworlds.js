@@ -209,17 +209,19 @@ export const VIBE_WORLDS = [
     planet: {
       kind: 'terran',
       radius: 3950,
-      /* The surface nobody visits: basalt plains at 462 degrees, no water, no
-         green. It hardly matters, because from orbit you only ever see the
-         cloud deck, and the cloud deck is the whole point. */
+      /* Painted in cloud, not rock. The cloud shader here redistributes
+         cover rather than closing it, so ground always shows between the
+         heaps, and on Venus there should be no between: whatever shows
+         through reads as a lower, darker deck of the same haze. The real
+         surface (basalt at 462 degrees) is what nobody pictures from orbit. */
       colors: {
-        c0: 0x1a0c06, c1: 0x5a2c16, c2: 0x8a4a22, c3: 0x6a3a1e,
-        c4: 0xb07a46, polar: 0xd8b888, water: 0x2a140a,
+        c0: 0xb89a6a, c1: 0xd8c08e, c2: 0xe8d2a0, c3: 0xdcc494,
+        c4: 0xf2e2bc, polar: 0xf6ead0, water: 0xcab07e,
       },
       sea: 0.32,
       veg: 0.02,
-      relief: 0.9,
-      craters: 0.05,
+      relief: 0.25,
+      craters: 0.0,
       /* The cities float, so the night side glows faintly from above the
          ground rather than on it: warm, sparse, and in the cloud. */
       night: 0.7,
