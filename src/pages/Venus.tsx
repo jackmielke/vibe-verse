@@ -177,7 +177,7 @@ export default function Venus() {
 
       {/* ------------------------------------------------------ title */}
       {phase === "title" && (
-        <div className="absolute inset-0 z-20 flex flex-col justify-between bg-gradient-to-b from-[#1a0d08]/10 via-transparent to-[#1a0d08]/75 p-6 sm:p-10">
+        <div className="absolute inset-0 z-20 flex flex-col justify-between bg-gradient-to-b from-[#1a0d08]/10 via-[#1a0d08]/45 to-[#1a0d08]/85 p-6 sm:via-transparent sm:to-[#1a0d08]/75 sm:p-10">
           {/* The app's own Home pill sits top-left on every chromeless route. */}
           <div />
           <div className="max-w-2xl" style={{ animation: "venusrise 1.4s ease-out" }}>
