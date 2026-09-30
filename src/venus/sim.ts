@@ -300,6 +300,8 @@ export class VenusSim {
     // A module falling off the edge takes its people with it, into the next dome.
     this.s.stats.cutLoose++;
     this.push({ kind: "fell", tile, reason: "cut" });
+    const n = this.s.stats.cutLoose;
+    this.toast(`The ${MODULES[tile.id].name} falls fifty kilometres and is sterilised on arrival. Things the planet has cleaned up for you: ${n}.`, "warn");
     this.orphanCheck();
     this.derive();
     this.s.pop = Math.min(this.s.pop, this.d.housing);

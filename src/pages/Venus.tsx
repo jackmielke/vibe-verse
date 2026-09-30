@@ -92,6 +92,12 @@ export default function Venus() {
   const [ended, setEnded] = useState<"fallen" | "won" | null>(null);
   const [wonSeen, setWonSeen] = useState(false);
   const toastId = useRef(0);
+  const [cityName, setCityName] = useState(() => loadSave()?.cityName ?? "");
+  const nameCity = () => {
+    const w = worldRef.current;
+    const n = cityName.trim().slice(0, 28);
+    if (w && n) w.sim.s.cityName = n;
+  };
 
   useEffect(() => {
     const on = () => setCompact(window.innerWidth < 760);
@@ -183,15 +189,24 @@ export default function Venus() {
             <p className="mt-4 max-w-lg text-[13.5px] leading-relaxed text-[#fff1da]/85 drop-shadow-[0_1px_8px_rgba(0,0,0,0.6)]">
               Build a city that floats on the clouds of Venus. Breathable air is a lifting gas here, so your houses are your balloons. Everything heavy pulls you down into the heat; everything full of air holds you up. Keep it in the band, and quietly build the utopia nobody saw coming.
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
+            <div className="mt-6 flex items-center gap-2">
+              <input
+                value={cityName}
+                onChange={(e) => setCityName(e.target.value)}
+                maxLength={28}
+                placeholder="Name your city (Aphrodite)"
+                className="w-[280px] rounded-full border border-[#fff1da]/40 bg-[#1b0f0a]/35 px-4 py-2 text-[14px] text-[#fff6e6] placeholder:text-[#fff1da]/50 backdrop-blur focus:border-[#fff1da] focus:outline-none"
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
-                onClick={() => (hasSave ? world?.skipIntro() : world?.begin())}
+                onClick={() => { nameCity(); if (hasSave) world?.skipIntro(); else world?.begin(); }}
                 className="rounded-full bg-[#fff1da] px-7 py-3 text-[12px] font-bold uppercase tracking-[0.25em] text-[#3a1a0a] shadow-[0_10px_40px_rgba(255,200,120,0.35)] transition hover:bg-white"
               >
                 {hasSave ? "Continue your city" : "Begin"}
               </button>
               <button
-                onClick={() => (hasSave ? world?.begin() : world?.skipIntro())}
+                onClick={() => { nameCity(); if (hasSave) world?.begin(); else world?.skipIntro(); }}
                 className="rounded-full border border-[#fff1da]/60 bg-[#1b0f0a]/30 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.22em] text-[#fff1da] backdrop-blur transition hover:bg-[#fff1da]/15"
               >
                 {hasSave ? "Watch the way there" : "Skip to the clouds"}

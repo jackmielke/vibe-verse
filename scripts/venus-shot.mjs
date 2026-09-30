@@ -166,6 +166,22 @@ const PLAN = {
     await ev(() => { const v = window.__venus; v.day(0.2); v.api.setWalk(false); v.view(1.2, 0.18, 120, 40, 10, 20); v.settle(1.5); });
     await shot("people");
   },
+  /** The hub card: the finished city from the title screen, at golden hour, no DOM. */
+  async card() {
+    await boot();
+    for (const [name, yaw, pitch, dist] of [["card-a", 2.0, 0.16, 330], ["card-b", 2.5, 0.1, 290], ["card-c", 1.7, 0.22, 380]]) {
+      await ev(([y, p, d]) => { const v = window.__venus; v.view(y, p, d, 0, 60, 0); v.settle(2); }, [yaw, pitch, dist]);
+      await shot(name);
+    }
+  },
+  async postcard() {
+    await boot("&fresh");
+    await ev(() => window.__venus.go("play"));
+    await buildCity(30);
+    const url = await ev(() => { const v = window.__venus; v.day(0.46); v.view(2.0, 0.2, 420); v.settle(2); return v.api.postcard(); });
+    writeFileSync(`${OUT}/venus-postcard.jpg`, Buffer.from(url.split(",")[1], "base64"));
+    console.log(`wrote ${OUT}/venus-postcard.jpg`);
+  },
   async debug() {
     await boot("&fresh");
     await ev(() => window.__venus.go("play"));

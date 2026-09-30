@@ -67,6 +67,7 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
         <div className={`flex ${compact ? "flex-col items-start gap-1" : "items-center justify-between"}`}>
           <div className={`font-venus ${compact ? "text-[19px]" : "text-[22px]"} max-w-full truncate leading-none text-[#ffe8bf]`}>{s.cityName}</div>
           <div className="flex items-center gap-1">
+            <button onClick={() => postcard(world)} title="Send a postcard" className="mr-1 text-[12px] text-[#f6d28b]/70 hover:text-[#f6d28b]">📸</button>
             <button onClick={onMute} title={muted ? "Sound on" : "Sound off"} className="mr-1 text-[12px] text-[#f6d28b]/70 hover:text-[#f6d28b]">{muted ? "🔇" : "🔊"}</button>
             {[1, 2, 4].map((n) => (
               <button
@@ -157,6 +158,24 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
 
     </>
   );
+}
+
+async function postcard(world: VenusWorld) {
+  const url = world.postcard();
+  const name = `${world.sim.s.cityName.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "venus"}-postcard.jpg`;
+  try {
+    const blob = await (await fetch(url)).blob();
+    const file = new File([blob], name, { type: "image/jpeg" });
+    const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean };
+    if (nav.share && nav.canShare?.({ files: [file] })) {
+      await nav.share({ files: [file], title: `Greetings from ${world.sim.s.cityName}`, text: "Everybody went to Mars. I went to Venus." });
+      return;
+    }
+  } catch { /* fall through to a download */ }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
 }
 
 function Stat({ label, value, sub, warn }: { label: string; value: string; sub?: string; warn?: boolean }) {

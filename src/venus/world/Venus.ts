@@ -90,6 +90,8 @@ export interface VenusWorld {
   setMuted(m: boolean): void;
   restart(): void;
   save(): void;
+  /** A 1200×630 JPEG of the city with its numbers on it, for sharing. */
+  postcard(): string;
   /** Real cities in the same room, riding the same wind. */
   peers(): PeerCity[];
   /** Send some of yours. Returns false if you cannot spare it. */
@@ -255,6 +257,8 @@ export function createVenus(opts: VenusOptions): VenusWorld {
   const walk = { on: false, x: 0, z: 0, yaw: 0, pitch: 0.02, fwd: 0, side: 0, bob: 0 };
   const keys = new Set<string>();
   let tileSig = -1;
+  /** A script has posed the camera: stop drifting. */
+  let held = false;
   let disposed = false;
   const audio = new VenusAudio();
   audio.setMuted(opts.muted);
@@ -529,6 +533,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
 
   /* -------------------------------------------------- phases */
   function setPhase(p: Phase) {
+    if (p !== "title") camera.clearViewOffset();
     phase = p;
     opts.onPhase(p);
   }
@@ -560,8 +565,12 @@ export function createVenus(opts: VenusOptions): VenusWorld {
 
   function updateTitle(dt: number) {
     rig.idle += dt;
-    if (rig.idle > 2) rig.tYaw += dt * 0.05;
+    if (rig.idle > 2 && !held) rig.tYaw += dt * 0.05;
     applyRig(dt);
+    // Frame the city right of centre, so the title has somewhere to sit.
+    const w = container.clientWidth, h = container.clientHeight;
+    if (w > 760) camera.setViewOffset(w, h, -w * 0.2, -h * 0.04, w, h);
+    else camera.clearViewOffset();
     sky.update(dt, time, 0.455, DESIGN_ALT, camera);
     show.update(dt, time, sky.look, sky.deckY);
   }
@@ -1041,6 +1050,33 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     },
     save() { if (!sim.s.fallen) writeSave(sim.snapshot()); },
     peers() { return net ? net.peers() : []; },
+    postcard() {
+      render();
+      const src = renderer.domElement;
+      const W = 1200, H = 630;
+      const c = document.createElement("canvas");
+      c.width = W; c.height = H;
+      const x = c.getContext("2d")!;
+      // Cover-fit the frame.
+      const k = Math.max(W / src.width, H / src.height);
+      x.drawImage(src, (W - src.width * k) / 2, (H - src.height * k) / 2, src.width * k, src.height * k);
+      const g = x.createLinearGradient(0, H * 0.45, 0, H);
+      g.addColorStop(0, "rgba(26,13,8,0)");
+      g.addColorStop(1, "rgba(26,13,8,0.82)");
+      x.fillStyle = g;
+      x.fillRect(0, 0, W, H);
+      const s = sim.s;
+      x.fillStyle = "#ffe0a8";
+      x.font = "600 18px Georgia, serif";
+      x.fillText(`GREETINGS FROM VENUS · ${s.alt.toFixed(1)} KM UP · ${sim.d.air.tempC.toFixed(0)} °C`, 48, H - 150);
+      x.fillStyle = "#fff6e6";
+      x.font = "italic 64px Georgia, serif";
+      x.fillText(s.cityName, 44, H - 86);
+      x.font = "22px Georgia, serif";
+      x.fillStyle = "rgba(255,241,218,0.85)";
+      x.fillText(`${Math.round(s.pop).toLocaleString()} people · ${Math.round(s.res.culture).toLocaleString()} culture · Mars: 212, in a tent.`, 48, H - 44);
+      return c.toDataURL("image/jpeg", 0.9);
+    },
     gift(peerId) {
       if (!net || sim.s.res.carbon < 40) return false;
       sim.give({ carbon: -40 });
@@ -1103,6 +1139,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       sim.derive();
     },
     view(yaw: number, pitch: number, dist: number, tx = 0, ty = 30, tz = 0) {
+      held = true;
       rig.yaw = rig.tYaw = yaw;
       rig.pitch = rig.tPitch = pitch;
       rig.dist = rig.tDist = dist;
