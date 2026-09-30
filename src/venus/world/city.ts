@@ -34,7 +34,7 @@ export class Palette {
   ceramic = new THREE.MeshStandardMaterial({ color: 0xf1ebe1, roughness: 0.42, metalness: 0.05 });
   carbon = new THREE.MeshStandardMaterial({ color: 0x2a2623, roughness: 0.5, metalness: 0.3 });
   copper = new THREE.MeshStandardMaterial({ color: 0xc27a42, roughness: 0.32, metalness: 0.88 });
-  bronze = new THREE.MeshStandardMaterial({ color: 0x9a7a55, roughness: 0.45, metalness: 0.7 });
+  bronze = new THREE.MeshStandardMaterial({ color: 0xc8a070, roughness: 0.4, metalness: 0.6 });
   solar = new THREE.MeshStandardMaterial({ color: 0x2a4a8a, roughness: 0.16, metalness: 0.6, emissive: 0x0a1630, emissiveIntensity: 0.6 });
   grass = new THREE.MeshStandardMaterial({ color: 0x6f9c47, roughness: 0.9 });
   leaf = new THREE.MeshStandardMaterial({ color: 0x4f8c3a, roughness: 0.8 });
@@ -70,6 +70,14 @@ export class Palette {
   glass = this.makeGlass(0xbfe6ff, 0);
   glassGhost = this.makeGlass(0x8ff0ff, 1);
   envelopes = new Map<number, THREE.ShaderMaterial>();
+
+  private accents = new Map<string, THREE.MeshBasicMaterial>();
+  /** A module's own signal colour, as a light strip that comes up at dusk. */
+  accent(hex: string) {
+    let m = this.accents.get(hex);
+    if (!m) { m = this.glow(new THREE.Color(hex).getHex(), 0.15); this.accents.set(hex, m); }
+    return m;
+  }
 
   private glow(hex: number, dayFloor: number) {
     const base = new THREE.Color(hex);
@@ -213,6 +221,13 @@ export function buildModule(p: Palette, id: ModuleId, level = 1, seed = 1, plate
     const tr = mesh(G.truss, p.carbon, 0, -10, 0);
     tr.castShadow = false;
     g.add(tr);
+    if (id !== "core") {
+      // Under-deck light in the module's colour: at night the city's plan
+      // reads from a kilometre off.
+      const strip = mesh(G.torusFlat, p.accent(MODULES[id].color), 0, -2.6, 0, SLOT * 0.8, 10, SLOT * 0.8);
+      strip.castShadow = false;
+      g.add(strip);
+    }
   }
 
   switch (id) {
@@ -307,24 +322,29 @@ export function buildModule(p: Palette, id: ModuleId, level = 1, seed = 1, plate
       break;
     }
     case "harvester": {
+      // Slim white intake towers with copper caps and a glowing band: they
+      // breathe the sky in and the carbon comes out as fibre.
       const n = 2 + level;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         const x = Math.cos(a) * 8, z = Math.sin(a) * 8;
-        const h = 22 + i * 3;
-        g.add(mesh(G.cyl, p.bronze, x, h / 2, z, 3.2, h, 3.2));
-        g.add(mesh(G.cyl, p.windowCool, x, h * 0.7, z, 3.3, 1, 3.3));
+        const h = 20 + i * 3;
+        g.add(mesh(G.cyl, p.ceramic, x, h / 2, z, 2.2, h, 2.2));
+        g.add(mesh(G.cyl, p.copper, x, h + 0.6, z, 2.8, 1.2, 2.8));
+        const band = mesh(G.cyl, p.windowCool, x, h * 0.72, z, 2.3, 0.8, 2.3);
+        band.castShadow = false;
+        g.add(band);
         const fan = new THREE.Group();
-        fan.position.set(x, h + 1, z);
+        fan.position.set(x, h + 1.6, z);
         for (let k = 0; k < 3; k++) {
-          const blade = mesh(G.box, p.ceramic, 0, 0, 0, 12, 0.3, 1.6);
+          const blade = mesh(G.box, p.ceramic, 0, 0, 0, 10, 0.25, 1.3);
           blade.rotation.y = (k / 3) * Math.PI;
           fan.add(blade);
         }
         g.add(fan);
         spin.push(fan);
       }
-      g.add(mesh(G.cyl, p.carbon, 0, 3, 0, 6, 6, 6));
+      g.add(mesh(G.cyl, p.trim, 0, 1.4, 0, 5, 2.8, 5));
       break;
     }
     case "still": {
@@ -339,15 +359,18 @@ export function buildModule(p: Palette, id: ModuleId, level = 1, seed = 1, plate
       break;
     }
     case "moxie": {
-      g.add(mesh(G.box, p.ceramic, 0, 6 * L, 0, 22, 12 * L, 14));
-      g.add(mesh(G.box, p.carbon, 0, 12.5 * L, 0, 22.5, 1, 14.5));
-      const core = mesh(G.cyl, p.cyan, 0, 9 * L, 7.2, 3, 7 * L, 0.6);
+      // Two pill-shaped electrolysis tanks and a glass core glowing cyan.
+      for (const side of [-1, 1]) {
+        const tank = mesh(G.sphere, p.ceramic, side * 7, 7 * L, 0, 5, 7 * L, 5);
+        g.add(tank);
+        g.add(mesh(G.torusFlat, p.trim, side * 7, 7 * L, 0, 5.05, 8, 5.05));
+      }
+      const core = mesh(G.cyl, p.cyan, 0, 6 * L, 0, 2.2, 10 * L, 2.2);
       core.castShadow = false;
       g.add(core);
-      for (let i = 0; i < 3; i++) {
-        const v = mesh(G.cyl, p.bronze, -7 + i * 7, 15 * L, -2, 1.4, 6, 1.4);
-        g.add(v);
-      }
+      g.add(mesh(G.cyl, p.copper, 0, 11.5 * L, 0, 2.8, 1, 2.8));
+      g.add(tether(new THREE.Vector3(-7, 10 * L, 0), new THREE.Vector3(0, 10 * L, 0), p.copper));
+      g.add(tether(new THREE.Vector3(7, 10 * L, 0), new THREE.Vector3(0, 10 * L, 0), p.copper));
       break;
     }
     case "greenhouse": {
@@ -464,7 +487,18 @@ export class CityView {
   private printRings: Array<{ m: THREE.Mesh; t: number }> = [];
   private printMat = new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending });
 
+  /** Railings along every edge with nothing on the other side. */
+  private posts: THREE.InstancedMesh;
+  private bars: THREE.InstancedMesh;
+
   constructor(public palette: Palette) {
+    const MAXE = 91 * 6;
+    this.posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.12, 1.1, 5), palette.trim, MAXE * 3);
+    this.bars = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.1, 0.1), palette.trim, MAXE * 2);
+    this.posts.count = 0;
+    this.bars.count = 0;
+    this.posts.frustumCulled = this.bars.frustumCulled = false;
+    this.root.add(this.posts, this.bars);
     this.root.add(this.slots);
     this.sel.visible = false;
     this.sel.scale.setScalar(SLOT * 0.98);
@@ -481,7 +515,49 @@ export class CityView {
     this.showGhost(null, null);
   }
 
+  private rails(tiles: Tile[]) {
+    const have = new Set(tiles.map((t) => `${t.q},${t.r}`));
+    // Pointy-top hex: corner k at angle 90° - 60°k (x = sin, z = cos), which is
+    // where the cylinder puts them; edge k runs from corner k to k+1 and faces
+    // the neighbour in that direction.
+    const corner = (k: number) => ({ x: Math.sin((k * Math.PI) / 3) * SLOT, z: Math.cos((k * Math.PI) / 3) * SLOT });
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
+    let np = 0, nb = 0;
+    for (const t of tiles) {
+      const c = hexToWorld(t.q, t.r);
+      for (let k = 0; k < 6; k++) {
+        const a = corner(k), b = corner(k + 1);
+        const mid = { x: c.x + (a.x + b.x) / 2, z: c.z + (a.z + b.z) / 2 };
+        // The neighbour across this edge is one full step away along the edge normal.
+        const nx = c.x + (a.x + b.x), nz = c.z + (a.z + b.z);
+        const nq = ((Math.sqrt(3) / 3) * nx - (1 / 3) * nz) / SLOT, nr = ((2 / 3) * nz) / SLOT;
+        const key = `${Math.round(nq)},${Math.round(nr)}`;
+        if (have.has(key)) continue;
+        const ax = c.x + a.x * 0.985, az = c.z + a.z * 0.985, bx = c.x + b.x * 0.985, bz = c.z + b.z * 0.985;
+        for (let i = 0; i < 3; i++) {
+          const f = i / 3;
+          p.set(ax + (bx - ax) * f, 0.65, az + (bz - az) * f);
+          m.compose(p, q.identity(), sc.set(1, 1, 1));
+          this.posts.setMatrixAt(np++, m);
+        }
+        const ang = Math.atan2(bz - az, bx - ax);
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -ang);
+        for (const y of [0.6, 1.15]) {
+          p.set((ax + bx) / 2, y, (az + bz) / 2);
+          m.compose(p, q, sc.set(SLOT, 1, 1));
+          this.bars.setMatrixAt(nb++, m);
+        }
+        void mid;
+      }
+    }
+    this.posts.count = np;
+    this.bars.count = nb;
+    this.posts.instanceMatrix.needsUpdate = true;
+    this.bars.instanceMatrix.needsUpdate = true;
+  }
+
   sync(tiles: Tile[], now: number) {
+    this.rails(tiles);
     const seen = new Set<string>();
     for (const t of tiles) {
       const key = `${t.q},${t.r}`;

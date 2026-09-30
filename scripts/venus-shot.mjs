@@ -155,6 +155,17 @@ const PLAN = {
     await ev(() => { const v = window.__venus; v.day(0.44); v.view(2.2, 0.12, 260, 0, 40, 0); v.settle(1); });
     await shot("city-low");
   },
+  async walk() {
+    await boot("&fresh");
+    await ev(() => window.__venus.go("play"));
+    await buildCity(40);
+    await ev(() => { const v = window.__venus; v.day(0.44); v.settle(1); v.api.setWalk(true); v.settle(2); });
+    await hudShot("walk-a");
+    await ev(() => { const v = window.__venus; v.walkTo(0.4, 30, 3.0); v.settle(0.5); });
+    await shot("walk-b");
+    await ev(() => { const v = window.__venus; v.day(0.2); v.api.setWalk(false); v.view(1.2, 0.18, 120, 40, 10, 20); v.settle(1.5); });
+    await shot("people");
+  },
   async debug() {
     await boot("&fresh");
     await ev(() => window.__venus.go("play"));

@@ -11,6 +11,7 @@ import { airAt, equilibriumAlt, BAND, DESIGN_ALT } from "@/venus/atmosphere";
 import { VenusSim, freshSave } from "@/venus/sim";
 import { EVENTS } from "@/venus/events";
 import { MODULES, BUILDABLE, type ModuleId } from "@/venus/modules";
+import { hint } from "@/venus/ticker";
 
 describe("the air of Venus", () => {
   it("is hell at the surface", () => {
@@ -188,6 +189,51 @@ describe("the long game", () => {
     expect(sim.s.won).toBe(true);
     // And not trivially: it should take a proper session.
     expect(t).toBeGreaterThan(15 * 60);
+  });
+
+  it("is winnable by a player who does nothing but what the hints say", () => {
+    /* The evaluator's finding: the old brownout hint fired every night and
+       sent players to build canopies that sank the city. A hint that can lead
+       you into a loss is worse than no hint. */
+    for (const seed of [3, 11]) {
+      const sim = new VenusSim(freshSave(seed));
+      let t = 0, acted = 0;
+      while (!sim.s.won && !sim.s.fallen && t < 60 * 90) {
+        if (sim.event) {
+          if (!sim.event.outcome) sim.choose(Math.max(0, sim.event.choices.findIndex((c) => !c.disabled)));
+          sim.dismiss();
+        }
+        if ((acted += 0.5) >= 3) {
+          acted = 0;
+          const h = hint(sim);
+          if (h?.act === "grow") {
+            const pick = sim.s.tiles.find((x) => (x.id === "dome" || x.id === "greenhouse" || x.id === "jazz") && !sim.whyNotUpgrade(x.q, x.r));
+            if (pick) sim.upgrade(pick.q, pick.r);
+          } else if (h?.act === "cut") {
+            const heavy = [...sim.s.tiles].filter((x) => x.id !== "core").sort((a, b) => MODULES[b.id].mass - MODULES[b.id].lift - (MODULES[a.id].mass - MODULES[a.id].lift))[0];
+            if (heavy) sim.cutLoose(heavy.q, heavy.r);
+          } else if (h?.act && h.act !== "ballast" && !sim.whyNot(h.act)) {
+            const [slot] = sim.freeSlots();
+            sim.build(h.act, slot.q, slot.r);
+          } else if (!h) {
+            // Nothing to fix: grow something people want.
+            const want: ModuleId = sim.d.food - sim.s.pop < sim.d.housing - sim.s.pop ? "greenhouse" : "dome";
+            const [slot] = sim.freeSlots();
+            if (slot && !sim.whyNot(want)) sim.build(want, slot.q, slot.r);
+            else if (!slot) {
+              const pick = sim.s.tiles.find((x) => x.id === want && !sim.whyNotUpgrade(x.q, x.r));
+              if (pick) sim.upgrade(pick.q, pick.r);
+            }
+          }
+        }
+        sim.step(0.5);
+        t += 0.5;
+      }
+      // eslint-disable-next-line no-console
+      console.log(`hint player seed ${seed}: won=${sim.s.won} fallen=${sim.s.fallen} t=${Math.round(t)} pop=${Math.round(sim.s.pop)} culture=${Math.round(sim.s.res.culture)} happy=${sim.d.happiness.toFixed(2)}`);
+      expect(sim.s.fallen, `seed ${seed}`).toBe(false);
+      expect(sim.s.won, `seed ${seed}`).toBe(true);
+    }
   });
 
   it("offers every buildable module in the bar", () => {

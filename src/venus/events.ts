@@ -95,7 +95,7 @@ export const EVENTS: EventDef[] = [
   /* ------------------------------------------------- the lunar mass driver */
   {
     id: "mass-driver",
-    cooldown: 200,
+    cooldown: 300,
     weight: 3,
     from: "Lunar Mass Driver · Mare Imbrium",
     title: "Capsule inbound",
@@ -215,7 +215,7 @@ export const EVENTS: EventDef[] = [
   /* -------------------------------------------------------- the neighbours */
   {
     id: "homies",
-    cooldown: 180,
+    cooldown: 300,
     weight: 3,
     from: "A neighbouring city",
     title: (s) => `${pick(s, NEIGHBOURS)} is drifting alongside`,
@@ -326,7 +326,7 @@ export const EVENTS: EventDef[] = [
   },
   {
     id: "jam",
-    cooldown: 220,
+    cooldown: 320,
     weight: 3,
     from: "The house band",
     title: "Sunrise set",

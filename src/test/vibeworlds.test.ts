@@ -102,7 +102,7 @@ describe("the contested planet, once generated", () => {
     expect(p.garden).toBe(false);
   });
 
-  it("leaves the four routed worlds gardens with routes", () => {
+  it("leaves the routed worlds gardens with routes, unless they opt out", () => {
     for (const w of VIBE_WORLDS) {
       if (w.contested) continue;
       const idx = VIBE_WORLDS.indexOf(w);
@@ -110,7 +110,8 @@ describe("the contested planet, once generated", () => {
       const p = sys.planets.find((b) => b.worldKey === w.key);
       expect(p, w.key).toBeTruthy();
       expect(p.worldRoute, w.key).toBe(w.route);
-      expect(p.garden, w.key).toBe(true);
+      // Venus opts out: nothing grows on a 462 °C surface.
+      expect(p.garden, w.key).toBe(w.planet.garden !== false);
       expect(p.contested, w.key).toBe(false);
     }
   });
@@ -173,7 +174,8 @@ describe("the draw sequence", () => {
      untouched — including the per-system seed, which is what every planet,
      moon, belt and station in that system is built from. */
   const AFTER_THE_WORLDS: [number, string, number][] = [
-    [5, "Nyxiththu", 53449862],
+    // Slot 5 was Nyxiththu until Venus took it; its seed is still rolled
+    // and still 53449862, which the next test checks.
     [6, "Quelalmar", 867951923],
     [7, "Elealthu", 376327493],
     [8, "Sareavek", 485714044],
@@ -183,6 +185,10 @@ describe("the draw sequence", () => {
     [12, "Heshea", 808156362],
     [13, "Ithunmar", 831682099],
   ];
+
+  it("keeps the seed of a slot a world has claimed", () => {
+    expect(generateGalaxy(1337, 14)[5].seed).toBe(53449862);
+  });
 
   it("does not move a single system when a world is added", () => {
     const g = generateGalaxy(1337, 14);

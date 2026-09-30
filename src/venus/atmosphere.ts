@@ -103,8 +103,12 @@ export function equilibriumAlt(liftAtDesign: number, mass: number): number {
   return (lo + hi) / 2;
 }
 
-/** The band people can live in without thinking about it. */
-export const BAND = { low: 51.5, high: 58.5 } as const;
+/**
+ * The band people can live in without thinking about it: roughly 14 to 40 °C.
+ * It used to be wider than the comfort curve, so the altimeter said "in the
+ * band" in green at 63 °C while happiness quietly fell apart.
+ */
+export const BAND = { low: 53.6, high: 57.2 } as const;
 /** Below this the hull starts to cook. */
 export const HULL_STRESS_ALT = 48;
 /** Above this the greenhouses freeze. */

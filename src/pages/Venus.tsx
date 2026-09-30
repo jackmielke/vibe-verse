@@ -23,6 +23,57 @@ interface Toast { id: number; title?: string; text: string; tone: "good" | "warn
 
 const glass = "rounded-2xl border border-[#f6d28b]/25 bg-[#1b0f0a]/55 backdrop-blur-md shadow-[0_8px_40px_rgba(0,0,0,0.35)]";
 
+/**
+ * Goggles on. The one place in the game with no numbers to manage: you are
+ * standing outside, on another planet, in a coat.
+ */
+function Outside({ world, compact }: { world: VenusWorld; compact: boolean }) {
+  const air = world.sim.d.air;
+  const hold = (f: number, s: number) => ({
+    onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); world.walkInput(f, s); },
+    onPointerUp: () => world.walkInput(0, 0),
+    onPointerLeave: () => world.walkInput(0, 0),
+  });
+  return (
+    <>
+      {/* The goggles: a soft amber lens, darker at the rim. */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10"
+        style={{ background: "radial-gradient(ellipse 72% 64% at 50% 52%, rgba(255,210,140,0) 60%, rgba(40,18,6,0.55) 86%, rgba(14,6,2,0.92) 100%)" }}
+      />
+      <div className="pointer-events-none absolute left-1/2 top-5 z-20 -translate-x-1/2 text-center" style={{ animation: "venusrise 1.2s ease-out" }}>
+        <div className="text-[10px] uppercase tracking-[0.4em] text-[#ffe0a8]/80">Outside · {world.sim.s.cityName}</div>
+        <div className="font-venus mt-1 text-[22px] text-white/90 drop-shadow-[0_1px_8px_rgba(0,0,0,0.7)] sm:text-[28px]">
+          {air.tempC.toFixed(0)} °C · {air.pressure.toFixed(2)} bar · 0.90 g
+        </div>
+        <div className="mt-1 max-w-md text-[12px] text-white/70 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]">
+          A coat, goggles and a breathing mask. You could not do this anywhere else in the solar system.
+        </div>
+      </div>
+      <button
+        onClick={() => world.setWalk(false)}
+        className="absolute right-4 top-4 z-30 rounded-full border border-white/40 bg-black/30 px-4 py-1.5 text-[10px] uppercase tracking-[0.25em] text-white/85 backdrop-blur hover:text-white"
+      >
+        Back inside
+      </button>
+      {compact ? (
+        <div className="absolute bottom-6 left-6 z-30 grid grid-cols-3 gap-1.5">
+          <div />
+          <button {...hold(1, 0)} className="h-12 w-12 rounded-full bg-white/20 text-white backdrop-blur">▲</button>
+          <div />
+          <button {...hold(0, -1)} className="h-12 w-12 rounded-full bg-white/20 text-white backdrop-blur">◀</button>
+          <button {...hold(-1, 0)} className="h-12 w-12 rounded-full bg-white/20 text-white backdrop-blur">▼</button>
+          <button {...hold(0, 1)} className="h-12 w-12 rounded-full bg-white/20 text-white backdrop-blur">▶</button>
+        </div>
+      ) : (
+        <div className="pointer-events-none absolute bottom-6 left-1/2 z-20 -translate-x-1/2 text-[11px] uppercase tracking-[0.25em] text-white/60">
+          W A S D to walk · drag to look · shift to hurry · esc to go back in
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function Venus() {
   useWorldStamp("/venus", "Venus Rising");
   const hostRef = useRef<HTMLDivElement>(null);
@@ -134,16 +185,16 @@ export default function Venus() {
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <button
-                onClick={() => world?.begin()}
+                onClick={() => (hasSave ? world?.skipIntro() : world?.begin())}
                 className="rounded-full bg-[#fff1da] px-7 py-3 text-[12px] font-bold uppercase tracking-[0.25em] text-[#3a1a0a] shadow-[0_10px_40px_rgba(255,200,120,0.35)] transition hover:bg-white"
               >
-                {hasSave ? "Watch the way there" : "Begin"}
+                {hasSave ? "Continue your city" : "Begin"}
               </button>
               <button
-                onClick={() => world?.skipIntro()}
+                onClick={() => (hasSave ? world?.begin() : world?.skipIntro())}
                 className="rounded-full border border-[#fff1da]/60 bg-[#1b0f0a]/30 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.22em] text-[#fff1da] backdrop-blur transition hover:bg-[#fff1da]/15"
               >
-                {hasSave ? "Continue your city" : "Skip to the clouds"}
+                {hasSave ? "Watch the way there" : "Skip to the clouds"}
               </button>
             </div>
             <p className="mt-6 text-[11px] tracking-wide text-[#fff1da]/60">
@@ -206,12 +257,15 @@ export default function Venus() {
       )}
 
       {/* ------------------------------------------------------ play */}
-      {phase === "play" && world && (
+      {phase === "play" && world && world.walking && <Outside world={world} compact={compact} />}
+
+      {phase === "play" && world && !world.walking && (
         <>
           <Hud world={world} selected={selected} compact={compact} muted={muted} onMute={() => setMuted((m) => !m)} />
 
+
           {/* toasts */}
-          <div className={`pointer-events-none absolute z-20 flex flex-col gap-2 ${compact ? "left-2 right-2 top-[200px]" : "left-3 top-[330px] w-[260px]"}`}>
+          <div className={`pointer-events-none absolute z-20 flex flex-col gap-2 ${compact ? "left-2 right-2 top-[290px]" : "left-3 top-[344px] w-[260px]"}`}>
             {toasts.map((t) => (
               <div key={t.id} className={`${glass} px-3 py-2`} style={{ animation: "venusrise 0.5s ease-out" }}>
                 {t.title && <div className="font-venus text-[19px] leading-tight text-[#ffe8bf]">✦ {t.title}</div>}
@@ -245,6 +299,7 @@ export default function Venus() {
                       >
                         {c.label}
                         {c.hint && <span className="ml-2 text-[11px] text-[#f6d28b]/70">{c.hint}</span>}
+                        {c.disabled && <span className="ml-2 text-[11px] text-[#ff9a7a]">can't afford it</span>}
                       </button>
                     ))}
                   </div>

@@ -29,7 +29,12 @@ export interface Tile extends Hex {
   n: number;
   /** 1..3. Everything a module does scales with it, mass included. */
   level?: number;
+  /** Being winched off: game time it is gone, and until then it still weighs. */
+  leaving?: number;
 }
+
+/** How long a recycle takes. Cutting loose is instant; that is its whole point. */
+export const RECYCLE_SECONDS = 25;
 
 export const MAX_LEVEL = 3;
 /** What the next level costs, as a multiple of the module's build cost. */
@@ -83,6 +88,8 @@ export interface Derived {
   arrivalRate: number;
   zone: "cook" | "hot" | "band" | "cold" | "freeze";
   utopia: number;
+  /** Out of water: greenhouses at half. */
+  dry: boolean;
 }
 
 export interface EventChoice { label: string; hint?: string; disabled?: boolean }
@@ -117,7 +124,15 @@ const EARTH_DAYS_PER_REV = 9;
 /** Water weighs this many tonnes a unit — it is the ballast. */
 export const WATER_TONNES = 1;
 
-export const VICTORY = { pop: 1000, culture: 900, happiness: 0.7 } as const;
+export const VICTORY = { pop: 1000, culture: 1200, happiness: 0.7 } as const;
+/**
+ * At night the air in every envelope cools and contracts, so the whole city
+ * loses a few percent of its lift and sags on the dark side. Real, and it
+ * makes night a thing the altimeter shows rather than just a dark screen.
+ */
+export const NIGHT_SAG = 0.05;
+/** Litres, abstractly: what a hundred people drink per second. */
+const DRINK = 0.12;
 
 function mulberry(seed: number) {
   let a = seed >>> 0;
@@ -239,6 +254,7 @@ export class VenusSim {
   whyNotUpgrade(q: number, r: number): string | null {
     const t = this.tileAt(q, r);
     if (!t) return "Nothing here";
+    if (t.leaving) return "Being winched off";
     if ((t.level ?? 1) >= MAX_LEVEL) return "Fully grown";
     for (const [k, v] of Object.entries(this.upgradeCost(t)) as [ResourceId, number][]) {
       if (this.s.res[k] < v) return `Needs ${Math.ceil(v - this.s.res[k])} more ${k}`;
@@ -290,20 +306,51 @@ export class VenusSim {
     return tile;
   }
 
-  /** Take it apart properly: half the carbon back, and it is winched away. */
+  /**
+   * Take it apart properly: half the carbon back, but it is winched off over
+   * twenty-five seconds and weighs the whole time. In an emergency, cut it.
+   */
   recycle(q: number, r: number): Tile | null {
-    const i = this.s.tiles.findIndex((t) => t.q === q && t.r === r);
-    if (i < 0) return null;
-    const tile = this.s.tiles[i];
-    if (tile.id === "core") return null;
+    const tile = this.tileAt(q, r);
+    if (!tile || tile.id === "core" || tile.leaving) return null;
+    tile.leaving = this.s.t + RECYCLE_SECONDS;
+    this.toast(`Winching off the ${MODULES[tile.id].name}. It still weighs until it's gone.`, "warn");
+    return tile;
+  }
+
+  private finishRecycle(tile: Tile) {
+    const i = this.s.tiles.indexOf(tile);
+    if (i < 0) return;
     this.s.tiles.splice(i, 1);
     const def = MODULES[tile.id];
-    this.s.res.carbon = Math.min(RES_CAP.carbon, this.s.res.carbon + (def.cost.carbon ?? 0) * 0.5);
+    this.s.res.carbon = Math.min(RES_CAP.carbon, this.s.res.carbon + (def.cost.carbon ?? 0) * 0.5 * (tile.level ?? 1));
     this.push({ kind: "fell", tile, reason: "recycle" });
     this.orphanCheck();
     this.derive();
     this.s.pop = Math.min(this.s.pop, this.d.housing);
-    return tile;
+  }
+
+  /** What would be left hanging if this tile went: shown before you do it. */
+  wouldOrphan(q: number, r: number): number {
+    const rest = this.s.tiles.filter((t) => !(t.q === q && t.r === r));
+    const have = new Set(rest.map((t) => hexKey(t.q, t.r)));
+    const seen = new Set<string>([hexKey(0, 0)]);
+    const st: Hex[] = [{ q: 0, r: 0 }];
+    while (st.length) {
+      const h = st.pop()!;
+      for (const n of neighbours(h.q, h.r)) {
+        const k = hexKey(n.q, n.r);
+        if (!seen.has(k) && have.has(k)) { seen.add(k); st.push(n); }
+      }
+    }
+    return rest.filter((t) => !seen.has(hexKey(t.q, t.r))).length;
+  }
+
+  /** Where the city would settle with one more of these on it. */
+  previewAlt(id: ModuleId): number {
+    const m = MODULES[id];
+    const night = 1 - NIGHT_SAG * (1 - this.d.sun);
+    return equilibriumAlt((this.d.lift / night / (1 + this.s.trim) + m.lift) * (1 + this.s.trim) * night, this.d.mass + m.mass);
   }
 
   /** Nothing may float free of the keel: tiles cut off from the core go too. */
@@ -355,11 +402,17 @@ export class VenusSim {
 
   /* --------------------------------------------------------------- events */
 
+  /** Rewards shrink each time the same thing happens again. */
+  private bonus = 1;
+
   choose(i: number) {
     if (!this.event || !this.eventDef || this.event.outcome) return;
     const c = this.eventDef.choices(this)[i];
     if (!c || c.disabled) return;
+    const n = this.s.flags[`n:${this.eventDef.id}`] ?? 1;
+    this.bonus = 1 / (1 + 0.35 * (n - 1));
     const outcome = c.run(this);
+    this.bonus = 1;
     this.event.outcome = outcome;
     this.derive();
     this.checkMilestones();
@@ -382,6 +435,7 @@ export class VenusSim {
   private present(def: EventDef, tile?: Hex) {
     this.eventDef = def;
     this.s.seen[def.id] = this.s.t;
+    this.s.flags[`n:${def.id}`] = (this.s.flags[`n:${def.id}`] ?? 0) + 1;
     this.event = {
       id: def.id,
       from: typeof def.from === "function" ? def.from(this) : def.from,
@@ -431,11 +485,12 @@ export class VenusSim {
 
   /** Arrivals that will come in as housing allows. */
   sendPeople(n: number) {
-    this.s.pending += n;
+    this.s.pending += Math.round(n * this.bonus);
   }
 
   give(res: Partial<Record<ResourceId, number>>) {
-    for (const [k, v] of Object.entries(res) as [ResourceId, number][]) {
+    for (const [k, v0] of Object.entries(res) as [ResourceId, number][]) {
+      const v = v0 > 0 ? v0 * this.bonus : v0;
       const cap = k === "power" ? this.d.batteryCap : k === "water" ? this.d.waterCap : RES_CAP[k];
       this.s.res[k] = Math.max(0, Math.min(cap, this.s.res[k] + v));
     }
@@ -474,7 +529,13 @@ export class VenusSim {
     // Nanofab sludge, and anything else an event bolts on for a while.
     mass += s.flags.extraMass ?? 0;
     mass += s.res.water * WATER_TONNES;
-    lift *= 1 + s.trim;
+    lift *= (1 + s.trim) * (1 - NIGHT_SAG * (1 - sun));
+    // People drink, and greenhouses without water feed half as many.
+    use.water += (s.pop / 100) * DRINK;
+    const dry = s.res.water < 1 && make.water < use.water;
+    if (dry) {
+      for (const t of s.tiles) if (t.id === "greenhouse") food -= (MODULES.greenhouse.food ?? 0) * (t.level ?? 1) * 0.5;
+    }
 
     const eqAlt = equilibriumAlt(lift, mass);
     const air = airAt(s.alt);
@@ -495,7 +556,7 @@ export class VenusSim {
 
     // Comfort: 1 in the band, falling off either side.
     const tC = air.tempC;
-    const comfort = tC >= 18 && tC <= 36 ? 1 : tC > 36 ? Math.max(0, 1 - (tC - 36) / 40) : Math.max(0, 1 - (18 - tC) / 30);
+    const comfort = tC >= 14 && tC <= 40 ? 1 : tC > 40 ? Math.max(0, 1 - (tC - 40) / 40) : Math.max(0, 1 - (14 - tC) / 32);
     const culturePerHead = s.pop > 0 ? (make.culture * 100) / s.pop : 0;
     const cultureTerm = Math.min(1, 0.35 + culturePerHead * 1.4);
     const fed = s.pop <= 0 ? 1 : Math.min(1, food / s.pop);
@@ -523,7 +584,7 @@ export class VenusSim {
       earthDay: (s.t / REVOLUTION) * EARTH_DAYS_PER_REV,
       circuits: Math.floor(s.t / REVOLUTION),
       powerMake, powerUse, powered, batteryCap, waterCap,
-      housing, food, happiness, comfort, rates, arrivalRate, zone, utopia,
+      housing, food, happiness, comfort, rates, arrivalRate, zone, utopia, dry,
     };
   }
 
@@ -588,6 +649,9 @@ export class VenusSim {
       s.pop = Math.max(cap, s.pop - 0.4 * dt);
     }
     if (d.happiness < 0.3 && s.pop > 12) s.pop -= 0.05 * dt;
+
+    // ---- winches
+    for (const t of [...s.tiles]) if (t.leaving && s.t >= t.leaving) this.finishRecycle(t);
 
     // ---- timers on flags
     if (s.flags.extraMassUntil && s.t > s.flags.extraMassUntil) {

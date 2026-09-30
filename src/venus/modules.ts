@@ -81,6 +81,7 @@ export const MODULES: Record<ModuleId, ModuleDef> = {
     power: 3,
     battery: 140,
     waterCap: 60,
+    makes: { water: 0.15 },
     hidden: true,
     color: "#ffd9a0",
   },
@@ -141,7 +142,7 @@ export const MODULES: Record<ModuleId, ModuleDef> = {
   still: {
     id: "still",
     name: "Acid Still",
-    line: "Cloud droplets in, water out.",
+    line: "Water for people and greenhouses.",
     detail:
       "The clouds are sulfuric acid droplets. Crack them and you get water and sulfur. Water is also ballast: it weighs a tonne a unit.",
     icon: "💧",
@@ -223,7 +224,7 @@ export const MODULES: Record<ModuleId, ModuleDef> = {
     mass: 40,
     lift: 0,
     power: -0.8,
-    makes: { culture: 0.25 },
+    makes: { culture: 0.15 },
     color: "#ff9a5a",
   },
   ballroom: {
@@ -237,7 +238,7 @@ export const MODULES: Record<ModuleId, ModuleDef> = {
     mass: 130,
     lift: 0,
     power: -1.5,
-    makes: { culture: 0.7 },
+    makes: { culture: 0.45 },
     unlockPop: 150,
     color: "#f7c12e",
   },

@@ -195,6 +195,42 @@ export const VIBE_WORLDS = [
       garden: false,
     },
   },
+  {
+    key: 'venus',
+    route: '/venus',
+    name: 'VENUS',
+    designation: 'VV-006',
+    tagline: 'Everybody went to Mars. Fifty-four kilometres up, somebody is building a utopia.',
+    accent: 0xffc27a,
+    // A G star, like ours, and the planet sits close in: Venus is the sunward
+    // door. You fall toward it rather than climbing out.
+    star: 'G',
+    chart: { x: 5.5, y: -7.0 },
+    planet: {
+      kind: 'terran',
+      radius: 3950,
+      /* The surface nobody visits: basalt plains at 462 degrees, no water, no
+         green. It hardly matters, because from orbit you only ever see the
+         cloud deck, and the cloud deck is the whole point. */
+      colors: {
+        c0: 0x1a0c06, c1: 0x5a2c16, c2: 0x8a4a22, c3: 0x6a3a1e,
+        c4: 0xb07a46, polar: 0xd8b888, water: 0x2a140a,
+      },
+      sea: 0.32,
+      veg: 0.02,
+      relief: 0.9,
+      craters: 0.05,
+      /* The cities float, so the night side glows faintly from above the
+         ground rather than on it: warm, sparse, and in the cloud. */
+      night: 0.7,
+      lamp: { warm: 0xffc27a, cold: 0xffe6b0 },
+      /* Total cover, cream and butter, thick and high: the planet everyone
+         pictures as hell looks, from here, like a pearl. */
+      clouds: { cover: 0.97, scale: 1.6, alt: 0.034, thick: 0.03, tint: 0xf6e2b4 },
+      // Nothing grows on the ground. Everything grows fifty kilometres up.
+      garden: false,
+    },
+  },
 ];
 
 /** Look one up by the route it leads to, or by its key. */

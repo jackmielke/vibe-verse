@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { VenusWorld } from "../world/Venus";
 import { BUILDABLE, MODULES, type ModuleId, type ResourceId } from "../modules";
-import { BAND, FREEZE_ALT, HULL_STRESS_ALT, liftFactor } from "../atmosphere";
+import { BAND, FREEZE_ALT, HULL_STRESS_ALT, airAt, liftFactor } from "../atmosphere";
 import { MAX_LEVEL, VICTORY, type Tile } from "../sim";
 import { hintFor, tickerLines } from "../ticker";
 
@@ -40,6 +40,11 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
   }, []);
   const hint = hintFor(sim);
   const building = world.building;
+  // The module whose weight the altimeter is previewing: hovered, or being placed.
+  const [hoverId, setHoverId] = useState<ModuleId | null>(null);
+  const preview = hoverId ?? building;
+  const [showPeers, setShowPeers] = useState(false);
+  const peers = world.peers();
 
   return (
     <>
@@ -55,12 +60,12 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
       )}
 
       {/* ------------------------------------------------ altimeter */}
-      <Altimeter world={world} compact={compact} />
+      <Altimeter world={world} compact={compact} preview={preview} />
 
       {/* ------------------------------------------------ resources */}
       <div className={`absolute right-3 top-3 z-10 ${compact ? "w-[184px]" : "w-[250px]"} ${panel} p-3 text-[#f3e3c8]`}>
-        <div className="flex items-center justify-between">
-          <div className="font-venus text-[22px] leading-none text-[#ffe8bf]">{s.cityName}</div>
+        <div className={`flex ${compact ? "flex-col items-start gap-1" : "items-center justify-between"}`}>
+          <div className={`font-venus ${compact ? "text-[19px]" : "text-[22px]"} max-w-full truncate leading-none text-[#ffe8bf]`}>{s.cityName}</div>
           <div className="flex items-center gap-1">
             <button onClick={onMute} title={muted ? "Sound on" : "Sound off"} className="mr-1 text-[12px] text-[#f6d28b]/70 hover:text-[#f6d28b]">{muted ? "🔇" : "🔊"}</button>
             {[1, 2, 4].map((n) => (
@@ -75,12 +80,14 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
           </div>
         </div>
         <div className="mt-1 text-[10px] uppercase tracking-[0.2em] text-[#f6d28b]/60">
-          Lap {d.circuits + 1} · Earth day {d.earthDay.toFixed(1)} · {d.sun > 0.5 ? "day side" : "night side"}
+          {d.sun > 0.5 ? "☀" : "☾"} Lap {d.circuits + 1} · day {d.earthDay.toFixed(1)}
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
           <Stat label="People" value={`${fmt(s.pop)}`} sub={`/${fmt(Math.min(d.housing, d.food))}`} warn={d.housing - s.pop < 3 || d.food - s.pop < 3} />
-          <Stat label="Happy" value={`${Math.round(d.happiness * 100)}%`} warn={d.happiness < 0.45} />
+          <div title={`Comfort ${Math.round(d.comfort * 100)}% (temperature) · Food ${d.food >= s.pop ? "enough" : "short"} · Power ${Math.round(d.powered * 100)}%${d.dry ? " · out of water" : ""}`}>
+            <Stat label="Happy" value={`${Math.round(d.happiness * 100)}%`} sub={d.comfort < 0.9 ? (d.air.tempC > 30 ? "too hot" : "too cold") : undefined} warn={d.happiness < 0.5} />
+          </div>
           {RES.map((r) => (
             <Stat
               key={r.id}
@@ -108,10 +115,31 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
           <Bar v={d.utopia} color="#ffb4d8" />
           {!compact && (
             <div className="mt-1 text-[10px] leading-snug text-[#f3e3c8]/50">
-              {VICTORY.pop.toLocaleString()} people, {VICTORY.culture} culture, {Math.round(VICTORY.happiness * 100)}% happy.
+              {VICTORY.pop.toLocaleString()} people, {VICTORY.culture.toLocaleString()} culture, {Math.round(VICTORY.happiness * 100)}% happy.
             </div>
           )}
         </div>
+
+        <button onClick={() => setShowPeers((v) => !v)} className="mt-2 w-full text-left text-[10px] uppercase tracking-[0.18em] text-[#9ff4ff]/80 hover:text-[#c8faff]">
+          {peers.length ? `☁ ${peers.length} ${peers.length === 1 ? "city" : "cities"} alongside ${showPeers ? "▴" : "▾"}` : "☁ Nobody else on this wind yet"}
+        </button>
+        {showPeers && peers.length > 0 && (
+          <div className="mt-1 flex max-h-[140px] flex-col gap-1 overflow-y-auto">
+            {peers.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="truncate text-[#fff1da]">{p.name} <span className="text-[#f3e3c8]/50">· {p.pop.toLocaleString()}</span></span>
+                <button
+                  onClick={() => world.gift(p.id)}
+                  disabled={s.res.carbon < 40}
+                  className="shrink-0 rounded-md border border-[#9ff4ff]/40 px-1.5 py-0.5 text-[10px] text-[#c8faff] hover:bg-[#9ff4ff]/15 disabled:opacity-35"
+                  title="Send them 40 of your carbon. There is no scarcity up here."
+                >
+                  gift ◆40
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ------------------------------------------------ hint */}
@@ -125,7 +153,7 @@ export function Hud({ world, selected, compact, muted, onMute }: { world: VenusW
       {selected && <TilePanel world={world} tile={selected} compact={compact} />}
 
       {/* ------------------------------------------------ build bar */}
-      <BuildBar world={world} compact={compact} building={building} />
+      <BuildBar world={world} compact={compact} building={building} onHover={setHoverId} />
 
     </>
   );
@@ -156,8 +184,11 @@ function Bar({ v, color }: { v: number; color: string }) {
 const COL_LO = 44, COL_HI = 64;
 const yOf = (alt: number) => 100 - ((Math.max(COL_LO, Math.min(COL_HI, alt)) - COL_LO) / (COL_HI - COL_LO)) * 100;
 
-function Altimeter({ world, compact }: { world: VenusWorld; compact: boolean }) {
+function Altimeter({ world, compact, preview }: { world: VenusWorld; compact: boolean; preview: ModuleId | null }) {
   const sim = world.sim;
+  const pAlt = preview ? sim.previewAlt(preview) : null;
+  const pAir = pAlt !== null ? airAt(pAlt) : null;
+  const pOk = pAlt !== null && pAlt >= BAND.low && pAlt <= BAND.high;
   const s = sim.s, d = sim.d;
   const air = d.air;
   const trend = d.eqAlt - s.alt;
@@ -182,6 +213,9 @@ function Altimeter({ world, compact }: { world: VenusWorld; compact: boolean }) 
           }}
         >
           <div className="absolute left-0 right-0 h-[2px] bg-[#1b0f0a]/60" style={{ top: `${yOf(d.eqAlt)}%` }} />
+          {pAlt !== null && (
+            <div className="absolute left-0 right-0 h-[3px] animate-pulse" style={{ top: `${yOf(pAlt)}%`, background: pOk ? "#1b6a3a" : "#ff3a14" }} />
+          )}
           <div className="absolute -left-1 -right-1 h-[4px] rounded bg-[#1b0f0a] shadow-[0_0_0_2px_#fff]" style={{ top: `calc(${yOf(s.alt)}% - 2px)` }} />
         </div>
         <div className="min-w-0 flex-1">
@@ -197,6 +231,11 @@ function Altimeter({ world, compact }: { world: VenusWorld; compact: boolean }) 
             <div><span className="text-[#f6d28b]/60">P </span>{air.pressure.toFixed(2)} bar</div>
           </div>
           <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: zoneColor }}>{zoneText}</div>
+          {pAlt !== null && pAir && (
+            <div className={`mt-1 text-[10.5px] leading-snug ${pOk ? "text-[#9fffc8]" : "text-[#ffb08a]"}`}>
+              With a {MODULES[preview!].name}: → {pAlt.toFixed(1)} km, {pAir.tempC.toFixed(0)} °C{pOk ? "" : pAlt < BAND.low ? " · too hot" : " · too cold"}
+            </div>
+          )}
           {!compact && (
             <div className="mt-2 text-[10.5px] leading-snug text-[#f3e3c8]/65">
               Lift {fmt(d.lift * liftFactor(s.alt))} t · mass {fmt(d.mass)} t
@@ -217,10 +256,10 @@ function Altimeter({ world, compact }: { world: VenusWorld; compact: boolean }) 
           className="rounded-lg border border-[#9fdcff]/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#bfe8ff] hover:bg-[#9fdcff]/15 disabled:opacity-35"
           title="Let three quarters of the water go. Water is a tonne a unit."
         >
-          Dump ballast
+          {compact ? "Ballast" : "Dump ballast"}
         </button>
-        {!compact && (
-          <label className="flex flex-1 items-center gap-1.5 text-[9.5px] uppercase tracking-[0.14em] text-[#f6d28b]/70" title="Pump air into every envelope (costs air) or vent it (free).">
+        {(
+          <label className="flex min-w-0 flex-1 items-center gap-1.5 text-[9.5px] uppercase tracking-[0.14em] text-[#f6d28b]/70" title="Pump air into every envelope (costs air) or vent it (free).">
             Trim
             <input
               type="range"
@@ -232,10 +271,17 @@ function Altimeter({ world, compact }: { world: VenusWorld; compact: boolean }) 
               onKeyUp={() => world.setTrim(trim)}
               className="h-1 w-full accent-[#f6d28b]"
             />
-            <span className="w-8 text-right tabular-nums">{Math.round(trim * 100)}%</span>
+            {!compact && <span className="w-8 text-right tabular-nums">{Math.round(trim * 100)}%</span>}
           </label>
         )}
       </div>
+      <button
+        onClick={() => world.setWalk(true)}
+        className="mt-2 w-full rounded-lg border border-[#9ff4ff]/35 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#c8faff] hover:bg-[#9ff4ff]/15"
+        title="Goggles on. Go and stand on the deck."
+      >
+        🥽 Step outside
+      </button>
     </div>
   );
 }
@@ -243,7 +289,7 @@ function yOfInv(alt: number) { return 100 - yOf(alt); }
 
 /* ------------------------------------------------------------ build bar */
 
-function BuildBar({ world, compact, building }: { world: VenusWorld; compact: boolean; building: ModuleId | null }) {
+function BuildBar({ world, compact, building, onHover }: { world: VenusWorld; compact: boolean; building: ModuleId | null; onHover: (id: ModuleId | null) => void }) {
   const sim = world.sim;
   return (
     <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2">
@@ -256,7 +302,11 @@ function BuildBar({ world, compact, building }: { world: VenusWorld; compact: bo
           </div>
         </div>
       )}
-      <div className="mx-auto flex max-w-[1200px] gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]">
+      <div
+        className="mx-auto flex max-w-[1520px] gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]"
+        style={{ maskImage: "linear-gradient(to right, black 92%, transparent)", WebkitMaskImage: "linear-gradient(to right, black 92%, transparent)" }}
+        onMouseLeave={() => onHover(null)}
+      >
         {BUILDABLE.map((id) => {
           const m = MODULES[id];
           const why = sim.whyNot(id);
@@ -267,11 +317,12 @@ function BuildBar({ world, compact, building }: { world: VenusWorld; compact: bo
             <button
               key={id}
               onClick={() => world.setBuild(on ? null : id)}
+              onMouseEnter={() => onHover(id)}
               disabled={!!why && !on}
               title={`${m.name}: ${m.detail}${why ? `\n\n${why}` : ""}`}
               className={`group relative shrink-0 ${compact ? "w-[92px] p-1.5" : "w-[118px] p-2"} rounded-xl border text-left transition ${
                 on ? "border-[#fff] bg-[#f6d28b]/25" : "border-[#f6d28b]/20 bg-[#1b0f0a]/60 hover:border-[#f6d28b]/60"
-              } backdrop-blur-md disabled:opacity-40`}
+              } backdrop-blur-md disabled:opacity-30 disabled:grayscale`}
             >
               <div className="flex items-center justify-between">
                 <span className={compact ? "text-[18px]" : "text-[22px]"}>{locked ? "🔒" : m.icon}</span>
@@ -305,6 +356,8 @@ function TilePanel({ world, tile, compact }: { world: VenusWorld; tile: Tile; co
   const up = sim.whyNotUpgrade(tile.q, tile.r);
   const cost = useMemo(() => sim.upgradeCost(tile), [sim, tile, L]);
   const [confirm, setConfirm] = useState(false);
+  const orphans = sim.wouldOrphan(tile.q, tile.r);
+  const leaving = tile.leaving ? Math.max(0, Math.ceil(tile.leaving - sim.s.t)) : 0;
   const lines: string[] = [];
   if (m.housing) lines.push(`Houses ${m.housing * L}`);
   if (m.food) lines.push(`Feeds ${m.food * L}`);
@@ -336,17 +389,20 @@ function TilePanel({ world, tile, compact }: { world: VenusWorld; tile: Tile; co
         >
           {L >= MAX_LEVEL ? "Fully grown" : `Grow · ${Object.entries(cost).map(([k, v]) => `${v} ${k}`).join(", ")}`}
         </button>
+        {tile.id !== "core" && leaving > 0 && (
+          <div className="text-[11px] text-[#ffcf9a]">Winching off… {leaving}s. Still weighs until it's gone. Cut it to drop it now.</div>
+        )}
         {tile.id !== "core" && (
           <>
-            <button onClick={() => world.recycleSelected()} className="rounded-lg border border-[#f6d28b]/40 px-2.5 py-1 text-[11px] text-[#f6d28b] hover:bg-[#f6d28b]/10" title="Winch it off and get half the carbon back.">
+            {!leaving && <button onClick={() => world.recycleSelected()} className="rounded-lg border border-[#f6d28b]/40 px-2.5 py-1 text-[11px] text-[#f6d28b] hover:bg-[#f6d28b]/10" title="Winch it off over 25 seconds and get half the carbon back. It still weighs while it goes.">
               Recycle
-            </button>
+            </button>}
             {confirm ? (
               <button onClick={() => world.cutSelected()} className="rounded-lg bg-[#ff5a3a] px-2.5 py-1 text-[11px] font-bold text-white">
                 Drop it. Sure.
               </button>
             ) : (
-              <button onClick={() => setConfirm(true)} className="rounded-lg border border-[#ff7a5a]/60 px-2.5 py-1 text-[11px] text-[#ff9a7a] hover:bg-[#ff5a3a]/15" title="Cut the tether. Its whole mass is gone at once, and so is it.">
+              <button onClick={() => setConfirm(true)} className="rounded-lg border border-[#ff7a5a]/60 px-2.5 py-1 text-[11px] text-[#ff9a7a] hover:bg-[#ff5a3a]/15" title="Cut the tether. Its whole mass is gone this instant, and so is it. The emergency button.">
                 Cut loose
               </button>
             )}
@@ -354,6 +410,9 @@ function TilePanel({ world, tile, compact }: { world: VenusWorld; tile: Tile; co
         )}
       </div>
       {up && L < MAX_LEVEL && <div className="mt-1.5 text-[10.5px] text-[#ff9a7a]">{up}</div>}
+      {orphans > 0 && tile.id !== "core" && (
+        <div className="mt-1.5 text-[10.5px] text-[#ffb08a]">Careful: {orphans} {orphans === 1 ? "module hangs" : "modules hang"} off this one and would go with it.</div>
+      )}
     </div>
   );
 }

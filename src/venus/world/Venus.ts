@@ -25,6 +25,9 @@ import { DESIGN_ALT, UPPER_DECK_ALT, airAt } from "../atmosphere";
 import { CityView, Palette } from "./city";
 import { Sky, KM } from "./sky";
 import { MoonScene, TransferScene } from "./prologue";
+import { People } from "./people";
+import { buildModule } from "./city";
+import { joinSky, decodeLayout, type NetMode, type PeerCity, type SkyNet } from "../net";
 import { VenusAudio } from "../audio";
 
 export type Phase = "title" | "moon" | "transfer" | "entry" | "play";
@@ -55,6 +58,7 @@ export interface VenusOptions {
   onEntry(e: EntryState): void;
   onSelect(t: Tile | null): void;
   onFire?(): void;
+  net?: { mode: NetMode; room: string };
 }
 
 export interface VenusWorld {
@@ -78,9 +82,18 @@ export interface VenusWorld {
   choose(i: number): void;
   dismiss(): void;
   setSpeed(n: number): void;
+  /** Step outside: first person on the deck. */
+  setWalk(on: boolean): void;
+  readonly walking: boolean;
+  /** For touch: -1..1 forward and sideways, held until set back to 0. */
+  walkInput(forward: number, strafe: number): void;
   setMuted(m: boolean): void;
   restart(): void;
   save(): void;
+  /** Real cities in the same room, riding the same wind. */
+  peers(): PeerCity[];
+  /** Send some of yours. Returns false if you cannot spare it. */
+  gift(peerId: string): boolean;
   dispose(): void;
 }
 
@@ -163,7 +176,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
   /* -------------------------------------------------- the main scene */
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0xf0d8a8, 0.00016);
-  const camera = new THREE.PerspectiveCamera(50, aspect(), 1, 60000);
+  const camera = new THREE.PerspectiveCamera(50, aspect(), 0.5, 60000);
   const palette = new Palette();
   const sky = new Sky(palette, quality);
   scene.add(sky.group);
@@ -186,6 +199,8 @@ export function createVenus(opts: VenusOptions): VenusWorld {
   scene.add(cityRoot);
   const city = new CityView(palette);
   cityRoot.add(city.root);
+  const people = new People();
+  cityRoot.add(people.group);
   const show = new CityView(palette);
   show.sync(showcaseTiles(), 0);
   scene.add(show.root);
@@ -237,6 +252,8 @@ export function createVenus(opts: VenusOptions): VenusWorld {
   let tickAcc = 0;
   let saveAcc = 0;
   let fallFrom = 0;
+  const walk = { on: false, x: 0, z: 0, yaw: 0, pitch: 0.02, fwd: 0, side: 0, bob: 0 };
+  const keys = new Set<string>();
   let tileSig = -1;
   let disposed = false;
   const audio = new VenusAudio();
@@ -345,7 +362,10 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
     p.x = e.clientX; p.y = e.clientY;
-    if (pointers.size === 1 && (phase === "play" || phase === "title")) {
+    if (pointers.size === 1 && walk.on) {
+      walk.yaw -= dx * 0.004;
+      walk.pitch = Math.max(-1.1, Math.min(1.2, walk.pitch - dy * 0.003));
+    } else if (pointers.size === 1 && (phase === "play" || phase === "title")) {
       rig.tYaw -= dx * 0.005;
       rig.tPitch = Math.max(0.06, Math.min(1.35, rig.tPitch + dy * 0.004));
     } else if (pointers.size === 2) {
@@ -365,7 +385,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
   }
   function click(x: number, y: number) {
     if (phase === "moon") { api.fire(); return; }
-    if (phase !== "play" || sim.s.fallen) return;
+    if (phase !== "play" || sim.s.fallen || walk.on) return;
     const h = pick(x, y);
     if (!h) return;
     if (building) {
@@ -403,8 +423,14 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     rig.tDist = Math.max(120, Math.min(1400, rig.tDist * Math.exp(e.deltaY * 0.0012)));
     rig.idle = 0;
   }
+  function onKeyUp(e: KeyboardEvent) { keys.delete(e.code); }
   function onKey(e: KeyboardEvent) {
     if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+    keys.add(e.code);
+    if (walk.on) {
+      if (e.key === "Escape") api.setWalk(false);
+      return;
+    }
     if (e.key === "Escape") { api.setBuild(null); api.deselect(); }
     if (phase === "moon" && (e.key === " " || e.key === "Enter")) { e.preventDefault(); api.fire(); }
     if (phase === "entry" && (e.key === " " || e.key === "Enter")) { e.preventDefault(); api.deploy(); }
@@ -422,6 +448,7 @@ export function createVenus(opts: VenusOptions): VenusWorld {
   el.addEventListener("pointercancel", onUp);
   el.addEventListener("wheel", onWheel, { passive: false });
   window.addEventListener("keydown", onKey);
+  window.addEventListener("keyup", onKeyUp);
 
   const ro = new ResizeObserver(() => {
     const w = container.clientWidth, h = container.clientHeight;
@@ -490,11 +517,11 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       case "fell": city.sync(sim.s.tiles, time); if (f.reason === "cut") audio.fall(); break;
       case "arrival": if (Math.random() < 0.5) spawnShuttle(1); break;
       case "shipment": spawnShuttle(2); audio.whoosh(); break;
-      case "party": spawnLanterns(60); audio.chime(); break;
+      case "party": spawnLanterns(36); audio.chime(); break;
       case "ballast": spawnDrops(); audio.ballast(); break;
-      case "milestone": audio.milestone(); spawnLanterns(24); break;
+      case "milestone": audio.milestone(); if (lanterns.length < 40) spawnLanterns(14); break;
       case "fallen": fallFrom = sim.s.alt; audio.fall(); select(null); building = null; refreshSlots(); break;
-      case "won": spawnLanterns(160); audio.milestone(); break;
+      case "won": spawnLanterns(90); audio.milestone(); break;
       default: break;
     }
     opts.onFx(f);
@@ -619,7 +646,11 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       cityRoot.position.y = Math.sin(time * 0.35) * 0.8;
     }
     rig.idle += dt;
-    applyRig(dt);
+    if (walk.on && !s.fallen) updateWalk(dt);
+    else applyRig(dt);
+    people.sync(s.tiles, s.pop);
+    people.update(dt, time);
+    updatePeers(dt);
     const skyAlt = s.fallen ? fallFrom : s.alt;
     sky.update(dt, time, sim.d.dayPhase, skyAlt, camera);
     if (s.fallen) sky.u.uHeat.value = Math.min(1, (fallFrom - s.alt) / 8);
@@ -668,6 +699,39 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     if (tickAcc > 0.2) { tickAcc = 0; opts.onTick(); }
     saveAcc += dt;
     if (saveAcc > 15 && !s.fallen) { saveAcc = 0; writeSave(sim.snapshot()); }
+  }
+
+  function onDeck(x: number, z: number): boolean {
+    const h = axialRound(((Math.sqrt(3) / 3) * x - (1 / 3) * z) / SLOT, ((2 / 3) * z) / SLOT);
+    if (!sim.tileAt(h.q, h.r)) return false;
+    // Inside the hex, with a rail's width to spare.
+    const c = hexToWorld(h.q, h.r);
+    return Math.hypot(x - c.x, z - c.z) < SLOT * 0.93;
+  }
+
+  function updateWalk(dt: number) {
+    let f = walk.fwd, st = walk.side;
+    if (keys.has("KeyW") || keys.has("ArrowUp")) f += 1;
+    if (keys.has("KeyS") || keys.has("ArrowDown")) f -= 1;
+    if (keys.has("KeyA") || keys.has("ArrowLeft")) st -= 1;
+    if (keys.has("KeyD") || keys.has("ArrowRight")) st += 1;
+    const run = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 2.4 : 1;
+    const sp = 4.2 * run;
+    const fx = -Math.sin(walk.yaw), fz = -Math.cos(walk.yaw);
+    const sx = Math.cos(walk.yaw), sz = -Math.sin(walk.yaw);
+    const len = Math.hypot(f, st) || 1;
+    const mx = ((fx * f + sx * st) / len) * sp * dt * Math.min(1, Math.hypot(f, st));
+    const mz = ((fz * f + sz * st) / len) * sp * dt * Math.min(1, Math.hypot(f, st));
+    // Slide along the rail rather than stopping dead at it.
+    if (onDeck(walk.x + mx, walk.z + mz)) { walk.x += mx; walk.z += mz; }
+    else if (onDeck(walk.x + mx, walk.z)) walk.x += mx;
+    else if (onDeck(walk.x, walk.z + mz)) walk.z += mz;
+    const moving = Math.abs(mx) + Math.abs(mz) > 0.0001;
+    if (moving) walk.bob += dt * 9 * run;
+    const eye = new THREE.Vector3(walk.x, cityRoot.position.y + 1.72 + (moving ? Math.sin(walk.bob) * 0.035 : 0), walk.z);
+    camera.position.copy(eye);
+    const dir = new THREE.Vector3(-Math.sin(walk.yaw) * Math.cos(walk.pitch), Math.sin(walk.pitch), -Math.cos(walk.yaw) * Math.cos(walk.pitch));
+    camera.lookAt(eye.add(dir));
   }
 
   function updateLights() {
@@ -761,6 +825,94 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     }
   }
 
+  /* -------------------------------------------------- neighbours */
+  const peerCities = new Map<string, { g: THREE.Group; layout: string; label: THREE.Sprite; a: number; r: number }>();
+  const hash = (s: string, k: number) => {
+    let h = 2166136261 ^ k;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return ((h >>> 0) % 10000) / 10000;
+  };
+  function labelSprite(text: string) {
+    const c = document.createElement("canvas");
+    c.width = 512; c.height = 96;
+    const x = c.getContext("2d")!;
+    x.font = "600 44px Georgia, serif";
+    x.textAlign = "center";
+    x.fillStyle = "rgba(20,10,4,0.45)";
+    const w = Math.min(500, x.measureText(text).width + 60);
+    x.beginPath();
+    x.roundRect?.(256 - w / 2, 10, w, 76, 38);
+    x.fill();
+    x.fillStyle = "#fff4e0";
+    x.fillText(text, 256, 64);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, fog: false }));
+    sp.scale.set(180, 34, 1);
+    return sp;
+  }
+  function rebuildPeers() {
+    if (!net) return;
+    const live = new Set<string>();
+    for (const p of net.peers()) {
+      live.add(p.id);
+      const cur = peerCities.get(p.id);
+      if (cur && cur.layout === p.layout) {
+        (cur.label.material as THREE.SpriteMaterial).map?.dispose();
+        cur.g.remove(cur.label);
+        cur.label = labelSprite(`${p.name} · ${p.pop.toLocaleString()}`);
+        cur.label.position.y = 240;
+        cur.g.add(cur.label);
+        continue;
+      }
+      if (cur) scene.remove(cur.g);
+      const g = new THREE.Group();
+      for (const t of decodeLayout(p.layout)) {
+        const m = buildModule(palette, t.id, t.level, t.q * 31 + t.r * 7 + 11, true);
+        const w = hexToWorld(t.q, t.r);
+        m.group.position.set(w.x, 0, w.z);
+        m.group.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh) { mm.castShadow = false; mm.receiveShadow = false; } });
+        g.add(m.group);
+      }
+      const label = labelSprite(`${p.name} · ${p.pop.toLocaleString()}`);
+      label.position.y = 240;
+      g.add(label);
+      scene.add(g);
+      peerCities.set(p.id, { g, layout: p.layout, label, a: hash(p.id, 1) * Math.PI * 2, r: 700 + hash(p.id, 2) * 450 });
+    }
+    for (const [id, c] of peerCities) {
+      if (!live.has(id)) { scene.remove(c.g); peerCities.delete(id); }
+    }
+  }
+  function updatePeers(dt: number) {
+    if (!net) return;
+    const byId = new Map(net.peers().map((p) => [p.id, p] as const));
+    for (const [id, c] of peerCities) {
+      const p = byId.get(id);
+      c.a += dt * 0.002;
+      const dy = p ? Math.max(-500, Math.min(500, (p.alt - sim.s.alt) * KM)) : 0;
+      const tx = Math.cos(c.a) * c.r, tz = Math.sin(c.a) * c.r;
+      c.g.position.x = tx;
+      c.g.position.z = tz;
+      c.g.position.y += (cityRoot.position.y + dy - c.g.position.y) * Math.min(1, dt * 0.5);
+    }
+  }
+  const params = new URLSearchParams(location.search);
+  const netMode: NetMode = opts.net?.mode ?? ((params.get("net") as NetMode) || "online");
+  const net: SkyNet | null = netMode === "off" ? null : joinSky({
+    mode: netMode,
+    room: opts.net?.room ?? params.get("room") ?? "cytherea",
+    describe: () => (phase === "play" && !sim.s.fallen ? { name: sim.s.cityName, pop: sim.s.pop, alt: sim.s.alt, tiles: sim.s.tiles } : null),
+    onGift: (from, res) => {
+      sim.give(res);
+      const what = Object.entries(res).map(([k, v]) => `${Math.round(v as number)} ${k}`).join(" and ");
+      opts.onFx({ kind: "toast", text: `${from} sent you ${what}. There is no scarcity up here.`, tone: "good" });
+      audio.chime();
+      opts.onTick();
+    },
+    onChange: () => { rebuildPeers(); opts.onTick(); },
+  });
+
   raf = requestAnimationFrame(frame);
 
   /* -------------------------------------------------- api */
@@ -840,6 +992,40 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     choose(i) { sim.choose(i); audio.click(); for (const f of sim.drain()) handleFx(f); opts.onTick(); },
     dismiss() { sim.dismiss(); opts.onTick(); },
     setSpeed(n) { speed = n; opts.onTick(); },
+    get walking() { return walk.on; },
+    setWalk(on) {
+      if (phase !== "play" || sim.s.fallen) on = false;
+      walk.on = on;
+      walk.fwd = walk.side = 0;
+      if (on) {
+        building = null;
+        select(null);
+        refreshSlots();
+        // At the rail on the sunward rim, looking out over the cloud sea:
+        // the one view in the game that is not about managing anything.
+        const sd = sky.look.sunDir;
+        const dx = sd.x, dz = sd.z;
+        const n = Math.hypot(dx, dz) || 1;
+        let best = sim.s.tiles[0], score = -Infinity;
+        for (const t of sim.s.tiles) {
+          const c = hexToWorld(t.q, t.r);
+          const sc = (c.x * dx + c.z * dz) / n;
+          if (sc > score) { score = sc; best = t; }
+        }
+        const c = hexToWorld(best.q, best.r);
+        walk.yaw = Math.atan2(-dx, -dz);
+        walk.x = c.x + (dx / n) * SLOT * 0.7;
+        walk.z = c.z + (dz / n) * SLOT * 0.7;
+        if (!onDeck(walk.x, walk.z)) { walk.x = c.x; walk.z = c.z; }
+        walk.pitch = -0.06;
+        camera.fov = 70;
+      } else {
+        camera.fov = 50;
+      }
+      camera.updateProjectionMatrix();
+      opts.onTick();
+    },
+    walkInput(forward, strafe) { walk.fwd = forward; walk.side = strafe; },
     setMuted(m) { audio.setMuted(m); },
     restart() {
       sim = new VenusSim(freshSave(Math.floor(Math.random() * 1e9), sim.s.cityName));
@@ -854,6 +1040,15 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       beginPlay(true);
     },
     save() { if (!sim.s.fallen) writeSave(sim.snapshot()); },
+    peers() { return net ? net.peers() : []; },
+    gift(peerId) {
+      if (!net || sim.s.res.carbon < 40) return false;
+      sim.give({ carbon: -40 });
+      net.gift(peerId, { carbon: 40 });
+      audio.chime();
+      opts.onTick();
+      return true;
+    },
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
@@ -864,10 +1059,13 @@ export function createVenus(opts: VenusOptions): VenusWorld {
       el.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
       if (phase === "play" && !sim.s.fallen) writeSave(sim.snapshot());
       moon?.dispose();
       transfer?.dispose();
+      net?.close();
       city.dispose();
+      people.dispose();
       show.dispose();
       sky.dispose();
       palette.dispose();
@@ -924,6 +1122,14 @@ export function createVenus(opts: VenusOptions): VenusWorld {
     },
     sky,
     scene,
+    /** Put the walker somewhere, facing somewhere: yaw in radians, pitch up. */
+    walkTo(pitch: number, dist: number, yaw: number) {
+      walk.yaw = yaw;
+      walk.pitch = pitch;
+      walk.x = -Math.sin(yaw) * dist;
+      walk.z = -Math.cos(yaw) * dist;
+      if (!onDeck(walk.x, walk.z)) { walk.x = 0; walk.z = SLOT * 0.78; }
+    },
     moon() { return moon; },
     transfer() { return transfer; },
   };

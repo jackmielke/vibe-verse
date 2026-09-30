@@ -60,10 +60,22 @@ export interface SkyUniforms {
 }
 
 const FOG = /* glsl */ `
+// The colour of the sky in a direction. Fog fades everything toward exactly
+// this, so the far edge of the cloud floor and ceiling dissolves into the
+// dome instead of meeting it along a bright seam.
+vec3 skyCol(vec3 d) {
+  float band = exp(-abs(d.y) * 9.0);
+  vec3 col = mix(uCeiling, uHorizon, band);
+  col = mix(col, uDeckMid, smoothstep(0.0, -0.4, d.y));
+  float sd = max(dot(d, uSunDir), 0.0);
+  col += uSunCol * (pow(sd, 18.0) * 0.9 + pow(sd, 4.0) * 0.25);
+  return col;
+}
 vec3 applyFog(vec3 col, vec3 wpos) {
-  float dist = length(wpos - cameraPosition);
+  vec3 dv = wpos - cameraPosition;
+  float dist = length(dv);
   float f = 1.0 - exp(-dist * uFogDensity);
-  return mix(col, uHorizon, clamp(f, 0.0, 1.0));
+  return mix(col, skyCol(dv / max(dist, 1e-3)), clamp(f, 0.0, 1.0));
 }
 `;
 
@@ -96,21 +108,15 @@ void main() {
 
 export const SKY_FRAG = /* glsl */ `
 ${HEADER}
+${FOG}
 varying vec3 vW;
 void main() {
   vec3 d = normalize(vW - cameraPosition);
-  float y = d.y;
-  // The gap between the decks is a band a few degrees either side of level.
-  float band = exp(-abs(y) * 9.0);
-  vec3 col = mix(uCeiling, uHorizon, band);
-  col = mix(col, uDeckMid, smoothstep(0.0, -0.4, y));
-  // The sun itself, only where you can see it: in the gap, or glowing
-  // through the ceiling when it is high.
+  float band = exp(-abs(d.y) * 9.0);
   float sd = max(dot(d, uSunDir), 0.0);
+  // The disc itself, only in the gap between the decks.
   float disk = smoothstep(0.9993, 0.9998, sd) * band * 2.0;
-  float glow = pow(sd, 18.0) * 0.9 + pow(sd, 4.0) * 0.25;
-  col += uSunCol * (glow + disk * 6.0);
-  gl_FragColor = vec4(col, 1.0);
+  gl_FragColor = vec4(skyCol(d) + uSunCol * disk * 6.0, 1.0);
 }
 `;
 
@@ -274,7 +280,9 @@ void main() {
   float gl = max(smoothstep(0.93, 0.99, abs(sin(lat * 10.0))), smoothstep(0.95, 0.995, abs(sin(lon * 9.0 + lat * 3.0))));
   vec3 refl = mix(uCeiling, uSunCol, 0.2) * (1.0 - uNight * 0.85);
   vec3 col = mix(uTint * 0.2, refl, fr) + uSunCol * spec;
-  col += vec3(1.0, 0.85, 0.6) * gl * (0.18 + uNight * 0.5);
+  col += vec3(1.0, 0.85, 0.6) * gl * (0.16 + uNight * 0.12);
+  // Warm light from inside the dome after dark, strongest at the rim.
+  col += vec3(1.0, 0.7, 0.4) * uNight * fr * 0.8;
   float alpha = clamp(0.1 + fr * 0.7 + gl * 0.35 + spec, 0.0, 0.95);
   alpha *= mix(1.0, 0.45, uGhost);
   gl_FragColor = vec4(col, alpha);
@@ -309,8 +317,11 @@ void main() {
   col *= mix(1.0, 0.82, seam);
   float rim = pow(1.0 - max(dot(n, v), 0.0), 2.5);
   col += amb * rim * 0.25;
-  // At night the envelopes glow faintly from the city under them.
-  col += vec3(1.0, 0.62, 0.3) * uNight * (0.12 + 0.35 * (1.0 - up));
+  // At night the envelopes are paper lanterns: lit from inside, brightest
+  // through the thin fabric at the rim, warmest underneath.
+  vec3 lamp = mix(vec3(1.0, 0.62, 0.3), uColor * vec3(1.0, 0.8, 0.6), 0.35);
+  col = mix(col, col * 0.35, uNight * 0.6);
+  col += lamp * uNight * (0.35 + 0.9 * rim + 0.5 * (1.0 - up)) * mix(1.0, 0.8, seam);
   gl_FragColor = vec4(col, 1.0);
 }
 `;

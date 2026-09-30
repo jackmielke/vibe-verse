@@ -6,6 +6,7 @@
  * you a little more as you grow.
  */
 import type { VenusSim } from "./sim";
+import type { ModuleId } from "./modules";
 
 interface Line { min?: number; max?: number; text: string }
 
@@ -34,22 +35,41 @@ export function tickerLines(sim: VenusSim): string[] {
   return out;
 }
 
-/** One gentle nudge at a time, for the first few minutes. */
-export function hintFor(sim: VenusSim): string | null {
+export type HintAction = ModuleId | "grow" | "ballast" | "cut" | null;
+
+/** One gentle nudge at a time, and what it is asking for. */
+export function hint(sim: VenusSim): { text: string; act: HintAction } | null {
   const s = sim.s, d = sim.d;
   if (s.fallen) return null;
-  if (d.zone === "cook") return "Too low, the hull is cooking. Cut loose something heavy, or dump ballast.";
-  if (d.eqAlt < 50.5) return "Too heavy: you are sinking. Add a Lift Bladder, dump ballast, or cut something loose.";
-  if (d.zone === "freeze") return "Too high: the greenhouses are freezing. Vent some trim or build something heavy.";
-  if (sim.count("dome") === 0) return "Build an Air Dome. Breathable air floats on Venus, so the houses are the balloons.";
-  if (sim.count("harvester") === 0) return "Build a Carbon Harvester. The sky is 96% CO₂: that is your building material.";
-  if (sim.count("solar") === 0) return "Build a Solar Canopy before the sun goes down. Night lasts half a lap.";
-  if (sim.count("moxie") === 0) return "Build a MOXIE Plant: every new dome needs air to fill it.";
-  if (d.food - s.pop < 5) return "People are arriving faster than food. Build a Greenhouse.";
-  if (d.housing - s.pop < 5) return "Every bed is full. Build another Air Dome.";
-  if (d.powered < 0.9) return "Brownout. More Solar Canopies: they also add battery for the night.";
-  if (sim.count("jazz") === 0 && s.pop > 40) return "Life up here needs more than air. A Jazz Club makes culture.";
-  if (s.pop >= 60 && sim.count("skyport") === 0) return "A Skyport triples arrivals from Earth, the Moon and Mars.";
-  if (sim.freeSlots().length < 3 && s.tiles.some((t) => (t.level ?? 1) < 3)) return "Running out of room? Select a module and grow it.";
+  const full = sim.freeSlots().length === 0;
+  const canBuild = !full;
+  if (d.zone === "cook") return { text: "The hull is cooking. Cut loose something heavy, or dump ballast. Now.", act: "cut" };
+  if (d.eqAlt < 50) return { text: "Too heavy: you are sinking toward the heat. Lift Bladders, dump ballast, or cut something loose.", act: "bladder" };
+  if (d.eqAlt < 53.6 && d.air.tempC > 40) return { text: `Heading down to ${d.eqAlt.toFixed(1)} km, where it is too hot to be happy. Add lift or shed weight.`, act: "bladder" };
+  if (d.zone === "freeze") return { text: "Too high: the greenhouses are freezing. Vent some trim, or build something heavy.", act: null };
+  if (d.eqAlt > 57.5) return { text: "Drifting up into the cold. Heavy modules, water, or venting trim will bring you down.", act: null };
+  if (sim.count("dome") === 0) return { text: "Build an Air Dome. Breathable air floats on Venus, so the houses are the balloons.", act: "dome" };
+  if (sim.count("harvester") === 0) return { text: "Build a Carbon Harvester. The sky is 96% CO₂, and that is your building material.", act: "harvester" };
+  if (sim.count("solar") === 0) return { text: "Build a Solar Canopy before the sun goes down. Night lasts half a lap.", act: "solar" };
+  if (sim.count("moxie") === 0) return { text: "Build a MOXIE Plant: every new dome needs air to fill it.", act: "moxie" };
+  if (d.dry) return { text: "Out of water. People drink and greenhouses wilt: build an Acid Still.", act: "still" };
+  if (d.powered < 0.9) {
+    if (d.sun < 0.5) return { text: "Batteries flat until sunrise, so production has paused. Next time, more canopies before dusk (they add battery too).", act: null };
+    return { text: "Brownout in broad daylight. Build a Solar Canopy.", act: "solar" };
+  }
+  if (canBuild && d.food - s.pop < 5) return { text: "People are arriving faster than food. Build a Greenhouse.", act: "greenhouse" };
+  if (canBuild && d.housing - s.pop < 5) return { text: "Every bed is full. Build another Air Dome.", act: "dome" };
+  if (full && (d.food - s.pop < 5 || d.housing - s.pop < 5)) return { text: "No room left on the deck. Select a Dome or Greenhouse and Grow it.", act: "grow" };
+  if (canBuild && sim.count("jazz") < 1 + Math.floor(s.pop / 350) && s.pop > 40) return { text: "Life up here needs more than air. A Jazz Club makes culture, and culture makes people stay.", act: "jazz" };
+  if (canBuild && s.pop >= 60 && sim.count("skyport") === 0) return { text: "A Skyport triples arrivals from Earth, the Moon and Mars.", act: "skyport" };
+  if (s.pop >= 900 && d.happiness < 0.7) {
+    if (d.comfort < 0.9) return { text: "Nearly there, but people are uncomfortable. Get into the green band on the altimeter.", act: "bladder" };
+    return { text: "Nearly there, but people need more to do. More Jazz, a Ballroom, or grow the ones you have.", act: "jazz" };
+  }
+  if (!canBuild && s.tiles.some((t) => (t.level ?? 1) < 3)) return { text: "Out of room. Select a module and Grow it.", act: "grow" };
   return null;
+}
+
+export function hintFor(sim: VenusSim): string | null {
+  return hint(sim)?.text ?? null;
 }
