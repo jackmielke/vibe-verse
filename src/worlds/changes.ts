@@ -427,6 +427,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fb4e2dc9", iso: "2026-08-02T10:01:00+00:00", subject: "Two ways to end Balance of Terror, and one fewer way to lose unfairly" },
   ],
   "venus": [
+    { sha: "d9f2363b", iso: "2026-09-30T20:01:15+00:00", subject: "Venus Rising: walk the deck, neighbours on the wind, and a gauntlet of fixes" },
     { sha: "572b7fdf", iso: "2026-09-30T19:25:42+00:00", subject: "Venus Rising: build a city floating 54 km up in the clouds of Venus" },
   ],
   "vibestar": [
@@ -438,12 +439,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7077dd7e", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
   ],
   "vibeverse": [
+    { sha: "d9f2363b", iso: "2026-09-30T20:01:15+00:00", subject: "Venus Rising: walk the deck, neighbours on the wind, and a gauntlet of fixes" },
     { sha: "cae1ead5", iso: "2026-09-09T12:01:53+00:00", subject: "Beck Road: the five elements merged, card art, passport cap" },
     { sha: "da791439", iso: "2026-09-03T19:20:24+00:00", subject: "Card art, stamped dates and a wider passport panel for the four new worlds" },
     { sha: "207af005", iso: "2026-08-18T22:36:55+00:00", subject: "Passport rows to forty-two, and stop raising it one world at a time" },
     { sha: "a86765f9", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
     { sha: "53371bc3", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
-    { sha: "df6f7646", iso: "2026-08-16T09:33:15+00:00", subject: "🔦 THE MIDNIGHT ZONE: eight kilometres straight down, and the light runs out" },
   ],
   "village": [
     { sha: "fbba2b4f", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },
