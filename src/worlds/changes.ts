@@ -427,6 +427,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fb4e2dc9", iso: "2026-08-02T10:01:00+00:00", subject: "Two ways to end Balance of Terror, and one fewer way to lose unfairly" },
   ],
   "venus": [
+    { sha: "99192bb2", iso: "2026-09-30T20:42:17+00:00", subject: "Venus Rising: night is a moment, not a stall" },
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
     { sha: "3dc32d45", iso: "2026-09-30T20:14:21+00:00", subject: "Venus Rising: card art, postcards, a name for your city" },
     { sha: "d9f2363b", iso: "2026-09-30T20:01:15+00:00", subject: "Venus Rising: walk the deck, neighbours on the wind, and a gauntlet of fixes" },
