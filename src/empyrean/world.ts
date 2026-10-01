@@ -39,6 +39,7 @@
  */
 import * as THREE from "three";
 import { findCharacter } from "@/lib/characters";
+import { IOS_APP } from "@/lib/iosApp";
 import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { RUN_SPEED } from "@/lib/worldPhysics";
 
@@ -436,8 +437,11 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
   /* ---- notifications ---- */
   const toasts: Toast[] = [];
   let toastId = 1;
+  /* The App Store edition shows no currency: "Delivered · +12 ✦ · Next" loses its middle. */
+  const noCoins = (text: string) =>
+    IOS_APP ? text.replace(/\s*·?\s*\+\d[\d,]*\s*✦/g, "").replace(/\s*·\s*$/, "") : text;
   const pushToast = (text: string, tone: Toast["tone"] = "info") => {
-    toasts.push({ id: toastId++, text, ttl: 4, tone });
+    toasts.push({ id: toastId++, text: noCoins(text), ttl: 4, tone });
     while (toasts.length > 4) toasts.shift();
   };
 
@@ -922,7 +926,7 @@ export function createEmpyrean(options: EmpyreanOptions): EmpyreanWorld {
     }
 
     for (const t of activities.drainToasts()) {
-      toasts.push({ ...t, id: toastId++ });
+      toasts.push({ ...t, text: noCoins(t.text), id: toastId++ });
       while (toasts.length > 4) toasts.shift();
     }
     for (let i = toasts.length - 1; i >= 0; i--) {

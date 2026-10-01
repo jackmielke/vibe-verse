@@ -37,6 +37,7 @@ import FeaturedCharacters from "@/components/shop/FeaturedCharacters";
 import { WorldChangesPortal } from "@/components/WorldChanges";
 import TodaysPaper from "@/components/TodaysPaper";
 import { useVibecoin } from "@/hooks/use-vibecoin";
+import { IOS_APP } from "@/lib/iosApp";
 
 /**
  * Cards shown before the grid asks to be expanded.
@@ -413,7 +414,9 @@ export default function Game() {
 
             Below `lg` this grid collapses to nothing and both children are
             block-level again, which is the order they were already in. */}
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:items-start lg:gap-10">
+        {/* The App Store edition has no paper (it is in IOS_HIDDEN, and its
+            letters page is other people's words), so the hero keeps the row. */}
+        <div className={IOS_APP ? undefined : "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:items-start lg:gap-10"}>
         <motion.header
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -447,7 +450,8 @@ export default function Game() {
           <HomeHero
             look={look}
             copy={{
-              eyebrow: "Powered by creators, owned by players",
+              /* "owned by players" is the token pitch; the app has no token. */
+              eyebrow: IOS_APP ? "Powered by creators" : "Powered by creators, owned by players",
               title: "VIBEVERSE",
               tagline: "A massive collection of AI-coded games ;)",
               /* The total, not the playable count — this sentence sits
@@ -469,6 +473,7 @@ export default function Game() {
                 corner on every page, but the corner does not say what it is
                 for — this chip is the one that tells a first-time visitor the
                 vibeverse has money in it and points at where to spend it. */}
+            {!IOS_APP && (<>
             <Link
               to="/arcade"
               title="Vibey Coins — the play currency of the vibeverse. Earn them in the worlds, spend them in the arcade."
@@ -487,6 +492,7 @@ export default function Game() {
             {/* The token's market cap. A number that moves is the cheapest
                 proof that the other half of this is not a metaphor. */}
             <VibeMarketChip />
+            </>)}
             {/* Was a grey span for months: the one record spanning every
                 world in here, rendered as five words you could not click. */}
             <Link
@@ -502,7 +508,7 @@ export default function Game() {
           </div>
         </motion.header>
 
-          <TodaysPaper className="lg:mt-0" />
+          {!IOS_APP && <TodaysPaper className="lg:mt-0" />}
         </div>
 
         {/* One bar: how the list is ordered on the left, how to narrow it on
@@ -592,7 +598,7 @@ export default function Game() {
         {/* Who you play as, after what you play. Only when nothing is being
             searched: a query is a question about worlds, and answering it with
             a row of characters underneath is noise on top of a filtered list. */}
-        {!query.trim() && <FeaturedCharacters />}
+        {!IOS_APP && !query.trim() && <FeaturedCharacters />}
 
         {/* The band that was here said "Vibey Coins" and described one of the
             two currencies as though it were the only one. That is the exact
@@ -600,8 +606,17 @@ export default function Game() {
             of them side by side — see `TwoCoins`. Same `!query.trim()` guard:
             a search is a question about worlds, and a currency explainer under
             a filtered list is noise. */}
-        {!query.trim() && <TwoCoins />}
+        {!IOS_APP && !query.trim() && <TwoCoins />}
 
+        {IOS_APP ? (
+        /* Submit, builder and Chronicle are all left out of the app. */
+        <footer className="mt-16 border-t border-border/40 pt-6 text-[11px] text-muted-foreground">
+          {WORLDS.length} worlds and counting.{" "}
+          <Link to="/terms" className="text-primary hover:underline">Terms</Link>
+          {" · "}
+          <Link to="/privacy" className="text-primary hover:underline">Privacy</Link>
+        </footer>
+        ) : (
         <footer className="mt-16 border-t border-border/40 pt-6 text-[11px] text-muted-foreground">
           Built something?{" "}
           <Link to="/submit-world" className="text-primary hover:underline">
@@ -626,6 +641,7 @@ export default function Game() {
             .
           </span>
         </footer>
+        )}
       </div>
 
       <WorldChangesPortal world={history} onClose={() => setHistory(null)} />

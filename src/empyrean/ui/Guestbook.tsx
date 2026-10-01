@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { IOS_APP } from "@/lib/iosApp";
 
 interface Note {
   id: string;
@@ -31,7 +32,12 @@ function ago(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+/** Strangers' notes with no moderation: left out of the App Store edition (1.2). */
 export default function Guestbook() {
+  return IOS_APP ? null : <GuestbookInner />;
+}
+
+function GuestbookInner() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [author, setAuthor] = useState("");
   const [body, setBody] = useState("");

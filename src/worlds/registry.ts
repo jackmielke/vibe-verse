@@ -17,6 +17,8 @@
  * megabyte of card art into its chunk. Art lives next door in `art.ts`.
  */
 
+import { IOS_APP } from "../lib/iosApp.ts";
+
 // ---------------------------------------------------------------------------
 // THE RUNNING ORDER — edit this to change what leads
 // ---------------------------------------------------------------------------
@@ -1344,10 +1346,42 @@ const WORLDS_RAW: WorldEntry[] = [
 
 const rank = (w: WorldEntry): number => {
   const i = ORDER.indexOf(w.key);
-  return i === -1 ? ORDER.length + WORLDS_RAW.indexOf(w) : i;
+  return i === -1 ? ORDER.length + WORLDS_RAW.findIndex((r) => r.key === w.key) : i;
 };
 
-export const WORLDS: WorldEntry[] = [...WORLDS_RAW].sort((a, b) => rank(a) - rank(b));
+/**
+ * The App Store edition. Inside the iOS app (`IOS_APP`) a few destinations are
+ * left out, and a couple renamed, because Apple reviews what the app can
+ * reach and the website is under no such review:
+ *
+ * - anything that earns, spends, bets or shows the token (3.1.1 / 3.1.5 / 5.3),
+ * - places strangers can post words with no report/block yet (1.2),
+ * - worlds built on somebody else's film, show or game (5.2 / 4.1).
+ *
+ * Hidden here means hidden everywhere, because every surface reads `WORLDS`;
+ * `SafetyLayer` also sends a direct link to one of these routes home.
+ */
+const IOS_HIDDEN = new Set([
+  "coin", "arcade", "orbit", "shop", "portal", "blob-battle", "manifesto",
+  "submit-world", "world-builder", "newsroom", "times", "companions",
+  "agent-lobby", "garden", "space", "chronicle", "village",
+  "trek", "strange-new-worlds", "home-alone", "airplane", "fnaf",
+]);
+const IOS_NAMES: Record<string, string> = {
+  "better-fortnite": "Vibe Royale",
+  ninja: "Fruit Slice",
+};
+
+/** Every route (aliases too) that the iOS app does not offer. */
+export const IOS_HIDDEN_ROUTES: ReadonlySet<string> = new Set(
+  WORLDS_RAW.filter((w) => IOS_HIDDEN.has(w.key)).flatMap((w) => [w.route, ...(w.aliases ?? [])].map((r) => r.split("?")[0])),
+);
+
+const SHOWN: WorldEntry[] = IOS_APP
+  ? WORLDS_RAW.filter((w) => !IOS_HIDDEN.has(w.key)).map((w) => (IOS_NAMES[w.key] ? { ...w, name: IOS_NAMES[w.key] } : w))
+  : WORLDS_RAW;
+
+export const WORLDS: WorldEntry[] = [...SHOWN].sort((a, b) => rank(a) - rank(b));
 
 /**
  * The one world in the vibeverse with no route.

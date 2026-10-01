@@ -20,7 +20,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User2 } from "lucide-react";
+import { LogOut, Trash2, User2 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { characterFace } from "@/lib/characterFaces";
 
 /**
@@ -164,6 +166,9 @@ export default function LogInWithVibe({
           <User2 className="mr-2 h-4 w-4" /> Choose your character
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-white/10" />
+        <DropdownMenuItem onClick={() => void deleteAccount(() => id.signOut())} className="cursor-pointer text-white/50 focus:text-rose-200">
+          <Trash2 className="mr-2 h-4 w-4" /> Delete account
+        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => id.signOut()}
           className="cursor-pointer text-rose-300 focus:text-rose-200"
@@ -173,4 +178,21 @@ export default function LogInWithVibe({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/**
+ * Delete your own account (App Store 5.1.1(v) asks for it in the app).
+ * `delete-account` reads who you are from your session, so it can only ever
+ * delete the caller. If the database refuses, Jack finishes it by hand within
+ * 24 hours and the function says so with `pending`.
+ */
+async function deleteAccount(signOut: () => unknown) {
+  if (!window.confirm("Delete your Vibe Verse account? Your profile and sign-in are removed for good. This can't be undone.")) return;
+  const { data, error } = await supabase.functions.invoke("delete-account", { method: "POST" });
+  if (error) {
+    toast.error("Couldn't delete your account. Email jackcmielke@gmail.com and it will be done within 24 hours.");
+    return;
+  }
+  toast.success(data?.pending ? "Deletion requested. It will be finished within 24 hours." : "Your account is deleted.");
+  await signOut();
 }

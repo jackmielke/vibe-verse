@@ -30,6 +30,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isBlocked, setSafetyPeers, subscribeSafety } from "@/safety/safety";
 
 export type LobbyPhase = "lobby" | "countdown" | "racing";
 
@@ -180,6 +181,10 @@ export function useKartLobby({ code, peerId, name, characterId }: KartLobbyOptio
   const [joinedAt, setJoinedAt] = useState(0);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Report/block (App Store 1.2): bumps when the block list changes, so the
+  // roster relabels without touching seat order or host election.
+  const [safetyTick, setSafetyTick] = useState(0);
+  useEffect(() => subscribeSafety(() => setSafetyTick((n) => n + 1)), []);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   // The countdown must fire once per announcement. Presence churn re-runs the
@@ -224,6 +229,10 @@ export function useKartLobby({ code, peerId, name, characterId }: KartLobbyOptio
       }
       list.sort(seatOrder);
       setRemote(list);
+      setSafetyPeers(
+        "kart",
+        list.filter((m) => m.peerId !== peerId).map((m) => ({ name: m.name, id: m.peerId })),
+      );
     });
 
     channel.on("broadcast", { event: "go" }, ({ payload }) => {
@@ -269,8 +278,14 @@ export function useKartLobby({ code, peerId, name, characterId }: KartLobbyOptio
 
   // -- derived roster -------------------------------------------------------
   const members = useMemo(
-    () => (code ? rosterWithSelf(remote, self) : []),
-    [code, remote, self],
+    () =>
+      code
+        ? rosterWithSelf(remote, self).map((m) =>
+            m.peerId !== peerId && isBlocked(m.name, m.peerId) ? { ...m, name: "Player" } : m,
+          )
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [code, remote, self, safetyTick],
   );
   const me = useMemo(() => members.find((m) => m.peerId === peerId), [members, peerId]);
 

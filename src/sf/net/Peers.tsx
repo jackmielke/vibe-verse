@@ -51,6 +51,7 @@ import {
 } from "./protocol";
 import { openTransport, type NetMode } from "./transport";
 import { makeNameTag } from "./nameTag";
+import { isBlocked, setSafetyPeers } from "@/safety/safety";
 import { EMOTE_WAVE, disposeEmote, startEmote, stepEmote, type Emote } from "./emote";
 import { input } from "../player/input";
 import { propGeometry } from "../world/street/streetFurniture";
@@ -134,6 +135,8 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
   ident.current.charId = charId;
 
   const clock = useRef({ sendAt: 0, pruneAt: 0, rosterAt: 0 });
+  /** Last roster handed to the Safety sheet, so it is only told about changes. */
+  const safetySig = useRef("");
   /**
    * Our own emote counter and the id it last raised.
    *
@@ -286,6 +289,13 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
           bodies.delete(id);
         }
       }
+      // Report/block (App Store 1.2): tell the Safety sheet who is here.
+      const people = table.people();
+      const sig = people.map((p) => `${p.id}:${p.name}`).join("|");
+      if (sig !== safetySig.current) {
+        safetySig.current = sig;
+        setSafetyPeers("sf", people);
+      }
     }
 
     /* ---- draw everybody else ---- */
@@ -294,6 +304,15 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
     const seen = _seen;
     seen.length = 0;
     table.forEach(now, (p) => {
+      // Presence only, so a blocked player can simply not exist here.
+      if (isBlocked(p.name, p.id)) {
+        const b = bodies.get(p.id);
+        if (b) {
+          disposeBody(b);
+          bodies.delete(p.id);
+        }
+        return;
+      }
       const dx = p.x - frame.position.x;
       const dz = p.z - frame.position.z;
       seen.push({ ...p, d2: dx * dx + dz * dz });
@@ -315,7 +334,7 @@ export default function Peers({ mode, room = "sf", name, charId, onRoster }: Pee
     /* ---- the roster ---- */
     if (onRoster && now >= clock.current.rosterAt) {
       clock.current.rosterAt = now + 1500;
-      onRoster(table.names());
+      onRoster(table.people().flatMap((p) => (isBlocked(p.name, p.id) ? [] : [p.name])));
     }
   });
 

@@ -48,3 +48,9 @@ verify_jwt = false
 # key, and bounded by a per-wallet ceiling rather than by who is asking.
 [functions.vibe-explore]
 verify_jwt = false
+
+[functions.ugc-report]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false

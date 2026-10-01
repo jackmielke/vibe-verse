@@ -39,6 +39,10 @@
  * loaded dynamically, so a build that never joins a room never pays for it.
  */
 import type { BlobSim } from "../sim";
+import { isBlocked, setSafetyPeers } from "@/safety/safety";
+
+/** The name drawn for a peer: "Player" once blocked (App Store 1.2). Display only — the sim never reads it. */
+const shown = (name: string, peerId: string): string => (isBlocked(name, peerId) ? "Player" : name);
 
 // ---------------------------------------------------------------- transport
 
@@ -184,6 +188,8 @@ export class BlobNet {
   /** Cells we have eaten, so a packet in flight cannot resurrect them. */
   private tombstones = new Map<number, number>();
   private closed = false;
+  /** Roster changed since the Safety sheet last heard about it. */
+  private safetyDirty = false;
 
   constructor(o: BlobNetOptions) {
     this.transport = o.transport;
@@ -230,6 +236,10 @@ export class BlobNet {
     const t = this.now();
     this.applyInbox(sim);
     this.reapPeers(sim, t);
+    if (this.safetyDirty) {
+      this.safetyDirty = false;
+      setSafetyPeers("blob", this.roster().map((p) => ({ name: p.name, id: p.peerId })));
+    }
     this.reportKills(sim, youId);
     if (t - this.lastSend >= 1000 / SEND_HZ) {
       this.lastSend = t;
@@ -275,8 +285,10 @@ export class BlobNet {
         case "s": {
           const peer = this.seat(sim, msg.i, msg.n, msg.h);
           peer.lastSeen = t;
+          if (peer.name !== msg.n) this.safetyDirty = true;
           peer.name = msg.n;
-          sim.players[peer.playerId].name = msg.n;
+          // Re-checked every packet, so a block takes effect within a tick.
+          sim.players[peer.playerId].name = shown(msg.n, msg.i);
           sim.writeCells(peer.playerId, this.live(msg.c));
           break;
         }
@@ -309,6 +321,7 @@ export class BlobNet {
           if (peer) {
             sim.dropPlayer(peer.playerId);
             this.peers.delete(msg.i);
+            this.safetyDirty = true;
           }
           break;
         }
@@ -337,9 +350,10 @@ export class BlobNet {
   private seat(sim: BlobSim, peerId: string, name: string, hue: number): NetPeer {
     const had = this.peers.get(peerId);
     if (had) return had;
-    const playerId = sim.addRemotePlayer(peerId, name, hue);
+    const playerId = sim.addRemotePlayer(peerId, shown(name, peerId), hue);
     const peer: NetPeer = { peerId, name, hue, playerId, lastSeen: this.now() };
     this.peers.set(peerId, peer);
+    this.safetyDirty = true;
     return peer;
   }
 
@@ -454,6 +468,7 @@ export class BlobNet {
       if (t - peer.lastSeen < PEER_TIMEOUT) continue;
       sim.dropPlayer(peer.playerId);
       this.peers.delete(id);
+      this.safetyDirty = true;
     }
   }
 }

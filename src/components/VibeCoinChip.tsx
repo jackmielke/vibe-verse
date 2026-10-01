@@ -31,6 +31,7 @@ import { VIBECOIN_NAME, formatVibecoin } from "@/lib/vibecoin";
    functions; they just live somewhere that costs nothing now. */
 import { getWalletBook, readPayoutAddress } from "@/lib/walletBook";
 import { shortAddress } from "@/lib/address";
+import { IOS_APP } from "@/lib/iosApp";
 
 /** Human labels for the `reason` column, which is written for machines. */
 const REASON_LABEL: Record<string, string> = {
@@ -54,7 +55,12 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+/** The App Store edition shows no currency at all; see IOS_HIDDEN in the registry. */
 export default function VibeCoinChip() {
+  return IOS_APP ? null : <VibeCoinChipInner />;
+}
+
+function VibeCoinChipInner() {
   const { balance, display, ledger, stale, refresh } = useVibecoin();
   const [open, setOpen] = useState(false);
   /* Read when the panel opens rather than once at mount: somebody can link a

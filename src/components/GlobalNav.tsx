@@ -13,6 +13,7 @@ import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
 import VibeCoinChip from "@/components/VibeCoinChip";
 import { VibeMark } from "@/components/HomeButton";
 import { shouldOpenSearch } from "@/lib/searchHotkey";
+import { IOS_APP } from "@/lib/iosApp";
 
 
 export default function GlobalNav() {
@@ -134,7 +135,8 @@ export default function GlobalNav() {
           }}
         >
           <VibeCoinChip />
-          <span className="h-4 w-px bg-border/60" aria-hidden />
+          {/* The chip renders nothing in the App Store edition; so does its divider. */}
+          {!IOS_APP && <span className="h-4 w-px bg-border/60" aria-hidden />}
           <LogInWithVibe />
         </div>
       </div>

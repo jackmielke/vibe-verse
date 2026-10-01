@@ -15,6 +15,7 @@ import { CHROMELESS_ROUTES, worldByRoute } from "./worlds/registry.ts";
    second round trip: one is what most visits open on, and the other is what a
    broken link lands on. Everything else in this file is lazy. */
 import Game from "./pages/Game.tsx";
+import SafetyLayer from "./safety/SafetyLayer.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 /**
@@ -42,6 +43,8 @@ const Oni = lazy(() => import("./pages/Oni.tsx"));
 const Unit7Playground = lazy(() => import("./pages/Unit7Playground.tsx"));
 const Lobby = lazy(() => import("./pages/Lobby.tsx"));
 const About = lazy(() => import("./pages/About.tsx"));
+const Terms = lazy(() => import("./pages/Legal.tsx").then((m) => ({ default: m.Terms })));
+const Privacy = lazy(() => import("./pages/Legal.tsx").then((m) => ({ default: m.Privacy })));
 const SpotifyCallback = lazy(() => import("./pages/SpotifyCallback.tsx"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
 const MemoryGarden = lazy(() => import("./pages/MemoryGarden.tsx"));
@@ -217,6 +220,8 @@ const App = () => (
               takes no pointer events and sits above everything, so it can play
               over a crosshair without becoming part of the game. */}
           <ExplorerStamp />
+          {/* iOS app only: terms gate, report/block, App Store edition routing. */}
+          <SafetyLayer />
           {/* One Suspense for the whole router. There used to be fifteen of
               them, one per lazy world, each with its own hand-typed hex — and
               the moment every route went lazy that would have been forty. */}
@@ -235,6 +240,9 @@ const App = () => (
           <Route path="/lobby" element={<Lobby />} />
           {/* 3D About — narrative + carousel of characters. */}
           <Route path="/about" element={<About />} />
+          {/* Community terms and privacy policy; the App Store listing and the iOS terms gate link here. */}
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
           {/* Spotify OAuth (PKCE) callback. */}
           <Route path="/auth/spotify" element={<SpotifyCallback />} />
           {/* Where Google drops you off. One fixed path rather than one per

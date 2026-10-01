@@ -26,6 +26,7 @@ import { CHARACTERS } from "@/lib/characters";
 import { generateCharacterName } from "@/lib/character-naming";
 import { setActiveCharacter } from "@/hooks/use-active-character";
 import StartBackdrop from "@/components/StartBackdrop";
+import { IOS_APP } from "@/lib/iosApp";
 
 const FEATURED_IDS = [
   "vibey", "Ninja_Female", "Pirate_Anne", "Wizard", "Knight_Golden_Male",
@@ -56,7 +57,7 @@ const VIBEY_LINES: Record<Step, (name: string, adv: Adventure | null) => string>
           : "An explorer! There's a LOT out there — ski peaks, moons, a zeppelin. What should the island call you?",
   char: (name) => `Love it, ${name}. Now pick your vibe — this is just your first body, my Character Studio can swap it anytime.`,
   account: (name) =>
-    `Last thing, ${name} — want me to remember you? An email keeps your ✦ on every device. Or just dive in as a guest, zero pressure.`,
+    `Last thing, ${name} — want me to remember you? An email keeps your ${IOS_APP ? "progress" : "✦"} on every device. Or just dive in as a guest, zero pressure.`,
 };
 
 // Steering for the shared NPC brain: keep Vibey short, warm, on-task.

@@ -33,6 +33,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import VibeMark from "@/components/VibeMark";
+import { IOS_APP } from "@/lib/iosApp";
 import { REPO_LIFE } from "@/worlds/chronicle";
 import { motion } from "framer-motion";
 import { Lock } from "lucide-react";
@@ -458,7 +459,7 @@ export default function Passport() {
                   one fact only the passport can tell you — not when you turned
                   up, but how far into the story. It is also the only link to
                   `/chronicle` that is about *you* rather than about the place. */}
-              {first > 0 && (
+              {first > 0 && !IOS_APP && (
                 <p className="mt-2 max-w-md text-[12px] leading-relaxed text-muted-foreground">
                   You arrived on{" "}
                   <span className="text-foreground">day {arrivalDay}</span> of a
@@ -520,7 +521,8 @@ export default function Passport() {
           </div>
         </motion.header>
 
-        <ExplorerPayout visited={visited.length} total={rows.length} earned={earned} />
+        {/* Coins earned and still to earn: not in the App Store edition. */}
+        {!IOS_APP && <ExplorerPayout visited={visited.length} total={rows.length} earned={earned} />}
 
         {/* ---- Filter ---- */}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -570,6 +572,11 @@ export default function Passport() {
           </div>
         )}
 
+        {IOS_APP ? (
+        <footer className="mt-14 border-t border-white/10 pt-6 text-[11px] leading-relaxed text-muted-foreground">
+          The book is written in this browser, works offline, and stays on this device.
+        </footer>
+        ) : (
         <footer className="mt-14 border-t border-white/10 pt-6 text-[11px] leading-relaxed text-muted-foreground">
           The book is written in this browser — no sign-in, works offline — and
           the worlds you have been <em>paid</em> for are also kept against your
@@ -586,6 +593,7 @@ export default function Passport() {
           clearing its landing site on the ground, which makes a full book the
           only thing here you cannot get to by clicking.
         </footer>
+        )}
       </div>
     </div>
   );

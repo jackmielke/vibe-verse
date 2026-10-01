@@ -43,6 +43,22 @@ export function deviceId(): string {
   }
 }
 
+/**
+ * A stable public tag for this device, safe to broadcast: a one-way hash of
+ * `deviceId()`, so a block can follow a player across tabs without telling the
+ * room the id their voice minutes are charged to. Two 32-bit FNV-style lanes.
+ */
+export function deviceTag(): string {
+  const s = "vibe-safety:" + deviceId();
+  let a = 0x811c9dc5, b = 0x9e3779b9;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    a = Math.imul(a ^ c, 16777619);
+    b = Math.imul(b ^ c, 2246822507) ^ (b >>> 13);
+  }
+  return "d" + (a >>> 0).toString(36) + (b >>> 0).toString(36);
+}
+
 export interface VoiceBudget {
   configured: boolean;
   /** Seconds left, or null when unlimited or unknown. */

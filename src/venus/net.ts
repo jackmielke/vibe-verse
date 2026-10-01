@@ -17,6 +17,7 @@
  */
 import type { ModuleId, ResourceId } from "./modules";
 import type { Tile } from "./sim";
+import { isBlocked, setSafetyPeers, subscribeSafety } from "@/safety/safety";
 
 export type NetMode = "off" | "local" | "online";
 
@@ -140,6 +141,22 @@ export function joinSky(opts: NetOptions): SkyNet {
   let closed = false;
   let timer = 0;
 
+  // Report/block (App Store 1.2): a blocked city still floats past — layouts
+  // are not words — but its name is drawn as "A city" and its gifts are refused.
+  let safetySig = "";
+  const syncSafety = () => {
+    const list = [...peers.values()].map((p) => ({ name: p.name, id: p.id }));
+    const sig = list.map((p) => `${p.id}:${p.name}`).join("|");
+    if (sig === safetySig) return;
+    safetySig = sig;
+    setSafetyPeers("venus", list);
+  };
+  const changed = () => {
+    syncSafety();
+    opts.onChange();
+  };
+  const offSafety = subscribeSafety(() => opts.onChange());
+
   const say = () => {
     const me = opts.describe();
     if (!transport || !me) return;
@@ -156,10 +173,11 @@ export function joinSky(opts: NetOptions): SkyNet {
       if (msg.t === "city") {
         const prev = peers.get(msg.id);
         peers.set(msg.id, { id: msg.id, name: String(msg.n || "A city").slice(0, 32), pop: Number(msg.p) || 0, alt: Number(msg.a) || 54, layout: String(msg.l || ""), at: Date.now() });
-        if (!prev || prev.layout !== msg.l || prev.name !== msg.n) opts.onChange();
+        if (!prev || prev.layout !== msg.l || prev.name !== msg.n) changed();
       } else if (msg.t === "hi") {
         say();
       } else if (msg.t === "gift" && msg.to === id) {
+        if (isBlocked(String(msg.n ?? ""), String(msg.id))) return;
         const res: Partial<Record<ResourceId, number>> = {};
         for (const k of ["carbon", "air", "water"] as ResourceId[]) {
           const v = Number(msg.res?.[k]);
@@ -167,7 +185,7 @@ export function joinSky(opts: NetOptions): SkyNet {
         }
         if (Object.keys(res).length) opts.onGift(String(msg.n || "A neighbour").slice(0, 32), res);
       } else if (msg.t === "bye") {
-        if (peers.delete(msg.id)) opts.onChange();
+        if (peers.delete(msg.id)) changed();
       }
     });
     t.send({ t: "hi", id });
@@ -180,7 +198,7 @@ export function joinSky(opts: NetOptions): SkyNet {
     const now = Date.now();
     let dropped = false;
     for (const [k, p] of peers) if (now - p.at > FORGET_AFTER_MS) { peers.delete(k); dropped = true; }
-    if (dropped) opts.onChange();
+    if (dropped) changed();
   }, SAY_EVERY_MS);
 
   const onHide = () => { transport?.send({ t: "bye", id }); };
@@ -189,13 +207,14 @@ export function joinSky(opts: NetOptions): SkyNet {
   return {
     id,
     get connected() { return connected; },
-    peers: () => [...peers.values()],
+    peers: () => [...peers.values()].map((p) => (isBlocked(p.name, p.id) ? { ...p, name: "A city" } : p)),
     gift(to, res) {
       const me = opts.describe();
       transport?.send({ t: "gift", id, n: me?.name ?? "A neighbour", to, res });
     },
     close() {
       closed = true;
+      offSafety();
       window.clearInterval(timer);
       window.removeEventListener("pagehide", onHide);
       transport?.send({ t: "bye", id });

@@ -62,6 +62,9 @@ import { createValleyTag } from "./tag";
 import { createAvatar } from "@/oni/world/avatars";
 import type { Hud } from "@/oni/world/Oni";
 import { createPlayer } from "./player";
+import { isBlocked, noteSafetyContent, setSafetyPeers, subscribeSafety } from "@/safety/safety";
+import { IOS_APP } from "@/lib/iosApp";
+import { deviceTag } from "../voice/session";
 
 export interface MagicianOptions {
   /** The visitor's display name for other players. */
@@ -620,19 +623,57 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   const myId = Math.random().toString(36).slice(2, 10);
   let myChar = options.char ?? "toadstool";
   let peerList: PeerPresence[] = [];
+  // ---- report and block (App Store 1.2) ----------------------------------------
+  // Everybody we have heard of, by peer id: presence names them (and tags
+  // their device), a phone's signed spell names it. Kept after they leave, so
+  // what they wrote stays attributable. Blocked players are dropped from the
+  // ghosts, the names and the toasts; what they wrote (lanterns, the sign, the
+  // place's name, the screen) stays in the shared state, so the room agrees,
+  // but this device does not show it.
+  const known = new Map<string, { name: string; device?: string }>();
+  const blockedFrom = (from?: string) => {
+    if (!from) return false;
+    const a = known.get(from);
+    return !!a && isBlocked(a.name, a.device);
+  };
+  const visiblePeers = () => peerList.filter((p) => !isBlocked(p.name, p.device));
+  const applyPeers = () => {
+    const list = visiblePeers();
+    peers.sync(list);
+    events.onPeers?.(list, room?.connected ?? true);
+    if (IOS_APP && !options.spectator) setSafetyPeers("magician", list.map((p) => ({ name: p.name, id: p.device })));
+  };
+  const noteFrom = (from: string | undefined, text: string) => {
+    if (!IOS_APP || !from || !text.trim()) return;
+    const a = known.get(from);
+    noteSafetyContent("magician", { name: a?.name, id: a?.device, text: text.slice(0, 300) });
+  };
+  let remoteFrom: string | undefined;
+  const wishFrom = new Map<number, string>();
+  let signFrom: string | undefined;
+  let titleFrom: string | undefined;
+  let screenFrom: string | undefined;
+  let writingFrom: string | undefined;
   void joinRoom({
     id: myId,
+    device: options.spectator ? undefined : deviceTag(),
     // The projector is not a player, so it stays out of tag entirely.
     onGame: (m) => { if (!options.spectator) tag.handle(m); },
     mode: readNetMode(),
     room: readRoom(),
     name: options.name ?? "visitor",
-    onPatch: (p) => { applyingRemote = true; try { store.patch(p); } finally { applyingRemote = false; } },
+    onPatch: (p, from) => { applyingRemote = true; remoteFrom = from; try { store.patch(p); } finally { applyingRemote = false; remoteFrom = undefined; } },
     onFull: (s) => { applyingRemote = true; try { store.patch({ ...s, hits: state.hits }); } finally { applyingRemote = false; } },
-    onPeers: (list) => { peerList = list; peers.sync(list); events.onPeers?.(list, true); },
-    onJoin: (n) => events.onToast?.(`${n} arrived`),
-    onLeave: (n) => events.onToast?.(`${n} left`),
-    onCast: (note) => {
+    onPeers: (list) => {
+      peerList = list;
+      for (const p of list) known.set(p.id, { name: p.name, device: p.device });
+      applyPeers();
+    },
+    onJoin: (n) => { if (!isBlocked(n)) events.onToast?.(`${n} arrived`); },
+    onLeave: (n) => { if (!isBlocked(n)) events.onToast?.(`${n} left`); },
+    onCast: (note, from) => {
+      if (!known.has(from)) known.set(from, { name: note.n });
+      if (isBlocked(note.n, known.get(from)?.device)) return;
       // The patch already landed; this is the credit, and the flourish.
       const aim = new THREE.Vector3(-Math.sin(player.yaw()), 0, -Math.cos(player.yaw()));
       spells.cast(V.copy(vibey.position).setY(vibey.position.y + 1.1), aim, "#ffd98a", (at) => bursts.spawn("sparkle", at.x, at.y, at.z));
@@ -645,7 +686,16 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   }).then((r) => {
     if (disposed) { r.close(); return; }
     room = r;
-    events.onPeers?.([], r.connected);
+    events.onPeers?.(visiblePeers(), r.connected);
+  });
+  const unsubSafety = subscribeSafety(() => {
+    if (disposed) return;
+    applyPeers();
+    river.syncWishes(visibleWishes());
+    sign.setText(shownSign());
+    syncScreen();
+    syncWriting();
+    events.onState?.(view(state));
   });
 
   // ---- tag, and our own body -------------------------------------------------
@@ -662,7 +712,9 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     name: () => options.name ?? "you",
     char: () => myChar,
     room: () => room,
-    peerList: () => room?.peers() ?? peerList,
+    // Blocked players stay in the round (every device must reach the same
+    // answer) but go nameless here.
+    peerList: () => (room?.peers() ?? peerList).map((p) => (isBlocked(p.name, p.device) ? { ...p, name: "Player" } : p)),
     peers,
     me: () => player.position,
     teleport: (x, z, yaw) => { player.teleport(x, z, yaw); solveWalls(player.position); },
@@ -699,23 +751,42 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     time: () => time,
   });
   let prevWishes = 0;
+  // What this device shows: the shared state minus anything a blocked player wrote.
+  const visibleWishes = () => (wishFrom.size ? state.wishes.filter((w) => !blockedFrom(wishFrom.get(w.id))) : state.wishes);
+  const shownSign = () => (blockedFrom(signFrom) ? DEFAULT_STATE.sign : state.sign);
+  const view = (s: WorldState): WorldState => (blockedFrom(titleFrom) ? { ...s, title: DEFAULT_STATE.title } : s);
+  function syncWriting() {
+    if (screenBusy) return;
+    const w = state.screenWriting;
+    screen.writing(w && !blockedFrom(writingFrom) && Date.now() - w.at < 60_000 ? { request: w.request, code: w.code } : null);
+  }
   const store: MagicianStore = {
     get: () => state,
     patch(p: Patch) {
+      const from = applyingRemote ? remoteFrom : undefined;
+      if (p.wishes) {
+        const had = new Set(state.wishes.map((w) => w.id));
+        for (const w of p.wishes) {
+          if (had.has(w.id)) continue;
+          if (from) { wishFrom.set(w.id, from); noteFrom(from, w.text); }
+        }
+      }
+      if (p.sign !== undefined) { signFrom = from; if (from && p.sign !== state.sign) noteFrom(from, p.sign); }
+      if (p.title !== undefined) { titleFrom = from; if (from && p.title !== state.title) noteFrom(from, p.title); }
+      if (p.screen !== undefined) { screenFrom = from; if (from && p.screen && p.screen.at !== state.screen?.at) noteFrom(from, `Magic Screen: ${p.screen.request} (${p.screen.title})`); }
+      if (p.screenWriting !== undefined) { writingFrom = from; if (from && p.screenWriting && p.screenWriting.at !== state.screenWriting?.at) noteFrom(from, `Magic Screen request: ${p.screenWriting.request}`); }
       state = applyPatch(state, p);
       if (p.props) syncProps(state.props, state.season);
       if (p.wishes) {
         if (!applyingRemote && state.wishes.length > prevWishes) vibey.emote("Wave");
-        river.syncWishes(state.wishes);
+        for (const id of wishFrom.keys()) if (!state.wishes.some((w) => w.id === id)) wishFrom.delete(id);
+        river.syncWishes(visibleWishes());
       }
       prevWishes = state.wishes.length;
       if (p.screen !== undefined) syncScreen();
-      if (p.screenWriting !== undefined && !screenBusy) {
-        const w = state.screenWriting;
-        screen.writing(w && Date.now() - w.at < 60_000 ? { request: w.request, code: w.code } : null);
-      }
-      if (p.sign !== undefined) sign.setText(state.sign);
-      events.onState?.(state);
+      if (p.screenWriting !== undefined) syncWriting();
+      if (p.sign !== undefined) sign.setText(shownSign());
+      events.onState?.(view(state));
       // Our own patches go to the room; theirs came from it.
       if (!applyingRemote && room?.connected) room.patch(p);
     },
@@ -779,18 +850,19 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       else bursts.spawn(kind, px, heightAt(px, pz), pz);
     },
   };
-  sign.setText(state.sign);
+  sign.setText(shownSign());
 
   // ---- the magic screen's programs ------------------------------------------------
   // Only the device that asked talks to the coder; everyone else gets the
   // finished program (and a draft every second and a half) through the room.
   let screenBusy = false;
-  let screenShown = -1;
+  let screenShown = "";
   let screenMine = 0;
   let screenFixes = 0;
   function syncScreen() {
-    const p = state.screen;
-    const key = p ? p.at : 0;
+    // A blocked player's program is not run here: the welcome card instead.
+    const p = state.screen && !blockedFrom(screenFrom) ? state.screen : null;
+    const key = p ? String(p.at) : state.screen ? "blocked" : "0";
     if (key === screenShown) return;
     screenShown = key;
     screenError = null;
@@ -856,7 +928,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   syncScreen();
 
   river.onEat = (x, z) => ambience.play("plop", { x, z });
-  river.syncWishes(state.wishes);
+  river.syncWishes(visibleWishes());
   let flash = 0;
 
   // ---- playing the screen -----------------------------------------------------
@@ -1446,7 +1518,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       bursts.spawn("sparkle", hit.x, heightAt(hit.x, hit.z) + 1, hit.z);
       if (!game.playerHit()) ambience.play("hit");
       events.onHit?.(state.hits);
-      events.onState?.(state);
+      events.onState?.(view(state));
     }
     game.update(dt, time, lanternSpots);
     updateLampPool(dt);
@@ -1634,6 +1706,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
       game.dispose();
       room?.close();
       room = null;
+      unsubSafety();
       peers.dispose();
       tag.dispose();
       self.dispose();

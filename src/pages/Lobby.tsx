@@ -12,6 +12,7 @@ import { setActiveCharacter } from "@/hooks/use-active-character";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS } from "@/lib/characters";
+import { IOS_APP } from "@/lib/iosApp";
 
 // The playable roster lives in one place — src/lib/characters.ts — so
 // /lobby, /profile, /character-select and the worlds can never drift
@@ -563,7 +564,8 @@ export default function Lobby() {
               <span className="truncate">{name || selectedChar.label}</span>
             </button>
 
-            <div className="grid grid-cols-2 gap-2">
+            {/* /space is left out of the App Store edition, so Browse takes the row. */}
+            <div className={`grid ${IOS_APP ? "grid-cols-1" : "grid-cols-2"} gap-2`}>
               <Sheet open={browseOpen} onOpenChange={setBrowseOpen}>
                 <SheetTrigger asChild>
                   <button className="glass-panel rounded-xl border border-primary/30 px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/10 transition-colors text-xs font-heading font-semibold uppercase tracking-wider">
@@ -639,20 +641,20 @@ export default function Lobby() {
                 </SheetContent>
               </Sheet>
 
-              <button
+              {!IOS_APP && <button
                 onClick={() => persistAndEnter("space")}
                 className="glass-panel rounded-xl border border-primary/30 px-3 py-2.5 flex items-center justify-center gap-2 hover:bg-primary/10 transition-colors text-xs font-heading font-semibold uppercase tracking-wider"
                 title="Launch into the space arcade"
               >
                 <span>🚀</span> Space
-              </button>
+              </button>}
             </div>
 
             {/* Wallet / identity — collapsed visually on mobile by being below the CTA */}
             <div className="mt-2 flex flex-col gap-3">
               <VibeAccountCard variant="card" />
-              <VibeCoinPanel />
-              <VibeWalletLeaderboard defaultVisible={5} maxRows={30} />
+              {!IOS_APP && <VibeCoinPanel />}
+              {!IOS_APP && <VibeWalletLeaderboard defaultVisible={5} maxRows={30} />}
             </div>
           </div>
         </div>

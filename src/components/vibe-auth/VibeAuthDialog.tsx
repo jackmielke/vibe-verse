@@ -19,6 +19,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { OTP_LENGTH, normalizeOtp, shouldAutoSubmit } from "@/lib/otp";
 import { signInWithGoogle } from "@/lib/oauth";
+import { IOS_APP } from "@/lib/iosApp";
 import {
   findWallets,
   isUserRejection,
@@ -72,7 +73,7 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
      every wallet extension installed. Doing that to somebody who never opens
      the dialog is rude, and doing it on every page load is rude repeatedly. */
   useEffect(() => {
-    if (!open) return;
+    if (!open || IOS_APP) return;
     let live = true;
     void findWallets().then((found) => {
       if (live) setWallets(found);
@@ -508,6 +509,13 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             </form>
           )}
 
+          {/* Email is the only door for now. MetaMask and Google stay on the
+              page as "Coming soon" (Jack, 2026-10-01: a live-looking button
+              that leads nowhere is worse than an honest one), and the App Store
+              edition drops them entirely: no wallet there (3.1.5 / 5.3), and
+              Google refuses OAuth inside a WKWebView. The handlers stay wired
+              so turning one back on is deleting `soon`. */}
+          {!IOS_APP && (<>
           <div className="flex items-center gap-3 my-5">
             <div className="flex-1 h-px bg-white/10" />
             <span className="text-[10px] uppercase tracking-[0.18em] text-white/40">
@@ -520,8 +528,9 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
             <button
               type="button"
               onClick={() => void handleWallet()}
-              disabled={busy}
-              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/80 disabled:opacity-40"
+              disabled={busy || SOON}
+              title="Coming soon"
+              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               {social === "wallet" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -529,13 +538,15 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                 <span className="text-lg leading-none">🦊</span>
               )}
               {social === "wallet" ? "Check your wallet…" : walletLabel}
+              {SOON && <SoonTag />}
             </button>
 
             <button
               type="button"
               onClick={() => void handleGoogle()}
-              disabled={busy}
-              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/80 disabled:opacity-40"
+              disabled={busy || SOON}
+              title="Coming soon"
+              className="w-full h-12 rounded-xl border border-white/15 bg-transparent hover:bg-white/5 transition flex items-center justify-center gap-2.5 text-sm font-medium text-white/80 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -556,10 +567,21 @@ export default function VibeAuthDialog({ open, onOpenChange }: Props) {
                 />
               </svg>
               {social === "google" ? "Taking you to Google…" : "Continue with Google"}
+              {SOON && <SoonTag />}
             </button>
           </div>
+          </>)}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
+
+/** MetaMask and Google sign-in are switched off until they are set up properly. */
+const SOON = true;
+
+const SoonTag = () => (
+  <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/60">
+    Coming soon
+  </span>
+);

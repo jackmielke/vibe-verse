@@ -17,7 +17,7 @@ import { PEER_TIMEOUT_MS, presenceHz } from "./rules";
 export type NetMode = "off" | "local" | "online";
 
 export type OniWire =
-  | { t: "p"; id: string; n: string; c: string; x: number; y: number; z: number; yaw: number; vx: number; vz: number; o: 0 | 1; r: string }
+  | { t: "p"; id: string; n: string; c: string; x: number; y: number; z: number; yaw: number; vx: number; vz: number; o: 0 | 1; r: string; d?: string }
   | { t: "round"; id: string; round: Round }
   | { t: "tag"; id: string; r: string; v: string; by: string; at: number }
   | { t: "hi"; id: string }
@@ -122,6 +122,8 @@ export interface Peer {
   round: string;
   /** performance.now() when last heard. */
   at: number;
+  /** A stable one-way tag of their device (`d`), so a block outlives their tab. Older pages omit it. */
+  device?: string;
 }
 
 export type Presence = Omit<Extract<OniWire, { t: "p" }>, "t" | "id">;
@@ -142,6 +144,8 @@ export interface RoomOptions {
   mode: NetMode;
   room: string;
   id?: string;
+  /** Stable device tag sent with presence as `d`; optional, so older pages still read it. */
+  device?: string;
   onMessage(msg: OniWire): void;
   onPeers(peers: Peer[]): void;
   onJoin?(peer: Peer): void;
@@ -159,7 +163,7 @@ export async function joinOniRoom(opts: RoomOptions): Promise<OniRoom> {
 
   const sendPresence = () => {
     if (!transport || !latest) return;
-    transport.send({ t: "p", id, ...latest });
+    transport.send({ t: "p", id, ...latest, ...(opts.device ? { d: opts.device } : {}) });
     lastSent = performance.now();
   };
 
@@ -198,7 +202,7 @@ export async function joinOniRoom(opts: RoomOptions): Promise<OniRoom> {
     if (msg.id === id) return;
     if (msg.t === "p") {
       const known = peers.get(msg.id);
-      const peer: Peer = { id: msg.id, name: String(msg.n).slice(0, 20), char: String(msg.c), x: +msg.x || 0, y: +msg.y || 0, z: +msg.z || 0, yaw: +msg.yaw || 0, vx: +msg.vx || 0, vz: +msg.vz || 0, oni: msg.o === 1, round: String(msg.r ?? ""), at: performance.now() };
+      const peer: Peer = { id: msg.id, name: String(msg.n).slice(0, 20), char: String(msg.c), x: +msg.x || 0, y: +msg.y || 0, z: +msg.z || 0, yaw: +msg.yaw || 0, vx: +msg.vx || 0, vz: +msg.vz || 0, oni: msg.o === 1, round: String(msg.r ?? ""), at: performance.now(), device: typeof msg.d === "string" ? msg.d.slice(0, 40) : undefined };
       peers.set(msg.id, peer);
       if (!known) { opts.onJoin?.(peer); opts.onPeers(list()); }
       else if (known.char !== peer.char || known.name !== peer.name) opts.onPeers(list());

@@ -33,6 +33,8 @@ import { randomCharacter, readCharacter, writeCharacter } from "@/oni/profile";
 import { arrive, greeting, greetingPrompt, lookOf, memoryPrompt, milestone, readMemory, recordSpell, spellLabel, writeMemory, type Memory } from "@/magician/memory";
 import { MagicianRemote } from "@/magician/ui/Remote";
 import { MagicianProjector } from "@/magician/ui/Projector";
+import { IOS_APP } from "@/lib/iosApp";
+import { isBlocked, noteSafetyContent, openSafety, subscribeSafety } from "@/safety/safety";
 
 interface Line { who: "you" | "vibey"; text: string; final: boolean; id: number }
 
@@ -92,11 +94,19 @@ function Magician() {
   const [signMsg, setSignMsg] = useState("");
   const [signed, setSigned] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
-  const refreshSupporters = useCallback(async () => {
-    const list = await loadSupporters();
+  // The board as this device shows it: anybody blocked here is left off.
+  const allSupporters = useRef<Supporter[]>([]);
+  const showSupporters = useCallback(() => {
+    const list = allSupporters.current.filter((s) => !isBlocked(s.name));
     setSupporters(list);
     worldRef.current?.setSupporters(list.map((s) => (s.message ? `${s.name} · ${s.message}` : s.name)));
   }, []);
+  const refreshSupporters = useCallback(async () => {
+    allSupporters.current = await loadSupporters();
+    if (IOS_APP) for (const s of allSupporters.current) if (!isBlocked(s.name)) noteSafetyContent("magician", { name: s.name, text: s.message ? `${s.name} · ${s.message}` : s.name });
+    showSupporters();
+  }, [showSupporters]);
+  useEffect(() => subscribeSafety(showSupporters), [showSupporters]);
   const refreshSupportersRef = useRef(refreshSupporters);
   refreshSupportersRef.current = refreshSupporters;
   const [text, setText] = useState("");
@@ -354,7 +364,17 @@ function Magician() {
         onListening: (on) => world.vibey.setListening(on),
         onBudget: (left) => setSecondsLeft(left),
         onLimit: (info) => { setLimit(info); setSecondsLeft(0); world.vibey.setCaption(info.day ? "The whole valley has talked itself hoarse for today. Type to me, or come back tomorrow." : "That is all my voice for now. Type to me."); },
-        onOverFree: (insistent) => { if (!recentlyDonated()) setAsk({ insistent }); },
+        // Inside the iOS app there is no donating (3.1.1): the free minutes are the voice's whole allowance.
+        onOverFree: (insistent) => {
+          if (IOS_APP) {
+            sessionRef.current?.disconnect();
+            sessionRef.current = null;
+            setAsk({ insistent: false });
+            world.vibey.setCaption("That is all my voice for now. Type to me; the spells still work.");
+            return;
+          }
+          if (!recentlyDonated()) setAsk({ insistent });
+        },
       },
     });
     sessionRef.current = session;
@@ -443,7 +463,7 @@ function Magician() {
                 : "The voice is unavailable for the moment. Type your wishes below; the valley still listens."}
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
-              <button onClick={() => { openDonate(); }} className="rounded-full bg-[#b98cff] px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.25em] text-[#1a1030]">Support the valley</button>
+              {!IOS_APP && <button onClick={() => { openDonate(); }} className="rounded-full bg-[#b98cff] px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.25em] text-[#1a1030]">Support the valley</button>}
               <button onClick={() => setLimit(null)} className="rounded-full border border-white/25 px-5 py-2.5 text-[11px] uppercase tracking-[0.25em] text-white/80">Keep exploring</button>
             </div>
           </div>
@@ -451,7 +471,19 @@ function Magician() {
       )}
 
       {/* The gentle ask: free minutes are up, keep going, consider chipping in. */}
-      {entered && ask && !limit && (
+      {entered && ask && !limit && IOS_APP && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 px-6 backdrop-blur-sm" data-ui="1">
+          <div className="max-w-md rounded-2xl border border-white/15 bg-[#1b1633]/95 p-6 text-center">
+            <p className="text-[11px] uppercase tracking-[0.4em] text-[#b98cff]">the magician</p>
+            <h2 className="mt-3 font-serif text-3xl text-[#f3ecff]">Vibey's voice is resting</h2>
+            <p className="mt-4 text-sm leading-relaxed text-[#cbbde6]">Your voice time is used up. Typed spells still work: write a wish below, walk, play the games.</p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              <button onClick={() => setAsk(null)} className="rounded-full border border-white/25 px-5 py-2.5 text-[11px] uppercase tracking-[0.25em] text-white/80">Keep exploring</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {entered && ask && !limit && !IOS_APP && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 px-6 backdrop-blur-sm" data-ui="1">
           <div className="max-w-md rounded-2xl border border-white/15 bg-[#1b1633]/95 p-6 text-center">
             <p className="text-[11px] uppercase tracking-[0.4em] text-[#b98cff]">the magician</p>
@@ -472,12 +504,14 @@ function Magician() {
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm" data-ui="1" onClick={() => setShowSupport(false)}>
           <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1633]/95 p-5" onClick={(e) => e.stopPropagation()}>
             <p className="text-[11px] uppercase tracking-[0.4em] text-[#b98cff]">supporters of hoshimura</p>
-            <p className="mt-2 text-sm leading-relaxed text-[#cbbde6]">The voice runs on donations. Chip in any amount, then sign the board; the names stand on the square for everyone who arrives.</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#cbbde6]">{IOS_APP ? "The names on the board by the square." : "The voice runs on donations. Chip in any amount, then sign the board; the names stand on the square for everyone who arrives."}</p>
             <div className="mt-3 flex gap-2">
-              <a href={DONATE_URL} target="_blank" rel="noreferrer" onClick={() => openDonate()} className="rounded-full bg-[#b98cff] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.2em] text-[#1a1030]">Donate</a>
+              {!IOS_APP && <a href={DONATE_URL} target="_blank" rel="noreferrer" onClick={() => openDonate()} className="rounded-full bg-[#b98cff] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.2em] text-[#1a1030]">Donate</a>}
               <button onClick={() => setShowSupport(false)} className="rounded-full border border-white/25 px-4 py-2 text-[11px] uppercase tracking-[0.2em] text-white/80">Close</button>
             </div>
-            {!signed ? (
+            {IOS_APP ? (
+              <p className="mt-3 text-[10px] text-white/40">Tap a name to report it or hide it.</p>
+            ) : !signed ? (
               <form
                 className="mt-4 flex flex-col gap-2"
                 onSubmit={async (e) => {
@@ -495,9 +529,15 @@ function Magician() {
               <p className="mt-4 text-sm text-[#d8ffe9]">Signed. Thank you.</p>
             )}
             <ul className="mt-4 max-h-56 space-y-1.5 overflow-y-auto text-sm">
-              {supporters.length === 0 && <li className="text-white/40">Nobody yet. Your name could be first.</li>}
+              {supporters.length === 0 && <li className="text-white/40">{IOS_APP ? "Nobody yet." : "Nobody yet. Your name could be first."}</li>}
               {supporters.map((s) => (
-                <li key={s.id} className="text-[#e9ddff]"><span className="font-medium">{s.name}</span>{s.message ? <span className="text-white/60"> · {s.message}</span> : null}</li>
+                IOS_APP ? (
+                  <li key={s.id}>
+                    <button type="button" onClick={() => openSafety({ name: s.name, text: s.message ? `${s.name} · ${s.message}` : s.name, world: "magician" })} className="w-full text-left text-[#e9ddff]"><span className="font-medium">{s.name}</span>{s.message ? <span className="text-white/60"> · {s.message}</span> : null}</button>
+                  </li>
+                ) : (
+                  <li key={s.id} className="text-[#e9ddff]"><span className="font-medium">{s.name}</span>{s.message ? <span className="text-white/60"> · {s.message}</span> : null}</li>
+                )
               ))}
             </ul>
           </div>
@@ -566,7 +606,9 @@ function Magician() {
               W A S D to walk · drag to look · space to jump · press Talk to cast
               {available === false && <span className="magician-splash__warning mt-2 block">Vibey's voice is sleeping here; the written spellbook still works.</span>}
               {budget && budget.configured && !budget.unlimited && budget.secondsLeft !== null && (
-                <span className="mt-2 block">{budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} free minutes of voice on this device, then it runs on donations` : "Your free minutes are used; keep going, and consider chipping in"}</span>
+                <span className="mt-2 block">{IOS_APP
+                  ? (budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} minutes of voice on this device` : "Your voice time is used up; typed spells still work")
+                  : (budget.secondsLeft > 0 ? `${Math.ceil(budget.secondsLeft / 60)} free minutes of voice on this device, then it runs on donations` : "Your free minutes are used; keep going, and consider chipping in")}</span>
               )}
               {budget?.unlimited && <span className="magician-splash__unlimited mt-2 block">Signed in as an admin: no voice limit</span>}
             </p>
@@ -678,7 +720,7 @@ function Magician() {
                 <button onClick={() => { setDialsOpen(true); setMenuOpen(false); }} className="rounded-md border border-[#ffd6a0]/40 bg-[#ffd6a0]/15 px-2 py-2 text-[#fff1dc]">dials</button>
                 <button onClick={invite} className="rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">{copied ? "copied" : "invite"}</button>
                 <button onClick={() => void toggleRecording()} className={`col-span-2 rounded-md border px-2 py-2 ${recording ? "border-[#ff5a5a] bg-[#ff5a5a]/25 text-[#ffd0d0]" : "border-white/20 bg-black/30 text-white/80"}`}>{recording ? `● recording ${recSeconds}s · stop and share` : "record a clip"}</button>
-                <button onClick={() => { setShowSupport(true); setMenuOpen(false); }} className="col-span-2 rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">support the valley · the board</button>
+                <button onClick={() => { setShowSupport(true); setMenuOpen(false); }} className="col-span-2 rounded-md border border-[#73ffb8]/40 bg-[#73ffb8]/15 px-2 py-2 text-[#d8ffe9]">{IOS_APP ? "the supporters' board" : "support the valley · the board"}</button>
                 <button onClick={() => { setHudHidden(true); setMenuOpen(false); }} className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-white/80">hide hud</button>
                 <a href={`/magician?show${readRoom() !== "hoshimura" ? `&room=${readRoom()}` : ""}`} target="_blank" rel="noreferrer" className="col-span-2 rounded-md border border-[#ffd6a0]/40 bg-[#ffd6a0]/10 px-2 py-2 text-center text-[#fff1dc]">📽 projector · phones cast spells</a>
                 <Link to="/" className="rounded-md border border-white/20 bg-black/30 px-2 py-2 text-center text-white/80">leave</Link>

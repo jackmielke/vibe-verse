@@ -31,6 +31,7 @@
  * somebody who asked for less motion is asking not to have.
  */
 import { useEffect, useRef, useState } from "react";
+import { IOS_APP } from "@/lib/iosApp";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { onExplorePayout, type ExploreResult } from "@/lib/explore";
@@ -164,12 +165,15 @@ export default function ExplorerStamp() {
                 </p>
               )}
 
+              {/* The stamp stays in the App Store edition; the payout does not. */}
+              {!IOS_APP && (
               <p
                 className="mt-3 font-heading text-xl font-black tabular-nums sm:text-2xl"
                 style={{ color: accent }}
               >
                 +{shown.amount.toLocaleString()} ✦
               </p>
+              )}
 
               {/* Only when it was a batch, because "1 world" is a silly thing to
                   print under a stamp that already names the world. */}

@@ -26,6 +26,9 @@ import {
 import { buildArena } from "./arena";
 import { createAvatar, type Avatar } from "./avatars";
 import { createSfx } from "./sfx";
+import { isBlocked, setSafetyPeers, subscribeSafety } from "@/safety/safety";
+import { IOS_APP } from "@/lib/iosApp";
+import { deviceTag } from "@/magician/voice/session";
 
 export interface HudPlayer { id: string; name: string; char: string; oni: boolean; me: boolean; bot: boolean }
 
@@ -268,20 +271,27 @@ export function createOni(opts: OniOptions): OniEngine {
     },
   });
 
+  // Report and block (App Store 1.2). A blocked player stays in the round,
+  // because every device has to reach the same answer from the same messages,
+  // but on this device they have no name: no tag over the head, "Player" in
+  // the feed and the HUD. The projector is nobody's device and ignores blocks.
+  const hidden = (p: Peer) => !watch && !p.id.startsWith("~") && isBlocked(p.name, p.device);
+  const shownName = (p: Peer) => (hidden(p) ? "Player" : p.name);
   const syncRemotes = (list: Peer[]) => {
     const seen = new Set<string>();
+    if (IOS_APP && !watch) setSafetyPeers("oni", list.filter((p) => !p.id.startsWith("~") && !hidden(p)).map((p) => ({ name: p.name, id: p.device })));
     for (const p of list) {
       seen.add(p.id);
-      names.set(p.id, p.name);
+      names.set(p.id, shownName(p));
       let r = remotes.get(p.id);
       if (!r) {
-        const avatar = createAvatar({ id: p.id, name: p.name, char: p.char, big: watch });
+        const avatar = createAvatar({ id: p.id, name: hidden(p) ? "" : p.name, char: p.char, big: watch });
         scene.add(avatar.group);
         r = { id: p.id, avatar, x: p.x, y: p.y, z: p.z, yaw: p.yaw, speed: 0, bot: p.id.startsWith("~") };
         avatar.group.position.set(p.x, p.y, p.z);
         remotes.set(p.id, r);
       }
-      r.avatar.setName(p.name);
+      r.avatar.setName(hidden(p) ? "" : p.name);
       r.avatar.setChar(p.char);
     }
     for (const [id, r] of remotes) {
@@ -300,16 +310,18 @@ export function createOni(opts: OniOptions): OniEngine {
     mode: netMode,
     room: roomName,
     id: myId ?? undefined,
+    device: watch ? undefined : deviceTag(),
     onMessage: (m) => match.handle(m),
     onPeers: () => syncRemotes(peerList()),
-    onJoin: (p) => feed(`${p.name} joined`, "join"),
-    onLeave: (p) => feed(`${p.name} left`, "leave"),
+    onJoin: (p) => { if (!hidden(p)) feed(`${p.name} joined`, "join"); },
+    onLeave: (p) => { if (!hidden(p)) feed(`${p.name} left`, "leave"); },
   }).then((r) => {
     if (disposed) { r.close(); return; }
     room = r;
     connected = r.connected;
     if (watch) r.send({ t: "hi", id: `w-${Math.random().toString(36).slice(2, 7)}` });
   });
+  const unsubSafety = watch ? () => undefined : subscribeSafety(() => { if (!disposed) syncRemotes(peerList()); });
 
   // ---- input ------------------------------------------------------------------------
   let camYaw = me.yaw + Math.PI;
@@ -757,7 +769,7 @@ export function createOni(opts: OniOptions): OniEngine {
   function emitHud(now: number, phase: Phase, round: Round | null) {
     const players: HudPlayer[] = [];
     if (myId) players.push({ id: myId, name: myName, char: myChar, oni: match.isOni(myId), me: true, bot: false });
-    for (const p of peerList()) players.push({ id: p.id, name: p.name, char: p.char, oni: match.isOni(p.id), me: false, bot: p.id.startsWith("~") });
+    for (const p of peerList()) players.push({ id: p.id, name: shownName(p), char: p.char, oni: match.isOni(p.id), me: false, bot: p.id.startsWith("~") });
     const res = match.result();
     const next = match.nextAt();
     opts.onHud?.({
@@ -847,6 +859,7 @@ export function createOni(opts: OniOptions): OniEngine {
     resumeAudio() { sfx.resume(); },
     dispose() {
       disposed = true;
+      unsubSafety();
       renderer.setAnimationLoop(null);
       void renderer.xr.getSession()?.end().catch(() => {});
       room?.close();

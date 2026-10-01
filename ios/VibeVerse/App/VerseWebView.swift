@@ -24,6 +24,8 @@ struct VerseWebView: UIViewRepresentable {
         config.allowsPictureInPictureMediaPlayback = false
         config.websiteDataStore = .default()
         config.applicationNameForUserAgent = "VibeVerse-iOS/1.0"
+        // window.webkit.messageHandlers.haptic.postMessage("light" | "medium" | "heavy" | "success" | "warning" | "error" | "selection")
+        config.userContentController.add(HapticBridge(), name: "haptic")
 
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = context.coordinator
@@ -124,6 +126,26 @@ struct VerseWebView: UIViewRepresentable {
             completionHandler: @escaping () -> Void
         ) {
             completionHandler()
+        }
+    }
+}
+
+/// Taps, hits and wins from the page, felt in the hand. See `src/lib/haptics.ts`.
+final class HapticBridge: NSObject, WKScriptMessageHandler {
+    private let selection = UISelectionFeedbackGenerator()
+    private let notify = UINotificationFeedbackGenerator()
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let kind = message.body as? String else { return }
+        switch kind {
+        case "selection": selection.selectionChanged()
+        case "success": notify.notificationOccurred(.success)
+        case "warning": notify.notificationOccurred(.warning)
+        case "error": notify.notificationOccurred(.error)
+        case "heavy": UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        case "medium": UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        case "rigid": UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        default: UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
     }
 }

@@ -158,6 +158,8 @@ import {
 } from "@/components/city/islandSpawns";
 import { buildUnderground, makeNinjaPortal, type UndergroundWorld } from "@/components/city/underground";
 import { registerPOI } from "@/world/worldIndex";
+import { IOS_APP } from "@/lib/iosApp";
+import { isBlocked, noteSafetyContent, openSafety, subscribeSafety } from "@/safety/safety";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 // Universal playable character catalog. Keep City/Edge Island aligned
@@ -643,7 +645,7 @@ export default function City() {
       if (cancelled || !data) return;
       const seeded: ChatMessage[] = data
         .reverse()
-        .filter((m) => m.body && m.kind !== "system")
+        .filter((m) => m.body && m.kind !== "system" && !isBlocked(m.speaker ?? undefined))
         .map((m) => ({
           id: `world-${m.id}`,
           name: m.speaker || "agent",
@@ -666,6 +668,8 @@ export default function City() {
         (payload) => {
           const row = payload.new as { id: string; speaker?: string; body?: string; kind?: string; created_at: string };
           if (!row.body || row.kind === "system") return;
+          if (isBlocked(row.speaker)) return;
+          noteSafetyContent("city", { name: row.speaker || "agent", text: row.body });
           const msg: ChatMessage = {
             id: `world-${row.id}`,
             name: row.speaker || "agent",
@@ -685,6 +689,19 @@ export default function City() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // A block takes the blocked player's lines out of the terminal at once
+  // (new ones are already dropped where they arrive).
+  useEffect(
+    () =>
+      subscribeSafety(() =>
+        setChatMessages((prev) => {
+          const kept = prev.filter((m) => m.self || !isBlocked(m.name, m.fromId));
+          return kept.length === prev.length ? prev : kept;
+        }),
+      ),
+    [],
+  );
 
 
   // Talkable NPCs (Vibey + Jerry): proximity-gated LLM conversations
@@ -1171,6 +1188,8 @@ export default function City() {
   // ---- Island spawns: initial fetch + realtime sync. Everyone — even
   // logged-out viewers — sees every spawn, so this runs unconditionally.
   useEffect(() => {
+    // Spawns carry other players' text labels; the app shows none (1.2).
+    if (IOS_APP) return;
     let cancelled = false;
     void supabase
       .from("island_spawns")
@@ -2637,6 +2656,8 @@ export default function City() {
       rotationY: Math.atan2(-GRAFFITI_LX, -GRAFFITI_LZ),
     });
     scene.add(graffitiWall.group);
+    // Strangers' words on a wall: not in the iOS app (App Store 1.2).
+    if (IOS_APP) graffitiWall.group.visible = false;
     graffitiWallRef.current = graffitiWall;
 
     // The Vibe Times newsstand — front page of the loop's nightly paper.
@@ -7752,6 +7773,7 @@ export default function City() {
             >
               👋 Bump
             </button>
+            {!IOS_APP && (
             <button
               onClick={(e) => {
                 e.currentTarget.blur();
@@ -7761,6 +7783,7 @@ export default function City() {
             >
               💬 Message
             </button>
+            )}
             {nearPerson.kind === "agent" && (
               <button
                 onClick={(e) => {
@@ -8222,6 +8245,19 @@ export default function City() {
                       {m.name}
                     </span>{" "}
                     <span className="text-foreground/90 break-words">{m.text}</span>
+                    {IOS_APP && !m.self && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.currentTarget.blur();
+                          openSafety({ name: m.name, id: m.fromId, text: m.text, world: "city" });
+                        }}
+                        aria-label={`Report or block ${m.name}`}
+                        className="ml-1 px-1 text-muted-foreground hover:text-foreground align-middle"
+                      >
+                        ⋯
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -8391,6 +8427,7 @@ export default function City() {
               {/* The /coin page's account interface, synced in here so
                   it's obvious this shop runs on Vibe Coin: profile,
                   wallet link, live $VIBE balance. */}
+              {!IOS_APP && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
@@ -8406,6 +8443,7 @@ export default function City() {
                 </div>
                 <VibeAccountCard variant="card" />
               </div>
+              )}
 
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -8573,7 +8611,7 @@ export default function City() {
       )}
 
       {/* Touch controls for phones: joystick + jetpack button. */}
-      {entered && (
+      {entered && !IOS_APP && (
         <VibeMakerPanel
           open={portalOpen}
           onClose={() => setPortalOpen(false)}
@@ -8599,8 +8637,8 @@ export default function City() {
       )}
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
-      <RockPaperScissors open={rpsOpen} onClose={() => setRpsOpen(false)} />
-      <RpsDevHook onOpen={() => setRpsOpen(true)} />
+      {!IOS_APP && <RockPaperScissors open={rpsOpen} onClose={() => setRpsOpen(false)} />}
+      {!IOS_APP && <RpsDevHook onOpen={() => setRpsOpen(true)} />}
       <PhotoGalleryModal
         open={galleryOpen}
         photos={galleryPhotos}
@@ -8625,7 +8663,7 @@ export default function City() {
 
 
       {/* 1:1 chat with a nearby player or AI agent. */}
-      {entered && (
+      {entered && !IOS_APP && (
         <PersonChatPanel
           open={!!chatTarget}
           onClose={() => setChatTarget(null)}
@@ -8661,7 +8699,7 @@ export default function City() {
         </div>
       )}
 
-      {nearGraffiti && !duelTarget && !chatTarget && !isLive && (
+      {nearGraffiti && !duelTarget && !chatTarget && !isLive && !IOS_APP && (
         <div className="absolute bottom-24 left-1/2 z-30 w-[min(92vw,26rem)] -translate-x-1/2">
           <form
             className="glass-panel flex items-center gap-2 rounded-full px-3 py-2"
@@ -9131,7 +9169,7 @@ export default function City() {
               🛍️ Open Vibe Shop
             </button>
           )}
-          {nearPortal && !portalOpen && (
+          {nearPortal && !portalOpen && !IOS_APP && (
             <button
               onClick={(e) => {
                 setPortalOpen(true);
@@ -9153,7 +9191,7 @@ export default function City() {
               🕹️ Play Esmeralda Jump
             </button>
           )}
-          {nearRps && !rpsOpen && (
+          {nearRps && !rpsOpen && !IOS_APP && (
             <button
               onClick={(e) => {
                 setRpsOpen(true);

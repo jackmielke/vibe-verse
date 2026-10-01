@@ -34,6 +34,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { System, SystemFactory, WorldCtx } from "../types";
 import type { ChatLine, NetEventKind, NetPose, NetProfile, NetService, PeerState } from "./types";
+import { isBlocked, noteSafetyContent, setSafetyPeers, subscribeSafety } from "@/safety/safety";
 
 // ---------------------------------------------------------------- tuning
 
@@ -124,6 +125,8 @@ interface Sample {
 
 /** A peer plus the two-sample buffer the interpolator runs on. */
 interface PeerRecord extends PeerState {
+  /** The name the peer sent. `name` is what is drawn: "Player" once blocked. */
+  rawName: string;
   prev: Sample | null;
   last: Sample | null;
 }
@@ -191,6 +194,36 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
   let joinToken = 0;
 
   let pending: NetPose | null = null;
+
+  // ---- report / block (App Store 1.2) ----
+  // A blocked peer stays in the match — the netcode is unchanged — but every
+  // surface that reads `peer.name` (nameplate, squad list, lobby) sees
+  // "Player", and their chat is dropped.
+  const safetyWorld =
+    ctx.mode === "water" ? "splash-royale" : ctx.mode === "better" ? "better-fortnite" : "drop-zero";
+  let safetySig = "";
+  const applyName = (p: PeerRecord, raw: string) => {
+    p.rawName = raw;
+    p.name = isBlocked(raw, p.id) ? "Player" : raw;
+  };
+  const syncSafety = (force = false) => {
+    const list = [...peers.values()].map((p) => ({ name: (p as PeerRecord).rawName, id: p.id }));
+    const sig = list.map((e) => `${e.id}:${e.name}`).join("|");
+    if (!force && sig === safetySig) return;
+    safetySig = sig;
+    setSafetyPeers(safetyWorld, list);
+  };
+  const offSafety = subscribeSafety(() => {
+    for (const p of peers.values()) applyName(p as PeerRecord, (p as PeerRecord).rawName);
+    const before = messages.length;
+    const kept = messages.filter((m) => m.self || !isBlocked(m.name, m.from));
+    if (kept.length !== before) {
+      messages.length = 0;
+      messages.push(...kept);
+      ctx.emit("soaked:chat-reset", null);
+    }
+  });
+
   let lastSentAt = -Infinity;
   let lastSent: NetPose | null = null;
 
@@ -200,6 +233,7 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
       p = {
         id,
         name: "player",
+        rawName: "player",
         team: null,
         agent: false,
         x: 0,
@@ -216,6 +250,7 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
       };
       peers.set(id, p);
       ctx.emit("soaked:peer-join", { id });
+      syncSafety();
     }
     return p;
   };
@@ -223,6 +258,7 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
   const dropPeer = (id: string) => {
     if (!peers.delete(id)) return;
     ctx.emit("soaked:peer-leave", { id });
+    syncSafety();
   };
 
   const announce = () => {
@@ -252,7 +288,10 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
     if (!w || typeof w.i !== "string" || w.i === selfId) return;
     if (!Number.isFinite(w.x) || !Number.isFinite(w.y) || !Number.isFinite(w.z)) return;
     const p = record(w.i);
-    if (w.n) p.name = w.n;
+    if (w.n && w.n !== p.rawName) {
+      applyName(p, w.n);
+      syncSafety();
+    }
     if (w.t !== undefined) p.team = w.t || null;
     if (w.g) p.agent = true;
     p.state = typeof w.s === "string" ? w.s : p.state;
@@ -296,10 +335,13 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
       const body = (w.p ?? {}) as { text?: string; name?: string };
       const text = typeof body.text === "string" ? body.text.slice(0, 280) : "";
       if (!text) return;
+      const who = body.name || peer?.rawName || "player";
+      if (isBlocked(who, w.i) || (peer && isBlocked(peer.rawName, w.i))) return;
+      noteSafetyContent(safetyWorld, { name: who, id: w.i, text });
       pushMessage({
         id: `${w.i}-${messages.length}-${ctx.elapsed.toFixed(3)}`,
         from: w.i,
-        name: body.name || peer?.name || "player",
+        name: who,
         text,
         t: ctx.elapsed,
         self: false,
@@ -381,13 +423,14 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
             const meta = state[key]?.[0];
             if (!meta) continue;
             const p = record(key);
-            if (meta.name) p.name = meta.name;
+            if (meta.name && meta.name !== p.rawName) applyName(p, meta.name);
             p.team = meta.team ?? p.team;
             p.agent = !!meta.agent || p.agent;
           }
           // Presence leave is authoritative and instant; the timeout reap
           // below only exists for peers that vanish without a goodbye.
           for (const id of [...peers.keys()]) if (!keys.has(id)) dropPeer(id);
+          syncSafety();
           announce();
         });
         ch.on("broadcast", { event: "pose" }, ({ payload }) => onPose(payload as PoseWire));
@@ -591,6 +634,7 @@ export const createNetSystem: SystemFactory = (ctx: WorldCtx): System => {
 
     dispose() {
       disposed = true;
+      offSafety();
       service.leave();
       handlers.clear();
       messages.length = 0;

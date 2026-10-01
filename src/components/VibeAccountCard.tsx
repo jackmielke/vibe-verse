@@ -38,6 +38,7 @@ import {
   Unlink,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { IOS_APP } from "@/lib/iosApp";
 import {
   linkProviderIdentity,
   signInWithProvider,
@@ -675,10 +676,12 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
               />
             )}
 
-            {/* Wallet — paste-in is the primary flow. MetaMask
+            {/* No wallet in the App Store edition (3.1.5 / 5.3). */}
+            {!IOS_APP && (
+            /* Wallet — paste-in is the primary flow. MetaMask
                 Connect is tucked into a disclosure for users who
                 want the cryptographic proof, but defaults are the
-                safer / simpler text input. */}
+                safer / simpler text input. */
             <div className="rounded-md border border-border/60 bg-background/30 p-2.5 flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-foreground/85"><Wallet className="w-3.5 h-3.5" /></span>
@@ -808,6 +811,7 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {oauthError && (
@@ -817,13 +821,13 @@ export default function VibeAccountCard({ variant = "card" }: Props) {
           )}
 
           {/* Safety promise — small print but unmissable */}
-          <p className="text-[10px] text-muted-foreground/80 leading-relaxed flex items-start gap-1.5 mt-1">
+          {!IOS_APP && <p className="text-[10px] text-muted-foreground/80 leading-relaxed flex items-start gap-1.5 mt-1">
             <ShieldCheck className="w-3 h-3 mt-0.5 flex-shrink-0 text-emerald-400" />
             <span>
               Linking your wallet only asks you to sign a message proving you own it.
               No transactions. No funds move. You can unlink anytime.
             </span>
-          </p>
+          </p>}
         </>
       )}
     </div>

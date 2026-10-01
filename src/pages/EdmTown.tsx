@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
+import { IOS_APP } from "@/lib/iosApp";
 
 type GuestbookEntry = {
   id: string;
@@ -79,7 +80,8 @@ export default function EdmTown() {
       .limit(50);
     if (!error && data) setEntries(data as GuestbookEntry[]);
   };
-  useEffect(() => { loadGuestbook(); }, []);
+  // The App Store edition has no guestbook: strangers' words, unmoderated (1.2).
+  useEffect(() => { if (!IOS_APP) loadGuestbook(); }, []);
 
   // ===== Three.js scene =====
   useEffect(() => {
@@ -337,7 +339,7 @@ export default function EdmTown() {
     // ---- Guestbook obelisk ----
     const guestbook = new THREE.Group();
     guestbook.position.set(6, 0, 8);
-    scene.add(guestbook);
+    if (!IOS_APP) scene.add(guestbook);
     const gbBase = new THREE.Mesh(
       new THREE.BoxGeometry(2, 0.4, 2),
       new THREE.MeshLambertMaterial({ color: 0x222233, flatShading: true }),
@@ -406,7 +408,7 @@ export default function EdmTown() {
         photoModeRef.current = !photoModeRef.current;
         setPhotoMode(photoModeRef.current);
       }
-      if (k === "e") {
+      if (k === "e" && !IOS_APP) {
         const dx = camera.position.x - guestbookPos.x;
         const dz = camera.position.z - guestbookPos.z;
         if (dx * dx + dz * dz < 12) setGuestbookOpen(true);
@@ -523,7 +525,7 @@ export default function EdmTown() {
       // Near guestbook?
       const dx = camera.position.x - guestbookPos.x;
       const dz = camera.position.z - guestbookPos.z;
-      const near = dx * dx + dz * dz < 12;
+      const near = !IOS_APP && dx * dx + dz * dz < 12;
       setNearGuestbook((prev) => (prev !== near ? near : prev));
 
       // Crowd bounce on beat
@@ -753,11 +755,11 @@ export default function EdmTown() {
               <div className="text-sm font-semibold mb-1">Welcome to EDM Town 🪩</div>
               <div className="text-xs text-white/80 leading-relaxed">
                 <span className="hidden md:inline">
-                  <b>WASD</b> to move, click to look around. Press <b>P</b> for photo mode,{" "}
-                  <b>E</b> near the green obelisk to sign the guestbook.
+                  <b>WASD</b> to move, click to look around. Press <b>P</b> for photo mode
+                  {IOS_APP ? "." : <>,{" "}<b>E</b> near the green obelisk to sign the guestbook.</>}
                 </span>
                 <span className="md:hidden">
-                  Drag <b>left</b> to walk, <b>right</b> to look. Tap the obelisk button to sign the guestbook.
+                  Drag <b>left</b> to walk, <b>right</b> to look.{IOS_APP ? "" : " Tap the obelisk button to sign the guestbook."}
                 </span>
               </div>
             </div>
@@ -813,7 +815,7 @@ export default function EdmTown() {
       )}
 
       {/* ===== Guestbook dialog ===== */}
-      <Dialog open={guestbookOpen} onOpenChange={setGuestbookOpen}>
+      <Dialog open={guestbookOpen && !IOS_APP} onOpenChange={setGuestbookOpen}>
         <DialogContent className="max-w-md bg-zinc-950 text-white border-fuchsia-500/40">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

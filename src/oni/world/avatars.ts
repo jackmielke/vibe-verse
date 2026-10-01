@@ -138,7 +138,8 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
   tag.scale.set(tagScale, tagScale / 4, 1);
   tag.position.y = BODY_HEIGHT + 0.65;
   // Our own name over our own head, seen from behind, only gets in the way.
-  tag.visible = !opts.noTag;
+  // An empty name (a player this device has blocked) has no tag at all.
+  tag.visible = !opts.noTag && name !== "";
   group.add(tag);
 
   const emotes: Array<{ sprite: THREE.Sprite; tex: THREE.CanvasTexture; t: number }> = [];
@@ -212,7 +213,7 @@ export function createAvatar(opts: { id: string; name: string; char: string; big
     group,
     char: () => char,
     setChar(id) { if (id === char) return; char = id; placeholder.visible = !rig; load(id); },
-    setName(n) { if (n === name) return; name = n; redrawTag(); },
+    setName(n) { if (n === name) return; name = n; tag.visible = !opts.noTag && n !== ""; redrawTag(); },
     setOni(on) {
       if (on === oni) return;
       oni = on;

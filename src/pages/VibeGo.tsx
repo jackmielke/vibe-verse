@@ -21,6 +21,7 @@ import * as THREE from "three";
 import { releaseRenderer } from "@/lib/quality";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { toast } from "sonner";
+import { IOS_APP } from "@/lib/iosApp";
 import { CHARACTERS, type CharSpec } from "@/lib/characters";
 import { MAPBOX_TOKEN, VILLAGE_CENTER } from "@/config/mapbox";
 import { useActiveCharacter } from "@/hooks/use-active-character";
@@ -453,7 +454,7 @@ export default function VibeGo() {
         const bal = Number(localStorage.getItem("city.vibecoinBalance") ?? "0");
         localStorage.setItem("city.vibecoinBalance", String(Math.max(0, bal) + coins));
       } catch { /* ignore */ }
-      toast.success(`${target.char.emoji} Caught ${target.char.label}! +${coins} ✦`, {
+      toast.success(`${target.char.emoji} Caught ${target.char.label}!${IOS_APP ? "" : ` +${coins} ✦`}`, {
         description: isNew ? "NEW species for your Vibedex!" : undefined,
       });
     } else {

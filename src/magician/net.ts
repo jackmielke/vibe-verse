@@ -44,13 +44,19 @@ export interface PeerPresence {
   /** Tag: whether they say they have horns, and in which round. */
   oni?: boolean;
   round?: string;
+  /**
+   * A stable, one-way tag of their device (`d` on the wire), so a block
+   * survives their next tab. Absent from older pages. Never the device id
+   * itself: that id is what the voice budget is charged to.
+   */
+  device?: string;
 }
 
 /** What a player carries beyond where they are: who they look like, and tag. */
 export interface PresenceExtra { c: string; o: 0 | 1; r: string }
 
 export type Wire =
-  | { t: "p"; id: string; n: string; x: number; y: number; z: number; yaw: number; b: string; v: boolean; c?: string; o?: 0 | 1; r?: string }
+  | { t: "p"; id: string; n: string; x: number; y: number; z: number; yaw: number; b: string; v: boolean; c?: string; o?: 0 | 1; r?: string; d?: string }
   | { t: "g"; id: string; m: OniWire }
   | { t: "s"; id: string; patch: Patch }
   | { t: "hi"; id: string }
@@ -129,8 +135,10 @@ export interface RoomOptions {
   name: string;
   /** Our id; random per tab. */
   id?: string;
-  /** Called with a patch somebody else made. Apply it without re-broadcasting. */
-  onPatch(patch: Patch): void;
+  /** Stable tag for this device, sent with presence (`d`). Optional; older pages never send it. */
+  device?: string;
+  /** Called with a patch somebody else made (and who sent it, when known). Apply it without re-broadcasting. */
+  onPatch(patch: Patch, from?: string): void;
   /** Somebody answered our hello with the whole world. */
   onFull(state: WorldState): void;
   /** Peer table changed. */
@@ -205,15 +213,15 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
   // made or heard meanwhile is kept and laid back on top, or a phone's first
   // spell is undone by a laptop that took four seconds to say hello.
   let gotFull = false;
-  const meanwhile: Patch[] = [];
-  const remember = (p: Patch) => { if (!gotFull && meanwhile.length < 60) meanwhile.push(p); };
+  const meanwhile: Array<{ p: Patch; from?: string }> = [];
+  const remember = (p: Patch, from?: string) => { if (!gotFull && meanwhile.length < 60) meanwhile.push({ p, from }); };
 
   const room: Room = {
     id,
     connected: false,
     patch(p) { remember(p); transport?.send({ t: "s", id, patch: p }); },
     presence(x, y, z, yaw, body, talking, extra) {
-      latest = { t: "p", id, n: opts.name, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(3), b: body, v: talking, ...(extra ?? {}) };
+      latest = { t: "p", id, n: opts.name, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(3), b: body, v: talking, ...(extra ?? {}), ...(opts.device ? { d: opts.device } : {}) };
       dirty = true;
     },
     game(m) { transport?.send({ t: "g", id, m }); },
@@ -236,14 +244,15 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
     switch (msg.t) {
       case "p": {
         const known = peers.get(msg.id);
-        peers.set(msg.id, { id: msg.id, name: msg.n, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, body: msg.b, at: performance.now(), talking: msg.v, char: typeof msg.c === "string" ? msg.c : undefined, oni: msg.o === 1, round: typeof msg.r === "string" ? msg.r : "" });
+        const device = typeof msg.d === "string" ? msg.d.slice(0, 40) : undefined;
+        peers.set(msg.id, { id: msg.id, name: msg.n, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, body: msg.b, at: performance.now(), talking: msg.v, char: typeof msg.c === "string" ? msg.c : undefined, oni: msg.o === 1, round: typeof msg.r === "string" ? msg.r : "", device });
         if (!known) { opts.onJoin?.(msg.n); opts.onPeers(list()); }
-        else if (known.char !== msg.c || known.name !== msg.n) opts.onPeers(list());
+        else if (known.char !== msg.c || known.name !== msg.n || known.device !== device) opts.onPeers(list());
         break;
       }
       case "s":
-        remember(msg.patch);
-        opts.onPatch(msg.patch);
+        remember(msg.patch, msg.id);
+        opts.onPatch(msg.patch, msg.id);
         break;
       case "hi": {
         const state = opts.currentState();
@@ -254,7 +263,7 @@ export async function joinRoom(opts: RoomOptions): Promise<Room> {
         if (msg.to === id && !gotFull) {
           gotFull = true;
           opts.onFull(msg.state);
-          for (const p of meanwhile.splice(0)) opts.onPatch(p);
+          for (const m of meanwhile.splice(0)) opts.onPatch(m.p, m.from);
         }
         break;
       case "g":

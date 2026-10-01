@@ -306,6 +306,13 @@ export class PeerTable {
     return out;
   }
 
+  /** Everybody present with their id, for the report/block sheet. */
+  people(): { name: string; id: string }[] {
+    const out: { name: string; id: string }[] = [];
+    for (const [id, p] of this.peers) if (p.ready) out.push({ name: p.name, id });
+    return out;
+  }
+
   clear(): void {
     this.peers.clear();
   }

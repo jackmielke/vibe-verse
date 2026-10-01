@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 
 import VibeWink from "@/components/VibeWink";
+import { IOS_APP } from "@/lib/iosApp";
 import {
   STALE_AFTER_MS,
   VIBE_LINKS,
@@ -29,7 +30,12 @@ import {
   type VibeMarket,
 } from "@/lib/vibeMarket";
 
+/** The App Store edition shows no currency at all; see IOS_HIDDEN in the registry. */
 export default function VibeMarketChip({ className = "" }: { className?: string }) {
+  return IOS_APP ? null : <VibeMarketChipInner className={className} />;
+}
+
+function VibeMarketChipInner({ className = "" }: { className?: string }) {
   const [m, setM] = useState<VibeMarket>(getVibeMarket);
 
   useEffect(() => {

@@ -32,6 +32,8 @@ import {
   type DanceSkeleton,
 } from "@/components/city/dances";
 
+import { isBlocked, blockedList, setSafetyPeers, noteSafetyContent, subscribeSafety } from "@/safety/safety";
+
 export interface PlayerState {
   x: number;
   y: number;
@@ -60,6 +62,8 @@ export interface ChatMessage {
   self?: boolean;
   /** True when this message came from a world_agents resident (vibe-world). */
   agent?: boolean;
+  /** Sender's auth user id when known — what Report/Block keys on. */
+  fromId?: string;
 }
 
 export type EmoteName = "wave" | "dance" | "sit" | "point" | "heart" | "laugh";
@@ -418,6 +422,22 @@ export function createMultiplayer(opts: {
   let disposed = false;
   let myDay: boolean | null = null; // our current known day/night, tracked in presence
   let appliedInitial = false;
+  /** Last-known name + user id per presence key, so a block (which is by
+   *  name or user id) can be checked against a session key. */
+  const peerMeta = new Map<string, { name: string; userId: string | null }>();
+  const keyBlocked = (key: string): boolean => {
+    const m = peerMeta.get(key);
+    return !!m && isBlocked(m.name, m.userId ?? undefined);
+  };
+  /** Hand the Safety sheet the players on screen (blocked ones excluded). */
+  const publishSafetyPeers = () => {
+    const list: { name: string; id?: string }[] = [];
+    for (const [key, m] of peerMeta) {
+      if (key === sessionId || isBlocked(m.name, m.userId ?? undefined)) continue;
+      list.push({ name: m.name, id: m.userId ?? undefined });
+    }
+    setSafetyPeers("city", list);
+  };
 
   const loadBase = (char: string) => {
     let entry = baseCache.get(char);
@@ -570,10 +590,17 @@ export function createMultiplayer(opts: {
       .on("presence", { event: "sync" }, () => {
         const state = channel!.presenceState<{ name: string; char: string; day?: boolean; userId?: string | null }>();
         const keys = new Set(Object.keys(state));
+        for (const key of [...peerMeta.keys()]) if (!keys.has(key)) peerMeta.delete(key);
         // Spawn newcomers, drop leavers.
         for (const key of keys) {
           if (key === sessionId) continue;
           const meta = state[key][0];
+          if (meta) peerMeta.set(key, { name: meta.name, userId: meta.userId ?? null });
+          // Blocked players never get a ghost (and lose one they had).
+          if (keyBlocked(key)) {
+            removeGhost(key);
+            continue;
+          }
           if (!ghosts.has(key) && meta) {
             void spawnGhost(key, meta.char, meta.name, meta.userId ?? null);
           } else if (meta) {
@@ -598,11 +625,13 @@ export function createMultiplayer(opts: {
             }
           }
         }
+        publishSafetyPeers();
         onPeers(keys.size, online);
       })
       .on("broadcast", { event: "pos" }, ({ payload }) => {
         const p = payload as PlayerState & { id: string; name?: string; userId?: string | null };
         if (!p || p.id === sessionId) return;
+        if (isBlocked(p.name, p.userId ?? undefined) || keyBlocked(p.id)) return;
         let g = ghosts.get(p.id);
         if (!g) {
           void spawnGhost(p.id, p.char, p.name ?? "pilot", p.userId ?? null);
@@ -624,8 +653,11 @@ export function createMultiplayer(opts: {
         const m = payload as { id: string; name: string; text: string };
         if (!m?.text) return;
         const g = ghosts.get(m.id);
+        const fromId = g?.userId ?? peerMeta.get(m.id)?.userId ?? undefined;
+        if (isBlocked(m.name, fromId) || keyBlocked(m.id)) return;
         if (g) showChatOn(g, m.text);
-        onChat({ id: `${m.id}-${Date.now()}`, name: m.name, text: m.text, ts: Date.now() });
+        noteSafetyContent("city", { name: m.name, id: fromId, text: m.text });
+        onChat({ id: `${m.id}-${Date.now()}`, name: m.name, text: m.text, ts: Date.now(), fromId });
       })
       .on("broadcast", { event: "time-mode" }, ({ payload }) => {
         const p = payload as { day: boolean; id: string };
@@ -636,14 +668,14 @@ export function createMultiplayer(opts: {
       })
       .on("broadcast", { event: "emote" }, ({ payload }) => {
         const p = payload as { id: string; emote: EmoteName };
-        if (!p || p.id === sessionId) return;
+        if (!p || p.id === sessionId || keyBlocked(p.id)) return;
         const g = ghosts.get(p.id);
         if (g) playEmoteOn(g, p.emote);
         onEmote?.(p.emote, true);
       })
       .on("broadcast", { event: "bump" }, ({ payload }) => {
         const p = payload as { id: string; x: number; y: number; z: number; dirX: number; dirZ: number; speed: number };
-        if (!p || p.id === sessionId) return;
+        if (!p || p.id === sessionId || keyBlocked(p.id)) return;
         onBump?.(p.x, p.y, p.z, p.dirX, p.dirZ, p.speed);
       })
       .on("broadcast", { event: "rebel" }, ({ payload }) => {
@@ -662,6 +694,25 @@ export function createMultiplayer(opts: {
     online = false;
     onPeers(0, false);
   }
+
+  // A block (or unblock) lands instantly: drop the ghost now, or respawn an
+  // unblocked one from presence. Only reacts to the block list itself —
+  // setSafetyPeers fires the same event, and reacting to that would loop.
+  let seenBlocked = blockedList();
+  const unsubSafety = subscribeSafety(() => {
+    if (blockedList() === seenBlocked) return;
+    seenBlocked = blockedList();
+    for (const key of [...ghosts.keys()]) if (keyBlocked(key)) removeGhost(key);
+    if (channel) {
+      const state = channel.presenceState<{ name: string; char: string; userId?: string | null }>();
+      for (const key of Object.keys(state)) {
+        const meta = state[key][0];
+        if (key === sessionId || !meta || ghosts.has(key) || keyBlocked(key)) continue;
+        void spawnGhost(key, meta.char, meta.name, meta.userId ?? null);
+      }
+    }
+    publishSafetyPeers();
+  });
 
   return {
     update(dt, me) {
@@ -948,6 +999,7 @@ export function createMultiplayer(opts: {
     },
     dispose() {
       disposed = true;
+      unsubSafety();
       for (const key of [...ghosts.keys()]) removeGhost(key);
       if (channel) void supabase.removeChannel(channel);
     },

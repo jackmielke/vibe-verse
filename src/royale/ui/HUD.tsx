@@ -2815,7 +2815,15 @@ function ChatPanel({ engine, compact = false }: { engine: Engine; compact?: bool
     // reopened it, should not lose what Claude already said.
     const s = engine.ctx.services.net;
     if (s && s.messages.length > 0) setLines(s.messages.slice(-CHAT_LINES * 4));
-    return off;
+    // A block filters the backlog in the net system; redraw from it.
+    const offReset = engine.on("soaked:chat-reset", () => {
+      const n = engine.ctx.services.net;
+      setLines(n ? n.messages.slice(-CHAT_LINES * 4) : []);
+    });
+    return () => {
+      off();
+      offReset();
+    };
   }, [engine]);
 
   const close = useCallback(

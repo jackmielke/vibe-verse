@@ -19,6 +19,10 @@
 import * as THREE from "three";
 import { supabase } from "@/integrations/supabase/client";
 import type { KartCtx, PhysicsService, RacerState, System } from "../types";
+import { isBlocked, subscribeSafety } from "@/safety/safety";
+
+/** What a peer's kart is labelled: "Player" once you have blocked them (App Store 1.2). */
+const shown = (name: string, peerId: string): string => (isBlocked(name, peerId) ? "Player" : name);
 
 /** `destroyRacer` is the model system's own extra, not part of the contract. */
 type ModelsMaybe = { destroyRacer?(racerId: number): void } | undefined;
@@ -99,7 +103,7 @@ export default function createNetplay(config: KartNetConfig) {
       const taken = new Set([...slots.values()].map((s) => s.racer.id));
       const free = phys.racers.find((r) => !r.isPlayer && !taken.has(r.id));
       if (!free) return null;
-      dress(free, name, characterId);
+      dress(free, shown(name, peerId), characterId);
       (free as RacerState & { remote?: boolean }).remote = true;
       const slot: RemoteSlot = {
         peer: { peerId, name, racerId: free.id, lastSeen: ctx.elapsed },
@@ -135,7 +139,7 @@ export default function createNetplay(config: KartNetConfig) {
       slot.peer.name = p.name || slot.peer.name;
       // Re-read every packet, not just the first: between two races in the same
       // room a peer can go back to the lobby and pick a different racer.
-      dress(slot.racer, slot.peer.name, p.characterId);
+      dress(slot.racer, shown(slot.peer.name, p.peerId), p.characterId);
       slot.target.set(p.pos[0], p.pos[1], p.pos[2]);
       slot.targetQuat.set(p.quat[0], p.quat[1], p.quat[2], p.quat[3]);
       slot.speed = p.speed;
@@ -148,6 +152,11 @@ export default function createNetplay(config: KartNetConfig) {
       if (status === "SUBSCRIBED") {
         void channel.track({ peerId: config.peerId, name: config.name });
       }
+    });
+
+    // Blocking mid-race relabels the kart; the race itself is untouched.
+    const offSafety = subscribeSafety(() => {
+      for (const slot of slots.values()) slot.racer.name = shown(slot.peer.name, slot.peer.peerId);
     });
 
     let sendAcc = 0;
@@ -209,6 +218,7 @@ export default function createNetplay(config: KartNetConfig) {
       },
 
       dispose() {
+        offSafety();
         for (const peerId of [...slots.keys()]) releaseSlot(peerId);
         void supabase.removeChannel(channel);
         delete (ctx.services as Record<string, unknown>).net;
