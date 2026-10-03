@@ -46,6 +46,7 @@ const ORDER: string[] = [
   "blob-battle",         // …and the guest game that plays the same way
   "coil",                // …and its twin, where being big is the problem
   "empyrean",            // the new one: a glass city on a rock, and a jetpack
+  "horizon",             // …and the garden where the future stands in a ring
   "dipsea",              // this week: Mill Valley to Stinson Beach, on foot
   "airship",             // …and the airship that flew over the East Bay
   "developer-trail",     // …and the case study that wanted to be Oregon Trail
@@ -161,6 +162,24 @@ const WORLDS_RAW: WorldEntry[] = [
     backdrop: "#120c1c",
     featured: true,
     source: "src/oni + src/pages/Oni.tsx",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "horizon",
+    route: "/horizon",
+    aliases: ["/horizon-garden"],
+    name: "Horizon Garden",
+    emoji: "🌅",
+    kind: "world",
+    blurb:
+      "A quiet island at dawn with fifteen monuments in a ring, one for each frontier worth building on: the 24/7 teammate, the robot, memory, the overnight agent, spatial computing, private money, space, self-driving, health and more. Walk up to one and it shows you where that frontier is today and where it goes in 5, 10 and 50 years, what is most interesting about it, and the move worth making.",
+    status: "Explorable — desktop and phone, with an Atlas to read it all at once",
+    accent: "#ff8a5c",
+    backdrop: "#f6d6c6",
+    featured: true,
+    source: "public/worlds/horizon/index.html + src/pages/Horizon.tsx",
     nav: true,
     passport: true,
     chromeless: true,

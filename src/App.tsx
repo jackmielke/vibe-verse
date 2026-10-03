@@ -99,6 +99,7 @@ const DuneSea = lazy(() => import("./pages/DuneSea.tsx"));
 const VibeverseExplorer = lazy(() => import("./pages/VibeverseExplorer.tsx"));
 const Conservatory = lazy(() => import("./pages/Conservatory.tsx"));
 const Venus = lazy(() => import("./pages/Venus.tsx"));
+const Horizon = lazy(() => import("./pages/Horizon.tsx"));
 const DropZero = lazy(() => import("./pages/DropZero.tsx"));
 const SplashRoyale = lazy(() => import("./pages/SplashRoyale.tsx"));
 const BetterFortnite = lazy(() => import("./pages/BetterFortnite.tsx"));
@@ -386,6 +387,9 @@ const App = () => (
           {/* THE TERMINAL — the front door. Stand in the sky, pick a world. */}
           <Route path="/terminal" element={<Terminal />} />
           {/* Vibe Island II — the floating archipelago, rebuilt. */}
+          {/* Horizon Garden: a walkable opportunity map of the future. */}
+          <Route path="/horizon" element={<Horizon />} />
+          <Route path="/horizon-garden" element={<Horizon />} />
           {/* Venus Rising: a city floating in the clouds of Venus, 54 km up. */}
           <Route path="/venus" element={<Venus />} />
           <Route path="/venus-rising" element={<Venus />} />

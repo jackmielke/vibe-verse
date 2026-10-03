@@ -52,6 +52,7 @@ import twenty48Art from "@/assets/worlds/2048.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import conservatoryArt from "@/assets/worlds/conservatory.jpg";
 import venusArt from "@/assets/worlds/venus.jpg";
+import horizonArt from "@/assets/worlds/horizon.jpg";
 import fnafArt from "@/assets/worlds/fnaf.jpg";
 import homeAloneArt from "@/assets/worlds/home-alone.jpg";
 import iSpyArt from "@/assets/worlds/i-spy.jpg";
@@ -104,6 +105,7 @@ export const WORLD_ART: Record<string, string> = {
   "blue-angels": blueAngelsArt,
   conservatory: conservatoryArt,
   venus: venusArt,
+  horizon: horizonArt,
   fnaf: fnafArt,
   "home-alone": homeAloneArt,
   run: runArt,

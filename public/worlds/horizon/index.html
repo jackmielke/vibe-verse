@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A walkable 3D opportunity map of the future: fifteen frontiers, now to 2076.">
+<title>Horizon Garden</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: full-bleed 3D island at dawn; glass panels float over it (side sheet on desktop, bottom sheet on phones). Deliberately single-theme. */
+:root{
+  --ink:#1f2a40; --ink-soft:#4b5670; --glass:rgba(255,249,243,.86); --glass-edge:rgba(255,255,255,.7);
+  --warm:#ff8a5c; --cool:#4f9fc4; --sand:#f3e2cc; --line:rgba(31,42,64,.12);
+  --f-display:"Bricolage Grotesque",ui-rounded,system-ui,sans-serif;
+  --f-body:"Figtree",system-ui,-apple-system,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+html,body{height:100%;margin:0;overflow:hidden;background:#f6d6c6;color:var(--ink);font-family:var(--f-body)}
+#stage{position:fixed;inset:0;touch-action:none;cursor:grab}
+#stage:active{cursor:grabbing}
+.glass{background:var(--glass);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);border:1px solid var(--glass-edge);box-shadow:0 10px 40px rgba(60,40,40,.14)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+
+#top{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;pointer-events:none;z-index:5}
+#brand{pointer-events:auto;padding:10px 16px;border-radius:14px}
+#brand h1{font-family:var(--f-display);font-size:20px;margin:0;letter-spacing:-.01em}
+#brand p{margin:2px 0 0;font-size:12px;color:var(--ink-soft)}
+#topBtns{display:flex;gap:8px;pointer-events:auto}
+.pill{border-radius:999px;padding:9px 16px;font-weight:600;font-size:13px;border:1px solid var(--glass-edge)}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--ink-soft);margin-top:6px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+
+#hint{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));padding:8px 16px;border-radius:999px;font-size:12px;color:var(--ink-soft);z-index:4;white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis}
+#hint b{color:var(--ink);font-weight:600}
+
+.tag{position:fixed;left:0;top:0;transform:translate(-50%,-100%);pointer-events:none;font-family:var(--f-display);font-weight:500;font-size:13px;white-space:nowrap;padding:4px 10px;border-radius:999px;background:rgba(255,250,245,.78);color:var(--ink);z-index:2;transition:opacity .3s}
+.tag small{font-family:var(--f-mono);font-size:9px;color:var(--ink-soft);margin-right:6px}
+.tag.near{background:var(--ink);color:#fff}
+.tag.near small{color:rgba(255,255,255,.65)}
+
+#panel{position:fixed;top:calc(84px + env(safe-area-inset-top,0px));right:16px;bottom:calc(82px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100vw - 32px));border-radius:22px;z-index:6;display:flex;flex-direction:column;transform:translateX(0);transition:transform .45s cubic-bezier(.2,.8,.2,1),opacity .35s}
+#panel.off{transform:translateX(calc(100% + 40px));opacity:0;pointer-events:none}
+#panelScroll{overflow-y:auto;padding:22px 22px 18px;min-height:0}
+#panelClose{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(31,42,64,.07);font-size:18px;line-height:1}
+.eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);display:flex;gap:8px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:10px;letter-spacing:.04em}
+.chip.warm{background:rgba(255,138,92,.16);color:#b04b22}
+.chip.cool{background:rgba(79,159,196,.16);color:#22617f}
+#panel h2{font-family:var(--f-display);font-size:30px;line-height:1.05;margin:8px 0 6px;letter-spacing:-.02em;text-wrap:balance}
+.tagline{margin:0 0 18px;color:var(--ink-soft);font-size:14px;line-height:1.5}
+.tl{list-style:none;margin:0;padding:0;position:relative}
+.tl::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:2px;background:linear-gradient(var(--warm),var(--cool) 60%,#8a7fd6)}
+.tl li{position:relative;padding:0 0 14px 24px}
+.tl li::before{content:"";position:absolute;left:0;top:5px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--c,var(--warm))}
+.yr{font-family:var(--f-mono);font-size:11px;color:var(--c,var(--ink));letter-spacing:.04em}
+.tl p{margin:3px 0 0;font-size:14px;line-height:1.55}
+.box{margin-top:6px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.6);border:1px solid var(--line)}
+.box h3{margin:0 0 6px;font-family:var(--f-display);font-size:15px;font-weight:700}
+.box p{margin:0;font-size:14px;line-height:1.55}
+.box.move{background:var(--ink);color:#fdf6ee;border-color:transparent;margin-top:10px}
+.box.move h3{color:#ffb894}
+#panelNav{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+#panelNav button{border:1px solid var(--line);background:rgba(255,255,255,.7);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+#welcome{position:fixed;left:16px;bottom:calc(122px + env(safe-area-inset-bottom,0px));width:min(360px,calc(100vw - 32px));border-radius:20px;padding:18px 20px;z-index:5;transition:opacity .4s}
+#welcome h2{font-family:var(--f-display);margin:0 0 6px;font-size:20px}
+#welcome p{margin:0 0 10px;font-size:13.5px;line-height:1.55;color:var(--ink-soft)}
+#welcome .row{display:flex;gap:8px;flex-wrap:wrap}
+#welcome button{border:0;border-radius:999px;padding:8px 14px;font-weight:600;font-size:13px}
+.primary{background:var(--ink);color:#fff}
+.ghost{background:rgba(31,42,64,.07)}
+
+#atlas{position:fixed;inset:0;z-index:10;overflow-y:auto;background:rgba(246,226,214,.9);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+#atlasInner{max-width:1120px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top,0px)) 16px calc(40px + env(safe-area-inset-bottom,0px))}
+#atlas header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+#atlas h2{font-family:var(--f-display);font-size:clamp(28px,5vw,44px);margin:0;letter-spacing:-.02em;line-height:1}
+#atlas .lede{max-width:62ch;font-size:15px;line-height:1.6;color:var(--ink-soft);margin:10px 0 0}
+.take{margin:22px 0 26px;padding:20px 22px;border-radius:20px;background:var(--ink);color:#fdf6ee;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+.take h3{font-family:var(--f-display);margin:0 0 6px;font-size:17px;color:#ffb894}
+.take p{margin:0;font-size:14px;line-height:1.55;opacity:.92}
+.jump{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px}
+.jump a{font-size:12px;font-weight:600;text-decoration:none;color:var(--ink);padding:5px 11px;border-radius:999px;background:var(--glass);border:1px solid var(--glass-edge)}
+.grid{display:flex;flex-direction:column;gap:14px}
+.card{border:1px solid var(--glass-edge);background:var(--glass);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0;scroll-margin-top:16px}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.card-head > div{min-width:0;flex:1 1 260px}
+.card h4{margin:6px 0 4px;font-family:var(--f-display);font-size:24px;letter-spacing:-.01em}
+.card .tg{margin:0;font-size:14px;line-height:1.5;color:var(--ink-soft)}
+.walk{border:0;border-radius:999px;padding:9px 16px;font-weight:600;font-size:13px;background:var(--ink);color:#fff;white-space:nowrap}
+.eras{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;position:relative}
+.era{padding:12px 14px 14px;border-radius:14px;background:rgba(255,255,255,.62);border-top:3px solid var(--c);min-width:0}
+.era .yr{display:block;margin-bottom:4px}
+.era p{margin:0;font-size:13.5px;line-height:1.55}
+.takes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.takes .box{margin:0}
+@media (max-width:900px){ .eras{grid-template-columns:1fr 1fr} }
+@media (max-width:560px){ .eras,.takes{grid-template-columns:1fr} .card{padding:16px} .card h4{font-size:21px} }
+
+#dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:7;display:flex;align-items:center;gap:4px;padding:5px;border-radius:999px;width:min(420px,calc(100vw - 32px))}
+#dock button{border:0;background:transparent;border-radius:999px;height:44px}
+#dock .arrow{width:48px;font-size:20px;background:rgba(31,42,64,.07);flex:none}
+#dockName{flex:1;min-width:0;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 8px}
+#dockName small{font-family:var(--f-mono);font-size:10px;color:var(--ink-soft);margin-right:6px;font-weight:500}
+#hint{bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+
+@media (max-width:640px){
+  #panel{top:auto;left:16px;right:16px;width:auto;bottom:calc(70px + env(safe-area-inset-bottom,0px));max-height:52%;border-radius:20px}
+  #panel.off{transform:translateY(calc(100% + 120px))}
+  #panelNav{display:none}
+  #panelScroll{padding:18px 18px 14px}
+  #panel h2{font-size:24px;padding-right:30px}
+  #brand{padding:8px 12px}
+  #brand h1{font-size:16px}
+  #brand p,.legend{display:none}
+  #welcome{bottom:calc(70px + env(safe-area-inset-bottom,0px));padding:14px 16px}
+  #welcome p{font-size:13px}
+  #hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){#panel,.tag,#welcome{transition:none}}
+</style>
+</head>
+<body>
+
+
+<canvas id="stage" aria-label="A walkable 3D island with fifteen opportunity monuments arranged in a ring"></canvas>
+
+<div id="top">
+  <div id="brand" class="glass">
+    <h1>Horizon Garden</h1>
+    <p>An opportunity map of the future · Oct 2026</p>
+    <div class="legend"><span><i style="background:var(--warm)"></i>You're building here</span><span><i style="background:var(--cool)"></i>On the horizon</span></div>
+  </div>
+  <div id="topBtns">
+    <a class="pill glass" id="vvBack" href="/" target="_top" hidden style="text-decoration:none">← Vibe Verse</a>
+    <button class="pill glass" id="atlasBtn" type="button">Atlas</button>
+  </div>
+</div>
+
+<div id="welcome" class="glass">
+  <h2>Walk the future</h2>
+  <p>Fifteen monuments, one per frontier. Use the arrows below, tap a monument, or walk up to one to see where it stands now and where it goes in 5, 10 and 50 years, plus what I find most interesting and the move I'd make.</p>
+  <div class="row">
+    <button class="primary" id="tourBtn" type="button">Start at the Teammate</button>
+    <button class="ghost" id="welcomeAtlas" type="button">Read the Atlas</button>
+  </div>
+</div>
+
+<aside id="panel" class="glass off" aria-live="polite">
+  <button id="panelClose" type="button" aria-label="Close">×</button>
+  <div id="panelScroll"></div>
+  <div id="panelNav">
+    <button id="prevBtn" type="button">← Prev</button>
+    <button id="nextBtn" type="button">Walk to next →</button>
+  </div>
+</aside>
+
+<div id="hint" class="glass"><b>WASD</b> or <b>tap</b> to walk · <b>drag</b> to look · <b>scroll</b> to zoom</div>
+
+<nav id="dock" class="glass" aria-label="Stations">
+  <button class="arrow" id="dockPrev" type="button" aria-label="Previous station">‹</button>
+  <button id="dockName" type="button">Tap › to start the tour</button>
+  <button class="arrow" id="dockNext" type="button" aria-label="Next station">›</button>
+</nav>
+
+<div id="atlas" hidden>
+  <div id="atlasInner">
+    <header>
+      <div>
+        <h2>The Atlas</h2>
+        <p class="lede">Every frontier on one page. Tap a card to fly there. Warm cards are places you already have something running; cool ones are worth watching and dipping into.</p>
+      </div>
+      <button class="pill glass" id="atlasClose" type="button">Back to the garden</button>
+    </header>
+    <div class="take">
+      <div><h3>Four stations are one product</h3><p>The Teammate, the Robot, the Overnight Agent and the Memory are the same thing seen from four sides: one persistent agent with memory, connectors, permission to act, and sometimes a body. Build the core once and give it many faces.</p></div>
+      <div><h3>Own the layer the rocket can't</h3><p>Models get better every quarter, so don't compete there. The durable stuff is the harness, the memory, the credentials and the change-request loop. That's where OpenClaw, Supermemory and the Hub sit.</p></div>
+      <div><h3>Play beats utility for adoption</h3><p>A bot that battles, a robot that greets your friend, a song you conduct with your arms. The playful versions of these technologies spread first and teach people the serious ones.</p></div>
+    </div>
+    <nav class="jump" id="jump" aria-label="Jump to a frontier"></nav>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const S = [
+{key:"teammate",name:"The 24/7 Teammate",short:"Teammate",fit:true,color:0xff8a5c,
+ tagline:"The company brain: an agent with a seat in Slack, keys to every tool, and a phone number.",
+ now:"Claude Code, Codex and Grok agents ship real code. OpenClaw and Hermes Agent let you own the harness and run it on your own box. Slack and Telegram bots reach any tool through MCP connectors. 1Password's agentic autofill lets an agent use a login without seeing it. ElevenLabs and OpenAI Realtime voice agents answer phones.",
+ y5:"Every company of five or more has a named agent with its own seat, email, phone line and budget. It joins standups, files PRs and calls vendors. Harnesses become interchangeable; the moat is the company's context and permission graph.",
+ y10:"Agents hire and manage other agents. A two-person company runs like a fifty-person one. Passwords give way to scoped, revocable agent passports.",
+ y50:"The org chart is mostly software. A company is a mission, a treasury and a few humans setting taste, spun up and dissolved around single projects.",
+ insight:"The model is a rocket you rent. The harness, memory and permissions are what you own. With an open harness you can swap Claude for Grok overnight and keep the teammate. Identity and secrets are the real switching cost, which makes an AI-native password layer a sleeper opportunity.",
+ move:"Package your OpenClaw setup as a teammate in a box for small businesses like Radish: one Slack install, a connector checklist, a daily digest and a phone line."},
+{key:"hub",name:"The Hub",short:"Hub",fit:true,color:0xffa94d,
+ tagline:"One codebase, one database, every workflow. Software that improves itself on request.",
+ now:"Lovable, Bolt, Replit and v0 generate full-stack apps on Supabase. Cursor, Claude Code and Codex edit the same GitHub repo. Radish Hub already runs a real catering business off one codebase.",
+ y5:"Internal tools improve themselves: someone files a request in plain English, an agent ships a branch, a human taps approve. Vertical hub templates for catering, gyms and clinics sell like Shopify themes.",
+ y10:"Software is regenerated per company and per person. The durable parts are the schema and the data; the UI is rendered fresh. SaaS seats collapse into shared data layers.",
+ y50:"Every organization has a living digital twin that rewrites itself as the org changes. Writing software feels like editing a policy.",
+ insight:"Value moves from the app to the schema and the change loop. Whoever owns request, agent, review, deploy for a vertical owns that vertical.",
+ move:"Turn Radish Hub into Mise for caterers and lead with the request watcher. Keep the Lovable partner track warm so every deploy compounds."},
+{key:"robot",name:"The Robot",short:"Robot",fit:true,color:0xff6f91,
+ tagline:"A personified, always-on companion with a voice, a face and its own computer.",
+ now:"Vibey runs on a Pi with a Mac brain. Reachy Mini from Hugging Face is an open-source desktop robot. 1X NEO and Figure 03 are aiming at homes. Unitree sells humanoids for roughly the price of a used car. Home Assistant and Matter let software flip the lights.",
+ y5:"Desk and home companions with memory and expressive faces are a real category, loved the way pets are. They run lights, music and doors and greet guests by name. Humanoids handle narrow chores in early-adopter homes.",
+ y10:"General home humanoids at car-lease prices do laundry, tidying and prep cooking. Your companion is the face that directs them.",
+ y50:"Robots outnumber people and physical labor is mostly optional. The companion you had as a kid remembers fifty years of you.",
+ insight:"For the next five years personality and memory matter more than dexterity. A charming robot that knows your friends and runs the room is shippable today; folding laundry is not. Its own computer lets it act in the digital world while the body stays simple.",
+ move:"Wire Vibey to Home Assistant, give it a face-state API, and film it greeting a friend by name while it dims the lights."},
+{key:"overnight",name:"The Overnight Agent",short:"Overnight",fit:true,color:0x8a7fd6,
+ tagline:"You sleep, it works. Wake up to a digest, a personal podcast and fresh ideas.",
+ now:"ChatGPT Pulse writes morning briefs overnight. NotebookLM turns documents into podcasts. Claude routines and cron jobs run agents while you sleep. Your daily digest and Dispatch film already do this every morning.",
+ y5:"You wake to a seven-minute show in a voice you like: what changed, three ideas, and drafts waiting for a tap. The agent did hours of research and shipped small fixes.",
+ y10:"Overnight agents run experiments: they launch landing pages, test offers, talk to prospects and report results. Night becomes your most productive shift.",
+ y50:"Your agents explore a thousand versions of your projects in parallel. You wake up and choose which timeline to keep.",
+ insight:"The bottleneck isn't intelligence. It's always-on compute, connectors, and permission to act. Whoever bundles those three for normal people owns the morning.",
+ move:"Productize your digest as wake up to your show: connectors in, audio and one-tap approvals out, delivered through the Digest iOS app."},
+{key:"games",name:"The Vibe Verse",short:"Vibe Verse",fit:true,color:0x34c4a0,
+ tagline:"Craft a bot in seconds, coach it in battle, and visit its world. Your Pokémon, made of software.",
+ now:"Character.AI and quick bot builders like Muse. Stanford's Smallville and a16z's AI Town showed agents living in a town. Roblox and Fortnite run on player creation. Sign in with X hands you a whole personality on day one.",
+ y5:"A bot built from your X profile in thirty seconds battles other bots while you coach. It keeps playing and earning while you're away. Worlds feel like Club Penguin populated by agents.",
+ y10:"Persistent worlds where most players are agents representing real people. Meeting someone's bot is how you meet them. Bot leagues and trading become a sport.",
+ y50:"Your agent is a lifelong creature with a career, a reputation and friends across worlds. Pokémon became real.",
+ insight:"The loop that hooks people is my bot did something while I was gone. Async progress plus a creature you shaped is Tamagotchi plus Pokémon with real intelligence. Rock-paper-scissors is the right opener: instant, readable, fair.",
+ move:"Ship only the thirty-second loop: X login, a bot generated from your posts, one RPS match against a friend's bot, and a shareable result card."},
+{key:"memory",name:"The Memory",short:"Memory",fit:true,color:0x5aa9e6,
+ tagline:"Postgres for the agentic era. What your agents know about you, and who owns it.",
+ now:"Supermemory, Mem0, Zep and Letta store agent memory. Postgres with pgvector is the default substrate. Claude and ChatGPT have built-in memory, and MCP lets memory travel between tools.",
+ y5:"A portable memory layer you own plugs into every agent with scoped permissions. It holds relationships, preferences and episodes, not only facts.",
+ y10:"Memory is the most valuable digital thing you hold, and it ports between models the way a phone number ports between carriers. Companies run on shared org memory instead of wikis.",
+ y50:"Lifelong perfect recall. Your memory graph outlives you as something people can consult.",
+ insight:"Memory is the real lock-in of the agent era, so a user-owned, portable version is a product opportunity and a political one. Forgetting well, with decay and privacy scopes, is as hard as remembering.",
+ move:"Use Vibey's isolated Supermemory space as the case study: one memory, many bodies across robot, Telegram and phone."},
+{key:"vr",name:"Spatial Computing",short:"VR / Glasses",fit:false,color:0x4fc3d6,
+ tagline:"Glasses meet Oculus. Computers that see what you see.",
+ now:"Meta Ray-Ban Display glasses ship with the Neural Band wrist controller. Apple Vision Pro, Samsung Galaxy XR on Android XR, and Quest 3 for games. Snap is aiming Specs at consumers.",
+ y5:"Light AI glasses are common: an assistant that sees what you see, with captions, translation and directions. Headsets stay niche for games and focused work.",
+ y10:"Glasses replace much of phone use, with shared spatial layers over cities. Gesture and voice are the main inputs.",
+ y50:"Neural interfaces blur virtual and real. Being with someone across the world feels physical.",
+ insight:"The first winner is camera plus voice plus AI, not 3D graphics. Wrist EMG input means typing without a keyboard, which lines up directly with your handsfree work and your RSI.",
+ move:"Prototype handsfree gestures as a glasses-style concept: control with your face and wrists. Strong demo with a personal story behind it."},
+{key:"video",name:"Personal Media",short:"Video",fit:true,color:0xf25f5c,
+ tagline:"Video editing turns into directing. Content made for an audience of one.",
+ now:"Sora 2 and Veo 3 make clips with sound. Higgsfield, Runway and Kling handle motion. Remotion makes video from code and ElevenLabs does the voice. Your Dispatch film is generated every day.",
+ y5:"Long personalized pieces are normal: your news, your recap, a friend's birthday movie. Editing means describing what you want.",
+ y10:"Interactive films you step into, where every viewer gets a different cut. Most video watched is made for one person.",
+ y50:"Media is generative and responsive to mood in real time. Human-made becomes a premium label.",
+ insight:"The scarce thing moves from production to taste and context. A pipeline that knows you and makes you a film every day is a new media format.",
+ move:"The Dispatch film plus the clips site is a prototype of a show starring your life. Make a version for a friend group."},
+{key:"mobile",name:"End-User Apps",short:"Mobile",fit:true,color:0x6c8cff,
+ tagline:"iOS got easy. Anyone can put a real app on a phone the same day.",
+ now:"Claude Code and Codex write solid SwiftUI, Xcode has model integration, and Expo plus vibe-coding tools reach TestFlight in hours. You've shipped Vibe Court, Party Deck and Vibe Verse this way.",
+ y5:"Describe an app and it's on your phone that afternoon. Apps for one person or one friend group are normal.",
+ y10:"Apps dissolve into on-device agents that compose UI on the fly. An app becomes a capability plus a vibe.",
+ y50:"Interfaces are generated per moment. Programming is talking to your surroundings.",
+ insight:"Code isn't the bottleneck anymore; distribution and App Review are. Tiny social apps for friend groups are a genre nobody owns yet.",
+ move:"Treat Party Deck and Vibe Court as a genre: ship a social micro-app a week on a shared login and keep what spreads."},
+{key:"money",name:"Private Money",short:"Private $",fit:false,color:0xf4b740,
+ tagline:"Zcash and friends. Digital cash that doesn't broadcast your life.",
+ now:"Zcash shielded transfers with the Zashi wallet saw a big revival in 2025. Monero, plus Railgun and Aztec bringing privacy to Ethereum. US stablecoins got a legal framework with the GENIUS Act.",
+ y5:"Stablecoins are the default rail for internet and agent payments. Privacy becomes a selling point as open-ledger surveillance grows.",
+ y10:"Zero-knowledge proofs let you prove age, KYC or balance without revealing who you are. Agents hold wallets and pay each other per request.",
+ y50:"Money is programmable, global and private by default. National currencies are one option among many.",
+ insight:"Agents will need to pay for things, and they'll need privacy just like people. Private agent-to-agent payments is a nearly empty intersection.",
+ move:"Learn it by building, not trading: let bots tip each other in VibeCoin inside the Vibe Verse."},
+{key:"funding",name:"Effortless Funding",short:"Funding",fit:false,color:0x9bd36a,
+ tagline:"Instant IPOs, onchain shares, raises that happen inside the product.",
+ now:"Pump.fun and Base launch tokens in minutes. Echo (now Coinbase) and Legion run community raises, Wefunder does Reg CF, Robinhood offers tokenized stocks in the EU, and Polymarket and Kalshi price nearly everything.",
+ y5:"Projects raise from fans on day one with compliant tokenized shares. Cap tables live onchain and raises happen inside the product.",
+ y10:"Instant micro-IPOs for small companies and single projects. Continuous funding replaces rounds, and ZK proofs keep investors private while proving compliance.",
+ y50:"Ownership is fluid and fine-grained. People hold slices of thousands of projects and of the agents that run them.",
+ insight:"Funding follows attention. Products with communities, like games and bots, can raise straight from their users and turn players into owners.",
+ move:"Design the Vibe Verse coin economy as practice for a community-owned launch later."},
+{key:"music",name:"Music",short:"Music",fit:true,color:0xd27bff,
+ tagline:"Playback becomes performance. Songs that bend to you.",
+ now:"Suno and Udio generate full songs, and the labels moved from suing to licensing in 2025. Demucs splits stems. Spotify has an AI DJ. You have a remix workspace and the Jamz app.",
+ y5:"Songs adapt live to your pace, mood and friends. Gesture and voice instruments turn anyone into a performer.",
+ y10:"Everyone has an endless personal catalog. Artists license their voices and styles, and live shows mix human and AI players.",
+ y50:"Music is generated for every moment, and human live performance is valued more than ever.",
+ insight:"Stem splitting plus a gesture instrument creates a new format: play the song, for people who can't play an instrument.",
+ move:"Combine Jamz, Demucs and handsfree so waving your arms brings stems in and out. Gesture Jam Night is the launch."},
+{key:"health",name:"Health & Bio",short:"Health",fit:false,color:0x3ccf91,
+ tagline:"From tracking to treating. Biology becomes programmable.",
+ now:"GLP-1 drugs are reshaping obesity care. AlphaFold 3 predicts molecular structure. Casgevy is the first approved CRISPR therapy, and in 2025 a baby received a base-editing treatment designed just for him. Oura, Whoop, Garmin and over-the-counter glucose monitors track everything.",
+ y5:"An AI health agent reads your wearables, labs and symptoms continuously and flags trouble early. AI-designed drugs reach approval.",
+ y10:"Personalized gene therapies are routine for rare disease, and aging is treated as a condition with real drugs in trials.",
+ y50:"Most disease is preventable or curable, healthy lifespan stretches, and injuries like RSI get repaired instead of managed.",
+ insight:"The near-term win isn't cures. It's a patient-side agent that connects data nobody connects today: wearables, labs and your own notes.",
+ move:"Build your own: Garmin via Strava, injury log and gut notes, one weekly summary in your digest."},
+{key:"space",name:"Space",short:"Space",fit:false,color:0x7d8cff,
+ tagline:"Cheap launch turns orbit into a platform.",
+ now:"Starship flight tests chase full reuse. Starlink has millions of users and New Glenn is flying. Artemis II sends astronauts around the Moon. Varda makes drugs in orbit and Vast is building a commercial station.",
+ y5:"Starship-class launch cuts costs sharply, crews return to the lunar surface, and private stations take over from the ISS.",
+ y10:"A permanent lunar base, plausible first crews to Mars, orbital factories and data centers.",
+ y50:"Self-sustaining settlements on Mars, routine space tourism, and resources mined from asteroids.",
+ insight:"Cheap launch makes space a platform like the internet. Software and media people get in through the apps on top: data, compute, and experiences.",
+ move:"Cheapest entry is content and software: a space-today segment in the digest, or a game set aboard Starship."},
+{key:"cars",name:"Self-Driving",short:"Self-Driving",fit:false,color:0x52b8ff,
+ tagline:"The car becomes a room that moves.",
+ now:"Waymo runs driverless rides in SF, LA, Phoenix, Austin and Atlanta, including freeways. Tesla Robotaxi launched in Austin in 2025, Zoox runs in Las Vegas, and Baidu Apollo Go operates at scale in China.",
+ y5:"Robotaxis in most large US cities and true hands-off highway driving in personal cars.",
+ y10:"Most new cars drive themselves. Parking lots shrink and deliveries are autonomous.",
+ y50:"Human driving is a hobby like horseback riding, and cities are redesigned around the freed space.",
+ insight:"Every robotaxi ride is thirty minutes of captive attention in a private room. What people do in that room is an open platform.",
+ move:"Design for the ride: a Party Deck mode or a digest built for a Waymo trip."}
+];
+
+const N = S.length, RING = 27;
+S.forEach((s,i)=>{ const a = i/N*Math.PI*2 - Math.PI/2; const r = RING + (i%2?4:-1); s.x = Math.cos(a)*r; s.z = Math.sin(a)*r; s.i=i; });
+const hex = c => "#"+c.toString(16).padStart(6,"0");
+
+/* Inside the Vibe Verse: offer the way home. */
+try { if (window.top !== window.self) document.getElementById("vvBack").hidden = false; } catch (e) {}
+
+/* ---------- Atlas ---------- */
+const grid = document.getElementById("grid");
+const ERAS = [["now","NOW · 2026","#e0703f"],["y5","2031 · 5 YRS","#d08a2a"],["y10","2036 · 10 YRS","#3b8db3"],["y50","2076 · 50 YRS","#6a5fc0"]];
+const jump = document.getElementById("jump");
+S.forEach(s=>{
+  const a = document.createElement("a"); a.href="#f-"+s.key; a.textContent=s.short;
+  a.onclick = e=>{ e.preventDefault(); document.getElementById("f-"+s.key).scrollIntoView({behavior:"smooth",block:"start"}); };
+  jump.appendChild(a);
+  const b = document.createElement("article");
+  b.className="card"; b.id="f-"+s.key;
+  b.innerHTML = `<div class="card-head"><div>
+      <div class="eyebrow"><span>${String(s.i+1).padStart(2,"0")}</span><span class="chip ${s.fit?"warm":"cool"}">${s.fit?"You're building here":"On the horizon"}</span></div>
+      <h4 style="color:${hex(s.color)};filter:brightness(.7)">${s.name}</h4><p class="tg">${s.tagline}</p>
+    </div><button class="walk" type="button">Walk there in 3D</button></div>
+    <div class="eras">${ERAS.map(([k,l,c])=>`<div class="era" style="--c:${c}"><span class="yr">${l}</span><p>${s[k]}</p></div>`).join("")}</div>
+    <div class="takes"><div class="box"><h3>What I find most interesting</h3><p>${s.insight}</p></div><div class="box move"><h3>Your move</h3><p>${s.move}</p></div></div>`;
+  b.querySelector(".walk").onclick = ()=>{ showAtlas(false); travelTo(s.i); };
+  grid.appendChild(b);
+});
+const atlas = document.getElementById("atlas");
+function showAtlas(v){ atlas.hidden = !v; }
+document.getElementById("atlasBtn").onclick=()=>showAtlas(true);
+document.getElementById("welcomeAtlas").onclick=()=>showAtlas(true);
+document.getElementById("atlasClose").onclick=()=>showAtlas(false);
+addEventListener("keydown",e=>{ if(e.key==="Escape"){ showAtlas(false); closePanel(); }});
+
+/* ---------- Panel ---------- */
+const panel = document.getElementById("panel"), pScroll = document.getElementById("panelScroll");
+let shown = -1, dismissed = -1, cur = -1;
+const dockName = document.getElementById("dockName");
+function openPanel(i){
+  if(shown===i) return; shown=i; cur=i; const s=S[i];
+  dockName.innerHTML = `<small>${String(i+1).padStart(2,"0")}/${N}</small>${s.name}`;
+  pScroll.innerHTML = `<div class="eyebrow"><span>Station ${String(i+1).padStart(2,"0")} / ${N}</span><span class="chip ${s.fit?"warm":"cool"}">${s.fit?"You're building here":"On the horizon"}</span></div>
+  <h2>${s.name}</h2><p class="tagline">${s.tagline}</p>
+  <ol class="tl">
+    <li style="--c:#e0703f"><span class="yr">NOW · 2026</span><p>${s.now}</p></li>
+    <li style="--c:#d08a2a"><span class="yr">5 YEARS · 2031</span><p>${s.y5}</p></li>
+    <li style="--c:#3b8db3"><span class="yr">10 YEARS · 2036</span><p>${s.y10}</p></li>
+    <li style="--c:#6a5fc0"><span class="yr">50 YEARS · 2076</span><p>${s.y50}</p></li>
+  </ol>
+  <div class="box"><h3>What I find most interesting</h3><p>${s.insight}</p></div>
+  <div class="box move"><h3>Your move</h3><p>${s.move}</p></div>`;
+  pScroll.scrollTop=0;
+  document.getElementById("prevBtn").textContent = "← "+S[(i-1+N)%N].short;
+  document.getElementById("nextBtn").textContent = S[(i+1)%N].short+" →";
+  panel.classList.remove("off");
+  document.getElementById("welcome").hidden = true;
+}
+function closePanel(){ if(shown>=0) dismissed=shown; shown=-1; panel.classList.add("off"); }
+document.getElementById("panelClose").onclick=closePanel;
+document.getElementById("prevBtn").onclick=()=>travelTo(((shown<0?0:shown)-1+N)%N);
+document.getElementById("nextBtn").onclick=()=>travelTo(((shown<0?-1:shown)+1)%N);
+document.getElementById("dockPrev").onclick=()=>travelTo(((cur<0?0:cur)-1+N)%N);
+document.getElementById("dockNext").onclick=()=>travelTo((cur+1)%N);
+dockName.onclick=()=>{ if(cur<0) return travelTo(0); if(shown===cur) closePanel(); else { dismissed=-1; openPanel(cur); } };
+document.getElementById("tourBtn").onclick=()=>{ document.getElementById("welcome").hidden=true; travelTo(0); };
+
+/* ---------- 3D world ---------- */
+let travelTo = ()=>{};
+(function(){
+const canvas = document.getElementById("stage");
+let renderer;
+try { renderer = new THREE.WebGLRenderer({canvas, antialias:true}); } catch(e){ showAtlas(true); return; }
+if(!renderer.getContext()){ showAtlas(true); return; }
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+renderer.setPixelRatio(Math.min(2, devicePixelRatio||1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+const HORIZON = new THREE.Color(0xf8d2bf);
+scene.fog = new THREE.Fog(HORIZON, 45, 140);
+const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 400);
+
+// sky dome
+const sky = new THREE.Mesh(new THREE.SphereGeometry(300,32,16), new THREE.ShaderMaterial({
+  side:THREE.BackSide, depthWrite:false, fog:false,
+  uniforms:{top:{value:new THREE.Color(0x86b4dc)},mid:{value:new THREE.Color(0xf3c7d0)},bot:{value:HORIZON}},
+  vertexShader:"varying vec3 p; void main(){ p=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}",
+  fragmentShader:"uniform vec3 top,mid,bot; varying vec3 p; void main(){ float h=p.y; vec3 c = h>0.12? mix(mid,top,smoothstep(0.12,0.7,h)) : mix(bot,mid,smoothstep(-0.05,0.12,h)); gl_FragColor=vec4(c,1.0);}"
+}));
+scene.add(sky);
+// sun disc
+const sun = new THREE.Mesh(new THREE.CircleGeometry(14,48), new THREE.MeshBasicMaterial({color:0xfff1d6, fog:false, transparent:true, opacity:.9}));
+sun.position.set(-120,28,-230); sun.lookAt(0,0,0); scene.add(sun);
+
+scene.add(new THREE.HemisphereLight(0xfff0e6, 0x7c9a7f, 0.85));
+const dl = new THREE.DirectionalLight(0xffe2c4, 0.95);
+dl.castShadow = true; dl.shadow.mapSize.set(2048,2048);
+Object.assign(dl.shadow.camera,{left:-40,right:40,top:40,bottom:-40,near:1,far:150});
+dl.shadow.bias = -0.0008;
+scene.add(dl, dl.target);
+
+const mat = (c,o={}) => new THREE.MeshStandardMaterial(Object.assign({color:c, flatShading:true, roughness:.85, metalness:0}, o));
+
+// island
+const island = new THREE.Mesh(new THREE.CylinderGeometry(48,44,4,72,1), mat(0xa9cf8f));
+island.position.y = -2; island.receiveShadow = true; scene.add(island);
+const rim = new THREE.Mesh(new THREE.CylinderGeometry(48.3,47,1.2,72,1,true), mat(0xe9d3b0));
+rim.position.y=-0.9; scene.add(rim);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(48,72), mat(0xa9cf8f));
+ground.rotation.x = -Math.PI/2; ground.position.y=0.001; ground.receiveShadow = true; scene.add(ground);
+
+// water
+const wGeo = new THREE.PlaneGeometry(400,400,70,70); wGeo.rotateX(-Math.PI/2);
+const water = new THREE.Mesh(wGeo, mat(0x7cc3c9,{roughness:.35, metalness:.1, transparent:true, opacity:.94}));
+water.position.y = -1.1; scene.add(water);
+const wPos = wGeo.attributes.position, wBase = Float32Array.from(wPos.array);
+
+// central pond + Now stone
+const pond = new THREE.Mesh(new THREE.CircleGeometry(5,40), mat(0x8fd0d4,{roughness:.3}));
+pond.rotation.x=-Math.PI/2; pond.position.y=0.02; scene.add(pond);
+const pondRim = new THREE.Mesh(new THREE.TorusGeometry(5.1,.35,6,40), mat(0xe8dcc8)); pondRim.rotation.x=Math.PI/2; pondRim.position.y=.05; scene.add(pondRim);
+const obelisk = new THREE.Mesh(new THREE.OctahedronGeometry(1.1,0), mat(0xfff4e4,{emissive:0xffb48a, emissiveIntensity:.35}));
+obelisk.position.set(0,2.4,0); obelisk.scale.set(1,1.7,1); obelisk.castShadow=true; scene.add(obelisk);
+
+// paths from pond to each station
+const pathMat = mat(0xf0dcbc);
+S.forEach(s=>{
+  const len = Math.hypot(s.x,s.z) - 8;
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(1.6, len), pathMat);
+  p.rotation.x = -Math.PI/2; p.rotation.z = Math.atan2(s.x, s.z);
+  const mid = (5.5 + len/2)/Math.hypot(s.x,s.z);
+  p.position.set(s.x*mid, 0.012, s.z*mid); p.receiveShadow=true; scene.add(p);
+});
+// outer loop path
+const loop = new THREE.Mesh(new THREE.RingGeometry(RING+0.6, RING+2, 96), pathMat);
+loop.rotation.x=-Math.PI/2; loop.position.y=0.011; loop.receiveShadow=true; scene.add(loop);
+
+// seeded random
+let seed = 7; const rnd = ()=>{ seed = (seed*16807)%2147483647; return (seed-1)/2147483646; };
+const clearOf = (x,z,pad)=> Math.hypot(x,z)>8 && S.every(s=>Math.hypot(s.x-x,s.z-z)>pad) && Math.abs(Math.hypot(x,z)-RING-1.3)>2.4;
+
+// trees
+const trunkM = mat(0x9b7653), leafCols=[0x6fae7a,0x83bf86,0x5f9f86,0xf4a7a0,0xf7c6a3];
+for(let k=0;k<170;k++){
+  const r = 9 + rnd()*37, a = rnd()*Math.PI*2, x=Math.cos(a)*r, z=Math.sin(a)*r;
+  if(!clearOf(x,z,6.5)) continue;
+  const g = new THREE.Group(), h = 1+rnd()*1.2;
+  const t = new THREE.Mesh(new THREE.CylinderGeometry(.15,.22,h,5), trunkM); t.position.y=h/2; t.castShadow=true; g.add(t);
+  const blossom = rnd()<.22, col = blossom? leafCols[3+Math.floor(rnd()*2)] : leafCols[Math.floor(rnd()*3)];
+  if(rnd()<.55 && !blossom){
+    const c = new THREE.Mesh(new THREE.ConeGeometry(.9+rnd()*.5, 2.2+rnd()*1.4, 6), mat(col)); c.position.y=h+1; c.castShadow=true; g.add(c);
+  } else {
+    const c = new THREE.Mesh(new THREE.IcosahedronGeometry(.9+rnd()*.6,0), mat(col)); c.position.y=h+.7; c.castShadow=true; g.add(c);
+  }
+  g.position.set(x,0,z); g.rotation.y=rnd()*6; scene.add(g);
+}
+// rocks + flowers
+for(let k=0;k<70;k++){
+  const r = 7+rnd()*40, a=rnd()*Math.PI*2, x=Math.cos(a)*r, z=Math.sin(a)*r;
+  if(!clearOf(x,z,4)) continue;
+  if(rnd()<.5){ const m=new THREE.Mesh(new THREE.DodecahedronGeometry(.3+rnd()*.5,0), mat(0xd9cfc4)); m.position.set(x,.15,z); m.castShadow=true; scene.add(m); }
+  else { const m=new THREE.Mesh(new THREE.SphereGeometry(.16,5,4), mat([0xfff3b0,0xffc4d6,0xffffff][k%3])); m.position.set(x,.2,z); scene.add(m); }
+}
+
+// fireflies
+const FF = 160, ffGeo = new THREE.BufferGeometry(), ffPos = new Float32Array(FF*3), ffSeed=[];
+for(let k=0;k<FF;k++){ const r=5+rnd()*42,a=rnd()*6.28; ffPos[k*3]=Math.cos(a)*r; ffPos[k*3+1]=.5+rnd()*5; ffPos[k*3+2]=Math.sin(a)*r; ffSeed.push(rnd()*10); }
+ffGeo.setAttribute("position", new THREE.BufferAttribute(ffPos,3));
+const ff = new THREE.Points(ffGeo, new THREE.PointsMaterial({color:0xfff2b8, size:.22, transparent:true, opacity:.85, depthWrite:false}));
+scene.add(ff); const ffBase = Float32Array.from(ffPos);
+
+// ---------- station icons ----------
+function icon(s){
+  const g = new THREE.Group(), C = s.color, m = mat(C,{emissive:C, emissiveIntensity:.18}), w = mat(0xfffaf2), d = mat(0x26324a);
+  const add = (geo, mm, x=0,y=0,z=0) => { const o=new THREE.Mesh(geo,mm); o.position.set(x,y,z); o.castShadow=true; g.add(o); return o; };
+  g.userData.spin = [];
+  switch(s.key){
+    case "teammate": { add(new THREE.IcosahedronGeometry(.75,1), m); const orb=new THREE.Group(); [0,2.09,4.19].forEach(a=>{ const o=new THREE.Mesh(new THREE.SphereGeometry(.22,10,8), w); o.position.set(Math.cos(a)*1.4,Math.sin(a)*.35,Math.sin(a)*1.4); orb.add(o); }); g.add(orb); g.userData.spin.push([orb,1.4]); break; }
+    case "hub": { add(new THREE.CylinderGeometry(1,1,.5,6), m); add(new THREE.CylinderGeometry(.75,.75,.5,6), w,0,.6); add(new THREE.CylinderGeometry(.45,.45,.5,6), m,0,1.2); g.position.y=-.5; break; }
+    case "robot": { add(new THREE.SphereGeometry(.85,16,12), w); const v=add(new THREE.SphereGeometry(.62,16,10,0,Math.PI*2,0,1.1), d,0,.05,.32); v.rotation.x=Math.PI/2; add(new THREE.SphereGeometry(.1,8,6), mat(0x7ff3ff,{emissive:0x7ff3ff,emissiveIntensity:1}),-.22,.12,.86); add(new THREE.SphereGeometry(.1,8,6), mat(0x7ff3ff,{emissive:0x7ff3ff,emissiveIntensity:1}),.22,.12,.86); add(new THREE.CylinderGeometry(.03,.03,.5,4), d,0,1.05); add(new THREE.SphereGeometry(.11,8,6), m,0,1.32); break; }
+    case "overnight": { const c=add(new THREE.TorusGeometry(.8,.32,8,24,Math.PI*1.25), m); c.rotation.z=.9; [[1.2,.9],[-.6,1.3],[1.4,-.4]].forEach(([x,y])=>add(new THREE.OctahedronGeometry(.16,0), mat(0xfff2b8,{emissive:0xfff2b8,emissiveIntensity:.8}),x,y)); break; }
+    case "games": { const ico=add(new THREE.IcosahedronGeometry(.8,0), m); g.userData.spin.push([ico,.9]); add(new THREE.BoxGeometry(.4,.4,.4), w,1.1,.5,0).rotation.set(.5,.5,0); add(new THREE.ConeGeometry(.25,.45,4), mat(0xffd166),-1.05,.6,0); break; }
+    case "memory": { [0,.55,1.1].forEach((y,k)=>{ add(new THREE.CylinderGeometry(.85,.85,.42,20), k%2?w:m,0,y-.55); }); break; }
+    case "vr": { const l=add(new THREE.TorusGeometry(.42,.14,8,20), m,-.5,0,0); const r=add(new THREE.TorusGeometry(.42,.14,8,20), m,.5,0,0); add(new THREE.BoxGeometry(.3,.1,.1), d); add(new THREE.CircleGeometry(.4,20), mat(0xbfefff,{transparent:true,opacity:.6,side:THREE.DoubleSide}),-.5,0,0); add(new THREE.CircleGeometry(.4,20), mat(0xbfefff,{transparent:true,opacity:.6,side:THREE.DoubleSide}),.5,0,0); break; }
+    case "video": { const f=add(new THREE.BoxGeometry(1.8,1.2,.18), w); add(new THREE.BoxGeometry(1.5,.9,.2), mat(0x2b3550)); const p=add(new THREE.ConeGeometry(.3,.5,3), m,.05,0,.15); p.rotation.z=-Math.PI/2; break; }
+    case "mobile": { add(new THREE.BoxGeometry(.9,1.7,.14), d); add(new THREE.BoxGeometry(.78,1.5,.15), m,0,0,.01); [[-.18,.4],[.18,.4],[-.18,0],[.18,0]].forEach(([x,y])=>add(new THREE.BoxGeometry(.24,.24,.05), w,x,y,.1)); break; }
+    case "money": { for(let k=0;k<5;k++){ add(new THREE.CylinderGeometry(.7,.7,.16,18), m, (k%2)*.06, k*.18-.4); } add(new THREE.TorusGeometry(.35,.05,6,16), w,0,.42,0).rotation.x=Math.PI/2; break; }
+    case "funding": { [[-.6,.6],[0,1.1],[.6,1.7]].forEach(([x,h])=>add(new THREE.BoxGeometry(.42,h,.42), m,x,h/2-.7)); const a=add(new THREE.ConeGeometry(.22,.4,4), w,.6,1.3); break; }
+    case "music": { const r1=add(new THREE.TorusGeometry(1,.07,6,40), m); const r2=add(new THREE.TorusGeometry(.7,.07,6,32), w); add(new THREE.SphereGeometry(.3,12,8), m); g.userData.spin.push([r1,.7,"x"],[r2,-1.1,"y"]); break; }
+    case "health": { for(let k=0;k<14;k++){ const a=k*.62, y=k*.15-1; add(new THREE.SphereGeometry(.13,8,6), m, Math.cos(a)*.55,y,Math.sin(a)*.55); add(new THREE.SphereGeometry(.13,8,6), w, -Math.cos(a)*.55,y,-Math.sin(a)*.55); } break; }
+    case "space": { add(new THREE.CylinderGeometry(.35,.4,1.5,12), w); add(new THREE.ConeGeometry(.35,.6,12), m,0,1.05); [0,2.09,4.19].forEach(a=>{ const f=add(new THREE.BoxGeometry(.06,.5,.4), m, Math.cos(a)*.38,-.6,Math.sin(a)*.38); f.rotation.y=-a; }); add(new THREE.ConeGeometry(.25,.5,8), mat(0xffb15c,{emissive:0xff8a3c,emissiveIntensity:1}),0,-1.0).rotation.x=Math.PI; g.rotation.z=.25; break; }
+    case "cars": { add(new THREE.BoxGeometry(1.9,.5,1), m); add(new THREE.BoxGeometry(1.1,.4,.9), w,-.1,.45); add(new THREE.CylinderGeometry(.12,.12,.25,10), d,-.1,.78); [[-.6,.5],[.6,.5],[-.6,-.5],[.6,-.5]].forEach(([x,z])=>{ const wh=add(new THREE.CylinderGeometry(.24,.24,.18,12), d,x,-.28,z); wh.rotation.x=Math.PI/2; }); break; }
+  }
+  return g;
+}
+
+const pickables = [], stations = [];
+S.forEach(s=>{
+  const root = new THREE.Group(); root.position.set(s.x,0,s.z);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.9,.35,8), mat(0xf4ece2)); base.position.y=.17; base.receiveShadow=true; base.castShadow=true; root.add(base);
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(.55,.8,1.2,8), mat(0xe9dfd2)); plinth.position.y=.9; plinth.castShadow=true; root.add(plinth);
+  const ringC = s.fit? 0xff8a5c : 0x4f9fc4;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(2.75,.08,6,48), new THREE.MeshBasicMaterial({color:ringC, transparent:true, opacity:.75}));
+  ring.rotation.x=Math.PI/2; ring.position.y=.38; root.add(ring);
+  const ic = icon(s); ic.position.y += 3.1; root.add(ic);
+  const hit = new THREE.Mesh(new THREE.CylinderGeometry(2.9,2.9,5,8), new THREE.MeshBasicMaterial({visible:false})); hit.position.y=2.5; hit.userData.idx=s.i; root.add(hit); pickables.push(hit);
+  root.rotation.y = Math.atan2(-s.x, -s.z); // icons face the center
+  scene.add(root);
+  const tag = document.createElement("div"); tag.className="tag"; tag.innerHTML=`<small>${String(s.i+1).padStart(2,"0")}</small>${s.short}`; document.body.appendChild(tag);
+  stations.push({root, ic, ring, tag, baseY: ic.position.y});
+});
+const nowTag = document.createElement("div"); nowTag.className="tag"; nowTag.innerHTML="<small>NOW</small>You are here"; document.body.appendChild(nowTag);
+
+// ---------- avatar (Vibey-ish) ----------
+const av = new THREE.Group();
+const body = new THREE.Mesh(new THREE.SphereGeometry(.6,20,14), mat(0xfffaf3,{flatShading:false, roughness:.5})); body.position.y=.75; body.castShadow=true; av.add(body);
+const visor = new THREE.Mesh(new THREE.SphereGeometry(.47,20,10,0,Math.PI*2,0,1.05), mat(0x26324a,{flatShading:false, roughness:.3})); visor.rotation.x=Math.PI/2; visor.position.set(0,.82,.2); av.add(visor);
+const eyeM = new THREE.MeshBasicMaterial({color:0x8ff6ff});
+const eL = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6), eyeM), eR = eL.clone(); eL.position.set(-.15,.88,.62); eR.position.set(.15,.88,.62); av.add(eL,eR);
+const ant = new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,.35,4), mat(0x26324a)); ant.position.y=1.45; av.add(ant);
+const bulb = new THREE.Mesh(new THREE.SphereGeometry(.09,8,6), new THREE.MeshBasicMaterial({color:0xff8a5c})); bulb.position.y=1.65; av.add(bulb);
+const shadowBlob = new THREE.Mesh(new THREE.CircleGeometry(.55,20), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:.12})); shadowBlob.rotation.x=-Math.PI/2; shadowBlob.position.y=.02; av.add(shadowBlob);
+av.position.set(0,0,8.5); av.rotation.y = Math.PI; scene.add(av);
+
+// marker for tap target
+const marker = new THREE.Mesh(new THREE.RingGeometry(.35,.5,24), new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:.8}));
+marker.rotation.x=-Math.PI/2; marker.position.y=.03; marker.visible=false; scene.add(marker);
+
+// ---------- controls ----------
+let yaw = 0, dist = innerWidth<640 ? 24 : 19, camPos = new THREE.Vector3(), target = null, targetStation = -1;
+const keys = {};
+addEventListener("keydown", e=>{ if(atlas.hidden===false) return; keys[e.key.toLowerCase()] = true; if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault(); });
+addEventListener("keyup", e=>{ keys[e.key.toLowerCase()] = false; });
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let down = null;
+canvas.addEventListener("pointerdown", e=>{ down = {x:e.clientX, y:e.clientY, yaw, moved:false}; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointermove", e=>{ if(!down) return; const dx=e.clientX-down.x; if(Math.abs(dx)+Math.abs(e.clientY-down.y)>6) down.moved=true; if(down.moved) yaw = down.yaw - dx*0.006; });
+canvas.addEventListener("pointerup", e=>{
+  if(down && !down.moved){
+    ndc.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1); ray.setFromCamera(ndc, camera);
+    const hs = ray.intersectObjects(pickables);
+    if(hs.length){ travelTo(hs[0].object.userData.idx); }
+    else { const hg = ray.intersectObject(ground); if(hg.length){ target = hg[0].point.clone(); target.y=0; targetStation=-1; marker.position.set(target.x,.03,target.z); marker.visible=true; } }
+  }
+  down = null;
+});
+canvas.addEventListener("wheel", e=>{ e.preventDefault(); dist = Math.min(34, Math.max(10, dist + e.deltaY*0.02)); }, {passive:false});
+
+travelTo = (i)=>{
+  const s = S[i]; const len = Math.hypot(s.x,s.z); const k = (len-4.2)/len;
+  target = new THREE.Vector3(s.x*k, 0, s.z*k); targetStation = i; marker.visible=false;
+  if(dismissed===i) dismissed=-1;
+  openPanel(i);
+};
+
+function resize(){ renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); }
+addEventListener("resize", resize); resize();
+
+// ---------- loop ----------
+const clock = new THREE.Clock(), tmp = new THREE.Vector3(), proj = new THREE.Vector3();
+let walkPhase = 0;
+function frame(){
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, amp = reduce? .3 : 1;
+  // movement
+  const fwd = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)), right = new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  const mv = new THREE.Vector3();
+  if(keys["w"]||keys["arrowup"]) mv.add(fwd); if(keys["s"]||keys["arrowdown"]) mv.sub(fwd);
+  if(keys["d"]||keys["arrowright"]) mv.add(right); if(keys["a"]||keys["arrowleft"]) mv.sub(right);
+  if(keys["q"]) yaw += dt*1.6; if(keys["e"]) yaw -= dt*1.6;
+  let speed = 0;
+  if(mv.lengthSq()>0){ target=null; targetStation=-1; marker.visible=false; mv.normalize(); speed=9; }
+  else if(target){ mv.subVectors(target, av.position); mv.y=0; const L=mv.length(); if(L<.15){ target=null; marker.visible=false; } else { mv.normalize(); speed = Math.min(11, 2+L*1.4); } }
+  if(speed>0){
+    av.position.addScaledVector(mv, speed*dt);
+    const r = Math.hypot(av.position.x, av.position.z); if(r>45){ av.position.x*=45/r; av.position.z*=45/r; }
+    const want = Math.atan2(mv.x, mv.z); let dA = want-av.rotation.y; dA = Math.atan2(Math.sin(dA),Math.cos(dA)); av.rotation.y += dA*Math.min(1, dt*10);
+    walkPhase += dt*speed*1.6;
+    // gentle auto-follow of camera behind the walker when tapping
+    if(target && !down){ const behind = Math.atan2(-mv.x,-mv.z); let dy = behind - yaw; dy=Math.atan2(Math.sin(dy),Math.cos(dy)); yaw += dy*dt*0.8; }
+  }
+  body.position.y = .75 + (speed>0? Math.abs(Math.sin(walkPhase))*.12 : Math.sin(t*2)*.03*amp);
+  visor.position.y = body.position.y + .07; eL.position.y = eR.position.y = body.position.y + .13;
+  ant.position.y = body.position.y + .7; bulb.position.y = body.position.y + .9;
+  const blink = (t%4)<.12 ? .15 : 1; eL.scale.y = eR.scale.y = blink;
+
+  // camera
+  tmp.set(av.position.x + Math.sin(yaw)*dist, dist*.58, av.position.z + Math.cos(yaw)*dist);
+  camPos.lerp(tmp, camPos.lengthSq()===0 ? 1 : Math.min(1, dt*4));
+  camera.position.copy(camPos); camera.lookAt(av.position.x, 1.6, av.position.z);
+  dl.position.set(av.position.x+30, 45, av.position.z+18); dl.target.position.copy(av.position);
+
+  // water
+  for(let k=0;k<wPos.count;k++){ const x=wBase[k*3], z=wBase[k*3+2]; wPos.array[k*3+1] = (Math.sin(x*.12+t*.8)+Math.cos(z*.15+t*.6))*.18*amp; }
+  wPos.needsUpdate = true; wGeo.computeVertexNormals();
+
+  // fireflies
+  for(let k=0;k<FF;k++){ const sd=ffSeed[k]; ffPos[k*3]=ffBase[k*3]+Math.sin(t*.4+sd)*.8*amp; ffPos[k*3+1]=ffBase[k*3+1]+Math.sin(t*.7+sd*2)*.5*amp; ffPos[k*3+2]=ffBase[k*3+2]+Math.cos(t*.35+sd)*.8*amp; }
+  ffGeo.attributes.position.needsUpdate = true;
+  obelisk.rotation.y = t*.3; obelisk.position.y = 2.4 + Math.sin(t*1.2)*.15*amp;
+
+  // stations
+  let near = -1, nearD = 1e9;
+  stations.forEach((st,i)=>{
+    const s=S[i];
+    st.ic.position.y = st.baseY + Math.sin(t*1.1+i)*.18*amp;
+    st.ic.rotation.y = t*.35*amp + i;
+    st.ic.userData.spin.forEach(([o,sp,ax])=>{ o.rotation[ax||"y"] += dt*sp*amp; });
+    const d = Math.hypot(av.position.x-s.x, av.position.z-s.z);
+    if(d<nearD){ nearD=d; near=i; }
+    const pulse = d<6 ? 1+Math.sin(t*4)*.04 : 1; st.ring.scale.set(pulse,pulse,pulse); st.ring.material.opacity = d<6 ? .95 : .55;
+    // label
+    proj.set(s.x, st.baseY+2.2, s.z).project(camera);
+    const vis = proj.z<1 && Math.abs(proj.x)<1.2 && Math.abs(proj.y)<1.2;
+    const camD = camera.position.distanceTo(st.root.position);
+    st.tag.style.opacity = vis ? Math.max(0, Math.min(1, (70-camD)/20)) : 0;
+    st.tag.style.transform = `translate(${(proj.x*.5+.5)*innerWidth}px, ${(-proj.y*.5+.5)*innerHeight}px) translate(-50%,-100%)`;
+    st.tag.classList.toggle("near", d<6);
+  });
+  proj.set(0,4.4,0).project(camera);
+  nowTag.style.opacity = proj.z<1 ? 1 : 0;
+  nowTag.style.transform = `translate(${(proj.x*.5+.5)*innerWidth}px, ${(-proj.y*.5+.5)*innerHeight}px) translate(-50%,-100%)`;
+
+  // proximity panel
+  if(nearD < 6.2){ if(near!==dismissed && (targetStation===-1 || targetStation===near)) openPanel(near); }
+  else { if(dismissed>=0 && S[dismissed] && Math.hypot(av.position.x-S[dismissed].x, av.position.z-S[dismissed].z)>7) dismissed=-1;
+         if(shown>=0 && targetStation!==shown && Math.hypot(av.position.x-S[shown].x, av.position.z-S[shown].z)>9){ shown=-1; panel.classList.add("off"); } }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
