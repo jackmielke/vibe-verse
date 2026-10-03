@@ -54,3 +54,6 @@ verify_jwt = false
 
 [functions.delete-account]
 verify_jwt = false
+
+[functions.bot-forge]
+verify_jwt = false

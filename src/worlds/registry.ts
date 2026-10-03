@@ -38,6 +38,7 @@ import { IOS_APP } from "../lib/iosApp.ts";
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
+  "bots",                // …then the thirty-second loop: your handle becomes a bot that fights
   "oni",                 // the room game: everybody's phone, one square, zombie tag
   "magician",            // …then the valley you talk to, which rebuilds itself as you speak
   "better-fortnite",     // …then the battle royale with everything in it
@@ -148,6 +149,21 @@ export interface WorldEntry {
  * that reorders itself is a list nobody can build muscle memory for.
  */
 const WORLDS_RAW: WorldEntry[] = [
+  {
+    key: "bots",
+    route: "/bots",
+    aliases: ["/bot"],
+    name: "Bot Battle",
+    emoji: "🥊",
+    kind: "game",
+    blurb:
+      "Type your X handle and get a battle bot built from your vibe in seconds. Coach it through a rock-paper-scissors match, share the result card, and dare a friend's bot.",
+    status: "Playable — phone or laptop, challenge links",
+    accent: "#ffb23f",
+    featured: true,
+    source: "src/bots + src/pages/Bots.tsx + supabase/functions/bot-forge",
+    nav: true,
+  },
   {
     key: "oni",
     route: "/zombies",

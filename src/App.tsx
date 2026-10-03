@@ -127,6 +127,7 @@ const Mars = lazy(() => import("./pages/Mars.tsx"));
 const Phangan = lazy(() => import("./pages/Phangan.tsx"));
 const CoastRoad = lazy(() => import("./pages/CoastRoad.tsx"));
 const Beck = lazy(() => import("./pages/Beck.tsx"));
+const Bots = lazy(() => import("./pages/Bots.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -235,6 +236,9 @@ const App = () => (
               names, because there is no version of this where two different
               grids of the same worlds stay in agreement. */}
           <Route path="/" element={<Game />} />
+          {/* Bot Battle: X handle -> bot -> one RPS match -> share card. */}
+          <Route path="/bots" element={<Bots />} />
+          <Route path="/bot" element={<Bots />} />
           {/* Old Edge Esmeralda splash, kept reachable for those who want it. */}
           <Route path="/welcome" element={<Index />} />
           {/* Mario-Kart-style character + vehicle picker. */}
