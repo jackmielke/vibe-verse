@@ -342,7 +342,9 @@ const hex = c => "#"+c.toString(16).padStart(6,"0");
 
 /* Inside the Vibe Verse: offer the way home. */
 const EMBEDDED = (()=>{ try { return window.top !== window.self; } catch(e){ return true; } })();
-if (EMBEDDED) document.getElementById("vvBack").hidden = false;
+/* ?standalone=1: framed on Jack's own domain (horizon.jackmielke.com), no way "home" to the Vibe Verse. */
+const STANDALONE = new URLSearchParams(location.search).has("standalone");
+if (EMBEDDED && !STANDALONE) document.getElementById("vvBack").hidden = false;
 
 /* ---------- Edits ----------
    The text above is the default. Inside the Vibe Verse the host page sends

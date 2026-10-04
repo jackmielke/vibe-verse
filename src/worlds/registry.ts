@@ -38,6 +38,7 @@ import { IOS_APP } from "../lib/iosApp.ts";
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
+  "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
   "bots",                // …then the thirty-second loop: your handle becomes a bot that fights
   "oni",                 // the room game: everybody's phone, one square, zombie tag
   "magician",            // …then the valley you talk to, which rebuilds itself as you speak
@@ -47,7 +48,6 @@ const ORDER: string[] = [
   "blob-battle",         // …and the guest game that plays the same way
   "coil",                // …and its twin, where being big is the problem
   "empyrean",            // the new one: a glass city on a rock, and a jetpack
-  "horizon",             // …and the garden where the future stands in a ring
   "dipsea",              // this week: Mill Valley to Stinson Beach, on foot
   "airship",             // …and the airship that flew over the East Bay
   "developer-trail",     // …and the case study that wanted to be Oregon Trail

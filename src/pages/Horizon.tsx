@@ -35,6 +35,8 @@ const SIGNAL_FIELDS = "id, station_key, day, headline, why, era, direction, url,
 export default function Horizon() {
   useWorldStamp("/horizon", "Horizon Garden");
   const frame = useRef<HTMLIFrameElement>(null);
+  // horizon.jackmielke.com frames this page with ?embed=1: no Vibe Verse chrome, inside or out
+  const standalone = new URLSearchParams(window.location.search).get("embed") === "1";
 
   useEffect(() => {
     const post = (msg: unknown) => frame.current?.contentWindow?.postMessage(msg, window.location.origin);
@@ -77,7 +79,7 @@ export default function Horizon() {
     <iframe
       ref={frame}
       title="Horizon Garden"
-      src="/worlds/horizon/index.html"
+      src={`/worlds/horizon/index.html${standalone ? "?standalone=1" : ""}`}
       className="fixed inset-0 h-full w-full border-0"
       style={{ background: "#f6d6c6" }}
     />
