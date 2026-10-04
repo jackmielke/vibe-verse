@@ -15,6 +15,11 @@
  * writable by admins via `is_admin()`). The frame says `horizon:ready`; this
  * page answers with the saved edits and whether the viewer is an admin, and
  * writes whatever `horizon:save` sends back. The frame never touches Supabase.
+ *
+ * Signals: `horizon_signals` holds dated evidence per station (the daily digest
+ * files them; Jack edits, hides or adds them in Edit mode). They ride along in
+ * `horizon:init`; `horizon:signal` upserts one and `horizon:signal-delete` removes it.
+ * If the table is missing the garden simply has no signals.
  */
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,7 +27,10 @@ import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 type Row = { key: string; fields: Record<string, unknown> };
 // Not in the generated types yet; keep the cast in one place.
-const stations = () => (supabase as unknown as { from: (t: string) => any }).from("horizon_stations");
+const table = (t: string) => (supabase as unknown as { from: (t: string) => any }).from(t);
+const stations = () => table("horizon_stations");
+const signals = () => table("horizon_signals");
+const SIGNAL_FIELDS = "id, station_key, day, headline, why, era, direction, url, source, hidden";
 
 export default function Horizon() {
   useWorldStamp("/horizon", "Horizon Garden");
@@ -32,22 +40,31 @@ export default function Horizon() {
     const post = (msg: unknown) => frame.current?.contentWindow?.postMessage(msg, window.location.origin);
 
     const init = async () => {
-      const [{ data: rows }, { data: admin }] = await Promise.all([
+      const [{ data: rows }, { data: sigs }, { data: admin }] = await Promise.all([
         stations().select("key, fields") as Promise<{ data: Row[] | null }>,
+        signals().select(SIGNAL_FIELDS).order("day", { ascending: false }).then((r: { data: unknown[] | null }) => r, () => ({ data: [] })),
         supabase.rpc("is_admin").then((r) => r, () => ({ data: false })),
       ]);
       const overrides: Record<string, unknown> = {};
       (rows ?? []).forEach((r) => { overrides[r.key] = r.fields; });
-      post({ type: "horizon:init", overrides, canEdit: admin === true });
+      post({ type: "horizon:init", overrides, signals: sigs ?? [], canEdit: admin === true });
     };
 
     const onMessage = async (e: MessageEvent) => {
       if (e.origin !== window.location.origin || e.source !== frame.current?.contentWindow) return;
-      const d = e.data as { type?: string; key?: string; fields?: Record<string, unknown> };
+      const d = e.data as { type?: string; key?: string; id?: string; fields?: Record<string, unknown>; signal?: Record<string, unknown> };
       if (d?.type === "horizon:ready") init();
       if (d?.type === "horizon:save" && typeof d.key === "string") {
         const { error } = await stations().upsert({ key: d.key, fields: d.fields ?? {}, updated_at: new Date().toISOString() });
         post({ type: "horizon:saved", key: d.key, ok: !error, error: error?.message });
+      }
+      if (d?.type === "horizon:signal" && d.signal) {
+        const { data, error } = await signals().upsert({ ...d.signal, updated_at: new Date().toISOString() }).select(SIGNAL_FIELDS).single();
+        post({ type: "horizon:signal-saved", ok: !error, error: error?.message, signal: data, tempId: d.id });
+      }
+      if (d?.type === "horizon:signal-delete" && typeof d.id === "string") {
+        const { error } = await signals().delete().eq("id", d.id);
+        post({ type: "horizon:saved", ok: !error, error: error?.message });
       }
     };
 

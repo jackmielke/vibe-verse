@@ -74,6 +74,19 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 .box.notes .editable:empty::before{content:"Your own thoughts on this one…";color:#b39a5c}
 .reset{margin-top:12px;border:0;background:none;color:var(--ink-soft);font-size:12px;text-decoration:underline;padding:0}
 #toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(16px + env(safe-area-inset-top,0px));z-index:12;padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:600}
+.sigs{margin-top:14px}
+.sigs>h3{margin:0 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft)}
+.sig{border-left:3px solid var(--sc,#9aa);padding:6px 0 6px 10px;margin:0 0 8px}
+.sig.hid{opacity:.45}
+.sig .meta{font-size:11px;color:var(--ink-soft);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sig .hl{margin:2px 0 0;font-size:14px;font-weight:600;line-height:1.4}
+.sig .hl a{color:inherit}
+.sig .why{margin:2px 0 0;font-size:13px;line-height:1.5;color:var(--ink-soft)}
+.sig select,.sig input{font:inherit;font-size:11px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:1px 4px}
+.sig input{width:100%;margin-top:4px}
+.sig .x{border:0;background:none;color:var(--ink-soft);font-size:11px;text-decoration:underline;padding:0}
+.addsig{border:1px dashed var(--line);background:none;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--ink-soft)}
+.latest{margin:10px 0 0;font-size:12.5px;color:var(--ink-soft)}
 #panelNav{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
 #panelNav button{border:1px solid var(--line);background:rgba(255,255,255,.7);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -340,6 +353,15 @@ const EDITABLE = ["name","tagline","now","y5","y10","y50","insight","move","note
 const DEFAULTS = {}; S.forEach(s=>{ DEFAULTS[s.key] = {}; EDITABLE.forEach(f=>DEFAULTS[s.key][f] = s[f]||""); s.faves = s.faves||[]; });
 const overrides = {};
 let canEdit = false, editing = false;
+/* Signals: dated evidence per station, filed by the daily digest, editable here.
+   Each one grows a flower at its station. */
+let SIG = [], growFlowers = ()=>{};
+const DIR = {sooner:["⏩ sooner","#2f9e6e"], later:["⏪ later","#c2573a"], confirms:["✓ on track","#6a7fa8"]};
+const ERA_L = {now:"Now",y5:"2031",y10:"2036",y50:"2076"};
+const sigsFor = key => SIG.filter(g=>g.station_key===key && (editing || !g.hidden));
+const fmtDay = d => { try { return new Date(d+"T12:00:00").toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); } catch(e){ return d; } };
+const safeUrl = u => /^https?:\/\//i.test(u||"") ? u : "";
+function saveSignal(g){ window.parent.postMessage({type:"horizon:signal", id:g.id, signal:{...(g.id.startsWith("tmp-")?{}:{id:g.id}), station_key:g.station_key, day:g.day, headline:g.headline, why:g.why, era:g.era, direction:g.direction, url:g.url||null, source:g.source||"jack", hidden:!!g.hidden}}, location.origin); toast("Saving…"); }
 const esc = t => String(t??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const para = t => esc(t).replace(/\n/g,"<br>");
 function applyOverride(key, fields){
@@ -359,8 +381,13 @@ addEventListener("message", e=>{
   const d = e.data;
   if(d.type==="horizon:init"){
     Object.entries(d.overrides||{}).forEach(([k,f])=>applyOverride(k,f));
+    SIG = Array.isArray(d.signals) ? d.signals : []; growFlowers();
     canEdit = !!d.canEdit; document.getElementById("editBtn").hidden = !canEdit;
     renderAtlas(); if(shown>=0){ const i=shown; shown=-1; openPanel(i); }
+  }
+  if(d.type==="horizon:signal-saved"){
+    if(d.ok && d.signal){ const k = SIG.findIndex(g=>g.id===d.tempId || g.id===d.signal.id); if(k>=0) Object.assign(SIG[k], d.signal); else SIG.unshift(d.signal); growFlowers(); renderAtlas(); }
+    toast(d.ok ? "Saved" : ("Couldn't save: "+(d.error||"try again")));
   }
   if(d.type==="horizon:saved") toast(d.ok ? "Saved" : ("Couldn't save: "+(d.error||"try again")));
 });
@@ -379,6 +406,30 @@ const ERAS = [["now","NOW · 2026","#e0703f"],["y5","2031 · 5 YRS","#d08a2a"],[
 const jump = document.getElementById("jump");
 const fav = (s,f) => s.faves.includes(f) ? ' class="fave"' : "";
 function notesBox(s){ return s.notes ? `<div class="box notes"><h3>Jack's notes</h3><p>${para(s.notes)}</p></div>` : ""; }
+function latestLine(s){
+  const l = sigsFor(s.key).filter(g=>!g.hidden); if(!l.length) return "";
+  return `<p class="latest">🌼 ${l.length} signal${l.length>1?"s":""} · latest ${fmtDay(l[0].day)}: ${esc(l[0].headline)}</p>`;
+}
+function sigsHTML(s){
+  const list = sigsFor(s.key);
+  if(!list.length && !editing) return "";
+  const row = g => {
+    const [dl,dc] = DIR[g.direction]||DIR.confirms, u = safeUrl(g.url);
+    if(!editing) return `<div class="sig" style="--sc:${dc}"><div class="meta"><span>${fmtDay(g.day)}</span><span>· ${dl} for ${ERA_L[g.era]||"2031"}</span></div>
+      <p class="hl">${u?`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(g.headline)}</a>`:esc(g.headline)}</p>${g.why?`<p class="why">${para(g.why)}</p>`:""}</div>`;
+    const opt = (o,v,l)=>`<option value="${v}"${o===v?" selected":""}>${l}</option>`;
+    return `<div class="sig${g.hidden?" hid":""}" style="--sc:${dc}" data-sig="${esc(g.id)}"><div class="meta">
+        <input type="date" data-s="day" value="${esc(g.day)}" style="width:auto;margin:0">
+        <select data-s="direction">${Object.entries(DIR).map(([v,[l]])=>opt(g.direction,v,l)).join("")}</select> for
+        <select data-s="era">${Object.entries(ERA_L).map(([v,l])=>opt(g.era,v,l)).join("")}</select>
+        <button type="button" class="x" data-act="hide">${g.hidden?"Show":"Hide"}</button>
+        <button type="button" class="x" data-act="del">Delete</button></div>
+      <p class="hl editable" contenteditable="plaintext-only" data-s="headline">${esc(g.headline)}</p>
+      <p class="why editable" contenteditable="plaintext-only" data-s="why">${para(g.why)}</p>
+      <input type="url" data-s="url" placeholder="Source link" value="${esc(g.url||"")}"></div>`;
+  };
+  return `<div class="sigs"><h3>Signals${list.length?` · ${list.length}`:""}</h3>${list.map(row).join("")}${editing?'<button type="button" class="addsig" id="addSig">+ Add a signal</button>':""}</div>`;
+}
 function renderAtlas(){
   jump.innerHTML = ""; grid.innerHTML = "";
   S.forEach(s=>{
@@ -393,7 +444,7 @@ function renderAtlas(){
       </div><button class="walk" type="button">Walk there in 3D</button></div>
       <div class="eras">${ERAS.map(([k,l,c])=>`<div class="era" style="--c:${c}"><span class="yr">${l}</span><p${fav(s,k)}>${para(s[k])}</p></div>`).join("")}</div>
       <div class="takes"><div class="box"><h3>What I find most interesting</h3><p${fav(s,"insight")}>${para(s.insight)}</p></div><div class="box move"><h3>Your move</h3><p${fav(s,"move")}>${para(s.move)}</p></div></div>
-      ${notesBox(s)}`;
+      ${notesBox(s)}${latestLine(s)}`;
     b.querySelector(".walk").onclick = ()=>{ showAtlas(false); travelTo(s.i); };
     grid.appendChild(b);
   });
@@ -433,6 +484,7 @@ function openPanel(i){
   <div class="box"><h3>What I find most interesting</h3>${field(s,"insight")}</div>
   <div class="box move"><h3>Your move</h3>${field(s,"move")}</div>
   ${notes}
+  ${sigsHTML(s)}
   ${editing && overrides[s.key] ? '<button type="button" class="reset" id="resetBtn">Restore my original text for this station</button>' : ""}`;
   pScroll.scrollTop=0;
   if(editing){
@@ -449,6 +501,30 @@ function openPanel(i){
     pScroll.querySelectorAll("[data-heart]").forEach(btn=>{
       btn.onclick = ()=>{ const f=btn.dataset.heart; s.faves = s.faves.includes(f) ? s.faves.filter(x=>x!==f) : s.faves.concat(f); save(s,{faves:s.faves}); shown=-1; openPanel(i); renderAtlas(); };
     });
+    const reopen = ()=>{ shown=-1; openPanel(i); renderAtlas(); growFlowers(); };
+    pScroll.querySelectorAll("[data-sig]").forEach(box=>{
+      const g = SIG.find(x=>x.id===box.dataset.sig); if(!g) return;
+      box.querySelectorAll("[data-s]").forEach(el=>{
+        const ev = el.isContentEditable ? "blur" : "change";
+        el.addEventListener(ev, ()=>{
+          const f = el.dataset.s, v = el.isContentEditable ? el.innerText.trim() : el.value.trim();
+          if(v === (g[f]||"")) return;
+          if(f==="headline" && !v){ el.textContent = g.headline; return; }
+          g[f] = v; saveSignal(g); if(f!=="headline" && f!=="why" && f!=="url") reopen(); else renderAtlas();
+        });
+      });
+      box.querySelector('[data-act="hide"]').onclick = ()=>{ g.hidden = !g.hidden; saveSignal(g); reopen(); };
+      box.querySelector('[data-act="del"]').onclick = ()=>{
+        if(!confirm("Delete this signal for good? Hide keeps it out of sight instead.")) return;
+        SIG = SIG.filter(x=>x!==g); if(!g.id.startsWith("tmp-")) window.parent.postMessage({type:"horizon:signal-delete", id:g.id}, location.origin); reopen();
+      };
+    });
+    const as = document.getElementById("addSig");
+    if(as) as.onclick = ()=>{
+      const g = {id:"tmp-"+Date.now(), station_key:s.key, day:new Date().toISOString().slice(0,10), headline:"New signal", why:"", era:"y5", direction:"confirms", url:"", source:"jack", hidden:false};
+      SIG.unshift(g); saveSignal(g); reopen();
+      const h = pScroll.querySelector(`[data-sig="${g.id}"] .hl`); if(h){ h.focus(); document.getSelection().selectAllChildren(h); }
+    };
     const rb = document.getElementById("resetBtn");
     if(rb) rb.onclick = ()=>{ Object.assign(s, DEFAULTS[s.key]); s.faves=[]; overrides[s.key] = {}; save(s, {}); shown=-1; openPanel(i); renderAtlas(); };
   }
@@ -612,6 +688,26 @@ S.forEach(s=>{
   const tag = document.createElement("div"); tag.className="tag"; tag.innerHTML=`<small>${String(s.i+1).padStart(2,"0")}</small>${s.short}`; document.body.appendChild(tag);
   stations.push({root, ic, ring, tag, baseY: ic.position.y});
 });
+// ---------- signal flowers: one per signal, ringed around its station ----------
+const flowerBeds = stations.map((st,i)=>{ const g = new THREE.Group(); g.position.set(S[i].x,0,S[i].z); scene.add(g); return g; });
+const stemM = mat(0x5f9a63), centerM = mat(0xffd36b);
+growFlowers = ()=>{
+  flowerBeds.forEach((bed,i)=>{
+    while(bed.children.length) bed.remove(bed.children[0]);
+    sigsFor(S[i].key).filter(g=>!g.hidden).slice(0,40).forEach((g,k)=>{
+      const a = k*2.399 + i, r = 3.6 + (k%3)*.7 + Math.floor(k/12)*.8;
+      const f = new THREE.Group(); f.position.set(Math.cos(a)*r, 0, Math.sin(a)*r);
+      const h = 1.1 + ((k*37)%10)/14;
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(.05,.07,h,5), stemM); stem.position.y=h/2; f.add(stem);
+      const col = new THREE.Color((DIR[g.direction]||DIR.confirms)[1]).lerp(new THREE.Color(0xffffff), .25);
+      const pm = mat(col.getHex());
+      for(let p=0;p<5;p++){ const pt = new THREE.Mesh(new THREE.SphereGeometry(.26,7,5), pm); pt.scale.set(1,.45,1); const pa=p/5*Math.PI*2; pt.position.set(Math.cos(pa)*.3, h, Math.sin(pa)*.3); pt.castShadow=true; f.add(pt); }
+      const c = new THREE.Mesh(new THREE.SphereGeometry(.17,7,5), centerM); c.position.y=h+.05; f.add(c);
+      f.userData.sway = k; bed.add(f);
+    });
+  });
+};
+growFlowers();
 const nowTag = document.createElement("div"); nowTag.className="tag"; nowTag.innerHTML="<small>NOW</small>You are here"; document.body.appendChild(nowTag);
 
 // ---------- avatar (Vibey-ish) ----------
@@ -696,6 +792,8 @@ function frame(){
   for(let k=0;k<wPos.count;k++){ const x=wBase[k*3], z=wBase[k*3+2]; wPos.array[k*3+1] = (Math.sin(x*.12+t*.8)+Math.cos(z*.15+t*.6))*.18*amp; }
   wPos.needsUpdate = true; wGeo.computeVertexNormals();
 
+  // flowers sway
+  flowerBeds.forEach(b=>b.children.forEach(f=>{ f.rotation.z = Math.sin(t*1.3+f.userData.sway)*.08*amp; }));
   // fireflies
   for(let k=0;k<FF;k++){ const sd=ffSeed[k]; ffPos[k*3]=ffBase[k*3]+Math.sin(t*.4+sd)*.8*amp; ffPos[k*3+1]=ffBase[k*3+1]+Math.sin(t*.7+sd*2)*.5*amp; ffPos[k*3+2]=ffBase[k*3+2]+Math.cos(t*.35+sd)*.8*amp; }
   ffGeo.attributes.position.needsUpdate = true;
