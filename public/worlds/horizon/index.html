@@ -62,6 +62,18 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 .box p{margin:0;font-size:14px;line-height:1.55}
 .box.move{background:var(--ink);color:#fdf6ee;border-color:transparent;margin-top:10px}
 .box.move h3{color:#ffb894}
+#editBtn.on{background:var(--ink);color:#fff}
+.editable{outline:1px dashed rgba(31,42,64,.25);outline-offset:3px;border-radius:6px;cursor:text}
+.editable:focus{outline:2px solid var(--cool);background:rgba(255,255,255,.7)}
+.box.move .editable:focus{background:rgba(255,255,255,.08)}
+.edithint{margin:8px 0 0;font-size:12px;color:var(--ink-soft)}
+.fave{box-shadow:inset 3px 0 0 #ff6f91;padding-left:9px;border-radius:2px}
+.heart{border:0;background:none;color:#e0567d;font-size:15px;padding:2px 0 0;display:block}
+.box.notes{background:#fff4d6;border-color:#f0d58a;margin-top:10px}
+.box.notes h3{color:#8a6410}
+.box.notes .editable:empty::before{content:"Your own thoughts on this one…";color:#b39a5c}
+.reset{margin-top:12px;border:0;background:none;color:var(--ink-soft);font-size:12px;text-decoration:underline;padding:0}
+#toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(16px + env(safe-area-inset-top,0px));z-index:12;padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:600}
 #panelNav{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
 #panelNav button{border:1px solid var(--line);background:rgba(255,255,255,.7);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -135,6 +147,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
   </div>
   <div id="topBtns">
     <a class="pill glass" id="vvBack" href="/" target="_top" hidden style="text-decoration:none">← Vibe Verse</a>
+    <button class="pill glass" id="editBtn" type="button" hidden>Edit</button>
     <button class="pill glass" id="atlasBtn" type="button">Atlas</button>
   </div>
 </div>
@@ -157,6 +170,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
   </div>
 </aside>
 
+<div id="toast" class="glass" hidden role="status"></div>
 <div id="hint" class="glass"><b>WASD</b> or <b>tap</b> to walk · <b>drag</b> to look · <b>scroll</b> to zoom</div>
 
 <nav id="dock" class="glass" aria-label="Stations">
@@ -314,52 +328,130 @@ S.forEach((s,i)=>{ const a = i/N*Math.PI*2 - Math.PI/2; const r = RING + (i%2?4:
 const hex = c => "#"+c.toString(16).padStart(6,"0");
 
 /* Inside the Vibe Verse: offer the way home. */
-try { if (window.top !== window.self) document.getElementById("vvBack").hidden = false; } catch (e) {}
+const EMBEDDED = (()=>{ try { return window.top !== window.self; } catch(e){ return true; } })();
+if (EMBEDDED) document.getElementById("vvBack").hidden = false;
+
+/* ---------- Edits ----------
+   The text above is the default. Inside the Vibe Verse the host page sends
+   Jack's saved edits (horizon_stations) and whether this viewer may edit;
+   saves go back up to the host, which writes them. Standalone, nothing
+   arrives and the defaults stand. */
+const EDITABLE = ["name","tagline","now","y5","y10","y50","insight","move","notes"];
+const DEFAULTS = {}; S.forEach(s=>{ DEFAULTS[s.key] = {}; EDITABLE.forEach(f=>DEFAULTS[s.key][f] = s[f]||""); s.faves = s.faves||[]; });
+const overrides = {};
+let canEdit = false, editing = false;
+const esc = t => String(t??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const para = t => esc(t).replace(/\n/g,"<br>");
+function applyOverride(key, fields){
+  const s = S.find(x=>x.key===key); if(!s || !fields) return;
+  overrides[key] = fields;
+  EDITABLE.forEach(f=>{ if(typeof fields[f]==="string") s[f]=fields[f]; });
+  if(Array.isArray(fields.faves)) s.faves = fields.faves;
+}
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true, 1800); }
+function save(s, patch){
+  overrides[s.key] = Object.assign({}, overrides[s.key], patch);
+  window.parent.postMessage({type:"horizon:save", key:s.key, fields:overrides[s.key]}, location.origin);
+  toast("Saving…");
+}
+addEventListener("message", e=>{
+  if(e.origin!==location.origin || !e.data) return;
+  const d = e.data;
+  if(d.type==="horizon:init"){
+    Object.entries(d.overrides||{}).forEach(([k,f])=>applyOverride(k,f));
+    canEdit = !!d.canEdit; document.getElementById("editBtn").hidden = !canEdit;
+    renderAtlas(); if(shown>=0){ const i=shown; shown=-1; openPanel(i); }
+  }
+  if(d.type==="horizon:saved") toast(d.ok ? "Saved" : ("Couldn't save: "+(d.error||"try again")));
+});
+if(EMBEDDED) window.parent.postMessage({type:"horizon:ready"}, location.origin);
+document.getElementById("editBtn").onclick = ()=>{
+  editing = !editing;
+  document.getElementById("editBtn").textContent = editing ? "Done editing" : "Edit";
+  document.getElementById("editBtn").classList.toggle("on", editing);
+  if(shown>=0){ const i=shown; shown=-1; openPanel(i); }
+  if(editing && shown<0) toast("Open a station to edit its text");
+};
 
 /* ---------- Atlas ---------- */
 const grid = document.getElementById("grid");
 const ERAS = [["now","NOW · 2026","#e0703f"],["y5","2031 · 5 YRS","#d08a2a"],["y10","2036 · 10 YRS","#3b8db3"],["y50","2076 · 50 YRS","#6a5fc0"]];
 const jump = document.getElementById("jump");
-S.forEach(s=>{
-  const a = document.createElement("a"); a.href="#f-"+s.key; a.textContent=s.short;
-  a.onclick = e=>{ e.preventDefault(); document.getElementById("f-"+s.key).scrollIntoView({behavior:"smooth",block:"start"}); };
-  jump.appendChild(a);
-  const b = document.createElement("article");
-  b.className="card"; b.id="f-"+s.key;
-  b.innerHTML = `<div class="card-head"><div>
-      <div class="eyebrow"><span>${String(s.i+1).padStart(2,"0")}</span><span class="chip ${s.fit?"warm":"cool"}">${s.fit?"You're building here":"On the horizon"}</span></div>
-      <h4 style="color:${hex(s.color)};filter:brightness(.7)">${s.name}</h4><p class="tg">${s.tagline}</p>
-    </div><button class="walk" type="button">Walk there in 3D</button></div>
-    <div class="eras">${ERAS.map(([k,l,c])=>`<div class="era" style="--c:${c}"><span class="yr">${l}</span><p>${s[k]}</p></div>`).join("")}</div>
-    <div class="takes"><div class="box"><h3>What I find most interesting</h3><p>${s.insight}</p></div><div class="box move"><h3>Your move</h3><p>${s.move}</p></div></div>`;
-  b.querySelector(".walk").onclick = ()=>{ showAtlas(false); travelTo(s.i); };
-  grid.appendChild(b);
-});
+const fav = (s,f) => s.faves.includes(f) ? ' class="fave"' : "";
+function notesBox(s){ return s.notes ? `<div class="box notes"><h3>Jack's notes</h3><p>${para(s.notes)}</p></div>` : ""; }
+function renderAtlas(){
+  jump.innerHTML = ""; grid.innerHTML = "";
+  S.forEach(s=>{
+    const a = document.createElement("a"); a.href="#f-"+s.key; a.textContent=s.short;
+    a.onclick = e=>{ e.preventDefault(); document.getElementById("f-"+s.key).scrollIntoView({behavior:"smooth",block:"start"}); };
+    jump.appendChild(a);
+    const b = document.createElement("article");
+    b.className="card"; b.id="f-"+s.key;
+    b.innerHTML = `<div class="card-head"><div>
+        <div class="eyebrow"><span>${String(s.i+1).padStart(2,"0")}</span><span class="chip ${s.fit?"warm":"cool"}">${s.fit?"You're building here":"On the horizon"}</span></div>
+        <h4 style="color:${hex(s.color)};filter:brightness(.7)">${esc(s.name)}</h4><p class="tg">${para(s.tagline)}</p>
+      </div><button class="walk" type="button">Walk there in 3D</button></div>
+      <div class="eras">${ERAS.map(([k,l,c])=>`<div class="era" style="--c:${c}"><span class="yr">${l}</span><p${fav(s,k)}>${para(s[k])}</p></div>`).join("")}</div>
+      <div class="takes"><div class="box"><h3>What I find most interesting</h3><p${fav(s,"insight")}>${para(s.insight)}</p></div><div class="box move"><h3>Your move</h3><p${fav(s,"move")}>${para(s.move)}</p></div></div>
+      ${notesBox(s)}`;
+    b.querySelector(".walk").onclick = ()=>{ showAtlas(false); travelTo(s.i); };
+    grid.appendChild(b);
+  });
+}
+renderAtlas();
 const atlas = document.getElementById("atlas");
 function showAtlas(v){ atlas.hidden = !v; }
 document.getElementById("atlasBtn").onclick=()=>showAtlas(true);
 document.getElementById("welcomeAtlas").onclick=()=>showAtlas(true);
 document.getElementById("atlasClose").onclick=()=>showAtlas(false);
-addEventListener("keydown",e=>{ if(e.key==="Escape"){ showAtlas(false); closePanel(); }});
+addEventListener("keydown",e=>{ if(e.key==="Escape" && !(e.target && e.target.isContentEditable)){ showAtlas(false); closePanel(); }});
 
 /* ---------- Panel ---------- */
 const panel = document.getElementById("panel"), pScroll = document.getElementById("panelScroll");
 let shown = -1, dismissed = -1, cur = -1;
 const dockName = document.getElementById("dockName");
+function field(s, f, tag="p", cls=""){
+  const faveBtn = editing && f!=="name" && f!=="tagline" && f!=="notes"
+    ? `<button type="button" class="heart${s.faves.includes(f)?" on":""}" data-heart="${f}" aria-label="Mark as a favorite">${s.faves.includes(f)?"♥":"♡"}</button>` : "";
+  const edit = editing ? ` contenteditable="plaintext-only" spellcheck="true" data-f="${f}"` : "";
+  const c = [cls, s.faves.includes(f)?"fave":"", editing?"editable":""].filter(Boolean).join(" ");
+  return `<${tag}${c?` class="${c}"`:""}${edit}>${para(s[f])}</${tag}>${faveBtn}`;
+}
 function openPanel(i){
   if(shown===i) return; shown=i; cur=i; const s=S[i];
-  dockName.innerHTML = `<small>${String(i+1).padStart(2,"0")}/${N}</small>${s.name}`;
+  dockName.innerHTML = `<small>${String(i+1).padStart(2,"0")}/${N}</small>${esc(s.name)}`;
+  const notes = editing ? `<div class="box notes"><h3>Jack's notes</h3>${field(s,"notes")}</div>` : notesBox(s);
   pScroll.innerHTML = `<div class="eyebrow"><span>Station ${String(i+1).padStart(2,"0")} / ${N}</span><span class="chip ${s.fit?"warm":"cool"}">${s.fit?"You're building here":"On the horizon"}</span></div>
-  <h2>${s.name}</h2><p class="tagline">${s.tagline}</p>
+  ${editing?'<p class="edithint">Tap any text to rewrite it. It saves when you tap away. ♡ marks a favorite.</p>':""}
+  ${field(s,"name","h2")}${field(s,"tagline","p","tagline")}
   <ol class="tl">
-    <li style="--c:#e0703f"><span class="yr">NOW · 2026</span><p>${s.now}</p></li>
-    <li style="--c:#d08a2a"><span class="yr">5 YEARS · 2031</span><p>${s.y5}</p></li>
-    <li style="--c:#3b8db3"><span class="yr">10 YEARS · 2036</span><p>${s.y10}</p></li>
-    <li style="--c:#6a5fc0"><span class="yr">50 YEARS · 2076</span><p>${s.y50}</p></li>
+    <li style="--c:#e0703f"><span class="yr">NOW · 2026</span>${field(s,"now")}</li>
+    <li style="--c:#d08a2a"><span class="yr">5 YEARS · 2031</span>${field(s,"y5")}</li>
+    <li style="--c:#3b8db3"><span class="yr">10 YEARS · 2036</span>${field(s,"y10")}</li>
+    <li style="--c:#6a5fc0"><span class="yr">50 YEARS · 2076</span>${field(s,"y50")}</li>
   </ol>
-  <div class="box"><h3>What I find most interesting</h3><p>${s.insight}</p></div>
-  <div class="box move"><h3>Your move</h3><p>${s.move}</p></div>`;
+  <div class="box"><h3>What I find most interesting</h3>${field(s,"insight")}</div>
+  <div class="box move"><h3>Your move</h3>${field(s,"move")}</div>
+  ${notes}
+  ${editing && overrides[s.key] ? '<button type="button" class="reset" id="resetBtn">Restore my original text for this station</button>' : ""}`;
   pScroll.scrollTop=0;
+  if(editing){
+    pScroll.querySelectorAll("[data-f]").forEach(el=>{
+      el.addEventListener("blur", ()=>{
+        const f = el.dataset.f, text = el.innerText.replace(/ /g," ").trim();
+        if(text === (s[f]||"").trim()) return;
+        if(!text && f!=="notes"){ el.innerHTML = para(s[f]); return; }
+        s[f] = text; save(s, {[f]: text});
+        if(f==="name") dockName.innerHTML = `<small>${String(i+1).padStart(2,"0")}/${N}</small>${esc(s.name)}`;
+        renderAtlas();
+      });
+    });
+    pScroll.querySelectorAll("[data-heart]").forEach(btn=>{
+      btn.onclick = ()=>{ const f=btn.dataset.heart; s.faves = s.faves.includes(f) ? s.faves.filter(x=>x!==f) : s.faves.concat(f); save(s,{faves:s.faves}); shown=-1; openPanel(i); renderAtlas(); };
+    });
+    const rb = document.getElementById("resetBtn");
+    if(rb) rb.onclick = ()=>{ Object.assign(s, DEFAULTS[s.key]); s.faves=[]; overrides[s.key] = {}; save(s, {}); shown=-1; openPanel(i); renderAtlas(); };
+  }
   document.getElementById("prevBtn").textContent = "← "+S[(i-1+N)%N].short;
   document.getElementById("nextBtn").textContent = S[(i+1)%N].short+" →";
   panel.classList.remove("off");
@@ -540,7 +632,7 @@ marker.rotation.x=-Math.PI/2; marker.position.y=.03; marker.visible=false; scene
 // ---------- controls ----------
 let yaw = 0, dist = innerWidth<640 ? 24 : 19, camPos = new THREE.Vector3(), target = null, targetStation = -1;
 const keys = {};
-addEventListener("keydown", e=>{ if(atlas.hidden===false) return; keys[e.key.toLowerCase()] = true; if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault(); });
+addEventListener("keydown", e=>{ if(atlas.hidden===false || (e.target && e.target.isContentEditable)) return; keys[e.key.toLowerCase()] = true; if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault(); });
 addEventListener("keyup", e=>{ keys[e.key.toLowerCase()] = false; });
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 let down = null;
