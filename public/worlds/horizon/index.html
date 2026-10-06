@@ -63,6 +63,8 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 .box.move{background:var(--ink);color:#fdf6ee;border-color:transparent;margin-top:10px}
 .box.move h3{color:#ffb894}
 #editBtn.on{background:var(--ink);color:#fff}
+#signinBtn{opacity:.4;padding-left:12px;padding-right:12px}
+#signinBtn:hover,#signinBtn:focus-visible{opacity:1}
 .editable{outline:1px dashed rgba(31,42,64,.25);outline-offset:3px;border-radius:6px;cursor:text}
 .editable:focus{outline:2px solid var(--cool);background:rgba(255,255,255,.7)}
 .box.move .editable:focus{background:rgba(255,255,255,.08)}
@@ -160,6 +162,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
   </div>
   <div id="topBtns">
     <a class="pill glass" id="vvBack" href="/" target="_top" hidden style="text-decoration:none">← Vibe Verse</a>
+    <button class="pill glass" id="signinBtn" type="button" hidden title="Sign in to edit" aria-label="Sign in to edit">✎</button>
     <button class="pill glass" id="editBtn" type="button" hidden>Edit</button>
     <button class="pill glass" id="atlasBtn" type="button">Atlas</button>
   </div>
@@ -384,16 +387,25 @@ addEventListener("message", e=>{
   if(d.type==="horizon:init"){
     Object.entries(d.overrides||{}).forEach(([k,f])=>applyOverride(k,f));
     SIG = Array.isArray(d.signals) ? d.signals : []; growFlowers();
+    if(d.canEdit && !canEdit && signinAsked) toast("Signed in. Tap Edit to rewrite any station.");
     canEdit = !!d.canEdit; document.getElementById("editBtn").hidden = !canEdit;
+    document.getElementById("signinBtn").hidden = canEdit;
+    if(!canEdit && editing){ editing = false; document.getElementById("editBtn").textContent = "Edit"; document.getElementById("editBtn").classList.remove("on"); }
     renderAtlas(); if(shown>=0){ const i=shown; shown=-1; openPanel(i); }
   }
   if(d.type==="horizon:signal-saved"){
     if(d.ok && d.signal){ const k = SIG.findIndex(g=>g.id===d.tempId || g.id===d.signal.id); if(k>=0) Object.assign(SIG[k], d.signal); else SIG.unshift(d.signal); growFlowers(); renderAtlas(); }
     toast(d.ok ? "Saved" : ("Couldn't save: "+(d.error||"try again")));
   }
+  if(d.type==="horizon:toast") toast(d.text||"");
   if(d.type==="horizon:saved") toast(d.ok ? "Saved" : ("Couldn't save: "+(d.error||"try again")));
 });
 if(EMBEDDED) window.parent.postMessage({type:"horizon:ready"}, location.origin);
+/* Signing in happens in the host page (it owns Supabase). On Jack's own domain
+   this frame is third-party, so the Vibe Verse session does not reach it and
+   this quiet pencil is the only way in. */
+let signinAsked = false;
+document.getElementById("signinBtn").onclick = ()=>{ signinAsked = true; window.parent.postMessage({type:"horizon:signin"}, location.origin); };
 document.getElementById("editBtn").onclick = ()=>{
   editing = !editing;
   document.getElementById("editBtn").textContent = editing ? "Done editing" : "Edit";

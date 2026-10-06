@@ -20,10 +20,18 @@
  * files them; Jack edits, hides or adds them in Edit mode). They ride along in
  * `horizon:init`; `horizon:signal` upserts one and `horizon:signal-delete` removes it.
  * If the table is missing the garden simply has no signals.
+ *
+ * Signing in: /horizon is chromeless and horizon.jackmielke.com frames it as a
+ * third-party iframe, where the browser partitions storage and the Vibe Verse
+ * session never arrives. So the frame has its own quiet pencil
+ * (`horizon:signin`) that opens the code-first sign-in dialog right here. An
+ * email code needs no redirect, so it works inside somebody else's page, and
+ * the session it mints lives in that partition from then on.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
+import VibeAuthDialog from "@/components/vibe-auth/VibeAuthDialog";
 
 type Row = { key: string; fields: Record<string, unknown> };
 // Not in the generated types yet; keep the cast in one place.
@@ -35,6 +43,7 @@ const SIGNAL_FIELDS = "id, station_key, day, headline, why, era, direction, url,
 export default function Horizon() {
   useWorldStamp("/horizon", "Horizon Garden");
   const frame = useRef<HTMLIFrameElement>(null);
+  const [signingIn, setSigningIn] = useState(false);
   // horizon.jackmielke.com frames this page with ?embed=1: no Vibe Verse chrome, inside or out
   const standalone = new URLSearchParams(window.location.search).get("embed") === "1";
 
@@ -56,6 +65,15 @@ export default function Horizon() {
       if (e.origin !== window.location.origin || e.source !== frame.current?.contentWindow) return;
       const d = e.data as { type?: string; key?: string; id?: string; fields?: Record<string, unknown>; signal?: Record<string, unknown> };
       if (d?.type === "horizon:ready") init();
+      if (d?.type === "horizon:signin") {
+        // Signed in already, but not as an editor: say so and offer the other door.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          post({ type: "horizon:toast", text: `${session.user.email ?? "This account"} can't edit. Sign in as Jack.` });
+          await supabase.auth.signOut();
+        }
+        setSigningIn(true);
+      }
       if (d?.type === "horizon:save" && typeof d.key === "string") {
         const { error } = await stations().upsert({ key: d.key, fields: d.fields ?? {}, updated_at: new Date().toISOString() });
         post({ type: "horizon:saved", key: d.key, ok: !error, error: error?.message });
@@ -76,6 +94,7 @@ export default function Horizon() {
   }, []);
 
   return (
+    <>
     <iframe
       ref={frame}
       title="Horizon Garden"
@@ -83,5 +102,7 @@ export default function Horizon() {
       className="fixed inset-0 h-full w-full border-0"
       style={{ background: "#f6d6c6" }}
     />
+    <VibeAuthDialog open={signingIn} onOpenChange={setSigningIn} />
+    </>
   );
 }
