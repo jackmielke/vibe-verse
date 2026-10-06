@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="A walkable 3D opportunity map of the future: fifteen frontiers, now to 2076.">
+<meta name="description" content="A walkable 3D opportunity map of the future: twenty-one frontiers, now to 2076.">
 <title>Horizon Garden</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
@@ -152,7 +152,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 <body>
 
 
-<canvas id="stage" aria-label="A walkable 3D island with fifteen opportunity monuments arranged in a ring"></canvas>
+<canvas id="stage" aria-label="A walkable 3D island with twenty-one opportunity monuments arranged in a ring"></canvas>
 
 <div id="top">
   <div id="brand" class="glass">
@@ -170,7 +170,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 
 <div id="welcome" class="glass">
   <h2>Walk the future</h2>
-  <p>Fifteen monuments, one per frontier. Use the arrows below, tap a monument, or walk up to one to see where it stands now and where it goes in 5, 10 and 50 years, plus what I find most interesting and the move I'd make.</p>
+  <p>Twenty-one monuments, one per frontier. Use the arrows below, tap a monument, or walk up to one to see where it stands now and where it goes in 5, 10 and 50 years, plus what I find most interesting and the move I'd make.</p>
   <div class="row">
     <button class="primary" id="tourBtn" type="button">Start at the Teammate</button>
     <button class="ghost" id="welcomeAtlas" type="button">Read the Atlas</button>
@@ -336,7 +336,55 @@ const S = [
  y10:"Most new cars drive themselves. Parking lots shrink and deliveries are autonomous.",
  y50:"Human driving is a hobby like horseback riding, and cities are redesigned around the freed space.",
  insight:"Every robotaxi ride is thirty minutes of captive attention in a private room. What people do in that room is an open platform.",
- move:"Design for the ride: a Party Deck mode or a digest built for a Waymo trip."}
+ move:"Design for the ride: a Party Deck mode or a digest built for a Waymo trip."},
+{key:"learning",name:"Kids Who Build",short:"Kids Build",fit:true,color:0xffc94d,
+ tagline:"School was always about the friends. Now the kids ship the features.",
+ now:"AI tutors like Khanmigo and ChatGPT's study mode are everywhere. Alpha School runs about two hours a day of AI-paced academics and spends the rest on projects. Most schools still treat AI as cheating. In the Vibe Verse, a six-year-old already shipped a chemistry game.",
+ y5:"A ten-year-old shipping a real app is normal. Portfolios start to beat transcripts for some admissions, and the best learning happens in studios where kids and adults build side by side.",
+ y10:"Every kid has a tutor that knows them better than any teacher could. School turns into a place to find your people and your projects, not to sit through lessons.",
+ y50:"Going to school sounds like going to the typing pool. Learning is something you do with friends, on real problems, for your whole life.",
+ insight:"Once the tools are free and the tutor is infinite, the hard part isn't learning. It's finding people worth building with and something worth caring about. Taking kids seriously is the whole curriculum.",
+ move:"Host the first SF Kids Build Day: every kid ships one thing into the Vibe Verse and demos it to their parents at the end."},
+{key:"cities",name:"Pop-up Cities",short:"Pop-up Cities",fit:true,color:0xff9f6e,
+ tagline:"Live with your people for a month, then decide where home is.",
+ now:"Edge City runs month-long villages like Edge Esmeralda in Healdsburg, a lineage that started with Zuzalu in 2023. Most last a season, and their coordination still lives in group chats, spreadsheets and one heroic organizer.",
+ y5:"A few pop-ups harden into permanent neighborhoods with their own software for housing, events, money and membership. Residency becomes a normal step between school and work.",
+ y10:"Network cities with shared IDs, treasuries and residency passports are a real option for a slice of builders. You can carry your reputation from village to village.",
+ y50:"Choosing a city works like choosing friends. People move between communities by season, and the best ones are run on open, forkable civic software.",
+ insight:"The software built for one village (housing, the event board, the agent that knows everyone) is the real civic layer. Whoever makes it forkable lets anyone start a city the way they'd start a group chat.",
+ move:"Turn the SF crew into a standing weekly open house with Vibey as host, then package the village toolkit for the next Edge City."},
+{key:"gatherings",name:"Build Nights",short:"Build Nights",fit:true,color:0xf06fa4,
+ tagline:"The best things start at a table, not in a Slack channel.",
+ now:"SF has an AI build night, hackathon or demo party most evenings. Luma handles the invite, a group chat handles everything else, and one tired host holds it all together.",
+ y5:"AI co-hosts handle intros, matching and follow-ups so the host can set the vibe. You leave a build night with a recap, three people to follow up with, and a demo already posted.",
+ y10:"Every gathering leaves a living memory: who met, what got built, what happened next. Communities compound because nothing said at the table gets lost.",
+ y50:"Software is effortless, so time in the same room is the luxury good. The best parties are where new things get started.",
+ insight:"In person is where the feedback loop is fastest: feedback over breakfast, shipped by dinner. A room with an agent that remembers everyone is a startup factory disguised as a party.",
+ move:"Run Gesture Jam Night with Vibey in scribe mode: it greets people, notes who built what, and sends the recap the next morning."},
+{key:"handsfree",name:"Beyond the Keyboard",short:"Hands-Free",fit:true,color:0x2fb5a8,
+ tagline:"Talk, look, wave. Hands optional.",
+ now:"Wispr Flow and Superwhisper make dictation fast enough for real work. Meta's Neural Band reads wrist muscle signals to steer its display glasses. Talon lets people code by voice, and Neuralink trial patients move cursors by thought.",
+ y5:"Voice plus glance replaces the trackpad for most knowledge work. Your computer reads gestures from any camera, and RSI stops being a career risk.",
+ y10:"Wrist EMG and neural input let you type by intending to. Interfaces adapt to the body you have instead of the other way around.",
+ y50:"Keyboards are like fountain pens: lovely and optional. Thinking at a computer feels like talking to a friend who can draw.",
+ insight:"The people with RSI are building the next interface first because they have to. Accessibility tools keep turning into everyone's tools, the way dictation did.",
+ move:"Ship the browser version of handsfree so anyone can play the gesture instrument from a laptop camera, then film it at a build night."},
+{key:"making",name:"Desktop Factory",short:"Making",fit:false,color:0xc98a5b,
+ tagline:"From idea to object before dinner.",
+ now:"Bambu Lab made 3D printing reliable enough for a kitchen table, and hobby laser cutters cost less than a laptop. Text-to-3D tools like Meshy make printable shapes, but real CAD from a prompt is still early. Vibey's rover mount came off a friend's printer.",
+ y5:"Describe a part and print it. Text-to-part works for brackets, cases, toys and replacement pieces, and makers trade designs like playlists.",
+ y10:"Neighborhood microfactories make one-off furniture, parts and robot bodies on demand. Hardware startups prototype as fast as app startups.",
+ y50:"Most things are made close to where they're used, from local materials, and fixing something is easier than throwing it away.",
+ insight:"Robots need bodies and bodies need makers. The software person who can also print a part gets to build the whole thing.",
+ move:"Have a build night design Vibey a hat, print the winner, and let the robot wear the community's work."},
+{key:"play",name:"Ten Sports a Year",short:"Play",fit:false,color:0x7ccf5a,
+ tagline:"Play everything, watch it with friends.",
+ now:"Soccer uses semi-automated offside, Wimbledon replaced line judges with electronic calls, and MLB added robot-umpire challenges. Phone apps grade your form from video, and Strava and Garmin log every run.",
+ y5:"Every pickup game has an AI coach and a highlight reel. Your long run gets a commentator, and trying a new sport stops being embarrassing.",
+ y10:"Watching sports is a shared interactive room, not a broadcast. You can step into the play, see any angle, and play along with friends across the world.",
+ y50:"New sports get invented every year, some with robots on the team. Play is a bigger part of life because work takes less of it.",
+ insight:"AI lowers the cost of being a beginner. The coach in your pocket makes the eleventh sport as easy to start as the first.",
+ move:"Start a sport-of-the-month club with friends: one new sport, a shared Strava group, and a Vibe Verse leaderboard."}
 ];
 
 const N = S.length, RING = 27;
@@ -683,6 +731,12 @@ function icon(s){
     case "health": { for(let k=0;k<14;k++){ const a=k*.62, y=k*.15-1; add(new THREE.SphereGeometry(.13,8,6), m, Math.cos(a)*.55,y,Math.sin(a)*.55); add(new THREE.SphereGeometry(.13,8,6), w, -Math.cos(a)*.55,y,-Math.sin(a)*.55); } break; }
     case "space": { add(new THREE.CylinderGeometry(.35,.4,1.5,12), w); add(new THREE.ConeGeometry(.35,.6,12), m,0,1.05); [0,2.09,4.19].forEach(a=>{ const f=add(new THREE.BoxGeometry(.06,.5,.4), m, Math.cos(a)*.38,-.6,Math.sin(a)*.38); f.rotation.y=-a; }); add(new THREE.ConeGeometry(.25,.5,8), mat(0xffb15c,{emissive:0xff8a3c,emissiveIntensity:1}),0,-1.0).rotation.x=Math.PI; g.rotation.z=.25; break; }
     case "cars": { add(new THREE.BoxGeometry(1.9,.5,1), m); add(new THREE.BoxGeometry(1.1,.4,.9), w,-.1,.45); add(new THREE.CylinderGeometry(.12,.12,.25,10), d,-.1,.78); [[-.6,.5],[.6,.5],[-.6,-.5],[.6,-.5]].forEach(([x,z])=>{ const wh=add(new THREE.CylinderGeometry(.24,.24,.18,12), d,x,-.28,z); wh.rotation.x=Math.PI/2; }); break; }
+    case "learning": { add(new THREE.BoxGeometry(1.5,.3,1.05), m,0,-.55); add(new THREE.BoxGeometry(1.35,.28,.95), w,.05,-.26).rotation.y=.12; add(new THREE.BoxGeometry(1.2,.26,.88), m,-.04,.01).rotation.y=-.1; add(new THREE.CylinderGeometry(.05,.06,.6,5), mat(0x7a5a3a),0,.45); const lf=add(new THREE.IcosahedronGeometry(.32,0), mat(0x7cc77f),0,.85); g.userData.spin.push([lf,.8]); break; }
+    case "cities": { [[-.65,.9,.1],[.05,1.4,-.25],[.65,.7,.2],[-.1,.6,.55]].forEach(([x,h,z],k)=>add(new THREE.BoxGeometry(.42,h,.42), k%2?w:m,x,h/2-.7,z)); add(new THREE.ConeGeometry(.45,.6,4), mat(0xfff2b8,{emissive:0xffd27a,emissiveIntensity:.4}),.75,-.4,-.55); break; }
+    case "gatherings": { add(new THREE.CylinderGeometry(.85,.85,.12,24), w,0,-.2); add(new THREE.CylinderGeometry(.08,.12,.5,6), d,0,-.48); const ring=new THREE.Group(); for(let k=0;k<6;k++){ const a=k/6*Math.PI*2; const p=new THREE.Mesh(new THREE.SphereGeometry(.2,10,8), k%2?m:w); p.position.set(Math.cos(a)*1.15,.05,Math.sin(a)*1.15); p.castShadow=true; ring.add(p); } g.add(ring); g.userData.spin.push([ring,.35]); add(new THREE.OctahedronGeometry(.18,0), mat(0xfff2b8,{emissive:0xffd27a,emissiveIntensity:1}),0,.35); break; }
+    case "handsfree": { const band=add(new THREE.TorusGeometry(.55,.16,8,28), d); band.rotation.x=Math.PI/2; add(new THREE.SphereGeometry(.12,8,6), mat(0x8ff6ff,{emissive:0x8ff6ff,emissiveIntensity:1}),0,0,.62); [.9,1.25,1.6].forEach((r,k)=>{ const arc=add(new THREE.TorusGeometry(r,.05,6,30,Math.PI*.5), m,0,.2); arc.rotation.z=Math.PI*.25; arc.material=mat(s.color,{emissive:s.color,emissiveIntensity:.25+k*.15}); g.userData.spin.push([arc,.4+k*.25,"y"]); }); break; }
+    case "making": { add(new THREE.BoxGeometry(1.5,.18,1.2), d,0,-.75); [[-.65,-.5],[.65,-.5],[-.65,.5],[.65,.5]].forEach(([x,z])=>add(new THREE.BoxGeometry(.08,1.5,.08), w,x,0,z)); add(new THREE.BoxGeometry(1.5,.1,.1), w,0,.72,0); add(new THREE.ConeGeometry(.08,.22,6), m,0,.55,0).rotation.x=Math.PI; const part=add(new THREE.OctahedronGeometry(.32,0), m,0,-.35); g.userData.spin.push([part,1.2]); break; }
+    case "play": { const ball=add(new THREE.IcosahedronGeometry(.5,1), w); const seams=add(new THREE.TorusGeometry(.51,.04,6,24), m); g.userData.spin.push([ball,1.6,"x"],[seams,1.6,"x"]); add(new THREE.ConeGeometry(.16,.4,8), mat(0xff8a5c),-.95,-.55,.35); add(new THREE.ConeGeometry(.16,.4,8), mat(0xff8a5c),.95,-.55,-.3); const goal=add(new THREE.TorusGeometry(.75,.05,6,20,Math.PI), d,0,-.75,-.85); break; }
   }
   return g;
 }

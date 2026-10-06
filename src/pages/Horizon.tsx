@@ -1,7 +1,7 @@
 /**
  * `/horizon` — Horizon Garden, an opportunity map of the future you can walk.
  *
- * Fifteen monuments on a dawn island, one per frontier (the 24/7 teammate,
+ * Twenty-one monuments on a dawn island, one per frontier (the 24/7 teammate,
  * robots, memory, private money, space, self-driving and the rest). Walk up to
  * one and it tells you where that frontier is now and where it goes in 5, 10
  * and 50 years. There is an Atlas view for reading it all on one page.
