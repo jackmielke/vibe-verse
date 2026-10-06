@@ -190,7 +190,7 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "🌅",
     kind: "world",
     blurb:
-      "A quiet island at dawn with twenty-one monuments in a ring, one for each frontier worth building on: the 24/7 teammate, kids who build, pop-up cities, the robot, memory, the overnight agent, spatial computing, private money, space, self-driving, health and more. Walk up to one and it shows you where that frontier is today and where it goes in 5, 10 and 50 years, what is most interesting about it, and the move worth making.",
+      "A quiet island at dawn with twenty-three monuments in a ring, one for each frontier worth building on: the 24/7 teammate, kids who build, pop-up cities, the robot, memory, the overnight agent, spatial computing, private money, space, self-driving, health and more. Walk up to one and it shows you where that frontier is today and where it goes in 5, 10 and 50 years, what is most interesting about it, and the move worth making.",
     status: "Explorable — desktop and phone, with an Atlas to read it all at once",
     accent: "#ff8a5c",
     backdrop: "#f6d6c6",

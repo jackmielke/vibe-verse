@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="A walkable 3D opportunity map of the future: twenty-one frontiers, now to 2076.">
+<meta name="description" content="A walkable 3D opportunity map of the future: twenty-three frontiers, now to 2076.">
 <title>Horizon Garden</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
@@ -152,7 +152,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 <body>
 
 
-<canvas id="stage" aria-label="A walkable 3D island with twenty-one opportunity monuments arranged in a ring"></canvas>
+<canvas id="stage" aria-label="A walkable 3D island with twenty-three opportunity monuments arranged in a ring"></canvas>
 
 <div id="top">
   <div id="brand" class="glass">
@@ -170,7 +170,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 
 <div id="welcome" class="glass">
   <h2>Walk the future</h2>
-  <p>Twenty-one monuments, one per frontier. Use the arrows below, tap a monument, or walk up to one to see where it stands now and where it goes in 5, 10 and 50 years, plus what I find most interesting and the move I'd make.</p>
+  <p>Twenty-three monuments, one per frontier. Use the arrows below, tap a monument, or walk up to one to see where it stands now and where it goes in 5, 10 and 50 years, plus what I find most interesting and the move I'd make.</p>
   <div class="row">
     <button class="primary" id="tourBtn" type="button">Start at the Teammate</button>
     <button class="ghost" id="welcomeAtlas" type="button">Read the Atlas</button>
@@ -343,14 +343,14 @@ const S = [
  y5:"A ten-year-old shipping a real app is normal. Portfolios start to beat transcripts for some admissions, and the best learning happens in studios where kids and adults build side by side.",
  y10:"Every kid has a tutor that knows them better than any teacher could. School turns into a place to find your people and your projects, not to sit through lessons.",
  y50:"Going to school sounds like going to the typing pool. Learning is something you do with friends, on real problems, for your whole life.",
- insight:"Once the tools are free and the tutor is infinite, the hard part isn't learning. It's finding people worth building with and something worth caring about. Taking kids seriously is the whole curriculum.",
+ insight:"Once the tools are free and the tutor is infinite, the hard part isn't learning. It's finding people worth building with. David Deutsch's Taking Children Seriously says kids are people with their own problems worth solving, and AI finally makes that practical: every kid can chase the problem they actually care about.",
  move:"Host the first SF Kids Build Day: every kid ships one thing into the Vibe Verse and demos it to their parents at the end."},
 {key:"cities",name:"Pop-up Cities",short:"Pop-up Cities",fit:true,color:0xff9f6e,
  tagline:"Live with your people for a month, then decide where home is.",
  now:"Edge City runs month-long villages like Edge Esmeralda in Healdsburg, a lineage that started with Zuzalu in 2023. Most last a season, and their coordination still lives in group chats, spreadsheets and one heroic organizer.",
  y5:"A few pop-ups harden into permanent neighborhoods with their own software for housing, events, money and membership. Residency becomes a normal step between school and work.",
- y10:"Network cities with shared IDs, treasuries and residency passports are a real option for a slice of builders. You can carry your reputation from village to village.",
- y50:"Choosing a city works like choosing friends. People move between communities by season, and the best ones are run on open, forkable civic software.",
+ y10:"Network cities with shared IDs, treasuries and residency passports are a real option for a slice of builders. You carry your reputation from village to village, and the first ones run as global hubs with a node on every continent.",
+ y50:"Choosing a city works like choosing friends. The pop-up playbook becomes the template for settling orbit, the Moon and Mars: small, opt-in communities that test a way of living, then grow.",
  insight:"The software built for one village (housing, the event board, the agent that knows everyone) is the real civic layer. Whoever makes it forkable lets anyone start a city the way they'd start a group chat.",
  move:"Turn the SF crew into a standing weekly open house with Vibey as host, then package the village toolkit for the next Edge City."},
 {key:"gatherings",name:"Build Nights",short:"Build Nights",fit:true,color:0xf06fa4,
@@ -384,7 +384,23 @@ const S = [
  y10:"Watching sports is a shared interactive room, not a broadcast. You can step into the play, see any angle, and play along with friends across the world.",
  y50:"New sports get invented every year, some with robots on the team. Play is a bigger part of life because work takes less of it.",
  insight:"AI lowers the cost of being a beginner. The coach in your pocket makes the eleventh sport as easy to start as the first.",
- move:"Start a sport-of-the-month club with friends: one new sport, a shared Strava group, and a Vibe Verse leaderboard."}
+ move:"Start a sport-of-the-month club with friends: one new sport, a shared Strava group, and a Vibe Verse leaderboard."},
+{key:"local",name:"Personal Computers 2.0",short:"Local AI",fit:true,color:0x9b8cff,
+ tagline:"Your harness, your models, your data, on hardware you own.",
+ now:"Open-weight models from Qwen, DeepSeek, Mistral and Meta run well on a laptop. Apple silicon and Nvidia's DGX Spark put serious AI compute on a desk. OpenClaw and Hermes Agent are open harnesses you run yourself, and local voice models are close to cloud quality.",
+ y5:"A home AI box sits next to the router: local models, local memory, your agent harness, and only the hard questions go to the cloud. It lives in your robot, your car, your glasses and your phone.",
+ y10:"Most everyday AI runs on devices you own. Cloud models are for frontier problems. Your harness and its memory are the most valuable software you have, and they move with you between gadgets.",
+ y50:"Intelligence is ambient and local, like electricity in the walls. Owning your own mind-extension is as normal as owning a house key.",
+ insight:"The harness becomes the operating system. Models are swappable, but the setup that knows your tools, permissions and history is an asset that compounds. Underdog local models win on privacy, latency and cost, not on raw IQ.",
+ move:"Get Vibey fully local on a stronger chip (harness, models and memory on the robot) and publish the setup as a kit."},
+{key:"energy",name:"Abundant Energy",short:"Energy",fit:false,color:0xffd23f,
+ tagline:"Cheap clean power is the master key for everything else.",
+ now:"Solar is the cheapest electricity ever built and batteries keep falling in price. AI data centers are pushing big tech to sign deals for nuclear, including restarted plants and small modular reactors. Fervo is drilling enhanced geothermal, and fusion startups like Commonwealth Fusion are building demo machines.",
+ y5:"Solar plus storage is the default new power almost everywhere. The first small reactors and enhanced geothermal plants feed data centers, and homes trade power with their neighbors.",
+ y10:"Electricity gets so cheap that desalination, vertical farms and carbon removal become normal infrastructure. A fusion pilot plant puts power on a grid.",
+ y50:"Energy is abundant and close to free. Most of what we call scarcity, from water to compute, turns out to have been an energy problem.",
+ insight:"Every station on this island runs on electricity. Robots, local AI, space and self-driving all get better when power gets cheaper. Rational optimism mostly cashes out as abundant energy.",
+ move:"Track your own stack: solar and a battery for the Vibey setup, and an energy-today segment in the digest."}
 ];
 
 const N = S.length, RING = 27;
@@ -731,6 +747,8 @@ function icon(s){
     case "health": { for(let k=0;k<14;k++){ const a=k*.62, y=k*.15-1; add(new THREE.SphereGeometry(.13,8,6), m, Math.cos(a)*.55,y,Math.sin(a)*.55); add(new THREE.SphereGeometry(.13,8,6), w, -Math.cos(a)*.55,y,-Math.sin(a)*.55); } break; }
     case "space": { add(new THREE.CylinderGeometry(.35,.4,1.5,12), w); add(new THREE.ConeGeometry(.35,.6,12), m,0,1.05); [0,2.09,4.19].forEach(a=>{ const f=add(new THREE.BoxGeometry(.06,.5,.4), m, Math.cos(a)*.38,-.6,Math.sin(a)*.38); f.rotation.y=-a; }); add(new THREE.ConeGeometry(.25,.5,8), mat(0xffb15c,{emissive:0xff8a3c,emissiveIntensity:1}),0,-1.0).rotation.x=Math.PI; g.rotation.z=.25; break; }
     case "cars": { add(new THREE.BoxGeometry(1.9,.5,1), m); add(new THREE.BoxGeometry(1.1,.4,.9), w,-.1,.45); add(new THREE.CylinderGeometry(.12,.12,.25,10), d,-.1,.78); [[-.6,.5],[.6,.5],[-.6,-.5],[.6,-.5]].forEach(([x,z])=>{ const wh=add(new THREE.CylinderGeometry(.24,.24,.18,12), d,x,-.28,z); wh.rotation.x=Math.PI/2; }); break; }
+    case "local": { add(new THREE.BoxGeometry(1.5,.32,1.1), d,0,-.45); add(new THREE.BoxGeometry(1.36,.04,.96), mat(0x8ff6ff,{emissive:0x8ff6ff,emissiveIntensity:.6}),0,-.27); const chip=add(new THREE.BoxGeometry(.7,.16,.7), m,0,.15); for(let k=0;k<4;k++){ const a=k*Math.PI/2; add(new THREE.BoxGeometry(.06,.06,.3), w,Math.cos(a)*.45,.15,Math.sin(a)*.45).rotation.y=a; } const core=add(new THREE.OctahedronGeometry(.22,0), mat(0xffffff,{emissive:s.color,emissiveIntensity:.9}),0,.55); g.userData.spin.push([core,1.4]); break; }
+    case "energy": { const sunO=add(new THREE.IcosahedronGeometry(.5,1), mat(s.color,{emissive:0xffb020,emissiveIntensity:.8}),0,.45); const rays=new THREE.Group(); for(let k=0;k<8;k++){ const r=new THREE.Mesh(new THREE.ConeGeometry(.09,.4,4), mat(0xfff2b8,{emissive:0xffd27a,emissiveIntensity:.8})); const a=k/8*Math.PI*2; r.position.set(Math.cos(a)*.85,.45+Math.sin(a)*.85,0); r.rotation.z=a-Math.PI/2; rays.add(r);} g.add(rays); g.userData.spin.push([rays,.5,"z"]); const panel=add(new THREE.BoxGeometry(1.4,.06,.8), mat(0x2b4a7a),0,-.6,.1); panel.rotation.x=-.5; break; }
     case "learning": { add(new THREE.BoxGeometry(1.5,.3,1.05), m,0,-.55); add(new THREE.BoxGeometry(1.35,.28,.95), w,.05,-.26).rotation.y=.12; add(new THREE.BoxGeometry(1.2,.26,.88), m,-.04,.01).rotation.y=-.1; add(new THREE.CylinderGeometry(.05,.06,.6,5), mat(0x7a5a3a),0,.45); const lf=add(new THREE.IcosahedronGeometry(.32,0), mat(0x7cc77f),0,.85); g.userData.spin.push([lf,.8]); break; }
     case "cities": { [[-.65,.9,.1],[.05,1.4,-.25],[.65,.7,.2],[-.1,.6,.55]].forEach(([x,h,z],k)=>add(new THREE.BoxGeometry(.42,h,.42), k%2?w:m,x,h/2-.7,z)); add(new THREE.ConeGeometry(.45,.6,4), mat(0xfff2b8,{emissive:0xffd27a,emissiveIntensity:.4}),.75,-.4,-.55); break; }
     case "gatherings": { add(new THREE.CylinderGeometry(.85,.85,.12,24), w,0,-.2); add(new THREE.CylinderGeometry(.08,.12,.5,6), d,0,-.48); const ring=new THREE.Group(); for(let k=0;k<6;k++){ const a=k/6*Math.PI*2; const p=new THREE.Mesh(new THREE.SphereGeometry(.2,10,8), k%2?m:w); p.position.set(Math.cos(a)*1.15,.05,Math.sin(a)*1.15); p.castShadow=true; ring.add(p); } g.add(ring); g.userData.spin.push([ring,.35]); add(new THREE.OctahedronGeometry(.18,0), mat(0xfff2b8,{emissive:0xffd27a,emissiveIntensity:1}),0,.35); break; }
