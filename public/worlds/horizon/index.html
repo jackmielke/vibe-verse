@@ -38,6 +38,15 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 .lk.on b::after{content:"  ✓";color:var(--warm)}
 .lk small{display:block;font-size:11.5px;color:var(--ink-soft);line-height:1.35}
 #lookMenu[hidden]{display:none}
+#joy{position:fixed;left:22px;bottom:calc(92px + env(safe-area-inset-bottom,0px));width:116px;height:116px;border-radius:50%;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:5;touch-action:none}
+#joy[hidden],#jumpBtn[hidden],#minimap[hidden]{display:none}
+#joyKnob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none}
+#jumpBtn{position:fixed;right:24px;bottom:calc(104px + env(safe-area-inset-bottom,0px));width:68px;height:68px;border-radius:50%;border:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.75);font-size:26px;z-index:5;touch-action:none}
+#minimap{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:168px;height:168px;border-radius:50%;z-index:4;cursor:pointer;box-shadow:0 10px 30px rgba(40,30,30,.22)}
+.media{margin:0 0 16px;border-radius:14px;overflow:hidden;aspect-ratio:16/9;background:#111}
+.media iframe,.media video{width:100%;height:100%;border:0;display:block;object-fit:cover}
+.pacts{display:flex;gap:8px;margin:0 0 16px}
+.flybtn{border:1px solid var(--line);background:rgba(255,255,255,.75);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600}
 #lookFade{position:fixed;inset:0;opacity:0;pointer-events:none;transition:opacity .26s ease;z-index:2}
 @media (max-width:560px){ #lookBtn .lbl{display:none} }
 .pill{border-radius:999px;padding:9px 16px;font-weight:600;font-size:13px;border:1px solid var(--glass-edge)}
@@ -176,6 +185,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
     <button class="pill glass" id="signinBtn" type="button" hidden title="Sign in to edit" aria-label="Sign in to edit">✎</button>
     <button class="pill glass" id="editBtn" type="button" hidden>Edit</button>
     <button class="pill glass" id="lookBtn" type="button" hidden aria-haspopup="true" aria-expanded="false" title="Change the look (L)">◐<span class="lbl"> Look</span></button>
+    <button class="pill glass" id="mapBtn" type="button" title="Bird's-eye map (M)">Map</button>
     <button class="pill glass" id="atlasBtn" type="button">Atlas</button>
   </div>
 </div>
@@ -201,7 +211,10 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 </aside>
 
 <div id="toast" class="glass" hidden role="status"></div>
-<div id="hint" class="glass"><b>WASD</b> or <b>tap</b> to walk · <b>drag</b> to look · <b>scroll</b> to zoom</div>
+<div id="hint" class="glass"><b>WASD</b> walk · <b>Shift</b> run · <b>Space</b> jump · <b>drag</b> look around · <b>scroll</b> zoom · <b>M</b> map</div>
+<div id="joy" hidden aria-label="Move"><div id="joyKnob"></div></div>
+<button id="jumpBtn" type="button" hidden aria-label="Jump">⤒</button>
+<canvas id="minimap" hidden aria-label="Island map, click to travel"></canvas>
 
 <nav id="dock" class="glass" aria-label="Stations">
   <button class="arrow" id="dockPrev" type="button" aria-label="Previous station">‹</button>
@@ -432,7 +445,7 @@ if (EMBEDDED && !STANDALONE) document.getElementById("vvBack").hidden = false;
    Jack's saved edits (horizon_stations) and whether this viewer may edit;
    saves go back up to the host, which writes them. Standalone, nothing
    arrives and the defaults stand. */
-const EDITABLE = ["name","tagline","now","y5","y10","y50","insight","move","notes"];
+const EDITABLE = ["name","tagline","now","y5","y10","y50","insight","move","notes","video"];
 const DEFAULTS = {}; S.forEach(s=>{ DEFAULTS[s.key] = {}; EDITABLE.forEach(f=>DEFAULTS[s.key][f] = s[f]||""); s.faves = s.faves||[]; });
 const overrides = {};
 let canEdit = false, editing = false;
@@ -560,6 +573,12 @@ function field(s, f, tag="p", cls=""){
   const c = [cls, s.faves.includes(f)?"fave":"", editing?"editable":""].filter(Boolean).join(" ");
   return `<${tag}${c?` class="${c}"`:""}${edit}>${para(s[f])}</${tag}>${faveBtn}`;
 }
+function mediaHTML(u){
+  u=(u||"").trim(); if(!/^https?:\/\//i.test(u)) return "";
+  const yt=u.match(/(?:youtu\.be\/|[?&]v=|shorts\/|embed\/)([\w-]{11})/);
+  if(yt) return `<div class="media"><iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Station video"></iframe></div>`;
+  return `<div class="media"><video src="${esc(u)}" controls playsinline muted loop autoplay preload="metadata"></video></div>`;
+}
 function openPanel(i){
   if(shown===i) return; shown=i; cur=i; const s=S[i];
   dockName.innerHTML = `<small>${String(i+1).padStart(2,"0")}/${N}</small>${esc(s.name)}`;
@@ -567,6 +586,8 @@ function openPanel(i){
   pScroll.innerHTML = `<div class="eyebrow"><span>Station ${String(i+1).padStart(2,"0")} / ${N}</span><span class="chip ${s.fit?"warm":"cool"}">${s.fit?"You're building here":"On the horizon"}</span></div>
   ${editing?'<p class="edithint">Tap any text to rewrite it. It saves when you tap away. ♡ marks a favorite.</p>':""}
   ${field(s,"name","h2")}${field(s,"tagline","p","tagline")}
+  <div class="pacts"><button type="button" class="flybtn" id="flyBtn">▶ Fly around it</button></div>
+  ${editing ? `<div class="box"><h3>Video link (YouTube or .mp4)</h3>${field(s,"video")}</div>` : mediaHTML(s.video)}
   <ol class="tl">
     <li style="--c:#e0703f"><span class="yr">NOW · 2026</span>${field(s,"now")}</li>
     <li style="--c:#d08a2a"><span class="yr">5 YEARS · 2031</span>${field(s,"y5")}</li>
@@ -579,12 +600,13 @@ function openPanel(i){
   ${sigsHTML(s)}
   ${editing && overrides[s.key] ? '<button type="button" class="reset" id="resetBtn">Restore my original text for this station</button>' : ""}`;
   pScroll.scrollTop=0;
+  document.getElementById("flyBtn").onclick = ()=>flyAround(i);
   if(editing){
     pScroll.querySelectorAll("[data-f]").forEach(el=>{
       el.addEventListener("blur", ()=>{
         const f = el.dataset.f, text = el.innerText.replace(/ /g," ").trim();
         if(text === (s[f]||"").trim()) return;
-        if(!text && f!=="notes"){ el.innerHTML = para(s[f]); return; }
+        if(!text && f!=="notes" && f!=="video"){ el.innerHTML = para(s[f]); return; }
         s[f] = text; save(s, {[f]: text});
         if(f==="name") dockName.innerHTML = `<small>${String(i+1).padStart(2,"0")}/${N}</small>${esc(s.name)}`;
         renderAtlas();
@@ -635,7 +657,7 @@ dockName.onclick=()=>{ if(cur<0) return travelTo(0); if(shown===cur) closePanel(
 document.getElementById("tourBtn").onclick=()=>{ document.getElementById("welcome").hidden=true; travelTo(0); };
 
 /* ---------- 3D world ---------- */
-let travelTo = ()=>{};
+let travelTo = ()=>{}, flyAround = ()=>{};
 (function(){
 const canvas = document.getElementById("stage");
 let renderer;
@@ -826,24 +848,105 @@ const marker = new THREE.Mesh(new THREE.RingGeometry(.35,.5,24), new THREE.MeshB
 marker.rotation.x=-Math.PI/2; marker.position.y=.03; marker.visible=false; scene.add(marker);
 
 // ---------- controls ----------
-let yaw = 0, dist = innerWidth<640 ? 24 : 19, camPos = new THREE.Vector3(), target = null, targetStation = -1;
-const keys = {};
-addEventListener("keydown", e=>{ if(atlas.hidden===false || (e.target && e.target.isContentEditable)) return; keys[e.key.toLowerCase()] = true; if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault(); });
-addEventListener("keyup", e=>{ keys[e.key.toLowerCase()] = false; });
+/* Third person, like Vibe Island: WASD moves relative to the camera, Shift
+   runs, Space jumps, drag orbits (sideways turns, up and down tilts), scroll or
+   pinch zooms. Zoom also sets the tilt: close in you look out at the horizon,
+   far out the camera rises into a bird's-eye map of the whole island. M or the
+   Map button jumps straight there and back. Every camera value has a target
+   and eases toward it, so nothing snaps. */
+const ZMIN=5, ZMAX=118, MAPD=96, HOMED = innerWidth<640 ? 22 : 18;
+let yaw=0, yawT=0, dist=HOMED, distT=HOMED, tilt=0, tiltT=0, mapK=0;
+let camPos=new THREE.Vector3(), target=null, targetStation=-1;
+const vel=new THREE.Vector3(); let vy=0, jumpY=0, cine=null;
+const keys={}, joy={x:0,y:0};
+const clampD = d=>Math.min(ZMAX, Math.max(ZMIN, d));
+const basePitch = d=> .14 + Math.pow((d-ZMIN)/(ZMAX-ZMIN), .7)*1.24;
+const jump = ()=>{ if(jumpY<=0.001){ vy=8.2; } };
+const toggleMap = ()=>{ if(distT>55){ distT=HOMED; tiltT=0; } else { distT=MAPD; tiltT=0; closePanel(); } };
+addEventListener("keydown", e=>{
+  if(atlas.hidden===false || (e.target && (e.target.isContentEditable || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)))) return;
+  const k=e.key.toLowerCase(); keys[k]=true; if(e.shiftKey) keys.shift=true;
+  if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) e.preventDefault();
+  if(k===" " && !e.repeat) jump();
+  if(k==="m" && !e.repeat) toggleMap();
+  if(cine && ["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(k)) endCine();
+});
+addEventListener("keyup", e=>{ keys[e.key.toLowerCase()]=false; if(!e.shiftKey) keys.shift=false; });
+addEventListener("blur", ()=>{ for(const k in keys) keys[k]=false; });
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-let down = null;
-canvas.addEventListener("pointerdown", e=>{ down = {x:e.clientX, y:e.clientY, yaw, moved:false}; canvas.setPointerCapture(e.pointerId); });
-canvas.addEventListener("pointermove", e=>{ if(!down) return; const dx=e.clientX-down.x; if(Math.abs(dx)+Math.abs(e.clientY-down.y)>6) down.moved=true; if(down.moved) yaw = down.yaw - dx*0.006; });
-canvas.addEventListener("pointerup", e=>{
-  if(down && !down.moved){
+const pts=new Map(); let down=null, pinch=null;
+const pinchLen=()=>{ const [a,b]=[...pts.values()]; return Math.hypot(a.x-b.x, a.y-b.y); };
+canvas.addEventListener("pointerdown", e=>{
+  pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+  if(cine) endCine();
+  if(pts.size===1) down={x:e.clientX, y:e.clientY, yaw:yawT, tilt:tiltT, moved:false};
+  else if(pts.size===2){ pinch={d:pinchLen(), dist:distT}; if(down) down.moved=true; }
+});
+canvas.addEventListener("pointermove", e=>{
+  if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch && pts.size>=2){ distT=clampD(pinch.dist*pinch.d/Math.max(20,pinchLen())); return; }
+  if(!down) return;
+  const dx=e.clientX-down.x, dy=e.clientY-down.y;
+  if(Math.abs(dx)+Math.abs(dy)>6) down.moved=true;
+  if(down.moved){ yawT = down.yaw - dx*0.0065; tiltT = Math.max(-1.3, Math.min(1.3, down.tilt + dy*0.0055)); }
+});
+const endPointer = e=>{
+  const wasTap = down && !down.moved && pts.size===1;
+  pts.delete(e.pointerId); if(pts.size<2) pinch=null;
+  if(wasTap){
     ndc.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1); ray.setFromCamera(ndc, camera);
     const hs = ray.intersectObjects(pickables);
-    if(hs.length){ travelTo(hs[0].object.userData.idx); }
-    else { const hg = ray.intersectObject(ground); if(hg.length){ target = hg[0].point.clone(); target.y=0; targetStation=-1; marker.position.set(target.x,.03,target.z); marker.visible=true; } }
+    if(hs.length){ const i=hs[0].object.userData.idx; if(mapK>.5){ flyDownTo(i); } else travelTo(i); }
+    else { const hg = ray.intersectObject(ground); if(hg.length){ target = hg[0].point.clone(); target.y=0; targetStation=-1; marker.position.set(target.x,.03,target.z); marker.visible=true; if(mapK>.5){ distT=HOMED; tiltT=0; } } }
   }
-  down = null;
+  if(pts.size===0) down=null;
+};
+canvas.addEventListener("pointerup", endPointer); canvas.addEventListener("pointercancel", endPointer);
+canvas.addEventListener("wheel", e=>{ e.preventDefault(); if(cine) endCine(); distT = clampD(distT*Math.exp(e.deltaY*(e.ctrlKey? .012 : .0016))); tiltT *= .9; }, {passive:false});
+function flyDownTo(i){ distT=HOMED; tiltT=0; travelTo(i); }
+
+/* ---- phone: joystick + jump ---- */
+const joyEl=document.getElementById("joy"), knob=document.getElementById("joyKnob"), jumpEl=document.getElementById("jumpBtn");
+if(matchMedia("(pointer:coarse)").matches){
+  joyEl.hidden=false; jumpEl.hidden=false;
+  let jp=null; const R=46;
+  const setJoy=(e)=>{ const r=joyEl.getBoundingClientRect(); let x=e.clientX-(r.left+r.width/2), y=e.clientY-(r.top+r.height/2); const L=Math.hypot(x,y); if(L>R){ x*=R/L; y*=R/L; } knob.style.transform=`translate(${x}px,${y}px)`; joy.x=x/R; joy.y=y/R; };
+  joyEl.addEventListener("pointerdown", e=>{ e.preventDefault(); jp=e.pointerId; try{ joyEl.setPointerCapture(jp); }catch(_){} setJoy(e); if(cine) endCine(); });
+  joyEl.addEventListener("pointermove", e=>{ if(e.pointerId===jp) setJoy(e); });
+  const rel=e=>{ if(e.pointerId!==jp) return; jp=null; joy.x=joy.y=0; knob.style.transform=""; };
+  joyEl.addEventListener("pointerup", rel); joyEl.addEventListener("pointercancel", rel);
+  jumpEl.addEventListener("pointerdown", e=>{ e.preventDefault(); jump(); });
+}
+document.getElementById("mapBtn").onclick = toggleMap;
+
+/* ---- minimap (desktop) ---- */
+const mm=document.getElementById("minimap"), mctx=mm.getContext("2d");
+const MMS=168, MMR=48.5;
+if(matchMedia("(pointer:fine)").matches && innerWidth>820){ mm.hidden=false; mm.width=mm.height=MMS*2; }
+const toMM=(x,z)=>[MMS + x/MMR*(MMS-8), MMS + z/MMR*(MMS-8)];
+mm.addEventListener("click", e=>{
+  const r=mm.getBoundingClientRect(), x=((e.clientX-r.left)/r.width*2*MMS-MMS)/(MMS-8)*MMR, z=((e.clientY-r.top)/r.height*2*MMS-MMS)/(MMS-8)*MMR;
+  let best=-1, bd=5; S.forEach((s,i)=>{ const d=Math.hypot(s.x-x,s.z-z); if(d<bd){ bd=d; best=i; } });
+  if(best>=0) flyDownTo(best); else if(Math.hypot(x,z)<46){ target=new THREE.Vector3(x,0,z); targetStation=-1; marker.position.set(x,.03,z); marker.visible=true; }
 });
-canvas.addEventListener("wheel", e=>{ e.preventDefault(); dist = Math.min(34, Math.max(10, dist + e.deltaY*0.02)); }, {passive:false});
+function drawMinimap(){
+  if(mm.hidden) return;
+  const c=mctx, W=MMS*2; c.clearRect(0,0,W,W);
+  c.save(); c.beginPath(); c.arc(MMS,MMS,MMS-4,0,7); c.fillStyle="rgba(150,196,140,.92)"; c.fill(); c.lineWidth=6; c.strokeStyle="rgba(255,255,255,.9)"; c.stroke();
+  c.beginPath(); c.arc(MMS,MMS,(RING+1.3)/MMR*(MMS-8),0,7); c.lineWidth=5; c.strokeStyle="rgba(255,244,226,.95)"; c.stroke();
+  S.forEach(s=>{ const [x,y]=toMM(s.x,s.z); c.beginPath(); c.moveTo(MMS,MMS); c.lineTo(x,y); c.lineWidth=3; c.strokeStyle="rgba(255,244,226,.7)"; c.stroke(); });
+  c.beginPath(); c.arc(MMS,MMS,5/MMR*(MMS-8),0,7); c.fillStyle="#8fd0d4"; c.fill();
+  S.forEach((s,i)=>{ const [x,y]=toMM(s.x,s.z); c.beginPath(); c.arc(x,y,i===cur?11:8,0,7); c.fillStyle=hex(s.color); c.fill(); c.lineWidth=3; c.strokeStyle=i===cur?"#1f2a40":"#fff"; c.stroke(); });
+  const [ax,ay]=toMM(av.position.x, av.position.z);
+  c.translate(ax,ay); c.rotate(-yaw);
+  c.beginPath(); c.moveTo(0,0); c.arc(0,0,46,-Math.PI/2-.5,-Math.PI/2+.5); c.closePath(); c.fillStyle="rgba(255,255,255,.28)"; c.fill();
+  c.rotate(yaw - av.rotation.y + Math.PI); c.beginPath(); c.moveTo(0,-13); c.lineTo(9,9); c.lineTo(0,4); c.lineTo(-9,9); c.closePath(); c.fillStyle="#1f2a40"; c.fill(); c.lineWidth=3; c.strokeStyle="#fff"; c.stroke();
+  c.restore();
+}
+
+/* ---- fly around a monument ---- */
+function endCine(){ if(!cine) return; const i=cine.i; cine=null; yawT=yaw; if(i>=0){ shown=-1; openPanel(i); } }
+flyAround = (i)=>{ closePanel(); dismissed=i; cine={i, t:0, a0:Math.atan2(S[i].x-av.position.x, S[i].z-av.position.z)+Math.PI}; };
 
 travelTo = (i)=>{
   const s = S[i]; const len = Math.hypot(s.x,s.z); const k = (len-4.2)/len;
@@ -863,7 +966,7 @@ addEventListener("resize", resize); resize();
    asks for them and cached, so switching back is instant. */
 const hemi = scene.children.find(o=>o.isHemisphereLight);
 const skyU = sky.material.uniforms;
-const dlOff = new THREE.Vector3(30,45,18);
+const dlOff = new THREE.Vector3(30,45,18), fogBase = {near:45, far:140};
 const MOBILE = Math.min(innerWidth, innerHeight) < 700 || matchMedia("(pointer:coarse)").matches;
 const tagRole = (o,role)=>{ o.traverse(m=>{ if(m.isMesh){ m.userData.role=role; if(!m.userData.m0) m.userData.m0=m.material; } }); };
 tagRole(island,"cliff"); tagRole(rim,"rim"); tagRole(ground,"ground"); tagRole(water,"water"); tagRole(pond,"pond"); tagRole(pondRim,"stone"); tagRole(obelisk,"obelisk");
@@ -1158,7 +1261,7 @@ function applyLook(id){
   if(X.physWater) X.physWater.group.visible=!!physW;
   water.visible = !physW && !L.hideWater;
   // fog, lights
-  scene.fog.color.set(L.fog[0]); scene.fog.near=L.fog[1]; scene.fog.far=L.fog[2];
+  scene.fog.color.set(L.fog[0]); fogBase.near=L.fog[1]; fogBase.far=L.fog[2];
   hemi.color.set(L.hemi[0]); hemi.groundColor.set(L.hemi[1]); hemi.intensity=L.hemi[2];
   dl.color.set(L.dl[0]); dl.intensity=L.dl[1];
   if(L.sunDir) dlOff.copy(sunDirOf(L.sunDir)).multiplyScalar(70); else dlOff.fromArray(L.dlOff||[30,45,18]);
@@ -1211,37 +1314,56 @@ choose(firstLook, false);
 window.__horizon = { look: id=>choose(id,false), looks: ORDER, current: ()=>curLook };
 
 // ---------- loop ----------
-const clock = new THREE.Clock(), tmp = new THREE.Vector3(), proj = new THREE.Vector3();
+const clock = new THREE.Clock(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), proj = new THREE.Vector3();
 let walkPhase = 0;
 function frame(){
   const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, amp = reduce? .3 : 1;
-  // movement
+  // movement: ease toward the wanted velocity, so starts and stops are soft
   const fwd = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)), right = new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
-  const mv = new THREE.Vector3();
-  if(keys["w"]||keys["arrowup"]) mv.add(fwd); if(keys["s"]||keys["arrowdown"]) mv.sub(fwd);
-  if(keys["d"]||keys["arrowright"]) mv.add(right); if(keys["a"]||keys["arrowleft"]) mv.sub(right);
-  if(keys["q"]) yaw += dt*1.6; if(keys["e"]) yaw -= dt*1.6;
-  let speed = 0;
-  if(mv.lengthSq()>0){ target=null; targetStation=-1; marker.visible=false; mv.normalize(); speed=9; }
-  else if(target){ mv.subVectors(target, av.position); mv.y=0; const L=mv.length(); if(L<.15){ target=null; marker.visible=false; } else { mv.normalize(); speed = Math.min(11, 2+L*1.4); } }
-  if(speed>0){
-    av.position.addScaledVector(mv, speed*dt);
+  const inp = new THREE.Vector3();
+  if(keys["w"]||keys["arrowup"]) inp.add(fwd); if(keys["s"]||keys["arrowdown"]) inp.sub(fwd);
+  if(keys["d"]||keys["arrowright"]) inp.add(right); if(keys["a"]||keys["arrowleft"]) inp.sub(right);
+  inp.addScaledVector(right, joy.x); inp.addScaledVector(fwd, -joy.y);
+  if(keys["q"]) yawT += dt*1.8; if(keys["e"]) yawT -= dt*1.8;
+  const run = keys.shift || Math.hypot(joy.x,joy.y)>.92;
+  const want = new THREE.Vector3();
+  if(inp.lengthSq()>.0025){ target=null; targetStation=-1; marker.visible=false; want.copy(inp).normalize().multiplyScalar((run?14:7.5)*Math.min(1,inp.length())); }
+  else if(target){ want.subVectors(target, av.position); want.y=0; const L=want.length(); if(L<.15){ target=null; marker.visible=false; want.set(0,0,0); } else want.normalize().multiplyScalar(Math.min(12, 2+L*1.4)); }
+  vel.lerp(want, 1-Math.exp(-dt*(want.lengthSq()>vel.lengthSq()? 9 : 6)));
+  const speed = vel.length();
+  if(speed>.05){
+    av.position.addScaledVector(vel, dt);
     const r = Math.hypot(av.position.x, av.position.z); if(r>45){ av.position.x*=45/r; av.position.z*=45/r; }
-    const want = Math.atan2(mv.x, mv.z); let dA = want-av.rotation.y; dA = Math.atan2(Math.sin(dA),Math.cos(dA)); av.rotation.y += dA*Math.min(1, dt*10);
-    walkPhase += dt*speed*1.6;
-    // gentle auto-follow of camera behind the walker when tapping
-    if(target && !down){ const behind = Math.atan2(-mv.x,-mv.z); let dy = behind - yaw; dy=Math.atan2(Math.sin(dy),Math.cos(dy)); yaw += dy*dt*0.8; }
+    S.forEach(s=>{ const dx=av.position.x-s.x, dz=av.position.z-s.z, d=Math.hypot(dx,dz); if(d<3.05 && d>0 && jumpY<.5){ av.position.x=s.x+dx/d*3.05; av.position.z=s.z+dz/d*3.05; } });
+    if(speed>.4){ const wa = Math.atan2(vel.x, vel.z); let dA = wa-av.rotation.y; dA = Math.atan2(Math.sin(dA),Math.cos(dA)); av.rotation.y += dA*Math.min(1, dt*10); }
+    walkPhase += dt*speed*1.5;
+    if(target && !down && mapK<.3){ const behind = Math.atan2(-vel.x,-vel.z); let dy = behind - yawT; dy=Math.atan2(Math.sin(dy),Math.cos(dy)); yawT += dy*dt*0.7; }
   }
-  body.position.y = .75 + (speed>0? Math.abs(Math.sin(walkPhase))*.12 : Math.sin(t*2)*.03*amp);
+  vy -= 24*dt; jumpY += vy*dt; if(jumpY<=0){ jumpY=0; vy=0; }
+  av.position.y = jumpY;
+  body.position.y = .75 + (speed>.4 && jumpY===0 ? Math.abs(Math.sin(walkPhase))*.12 : Math.sin(t*2)*.03*amp);
   visor.position.y = body.position.y + .07; eL.position.y = eR.position.y = body.position.y + .13;
   ant.position.y = body.position.y + .7; bulb.position.y = body.position.y + .9;
   const blink = (t%4)<.12 ? .15 : 1; eL.scale.y = eR.scale.y = blink;
 
-  // camera
-  tmp.set(av.position.x + Math.sin(yaw)*dist, dist*.58, av.position.z + Math.cos(yaw)*dist);
-  camPos.lerp(tmp, camPos.lengthSq()===0 ? 1 : Math.min(1, dt*4));
-  camera.position.copy(camPos); camera.lookAt(av.position.x, 1.6, av.position.z);
-  dl.position.copy(av.position).add(dlOff); dl.target.position.copy(av.position);
+  // camera: ease every value toward its target, then place it on a sphere around the focus
+  const ce = 1-Math.exp(-dt*7);
+  yaw += (yawT-yaw)*ce; dist += (distT-dist)*ce; tilt += (tiltT-tilt)*ce;
+  mapK = Math.min(1, Math.max(0, (dist-38)/48)); mapK = mapK*mapK*(3-2*mapK);
+  const focus = tmp2.set(av.position.x*(1-mapK), 1.6 + jumpY*.5 + Math.max(0, 9-dist)*.12, av.position.z*(1-mapK));
+  let pitch = Math.max(.03, Math.min(1.48, basePitch(dist)+tilt)), cd = dist, cy = yaw;
+  if(cine){
+    cine.t += dt; const s=S[cine.i], u=Math.min(1, cine.t/8);
+    focus.set(s.x, 3.4, s.z); cy = cine.a0 + u*Math.PI*1.6; cd = 10 - Math.sin(u*Math.PI)*3; pitch = .22 + Math.sin(u*Math.PI*2)*.12;
+    if(u>=1) endCine();
+  }
+  tmp.set(focus.x + Math.sin(cy)*Math.cos(pitch)*cd, focus.y + Math.sin(pitch)*cd, focus.z + Math.cos(cy)*Math.cos(pitch)*cd);
+  if(tmp.y<.6) tmp.y=.6;
+  camPos.lerp(tmp, camPos.lengthSq()===0 ? 1 : Math.min(1, dt*(cine?3:12)));
+  camera.position.copy(camPos); camera.lookAt(focus);
+  scene.fog.near = fogBase.near + mapK*90; scene.fog.far = fogBase.far + mapK*160;
+  const ext = 40 + mapK*22; if(Math.abs(dl.shadow.camera.right-ext)>.5){ Object.assign(dl.shadow.camera,{left:-ext,right:ext,top:ext,bottom:-ext}); dl.shadow.camera.updateProjectionMatrix(); }
+  dl.position.copy(focus).add(dlOff); dl.target.position.copy(focus);
 
   // water
   if(water.visible){ for(let k=0;k<wPos.count;k++){ const x=wBase[k*3], z=wBase[k*3+2]; wPos.array[k*3+1] = (Math.sin(x*.12+t*.8)+Math.cos(z*.15+t*.6))*.18*amp; }
@@ -1269,7 +1391,7 @@ function frame(){
     proj.set(s.x, st.baseY+2.2, s.z).project(camera);
     const vis = proj.z<1 && Math.abs(proj.x)<1.2 && Math.abs(proj.y)<1.2;
     const camD = camera.position.distanceTo(st.root.position);
-    st.tag.style.opacity = vis ? Math.max(0, Math.min(1, (70-camD)/20)) : 0;
+    st.tag.style.opacity = vis ? Math.max(0, Math.min(1, (70+mapK*140-camD)/20)) : 0;
     st.tag.style.transform = `translate(${(proj.x*.5+.5)*innerWidth}px, ${(-proj.y*.5+.5)*innerHeight}px) translate(-50%,-100%)`;
     st.tag.classList.toggle("near", d<6);
   });
@@ -1278,10 +1400,11 @@ function frame(){
   nowTag.style.transform = `translate(${(proj.x*.5+.5)*innerWidth}px, ${(-proj.y*.5+.5)*innerHeight}px) translate(-50%,-100%)`;
 
   // proximity panel
-  if(nearD < 6.2){ if(near!==dismissed && (targetStation===-1 || targetStation===near)) openPanel(near); }
+  if(cine || mapK>.5){} else if(nearD < 6.2){ if(near!==dismissed && (targetStation===-1 || targetStation===near)) openPanel(near); }
   else { if(dismissed>=0 && S[dismissed] && Math.hypot(av.position.x-S[dismissed].x, av.position.z-S[dismissed].z)>7) dismissed=-1;
          if(shown>=0 && targetStation!==shown && Math.hypot(av.position.x-S[shown].x, av.position.z-S[shown].z)>9){ shown=-1; panel.classList.add("off"); } }
 
+  drawMinimap();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
