@@ -85,8 +85,17 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
 };
 
+// Turned off at Jack's request (2026-10-07): the journal no longer writes
+// entries. The pg_cron job `vibey-journal-every-10` is paused too. Existing
+// entries stay readable. Flip this to true and re-activate the cron job
+// (select cron.alter_job(14, active := true)) to bring it back.
+const JOURNAL_ENABLED = false;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (!JOURNAL_ENABLED) {
+    return json({ ok: true, created: false, reason: "journal-disabled" });
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");

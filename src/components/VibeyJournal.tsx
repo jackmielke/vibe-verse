@@ -119,6 +119,8 @@ interface Props {
 }
 
 const PAGE_SIZE = 24;
+// Vibey stopped journaling (2026-10-07). Existing pages still show.
+const JOURNAL_WRITING = false;
 const TICK_INTERVAL_MS = 60 * 1000;           // check eligibility every minute
 const ENTRY_INTERVAL_MS = 10 * 60 * 1000;     // mirror the edge function's interval
 
@@ -252,7 +254,8 @@ export default function VibeyJournal({
   }, [communityId, generating, open]);
 
   useEffect(() => {
-    if (!watching) return;
+    // The journal is turned off server-side; don't ask it for entries.
+    if (!JOURNAL_WRITING || !watching) return;
     let cancelled = false;
     const tryTick = () => {
       if (cancelled) return;
