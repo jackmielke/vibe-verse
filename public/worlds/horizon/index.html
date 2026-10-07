@@ -38,6 +38,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 .lk.on b::after{content:"  ✓";color:var(--warm)}
 .lk small{display:block;font-size:11.5px;color:var(--ink-soft);line-height:1.35}
 #lookMenu[hidden]{display:none}
+#soundBtn[aria-pressed="true"]{background:var(--ink);color:#fff}
 .soc{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .soc h3{margin:10px 0 4px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft)}
 .soc .who{margin:0;font-size:13px;line-height:1.5;color:var(--ink-soft)}
@@ -57,6 +58,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 #clock .t{font-family:var(--f-mono);font-size:15px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 #clock .ph{font-size:11.5px;color:var(--ink-soft);line-height:1.2}
 #clock .ph b{display:block;color:var(--ink);font-weight:600;font-size:12px}
+#online[hidden]{display:none}
 #online{display:inline-flex;align-items:center;gap:5px;margin-left:6px;color:var(--ink)}
 #online i{width:7px;height:7px;border-radius:50%;background:#3ccf7a;box-shadow:0 0 0 3px rgba(60,207,122,.25)}
 .lkq{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px 8px;margin-top:4px;border-top:1px solid var(--line);font-size:12.5px}
@@ -66,7 +68,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .sw[aria-checked="true"]{background:#3ccf7a}
 .sw[aria-checked="true"]::after{transform:translateX(16px)}
-@media (max-width:640px){ #clock{left:16px;transform:none;top:calc(62px + env(safe-area-inset-top,0px));padding:5px 10px 5px 8px;gap:8px} #clock .t{font-size:13px} #clock .ph{display:none} }
+@media (max-width:640px){ #brand{display:none} #clock{left:12px;transform:none;top:calc(12px + env(safe-area-inset-top,0px));padding:6px 10px 6px 8px;gap:6px} #clock svg{width:36px;height:20px} #clock .t{font-size:13px} #clock .ph{display:none} #top{left:12px;right:12px;justify-content:flex-end} #topBtns{gap:6px} #topBtns .pill{padding:8px 11px;font-size:12.5px} }
 #joy{position:fixed;left:22px;bottom:calc(92px + env(safe-area-inset-bottom,0px));width:116px;height:116px;border-radius:50%;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:5;touch-action:none}
 #joy[hidden],#jumpBtn[hidden],#minimap[hidden]{display:none}
 #joyKnob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none}
@@ -141,7 +143,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 #panelNav{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
 #panelNav button{border:1px solid var(--line);background:rgba(255,255,255,.7);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-#welcome{position:fixed;left:16px;bottom:calc(122px + env(safe-area-inset-bottom,0px));width:min(360px,calc(100vw - 32px));border-radius:20px;padding:18px 20px;z-index:5;transition:opacity .4s}
+#welcome{box-sizing:border-box;position:fixed;left:16px;bottom:calc(122px + env(safe-area-inset-bottom,0px));width:min(360px,calc(100vw - 32px));border-radius:20px;padding:18px 20px;z-index:5;transition:opacity .4s}
 #welcome h2{font-family:var(--f-display);margin:0 0 6px;font-size:20px}
 #welcome p{margin:0 0 10px;font-size:13.5px;line-height:1.55;color:var(--ink-soft)}
 #welcome .row{display:flex;gap:8px;flex-wrap:wrap}
@@ -214,6 +216,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
     <button class="pill glass" id="signinBtn" type="button" hidden title="Sign in to edit" aria-label="Sign in to edit">✎</button>
     <button class="pill glass" id="editBtn" type="button" hidden>Edit</button>
     <button class="pill glass" id="lookBtn" type="button" hidden aria-haspopup="true" aria-expanded="false" title="Change the look (L)">◐<span class="lbl"> Look</span></button>
+    <button class="pill glass" id="soundBtn" type="button" title="Garden sounds" aria-pressed="false">♪</button>
     <button class="pill glass" id="mapBtn" type="button" title="Bird's-eye map (M)">Map</button>
     <button class="pill glass" id="atlasBtn" type="button">Atlas</button>
   </div>
@@ -223,7 +226,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 <div id="lookFade"></div>
 
 <div id="welcome" class="glass">
-  <h2>Walk the future</h2>
+  <div class="eyebrow">Horizon Garden</div><h2>Walk the future</h2>
   <p>Twenty-three monuments, one per frontier. Use the arrows below, tap a monument, or walk up to one to see where it stands now and where it goes in 5, 10 and 50 years, plus what I find most interesting and the move I'd make.</p>
   <div class="row">
     <button class="primary" id="tourBtn" type="button">Start at the Teammate</button>
@@ -489,7 +492,8 @@ const CLIPS = {
   handsfree:"hf_20261006_063143_b5565d0f-1263-4be8-b233-d1c0859a7b7f", play:"hf_20261006_063144_2af2b7f2-ee46-49df-81af-7206a33501a0",
   energy:"hf_20261006_063131_f539a1a2-fb8f-4a5e-8331-08ecb69ade0c",
 };
-S.forEach(s=>{ if(!s.video && CLIPS[s.key]) s.video = CLIP_BASE + CLIPS[s.key] + ".mp4"; });
+const LOCAL_CLIPS = ["hub","mobile","money","health","making","local"]; // stills from the same storyboard, slow push-ins rendered locally
+S.forEach(s=>{ if(s.video) return; if(CLIPS[s.key]) s.video = CLIP_BASE + CLIPS[s.key] + ".mp4"; else if(LOCAL_CLIPS.includes(s.key)) s.video = new URL("clips/"+s.key+".mp4", location.href).href; });
 const EDITABLE = ["name","tagline","now","y5","y10","y50","insight","move","notes","video"];
 const DEFAULTS = {}; S.forEach(s=>{ DEFAULTS[s.key] = {}; EDITABLE.forEach(f=>DEFAULTS[s.key][f] = s[f]||""); s.faves = s.faves||[]; });
 const overrides = {};
@@ -933,7 +937,7 @@ marker.rotation.x=-Math.PI/2; marker.position.y=.03; marker.visible=false; scene
    Map button jumps straight there and back. Every camera value has a target
    and eases toward it, so nothing snaps. */
 const ZMIN=5, ZMAX=118, MAPD=96, HOMED = innerWidth<640 ? 22 : 18;
-let yaw=0, yawT=0, dist=HOMED, distT=HOMED, tilt=0, tiltT=0, mapK=0;
+let yaw=-1.1, yawT=0, dist=MAPD+14, distT=HOMED, tilt=0, tiltT=0, mapK=0, intro = !navigator.webdriver || /intro/.test(location.search);
 let camPos=new THREE.Vector3(), target=null, targetStation=-1;
 const vel=new THREE.Vector3(); let vy=0, jumpY=0, cine=null;
 const keys={}, joy={x:0,y:0};
@@ -985,7 +989,8 @@ function flyDownTo(i){ distT=HOMED; tiltT=0; travelTo(i); }
 
 /* ---- phone: joystick + jump ---- */
 const joyEl=document.getElementById("joy"), knob=document.getElementById("joyKnob"), jumpEl=document.getElementById("jumpBtn");
-if(matchMedia("(pointer:coarse)").matches){
+const COARSE = matchMedia("(pointer:coarse)").matches;
+if(COARSE){
   joyEl.hidden=false; jumpEl.hidden=false;
   let jp=null; const R=46;
   const setJoy=(e)=>{ const r=joyEl.getBoundingClientRect(); let x=e.clientX-(r.left+r.width/2), y=e.clientY-(r.top+r.height/2); const L=Math.hypot(x,y); if(L>R){ x*=R/L; y*=R/L; } knob.style.transform=`translate(${x}px,${y}px)`; joy.x=x/R; joy.y=y/R; };
@@ -1000,7 +1005,8 @@ document.getElementById("mapBtn").onclick = toggleMap;
 /* ---- minimap (desktop) ---- */
 const mm=document.getElementById("minimap"), mctx=mm.getContext("2d");
 const MMS=168, MMR=48.5;
-if(matchMedia("(pointer:fine)").matches && innerWidth>820){ mm.hidden=false; mm.width=mm.height=MMS*2; }
+const MM_ON = matchMedia("(pointer:fine)").matches && innerWidth>820;
+if(MM_ON){ mm.hidden=false; mm.width=mm.height=MMS*2; }
 const toMM=(x,z)=>[MMS + x/MMR*(MMS-8), MMS + z/MMR*(MMS-8)];
 mm.addEventListener("click", e=>{
   const r=mm.getBoundingClientRect(), x=((e.clientX-r.left)/r.width*2*MMS-MMS)/(MMS-8)*MMR, z=((e.clientY-r.top)/r.height*2*MMS-MMS)/(MMS-8)*MMR;
@@ -1533,6 +1539,34 @@ function drawClock(){
 clockEl.hidden=false; clockEl.onclick=()=>{ choose("live"); };
 setInterval(()=>{ drawClock(); liveBlend(); }, 20000);
 
+// ---------- garden sounds (generated, nothing to download) ----------
+/* Wind, birds and a far-off chime by day; crickets and a low hum at night; a
+   slow synth pad in Neon. Off until the visitor taps ♪, and remembered. */
+const snd = {ctx:null, on:false, master:null, wind:null, birdsAt:0, crickAt:0, padAt:0};
+function noiseBuf(ctx){ const b=ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate), d=b.getChannelData(0); let last=0; for(let i=0;i<d.length;i++){ last = (last + .02*(Math.random()*2-1))/1.02; d[i]=last*3.5; } return b; }
+function soundStart(){
+  if(!snd.ctx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; snd.ctx=new AC(); const c=snd.ctx;
+    snd.master=c.createGain(); snd.master.gain.value=0; snd.master.connect(c.destination);
+    const src=c.createBufferSource(); src.buffer=noiseBuf(c); src.loop=true; const f=c.createBiquadFilter(); f.type="lowpass"; f.frequency.value=500; const g=c.createGain(); g.gain.value=.22;
+    src.connect(f); f.connect(g); g.connect(snd.master); src.start(); snd.wind={f,g}; }
+  snd.ctx.resume(); snd.on=true; snd.master.gain.setTargetAtTime(.55, snd.ctx.currentTime, .8);
+}
+function soundStop(){ if(!snd.ctx) return; snd.on=false; snd.master.gain.setTargetAtTime(0, snd.ctx.currentTime, .4); }
+function chirp(c, t0){ const o=c.createOscillator(), g=c.createGain(), f0=2200+Math.random()*1800; o.type="sine"; o.frequency.setValueAtTime(f0,t0); o.frequency.exponentialRampToValueAtTime(f0*(1.3+Math.random()*.5), t0+.09); g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(.05,t0+.02); g.gain.exponentialRampToValueAtTime(.0005,t0+.13); o.connect(g); g.connect(snd.master); o.start(t0); o.stop(t0+.15); }
+function cricket(c, t0){ for(let k=0;k<3;k++){ const o=c.createOscillator(), g=c.createGain(), t=t0+k*.07; o.type="triangle"; o.frequency.value=4400+Math.random()*300; g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.018,t+.012); g.gain.linearRampToValueAtTime(0,t+.045); o.connect(g); g.connect(snd.master); o.start(t); o.stop(t+.05); } }
+function padNote(c, t0, freq, len, vol){ const o=c.createOscillator(), o2=c.createOscillator(), g=c.createGain(), f=c.createBiquadFilter(); o.type="sawtooth"; o2.type="sawtooth"; o.frequency.value=freq; o2.frequency.value=freq*1.006; f.type="lowpass"; f.frequency.value=900; g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol,t0+len*.4); g.gain.linearRampToValueAtTime(0,t0+len); o.connect(f); o2.connect(f); f.connect(g); g.connect(snd.master); o.start(t0); o2.start(t0); o.stop(t0+len+.1); o2.stop(t0+len+.1); }
+function soundTick(t){
+  if(!snd.on || !snd.ctx) return; const c=snd.ctx, now=c.currentTime;
+  const night = curLook==="night" || (chosen==="live" && sunAt(new Date()).el < -4), neon = curLook==="neon", winter = curLook==="winter";
+  snd.wind.g.gain.setTargetAtTime(neon? .05 : winter? .35 : .2, now, 1); snd.wind.f.frequency.setTargetAtTime(winter? 900 : night? 300 : 520, now, 1);
+  if(neon){ if(now>snd.padAt){ const roots=[110,130.81,98,146.83]; const r=roots[Math.floor(now/8)%4]; [1,1.5,2].forEach((m,k)=>padNote(c, now+.05+k*.02, r*m, 7.5, .03)); snd.padAt=now+8; } return; }
+  if(night){ if(now>snd.crickAt){ cricket(c, now+.02); snd.crickAt = now + .35 + Math.random()*.9; } if(now>snd.padAt){ padNote(c, now, 55, 9, .025); snd.padAt=now+10; } }
+  else if(!winter && now>snd.birdsAt){ const n=1+Math.floor(Math.random()*3); for(let k=0;k<n;k++) chirp(c, now+.05+k*.16); snd.birdsAt = now + 2 + Math.random()*5; }
+}
+const soundBtn=document.getElementById("soundBtn");
+soundBtn.onclick=()=>{ if(snd.on){ soundStop(); } else soundStart(); soundBtn.setAttribute("aria-pressed", String(snd.on)); try{ localStorage.setItem("horizon.sound", snd.on?"1":"0"); }catch(_){} };
+try{ if(localStorage.getItem("horizon.sound")==="1"){ const resumeOnce=()=>{ soundStart(); soundBtn.setAttribute("aria-pressed","true"); removeEventListener("pointerdown", resumeOnce); removeEventListener("keydown", resumeOnce); }; addEventListener("pointerdown", resumeOnce); addEventListener("keydown", resumeOnce); } }catch(_){}
+
 let firstLook = "live";
 try{ const q=new URLSearchParams(location.search).get("look"); firstLook = (q && LOOKS[q]) ? q : (localStorage.getItem("horizon.look.v2") || "live"); }catch(e){}
 choose(firstLook, false);
@@ -1573,7 +1607,8 @@ function frame(){
   const blink = (t%4)<.12 ? .15 : 1; eL.scale.y = eR.scale.y = blink;
 
   // camera: ease every value toward its target, then place it on a sphere around the focus
-  const ce = 1-Math.exp(-dt*7);
+  if(intro && (t>6 || Math.abs(distT-HOMED)>.01 || Math.abs(tiltT)>.01 || inp.lengthSq()>0)) intro=false;
+  const ce = 1-Math.exp(-dt*(intro? .9 : 7));
   yaw += (yawT-yaw)*ce; dist += (distT-dist)*ce; tilt += (tiltT-tilt)*ce;
   mapK = Math.min(1, Math.max(0, (dist-38)/48)); mapK = mapK*mapK*(3-2*mapK);
   const focus = tmp2.set(av.position.x*(1-mapK), 1.6 + jumpY*.5 + Math.max(0, 9-dist)*.12, av.position.z*(1-mapK));
@@ -1632,7 +1667,8 @@ function frame(){
          if(shown>=0 && targetStation!==shown && Math.hypot(av.position.x-S[shown].x, av.position.z-S[shown].z)>9){ shown=-1; panel.classList.add("off"); } }
 
   if(frameN%2===0) drawMinimap();
-  tickPeers(dt); sendPos(t); watchFps(dt);
+  if(frameN%15===0){ const w=!document.getElementById("welcome").hidden; if(COARSE){ joyEl.hidden=w; jumpEl.hidden=w; } else if(MM_ON) mm.hidden=w; }
+  tickPeers(dt); sendPos(t); watchFps(dt); if(frameN%6===0) soundTick(t);
   if(renderer.shadowMap.enabled){ if(focus.distanceToSquared(lastShadowAt)>.04 || frameN%3===0){ renderer.shadowMap.needsUpdate=true; lastShadowAt.copy(focus); } }
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
