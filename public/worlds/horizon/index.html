@@ -38,6 +38,35 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 .lk.on b::after{content:"  ✓";color:var(--warm)}
 .lk small{display:block;font-size:11.5px;color:var(--ink-soft);line-height:1.35}
 #lookMenu[hidden]{display:none}
+.soc{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.soc h3{margin:10px 0 4px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft)}
+.soc .who{margin:0;font-size:13px;line-height:1.5;color:var(--ink-soft)}
+.note{padding:8px 0;border-bottom:1px solid var(--line)}
+.note .nh{display:flex;gap:8px;align-items:baseline;font-size:12.5px}
+.note .nh span{color:var(--ink-soft);font-size:11.5px}
+.note .nh .x{margin-left:auto}
+.note p{margin:3px 0 0;font-size:13.5px;line-height:1.5}
+.noteform{display:grid;gap:6px;margin-top:10px}
+.noteform input,.noteform textarea{font:inherit;font-size:13.5px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.8);resize:vertical;color:var(--ink)}
+.noteform button{justify-self:start;border:0;border-radius:999px;padding:8px 16px;background:var(--ink);color:#fff;font-weight:600;font-size:13px}
+.tag{will-change:transform,opacity;transition:opacity .25s}
+.tag.peer{background:rgba(31,42,64,.82);color:#fff;font-size:12px}
+.tag.peer small{color:rgba(255,255,255,.7)}
+#clock{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:10px;padding:7px 14px 7px 10px;border-radius:999px;border:1px solid var(--glass-edge);cursor:pointer}
+#clock svg{display:block}
+#clock .t{font-family:var(--f-mono);font-size:15px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+#clock .ph{font-size:11.5px;color:var(--ink-soft);line-height:1.2}
+#clock .ph b{display:block;color:var(--ink);font-weight:600;font-size:12px}
+#online{display:inline-flex;align-items:center;gap:5px;margin-left:6px;color:var(--ink)}
+#online i{width:7px;height:7px;border-radius:50%;background:#3ccf7a;box-shadow:0 0 0 3px rgba(60,207,122,.25)}
+.lkq{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px 8px;margin-top:4px;border-top:1px solid var(--line);font-size:12.5px}
+.lkq b{font-size:13px}
+.lkq small{display:block;color:var(--ink-soft);font-size:11.5px}
+.sw{position:relative;width:40px;height:24px;border-radius:999px;border:0;background:rgba(31,42,64,.18);flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sw[aria-checked="true"]{background:#3ccf7a}
+.sw[aria-checked="true"]::after{transform:translateX(16px)}
+@media (max-width:640px){ #clock{left:16px;transform:none;top:calc(62px + env(safe-area-inset-top,0px));padding:5px 10px 5px 8px;gap:8px} #clock .t{font-size:13px} #clock .ph{display:none} }
 #joy{position:fixed;left:22px;bottom:calc(92px + env(safe-area-inset-bottom,0px));width:116px;height:116px;border-radius:50%;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:5;touch-action:none}
 #joy[hidden],#jumpBtn[hidden],#minimap[hidden]{display:none}
 #joyKnob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none}
@@ -177,7 +206,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
 <div id="top">
   <div id="brand" class="glass">
     <h1>Horizon Garden</h1>
-    <p>An opportunity map of the future · Oct 2026</p>
+    <p>An opportunity map of the future · Oct 2026<span id="online" hidden><i></i><span></span></span></p>
     <div class="legend"><span><i style="background:var(--warm)"></i>You're building here</span><span><i style="background:var(--cool)"></i>On the horizon</span></div>
   </div>
   <div id="topBtns">
@@ -190,6 +219,7 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
   </div>
 </div>
 <div id="lookMenu" class="glass" hidden role="menu" aria-label="Looks"></div>
+<button id="clock" class="glass" type="button" hidden title="Light follows the real time of day where you are"></button>
 <div id="lookFade"></div>
 
 <div id="welcome" class="glass">
@@ -445,6 +475,21 @@ if (EMBEDDED && !STANDALONE) document.getElementById("vvBack").hidden = false;
    Jack's saved edits (horizon_stations) and whether this viewer may edit;
    saves go back up to the host, which writes them. Standalone, nothing
    arrives and the defaults stand. */
+/* Station films: three-second shots from the Horizon Cinema storyboard, one per frontier.
+   A video link saved in Edit mode overrides these. */
+const CLIP_BASE = "https://d8j0ntlcm91z4.cloudfront.net/user_35JC5Rd1VB2npNAFMaivrPr5ujP/";
+const CLIPS = {
+  teammate:"hf_20261006_063128_1219c3a1-4b84-4c36-9ff4-aa096a899af3", robot:"hf_20261006_063128_471488a5-7d6b-49c5-b0fe-2e25baf2c9f3",
+  overnight:"hf_20261006_063128_3e8e43d3-276f-49d7-b599-96355f9287d8", games:"hf_20261006_063128_e2a3f06b-8ee6-4c94-b319-5729c8f98bd7",
+  memory:"hf_20261006_063128_c81146ec-62b9-4858-adb4-5eb6be47b6a2", vr:"hf_20261006_063128_4b38887e-bcec-4ada-ba35-024698757c0d",
+  video:"hf_20261006_063143_75d6cb3b-1bd7-47ca-937e-55c49fb1be6d", funding:"hf_20261006_063128_14f07602-3bfa-49b3-94e3-0afff38f7bac",
+  music:"hf_20261006_063128_e6a985db-7de3-429c-8eb3-6981fd7307fd", space:"hf_20261006_063128_73226789-7f0b-4583-a7fa-273238225cbb",
+  cars:"hf_20261006_063131_74aee4d5-7622-4bcc-9997-7e08bd6ad80f", learning:"hf_20261006_063131_98fe81a2-31b8-44fa-9099-2160d9943746",
+  cities:"hf_20261006_063131_0eea214a-20b9-4a77-8d88-bab7130bfc64", gatherings:"hf_20261006_063131_1d745414-87dd-42b3-b4d9-80913bb29a21",
+  handsfree:"hf_20261006_063143_b5565d0f-1263-4be8-b233-d1c0859a7b7f", play:"hf_20261006_063144_2af2b7f2-ee46-49df-81af-7206a33501a0",
+  energy:"hf_20261006_063131_f539a1a2-fb8f-4a5e-8331-08ecb69ade0c",
+};
+S.forEach(s=>{ if(!s.video && CLIPS[s.key]) s.video = CLIP_BASE + CLIPS[s.key] + ".mp4"; });
 const EDITABLE = ["name","tagline","now","y5","y10","y50","insight","move","notes","video"];
 const DEFAULTS = {}; S.forEach(s=>{ DEFAULTS[s.key] = {}; EDITABLE.forEach(f=>DEFAULTS[s.key][f] = s[f]||""); s.faves = s.faves||[]; });
 const overrides = {};
@@ -476,6 +521,7 @@ addEventListener("message", e=>{
   if(e.origin!==location.origin || !e.data) return;
   const d = e.data;
   if(d.type==="horizon:init"){
+    if(d.me){ ME.visitor=d.me.visitor||""; ME.name=d.me.name||""; }
     Object.entries(d.overrides||{}).forEach(([k,f])=>applyOverride(k,f));
     SIG = Array.isArray(d.signals) ? d.signals : []; growFlowers();
     if(d.canEdit && !canEdit && signinAsked) toast("Signed in. Tap Edit to rewrite any station.");
@@ -489,6 +535,10 @@ addEventListener("message", e=>{
     toast(d.ok ? "Saved" : ("Couldn't save: "+(d.error||"try again")));
   }
   if(d.type==="horizon:toast") toast(d.text||"");
+  if(d.type==="horizon:social"){ SOC={visits:d.visits||[], comments:d.comments||[], ready:d.available!==false}; const tb=document.activeElement; if(shown>=0 && !(tb && /INPUT|TEXTAREA/.test(tb.tagName))) renderSoc(shown); }
+  if(d.type==="horizon:comment-saved"){ toast(d.ok? "Your note is here for the next visitor" : "Couldn't leave that note: "+(d.error||"try again")); if(d.ok){ const b=document.getElementById("noteBody"); if(b) b.value=""; document.activeElement && document.activeElement.blur(); } }
+  if(d.type==="horizon:peer") onPeer(d);
+  if(d.type==="horizon:peer-gone") onPeerGone(d.id);
   if(d.type==="horizon:saved") toast(d.ok ? "Saved" : ("Couldn't save: "+(d.error||"try again")));
 });
 if(EMBEDDED) window.parent.postMessage({type:"horizon:ready"}, location.origin);
@@ -577,7 +627,7 @@ function mediaHTML(u){
   u=(u||"").trim(); if(!/^https?:\/\//i.test(u)) return "";
   const yt=u.match(/(?:youtu\.be\/|[?&]v=|shorts\/|embed\/)([\w-]{11})/);
   if(yt) return `<div class="media"><iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Station video"></iframe></div>`;
-  return `<div class="media"><video src="${esc(u)}" controls playsinline muted loop autoplay preload="metadata"></video></div>`;
+  return `<div class="media"><video src="${esc(u)}" playsinline muted loop autoplay preload="auto" disablepictureinpicture></video></div>`;
 }
 function openPanel(i){
   if(shown===i) return; shown=i; cur=i; const s=S[i];
@@ -598,9 +648,11 @@ function openPanel(i){
   <div class="box move"><h3>Your move</h3>${field(s,"move")}</div>
   ${notes}
   ${sigsHTML(s)}
+  <div id="socBox"></div>
   ${editing && overrides[s.key] ? '<button type="button" class="reset" id="resetBtn">Restore my original text for this station</button>' : ""}`;
   pScroll.scrollTop=0;
   document.getElementById("flyBtn").onclick = ()=>flyAround(i);
+  renderSoc(i); logVisit(s.key);
   if(editing){
     pScroll.querySelectorAll("[data-f]").forEach(el=>{
       el.addEventListener("blur", ()=>{
@@ -647,6 +699,32 @@ function openPanel(i){
   panel.classList.remove("off");
   document.getElementById("welcome").hidden = true;
 }
+/* ---------- Visitors and notes (Vibe Supabase, through the host page) ---------- */
+let SOC = {visits:[], comments:[], ready:false}, ME = {visitor:"", name:""};
+const visited = new Set();
+function logVisit(key){ if(!EMBEDDED || visited.has(key)) return; visited.add(key); window.parent.postMessage({type:"horizon:visit", key}, location.origin); }
+function ago(ts){ const m=(Date.now()-new Date(ts).getTime())/60000; if(m<1) return "just now"; if(m<60) return Math.round(m)+"m ago"; if(m<1440) return Math.round(m/60)+"h ago"; return Math.round(m/1440)+"d ago"; }
+function renderSoc(i){
+  const box=document.getElementById("socBox"); if(!box || !EMBEDDED || !SOC.ready) { if(box) box.innerHTML=""; return; }
+  const s=S[i], vs=SOC.visits.filter(v=>v.station_key===s.key), people=new Map();
+  vs.forEach(v=>{ if(!people.has(v.visitor) || (v.name && !people.get(v.visitor))) people.set(v.visitor, v.name||""); });
+  const names=[...new Set([...people.values()].filter(Boolean))], n=people.size, cs=SOC.comments.filter(c=>c.station_key===s.key);
+  const who = n ? `${n} ${n===1?"person has":"people have"} stood here${names.length?": "+names.slice(0,8).map(esc).join(", ")+(names.length>8?` and ${names.length-8} more`:""):""}.` : "Nobody has signed in here yet. You could be first.";
+  box.innerHTML = `<div class="soc"><h3>Visitors</h3><p class="who">${who}</p>
+    <h3>Notes left here${cs.length?` · ${cs.length}`:""}</h3>
+    ${cs.length? cs.slice(0,30).map(c=>`<div class="note"><div class="nh"><b>${esc(c.name)}</b><span>${ago(c.created_at)}</span>${canEdit?`<button type="button" class="x" data-hide="${esc(c.id)}">Hide</button>`:""}</div><p>${para(c.body)}</p></div>`).join("") : '<p class="who">No notes yet. Leave the first one.</p>'}
+    <form id="noteForm" class="noteform" autocomplete="off">
+      <input id="noteName" maxlength="40" placeholder="Your name" value="${esc(ME.name)}" aria-label="Your name">
+      <textarea id="noteBody" maxlength="500" rows="2" placeholder="Leave a note for the next person who walks up…" aria-label="Your note"></textarea>
+      <button type="submit">Leave note</button>
+    </form></div>`;
+  box.querySelector("#noteForm").onsubmit = e=>{ e.preventDefault();
+    const name=box.querySelector("#noteName").value.trim(), body=box.querySelector("#noteBody").value.trim();
+    if(!name){ box.querySelector("#noteName").focus(); toast("Add your name first"); return; } if(!body) return;
+    ME.name=name; window.parent.postMessage({type:"horizon:name", name}, location.origin);
+    window.parent.postMessage({type:"horizon:comment", key:s.key, name, body}, location.origin); toast("Leaving your note…"); };
+  box.querySelectorAll("[data-hide]").forEach(b=>b.onclick=()=>window.parent.postMessage({type:"horizon:comment-hide", id:b.dataset.hide}, location.origin));
+}
 function closePanel(){ if(shown>=0) dismissed=shown; shown=-1; panel.classList.add("off"); }
 document.getElementById("panelClose").onclick=closePanel;
 document.getElementById("prevBtn").onclick=()=>travelTo(((shown<0?0:shown)-1+N)%N);
@@ -657,15 +735,15 @@ dockName.onclick=()=>{ if(cur<0) return travelTo(0); if(shown===cur) closePanel(
 document.getElementById("tourBtn").onclick=()=>{ document.getElementById("welcome").hidden=true; travelTo(0); };
 
 /* ---------- 3D world ---------- */
-let travelTo = ()=>{}, flyAround = ()=>{};
+let travelTo = ()=>{}, flyAround = ()=>{}, onPeer = ()=>{}, onPeerGone = ()=>{};
 (function(){
 const canvas = document.getElementById("stage");
 let renderer;
 try { renderer = new THREE.WebGLRenderer({canvas, antialias:true}); } catch(e){ showAtlas(true); return; }
 if(!renderer.getContext()){ showAtlas(true); return; }
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-renderer.setPixelRatio(Math.min(2, devicePixelRatio||1));
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+let PR = Math.min(2, devicePixelRatio||1); renderer.setPixelRatio(PR);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
 renderer.outputEncoding = THREE.sRGBEncoding;
 
 const scene = new THREE.Scene();
@@ -696,7 +774,7 @@ const mat = (c,o={}) => new THREE.MeshStandardMaterial(Object.assign({color:c, f
 
 // island
 const island = new THREE.Mesh(new THREE.CylinderGeometry(48,44,4,72,1), mat(0xa9cf8f));
-island.position.y = -2; island.receiveShadow = true; scene.add(island);
+island.position.y = -2.06; island.receiveShadow = true; scene.add(island);
 const rim = new THREE.Mesh(new THREE.CylinderGeometry(48.3,47,1.2,72,1,true), mat(0xe9d3b0));
 rim.position.y=-0.9; scene.add(rim);
 const ground = new THREE.Mesh(new THREE.CircleGeometry(48,72), mat(0xa9cf8f));
@@ -1218,9 +1296,9 @@ const LOOKS = {
     mat:{ ground:m=>remat(m,{color:0xf3f6fa, roughness:.9}), rim:m=>remat(m,{color:0xe6edf3}), cliff:m=>remat(m,{color:0xb9c2cc}), path:m=>remat(m,{color:0xd3dae3}), leaf:m=>remat(m,{color:m.color.clone().offsetHSL(0,0,-.18).lerp(C(0xffffff),.42)}), trunk:m=>remat(m,{color:0x5a4a40}),
       rock:m=>remat(m,{color:tint(m,0xffffff,.5)}), bloom:m=>remat(m,{color:0xffffff}), water:m=>remat(m,{color:0x8fa9bd, roughness:.12, metalness:.2}), pond:m=>remat(m,{color:0xd4ecf6, roughness:.03, metalness:.25}), stone:m=>remat(m,{color:0xffffff}) } },
 };
-const ORDER=["garden","photo","golden","vibe","night","neon","winter","live"];
-LOOKS.live = { name:"Live", desc:"Follows the real time of day where you are", sw:"conic-gradient(#ffc27a,#86b4dc,#0b1230,#ffc27a)" };
-const liveLook = ()=>{ const d=new Date(), h=d.getHours()+d.getMinutes()/60; return h<5.5||h>=20 ? "night" : (h<7.5||h>=17.5) ? "golden" : "garden"; };
+const ORDER=["live","garden","photo","golden","vibe","night","neon","winter"];
+LOOKS.live = { name:"Live", desc:"The real sun and sky where you are, right now", sw:"conic-gradient(#ffc27a,#86b4dc,#0b1230,#ffc27a)" };
+const liveLook = ()=>{ const e=sunAt(new Date()).el; return e< -9 ? "night" : e< 14 ? "golden" : "garden"; };
 
 const matCache=new Map();
 function matFor(m, id){
@@ -1288,12 +1366,13 @@ const lookTick=(t,dt)=>{ Object.values(X).forEach(e=>{ if(e.tick && (!e.group ||
 
 /* ---- the picker ---- */
 const btn=document.getElementById("lookBtn"), menu=document.getElementById("lookMenu"), fade=document.getElementById("lookFade");
-function renderMenu(){ menu.innerHTML = ORDER.map(id=>`<button type="button" class="lk${id===chosen?" on":""}" data-look="${id}" role="menuitemradio" aria-checked="${id===chosen}"><i style="background:${LOOKS[id].sw}"></i><span><b>${LOOKS[id].name}</b><small>${LOOKS[id].desc}${id==="live"&&chosen==="live"?" · now "+LOOKS[curLook].name:""}</small></span></button>`).join(""); }
+function qualityHTML(){ return `<div class="lkq"><span><b>Smooth mode</b><small>Lighter graphics for older phones and laptops</small></span><button type="button" class="sw" id="liteSw" role="switch" aria-checked="${LITE}"></button></div>`; }
+function renderMenu(){ menu.innerHTML = ORDER.map(id=>`<button type="button" class="lk${id===chosen?" on":""}" data-look="${id}" role="menuitemradio" aria-checked="${id===chosen}"><i style="background:${LOOKS[id].sw}"></i><span><b>${LOOKS[id].name}</b><small>${LOOKS[id].desc}${id==="live"&&chosen==="live"?" · now "+LOOKS[curLook].name:""}</small></span></button>`).join("") + qualityHTML(); }
 function choose(id, animate=true){
   if(!LOOKS[id]) id="garden"; chosen=id;
-  try{ localStorage.setItem("horizon.look", id); }catch(e){}
+  try{ localStorage.setItem("horizon.look.v2", id); }catch(e){}
   const real = id==="live" ? liveLook() : id;
-  const go=()=>{ applyLook(real); renderMenu(); };
+  const go=()=>{ applyLook(real); liveBlend(); drawClock(); renderMenu(); if(LITE && X.grass) X.grass.group.visible=false; };
   const needsPhys = LOOKS[real].phys && !THREE.Sky;
   const run=()=>{ if(!animate){ go(); return; } fade.style.background = LOOKS[real].bg; fade.style.opacity=1; setTimeout(()=>{ go(); requestAnimationFrame(()=>requestAnimationFrame(()=>{ fade.style.opacity=0; })); }, 260); };
   if(needsPhys){ toast("Loading the photoreal sky…"); loadPhys().then(ok=>{ if(!ok) toast("Couldn't load the photoreal sky, showing the best fallback"); run(); }); }
@@ -1301,23 +1380,170 @@ function choose(id, animate=true){
 }
 btn.hidden=false;
 btn.onclick=e=>{ e.stopPropagation(); menu.hidden=!menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); if(!menu.hidden) renderMenu(); };
-menu.onclick=e=>{ const b=e.target.closest("[data-look]"); if(!b) return; choose(b.dataset.look); menu.hidden=true; btn.setAttribute("aria-expanded","false"); };
+menu.onclick=e=>{ if(e.target.id==="liteSw"){ setLite(!LITE); qPref = LITE?"lite":"full"; try{ localStorage.setItem("horizon.quality", qPref); }catch(_){} renderMenu(); return; } const b=e.target.closest("[data-look]"); if(!b) return; choose(b.dataset.look); menu.hidden=true; btn.setAttribute("aria-expanded","false"); };
 addEventListener("click", e=>{ if(!menu.hidden && !menu.contains(e.target) && e.target!==btn){ menu.hidden=true; btn.setAttribute("aria-expanded","false"); } });
 addEventListener("keydown", e=>{
   if(e.target && (e.target.isContentEditable || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName))) return;
   if(e.key==="Escape" && !menu.hidden){ menu.hidden=true; return; }
   if(e.key.toLowerCase()==="l" && atlas.hidden){ const i=ORDER.indexOf(chosen); choose(ORDER[(i+1)%ORDER.length]); toast(LOOKS[chosen].name); }
 });
-let firstLook = "garden";
-try{ const q=new URLSearchParams(location.search).get("look"); firstLook = (q && LOOKS[q]) ? q : (localStorage.getItem("horizon.look") || "garden"); }catch(e){}
+
+// ---------- labels: never overlap, never jitter ----------
+/* Highest priority first (the one you stand at, the open one, then nearest).
+   A label that would overlap one already placed fades out instead of piling
+   up, and positions are whole pixels written only when they change. */
+const placed = [];
+function setTag(el, st, on, x, y){
+  const o = on? 1 : 0;
+  if(st.o !== o){ st.o = o; el.style.opacity = o; }
+  if(on){ const X=Math.round(x), Y=Math.round(y); if(st.px!==X || st.py!==Y){ st.px=X; st.py=Y; el.style.transform=`translate3d(${X}px,${Y}px,0) translate(-50%,-100%)`; } }
+}
+function placeLabels(){
+  placed.length=0;
+  const maxN = LITE ? 7 : (mapK>.5 ? 40 : 12);
+  const order = stations.map((st,i)=>i).filter(i=>stations[i].vis).sort((a,b)=>stations[a].pr-stations[b].pr);
+  const shownSet = new Set();
+  for(const i of order){
+    if(shownSet.size>=maxN) break;
+    const st=stations[i]; if(!st.w){ st.w = st.tag.offsetWidth||90; st.h = st.tag.offsetHeight||24; }
+    const r = {l:st.sx-st.w/2-3, r:st.sx+st.w/2+3, t:st.sy-st.h-2, b:st.sy+2};
+    if(placed.some(q=>r.l<q.r && r.r>q.l && r.t<q.b && r.b>q.t)) continue;
+    placed.push(r); shownSet.add(i);
+  }
+  stations.forEach((st,i)=>setTag(st.tag, st, shownSet.has(i), st.sx, st.sy));
+}
+
+// ---------- other walkers ----------
+const peers = new Map();
+const peerBodyGeo = new THREE.SphereGeometry(.6,16,12), peerVisorGeo = new THREE.SphereGeometry(.47,16,8,0,Math.PI*2,0,1.05);
+const hueOf = id=>{ let h=0; for(const c of String(id)) h=(h*31+c.charCodeAt(0))>>>0; return (h%360)/360; };
+onPeer = d=>{
+  if(typeof d.x!=="number" || typeof d.z!=="number") return;
+  let p = peers.get(d.id);
+  if(!p){
+    const g=new THREE.Group(), col=new THREE.Color().setHSL(hueOf(d.id), .6, .72);
+    const b=new THREE.Mesh(peerBodyGeo, new THREE.MeshStandardMaterial({color:col, roughness:.5})); b.position.y=.75; b.castShadow=true; g.add(b);
+    const v=new THREE.Mesh(peerVisorGeo, new THREE.MeshStandardMaterial({color:0x26324a, roughness:.3})); v.rotation.x=Math.PI/2; v.position.set(0,.82,.2); g.add(v);
+    g.position.set(d.x,0,d.z); scene.add(g);
+    const tag=document.createElement("div"); tag.className="tag peer"; document.body.appendChild(tag);
+    p={g, b, tag, tx:d.x, tz:d.z, tr:d.r||0, ty:0, seen:0}; peers.set(d.id, p);
+  }
+  p.tx=d.x; p.tz=d.z; p.tr=d.r||0; p.ty=d.y||0; p.seen=performance.now();
+  const nm = (d.name||"").trim() || "A visitor"; if(p.name!==nm){ p.name=nm; p.tag.innerHTML=`<small>●</small>${esc(nm)}`; }
+  updateOnline();
+};
+onPeerGone = id=>{ const p=peers.get(id); if(!p) return; scene.remove(p.g); p.tag.remove(); peers.delete(id); updateOnline(); };
+function updateOnline(){ const el=document.getElementById("online"); const n=peers.size; el.hidden=!n; if(n) el.lastElementChild.textContent = `${n} other${n===1?"":"s"} walking here now`; }
+function tickPeers(dt){
+  const k=1-Math.exp(-dt*8);
+  peers.forEach(p=>{
+    p.g.position.x += (p.tx-p.g.position.x)*k; p.g.position.z += (p.tz-p.g.position.z)*k; p.g.position.y += (p.ty-p.g.position.y)*k;
+    let dA=p.tr-p.g.rotation.y; dA=Math.atan2(Math.sin(dA),Math.cos(dA)); p.g.rotation.y += dA*k;
+    proj.set(p.g.position.x, p.g.position.y+2.2, p.g.position.z).project(camera);
+    const on = proj.z<1 && Math.abs(proj.x)<1.1 && Math.abs(proj.y)<1.1;
+    p.tag.style.opacity = on?1:0; if(on) p.tag.style.transform=`translate3d(${Math.round((proj.x*.5+.5)*innerWidth)}px,${Math.round((-proj.y*.5+.5)*innerHeight)}px,0) translate(-50%,-100%)`;
+  });
+}
+let lastPos = {x:1e9,z:0,r:0,t:0};
+function sendPos(t){
+  if(!EMBEDDED) return;
+  const x=+av.position.x.toFixed(2), z=+av.position.z.toFixed(2), r=+av.rotation.y.toFixed(2), y=+av.position.y.toFixed(2);
+  const moved = Math.abs(x-lastPos.x)+Math.abs(z-lastPos.z)+Math.abs(r-lastPos.r) > .05 || y>0;
+  if((moved && t-lastPos.t>.15) || t-lastPos.t>2.5){ lastPos={x,z,r,t}; window.parent.postMessage({type:"horizon:pos", x, z, r, y}, location.origin); }
+}
+
+// ---------- smoothness: adaptive quality and a Lite mode ----------
+/* Watches the real frame rate. Below ~40 fps it first drops the pixel ratio,
+   then (in Auto) turns on Lite: no shadows, no grass, fewer labels. Lite can
+   also be switched on by hand from the Look menu and is remembered. */
+let LITE=false, qPref="auto";
+try{ qPref = localStorage.getItem("horizon.quality") || "auto"; }catch(e){}
+function setLite(on, quiet){
+  LITE=!!on; renderer.shadowMap.enabled = !LITE; if(!LITE) renderer.shadowMap.needsUpdate=true;
+  PR = LITE ? Math.min(1.25, devicePixelRatio||1) : Math.min(2, devicePixelRatio||1); renderer.setPixelRatio(PR); resize();
+  if(X.grass) X.grass.group.visible = !LITE && LOOKS[curLook] && (LOOKS[curLook].extras||[]).includes("grass");
+  ff.visible = !LITE && ff.material.opacity>0;
+  scene.traverse(o=>{ if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); } });
+  if(!quiet) toast(LITE ? "Smooth mode on" : "Full detail on");
+}
+const fpsWin={n:0, t:0, low:0};
+function watchFps(dt){
+  if(qPref!=="auto" || LITE) return;
+  fpsWin.n++; fpsWin.t+=dt; if(fpsWin.t<2.5) return;
+  const fps=fpsWin.n/fpsWin.t; fpsWin.n=0; fpsWin.t=0;
+  if(document.hidden) return;
+  if(fps<40){ fpsWin.low++; if(PR>1.01){ PR=Math.max(1, PR-.5); renderer.setPixelRatio(PR); resize(); } else if(fpsWin.low>=3){ setLite(true, true); toast("Switched to smooth mode for this device"); } }
+  else fpsWin.low=Math.max(0, fpsWin.low-1);
+}
+
+// ---------- the real sun, wherever you are ----------
+const TZ = (()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone||""; }catch(e){ return ""; } })();
+const TZPOS = {"America/Los_Angeles":[37.77,-122.42,"San Francisco"],"America/Vancouver":[49.28,-123.12],"America/Denver":[39.74,-104.99],"America/Phoenix":[33.45,-112.07],"America/Chicago":[41.88,-87.63],"America/New_York":[40.71,-74.0],"America/Toronto":[43.65,-79.38],"America/Mexico_City":[19.43,-99.13],"America/Sao_Paulo":[-23.55,-46.63],"America/Argentina/Buenos_Aires":[-34.6,-58.38],"Europe/London":[51.51,-.13],"Europe/Lisbon":[38.72,-9.14],"Europe/Paris":[48.86,2.35],"Europe/Berlin":[52.52,13.4],"Europe/Madrid":[40.42,-3.7],"Europe/Rome":[41.9,12.5],"Europe/Amsterdam":[52.37,4.9],"Europe/Istanbul":[41.01,28.98],"Africa/Johannesburg":[-26.2,28.05],"Africa/Lagos":[6.52,3.38],"Asia/Dubai":[25.2,55.27],"Asia/Kolkata":[19.08,72.88],"Asia/Bangkok":[13.76,100.5],"Asia/Singapore":[1.35,103.82],"Asia/Hong_Kong":[22.32,114.17],"Asia/Shanghai":[31.23,121.47],"Asia/Tokyo":[35.68,139.69],"Asia/Seoul":[37.57,126.98],"Australia/Sydney":[-33.87,151.21],"Australia/Melbourne":[-37.81,144.96],"Pacific/Auckland":[-36.85,174.76],"Pacific/Honolulu":[21.31,-157.86]};
+const PLACE = (()=>{ const k=TZPOS[TZ]; if(k) return {lat:k[0], lon:k[1], name:k[2]||TZ.split("/").pop().replace(/_/g," ")}; const off=-new Date().getTimezoneOffset()/60; return {lat:30, lon:off*15, name:TZ? TZ.split("/").pop().replace(/_/g," ") : "your sky"}; })();
+function sunAt(date){
+  const rad=Math.PI/180, d=(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate())-Date.UTC(date.getUTCFullYear(),0,0))/864e5;
+  const g=2*Math.PI/365*(d-1+(date.getUTCHours()-12)/24);
+  const eq=229.18*(.000075+.001868*Math.cos(g)-.032077*Math.sin(g)-.014615*Math.cos(2*g)-.040849*Math.sin(2*g));
+  const decl=.006918-.399912*Math.cos(g)+.070257*Math.sin(g)-.006758*Math.cos(2*g)+.000907*Math.sin(2*g)-.002697*Math.cos(3*g)+.00148*Math.sin(3*g);
+  const tst=date.getUTCHours()*60+date.getUTCMinutes()+date.getUTCSeconds()/60+eq+4*PLACE.lon;
+  const ha=(tst/4-180)*rad, lat=PLACE.lat*rad;
+  const cz=Math.sin(lat)*Math.sin(decl)+Math.cos(lat)*Math.cos(decl)*Math.cos(ha);
+  const el=Math.asin(Math.max(-1,Math.min(1,cz)));
+  let az=Math.atan2(Math.sin(ha), Math.cos(ha)*Math.sin(lat)-Math.tan(decl)*Math.cos(lat))+Math.PI; // from north, clockwise
+  return {el:el/rad, az, morning: ha<0};
+}
+const phaseOf = sp=> sp.el < -12 ? ["Night","night"] : sp.el < -4 ? ["Blue hour","night"] : sp.el < 7 ? [sp.morning?"Sunrise":"Golden hour","golden"] : sp.el < 20 ? [sp.morning?"Morning light":"Late afternoon","golden"] : ["Daylight","garden"];
+/* Live look: pick the right base look, then ease its sky, fog and lights
+   between neighbouring keyframes by the sun's real height, and put the sun
+   (or the moon) where it actually is in the sky. */
+const KF = {night:"night", golden:"golden", day:"garden"};
+const mixC=(a,b,u)=>C(a).lerp(C(b),u);
+function liveBlend(){
+  if(chosen!=="live") return;
+  const sp=sunAt(new Date()), e=sp.el;
+  const want = e< -9 ? "night" : e< 14 ? "golden" : "garden";
+  if(want!==curLook){ applyLook(want); }
+  let A,B,u;
+  if(e<=-12){ A=B=LOOKS.night; u=0; } else if(e<-3){ A=LOOKS.night; B=LOOKS.golden; u=(e+12)/9; }
+  else if(e<6){ A=B=LOOKS.golden; u=0; } else if(e<22){ A=LOOKS.golden; B=LOOKS.garden; u=(e-6)/16; } else { A=B=LOOKS.garden; u=0; }
+  u=u*u*(3-2*u);
+  skyU.top.value.copy(mixC(A.sky.top,B.sky.top,u)); skyU.mid.value.copy(mixC(A.sky.mid,B.sky.mid,u)); skyU.bot.value.copy(mixC(A.sky.bot,B.sky.bot,u));
+  scene.fog.color.copy(mixC(A.fog[0],B.fog[0],u)); fogBase.near=A.fog[1]+(B.fog[1]-A.fog[1])*u; fogBase.far=A.fog[2]+(B.fog[2]-A.fog[2])*u;
+  hemi.color.copy(mixC(A.hemi[0],B.hemi[0],u)); hemi.groundColor.copy(mixC(A.hemi[1],B.hemi[1],u)); hemi.intensity=A.hemi[2]+(B.hemi[2]-A.hemi[2])*u;
+  dl.color.copy(mixC(A.dl[0],B.dl[0],u)); dl.intensity=A.dl[1]+(B.dl[1]-A.dl[1])*u;
+  const ce=Math.cos(Math.max(e,-90)*Math.PI/180);
+  const dir = new THREE.Vector3(Math.sin(sp.az)*ce, Math.sin(e*Math.PI/180), -Math.cos(sp.az)*ce);
+  const isMoon = e< -3; if(isMoon){ dir.set(-dir.x, Math.max(.45, -dir.y), -dir.z); }
+  if(dir.y<.06) dir.y=.06; dir.normalize();
+  dlOff.copy(dir).multiplyScalar(70);
+  sun.visible=true; sun.position.copy(dir).multiplyScalar(240); sun.lookAt(0,0,0);
+  sun.material.color.set(isMoon?0xeef2ff: e<8?0xffc27a:0xfff1d6); sun.scale.setScalar(isMoon?.75: e<8?1.6:1); sunGlow.visible=true; sunGlow.material.color.copy(sun.material.color); sunGlow.material.opacity=isMoon?.55:.9;
+  renderer.shadowMap.needsUpdate=true;
+}
+const clockEl=document.getElementById("clock");
+function drawClock(){
+  const now=new Date(), sp=sunAt(now), [ph]=phaseOf(sp);
+  const tm=now.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+  // a small arc: the sun's path, with the sun (or moon) on it
+  const u = Math.max(0, Math.min(1, ((now.getHours()+now.getMinutes()/60)-6)/12));
+  const up = sp.el>-4, cx = 4+u*40, cy = 22 - Math.sin(u*Math.PI)*15;
+  const dot = up ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4.2" fill="${sp.el<8?"#ff9a4d":"#ffc63d"}"/>` : `<path d="M36 6a6 6 0 1 0 6 8 5 5 0 1 1-6-8z" fill="#7f8fd6"/>`;
+  clockEl.innerHTML = `<svg width="48" height="26" viewBox="0 0 48 26" aria-hidden="true"><path d="M4 22 Q24 -8 44 22" fill="none" stroke="rgba(31,42,64,.25)" stroke-width="1.5" stroke-dasharray="2 3"/><line x1="1" y1="22.5" x2="47" y2="22.5" stroke="rgba(31,42,64,.3)" stroke-width="1"/>${dot}</svg><span class="t">${tm}</span><span class="ph"><b>${ph}</b>${esc(PLACE.name)}${chosen==="live"?"":" · tap for live light"}</span>`;
+}
+clockEl.hidden=false; clockEl.onclick=()=>{ choose("live"); };
+setInterval(()=>{ drawClock(); liveBlend(); }, 20000);
+
+let firstLook = "live";
+try{ const q=new URLSearchParams(location.search).get("look"); firstLook = (q && LOOKS[q]) ? q : (localStorage.getItem("horizon.look.v2") || "live"); }catch(e){}
 choose(firstLook, false);
+if(qPref==="lite") setLite(true, true);
 window.__horizon = { look: id=>choose(id,false), looks: ORDER, current: ()=>curLook };
 
 // ---------- loop ----------
 const clock = new THREE.Clock(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), proj = new THREE.Vector3();
-let walkPhase = 0;
+let walkPhase = 0, frameN = 0, lastShadowAt = new THREE.Vector3(1e9,0,0);
 function frame(){
-  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, amp = reduce? .3 : 1;
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, amp = reduce? .3 : 1; frameN++;
   // movement: ease toward the wanted velocity, so starts and stops are soft
   const fwd = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)), right = new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
   const inp = new THREE.Vector3();
@@ -1366,8 +1592,8 @@ function frame(){
   dl.position.copy(focus).add(dlOff); dl.target.position.copy(focus);
 
   // water
-  if(water.visible){ for(let k=0;k<wPos.count;k++){ const x=wBase[k*3], z=wBase[k*3+2]; wPos.array[k*3+1] = (Math.sin(x*.12+t*.8)+Math.cos(z*.15+t*.6))*.18*amp; }
-  wPos.needsUpdate = true; wGeo.computeVertexNormals(); }
+  if(water.visible && (frameN&1)){ for(let k=0;k<wPos.count;k++){ const x=wBase[k*3], z=wBase[k*3+2]; wPos.array[k*3+1] = (Math.sin(x*.12+t*.8)+Math.cos(z*.15+t*.6))*.18*amp; }
+  wPos.needsUpdate = true; }
   lookTick(t, dt);
 
   // flowers sway
@@ -1387,14 +1613,15 @@ function frame(){
     const d = Math.hypot(av.position.x-s.x, av.position.z-s.z);
     if(d<nearD){ nearD=d; near=i; }
     const pulse = d<6 ? 1+Math.sin(t*4)*.04 : 1; st.ring.scale.set(pulse,pulse,pulse); st.ring.material.opacity = d<6 ? .95 : .55;
-    // label
+    // label: measure now, place after every station is known
     proj.set(s.x, st.baseY+2.2, s.z).project(camera);
-    const vis = proj.z<1 && Math.abs(proj.x)<1.2 && Math.abs(proj.y)<1.2;
-    const camD = camera.position.distanceTo(st.root.position);
-    st.tag.style.opacity = vis ? Math.max(0, Math.min(1, (70+mapK*140-camD)/20)) : 0;
-    st.tag.style.transform = `translate(${(proj.x*.5+.5)*innerWidth}px, ${(-proj.y*.5+.5)*innerHeight}px) translate(-50%,-100%)`;
-    st.tag.classList.toggle("near", d<6);
+    st.sx = (proj.x*.5+.5)*innerWidth; st.sy = (-proj.y*.5+.5)*innerHeight;
+    st.camD = camera.position.distanceTo(st.root.position);
+    st.vis = proj.z<1 && proj.x>-1.1 && proj.x<1.1 && proj.y>-1.1 && proj.y<1.15 && st.camD < 80+mapK*160;
+    st.pr = (d<6? -1000 : 0) + (i===cur? -500 : 0) + st.camD;
+    if(st.near !== (d<6)){ st.near = d<6; st.tag.classList.toggle("near", st.near); }
   });
+  placeLabels();
   proj.set(0,4.4,0).project(camera);
   nowTag.style.opacity = proj.z<1 ? 1 : 0;
   nowTag.style.transform = `translate(${(proj.x*.5+.5)*innerWidth}px, ${(-proj.y*.5+.5)*innerHeight}px) translate(-50%,-100%)`;
@@ -1404,7 +1631,9 @@ function frame(){
   else { if(dismissed>=0 && S[dismissed] && Math.hypot(av.position.x-S[dismissed].x, av.position.z-S[dismissed].z)>7) dismissed=-1;
          if(shown>=0 && targetStation!==shown && Math.hypot(av.position.x-S[shown].x, av.position.z-S[shown].z)>9){ shown=-1; panel.classList.add("off"); } }
 
-  drawMinimap();
+  if(frameN%2===0) drawMinimap();
+  tickPeers(dt); sendPos(t); watchFps(dt);
+  if(renderer.shadowMap.enabled){ if(focus.distanceToSquared(lastShadowAt)>.04 || frameN%3===0){ renderer.shadowMap.needsUpdate=true; lastShadowAt.copy(focus); } }
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

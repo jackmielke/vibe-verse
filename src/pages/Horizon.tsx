@@ -27,6 +27,14 @@
  * (`horizon:signin`) that opens the code-first sign-in dialog right here. An
  * email code needs no redirect, so it works inside somebody else's page, and
  * the session it mints lives in that partition from then on.
+ *
+ * Social: `horizon_visits` (one row per visitor, station and day) and
+ * `horizon_comments` (notes left at a monument) ride along as `horizon:social`.
+ * The frame sends `horizon:visit` and `horizon:comment`; this page writes them.
+ * Everybody walking right now shares one Realtime channel: the frame posts its
+ * position (`horizon:pos`) a few times a second, this page broadcasts it and
+ * relays everybody else's as `horizon:peer` / `horizon:peer-gone`. Positions
+ * are never stored. The visitor id and name live in this origin's storage.
  */
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +47,18 @@ const table = (t: string) => (supabase as unknown as { from: (t: string) => any 
 const stations = () => table("horizon_stations");
 const signals = () => table("horizon_signals");
 const SIGNAL_FIELDS = "id, station_key, day, headline, why, era, direction, url, source, hidden";
+const visits = () => table("horizon_visits");
+const comments = () => table("horizon_comments");
+const COMMENT_FIELDS = "id, station_key, visitor, name, body, hidden, created_at";
+
+function visitorId(): string {
+  try {
+    let v = localStorage.getItem("horizon.visitor");
+    if (!v) { v = `v-${crypto.randomUUID()}`; localStorage.setItem("horizon.visitor", v); }
+    return v;
+  } catch { return `v-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`; }
+}
+const storedName = () => { try { return localStorage.getItem("horizon.name") ?? ""; } catch { return ""; } };
 
 export default function Horizon() {
   useWorldStamp("/horizon", "Horizon Garden");
@@ -58,13 +78,66 @@ export default function Horizon() {
       ]);
       const overrides: Record<string, unknown> = {};
       (rows ?? []).forEach((r) => { overrides[r.key] = r.fields; });
-      post({ type: "horizon:init", overrides, signals: sigs ?? [], canEdit: admin === true });
+      post({ type: "horizon:init", overrides, signals: sigs ?? [], canEdit: admin === true, me: { visitor: me, name: storedName() } });
+      social();
     };
+
+    // Who has been where, and the notes people left. Missing tables just mean an empty garden.
+    const me = visitorId();
+    const social = async () => {
+      type Res = { data: unknown[] | null; error?: unknown };
+      const failed: Res = { data: null, error: true };
+      const [rv, rc] = await Promise.all([
+        visits().select("visitor, station_key, name, day").order("day", { ascending: false }).limit(5000).then((r: Res) => r, () => failed),
+        comments().select(COMMENT_FIELDS).order("created_at", { ascending: false }).limit(800).then((r: Res) => r, () => failed),
+      ]);
+      post({ type: "horizon:social", available: !rv.error && !rc.error, visits: rv.data ?? [], comments: rc.data ?? [] });
+    };
+
+    // Live walkers: one broadcast channel, presence for who is here.
+    const peers = new Map<string, number>();
+    const channel = supabase.channel("horizon-garden", { config: { broadcast: { self: false }, presence: { key: me } } });
+    channel
+      .on("broadcast", { event: "pos" }, ({ payload }: { payload: Record<string, unknown> }) => {
+        if (!payload || payload.id === me) return;
+        peers.set(String(payload.id), Date.now());
+        post({ type: "horizon:peer", ...payload });
+      })
+      .on("presence", { event: "leave" }, ({ key }: { key: string }) => { peers.delete(key); post({ type: "horizon:peer-gone", id: key }); })
+      .subscribe((status: string) => { if (status === "SUBSCRIBED") channel.track({ name: storedName() }).catch(() => {}); });
+    const sweep = window.setInterval(() => {
+      const now = Date.now();
+      peers.forEach((t, id) => { if (now - t > 8000) { peers.delete(id); post({ type: "horizon:peer-gone", id }); } });
+    }, 3000);
 
     const onMessage = async (e: MessageEvent) => {
       if (e.origin !== window.location.origin || e.source !== frame.current?.contentWindow) return;
       const d = e.data as { type?: string; key?: string; id?: string; fields?: Record<string, unknown>; signal?: Record<string, unknown> };
       if (d?.type === "horizon:ready") init();
+      const m = e.data as { type?: string; key?: string; name?: string; body?: string; x?: number; z?: number; r?: number; y?: number; c?: number };
+      if (m?.type === "horizon:name" && typeof m.name === "string") {
+        try { localStorage.setItem("horizon.name", m.name.slice(0, 40)); } catch { /* private window */ }
+        channel.track({ name: m.name.slice(0, 40) }).catch(() => {});
+      }
+      if (m?.type === "horizon:pos") {
+        channel.send({ type: "broadcast", event: "pos", payload: { id: me, name: storedName(), x: m.x, z: m.z, r: m.r, y: m.y, c: m.c } }).catch(() => {});
+      }
+      if (m?.type === "horizon:visit" && typeof m.key === "string") {
+        await visits().upsert({ visitor: me, station_key: m.key, name: storedName() || null }, { onConflict: "visitor,station_key,day", ignoreDuplicates: true }).then(() => {}, () => {});
+        social();
+      }
+      if (m?.type === "horizon:comment" && typeof m.key === "string" && typeof m.body === "string") {
+        const name = (m.name || storedName() || "A visitor").slice(0, 40);
+        try { localStorage.setItem("horizon.name", name); } catch { /* private window */ }
+        const { error } = await comments().insert({ station_key: m.key, visitor: me, name, body: m.body.slice(0, 500) });
+        post({ type: "horizon:comment-saved", ok: !error, error: error?.message });
+        social();
+      }
+      if (m?.type === "horizon:comment-hide" && typeof (e.data as { id?: string }).id === "string") {
+        const { error } = await comments().update({ hidden: true }).eq("id", (e.data as { id: string }).id);
+        post({ type: "horizon:saved", ok: !error, error: error?.message });
+        social();
+      }
       if (d?.type === "horizon:signin") {
         // Signed in already, but not as an editor: say so and offer the other door.
         const { data: { session } } = await supabase.auth.getSession();
@@ -90,7 +163,10 @@ export default function Horizon() {
 
     window.addEventListener("message", onMessage);
     const { data: sub } = supabase.auth.onAuthStateChange(() => init());
-    return () => { window.removeEventListener("message", onMessage); sub.subscription.unsubscribe(); };
+    return () => {
+      window.removeEventListener("message", onMessage); sub.subscription.unsubscribe();
+      window.clearInterval(sweep); supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
