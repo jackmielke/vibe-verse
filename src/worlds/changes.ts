@@ -426,6 +426,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "0e6a9ed1", iso: "2026-07-29T16:47:45+00:00", subject: "Terminal: real card art, a bluer sky, and an island that reads as an island" },
     { sha: "9ba14608", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
   ],
+  "thalassa": [
+    { sha: "f6742350", iso: "2026-10-10T19:58:27+00:00", subject: "Thalassa: a Greek harbour town you can walk, swim and visit in VR" },
+  ],
   "times": [
     { sha: "67f2af31", iso: "2026-08-18T22:20:23+00:00", subject: "🖨 The paper survives Ctrl-P" },
     { sha: "99e4d5bf", iso: "2026-08-18T22:03:15+00:00", subject: "🗂 Small ads, bylines, and a spike by the door" },

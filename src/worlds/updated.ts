@@ -79,6 +79,7 @@ export const WORLD_UPDATED: Record<string, string> = {
   "strange-new-worlds": "2026-08-08T21:04:25+00:00",
   "submit-world": "2026-06-15T22:23:49+00:00",
   "terminal": "2026-08-17T15:57:50+00:00",
+  "thalassa": "2026-10-10T19:58:27+00:00",
   "times": "2026-08-18T22:20:23+00:00",
   "trek": "2026-08-18T22:28:17+00:00",
   "venus": "2026-10-01T16:56:25-07:00",
