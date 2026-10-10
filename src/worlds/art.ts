@@ -34,6 +34,7 @@ import splashRoyaleArt from "@/assets/worlds/splash-royale.jpg";
 import betterFortniteArt from "@/assets/worlds/better-fortnite.jpg";
 import skiArt from "@/assets/worlds/ski.jpg";
 import spaceArt from "@/assets/worlds/space.jpg";
+import thalassaArt from "@/assets/worlds/thalassa.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
 import vibeArt from "@/assets/worlds/vibe.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
@@ -127,6 +128,7 @@ export const WORLD_ART: Record<string, string> = {
      and Island Explorer keeps the old one. */
   island: vibeIslandArt,
   "island-explorer": islandArt,
+  thalassa: thalassaArt,
   lobby: lobbyArt,
   moon: moonArt,
   museum: museumArt,

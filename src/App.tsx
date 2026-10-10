@@ -92,6 +92,7 @@ const SanPalmas = lazy(() => import("./pages/SanPalmas.tsx"));
 const FirstLight = lazy(() => import("./pages/FirstLight.tsx"));
 const VibeGolf = lazy(() => import("./pages/VibeGolf.tsx"));
 const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
+const Thalassa = lazy(() => import("./pages/Thalassa.tsx"));
 const Terminal = lazy(() => import("./pages/Terminal.tsx"));
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const GlassLake = lazy(() => import("./pages/GlassLake.tsx"));
@@ -402,6 +403,9 @@ const App = () => (
           <Route path="/conservatory" element={<Conservatory />} />
           <Route path="/glasshouse" element={<Conservatory />} />
 
+          {["/thalassa", "/harbor", "/harbour", "/greek-harbor"].map((path) => (
+            <Route key={path} path={path} element={<Thalassa />} />
+          ))}
           <Route path="/island-2" element={<VibeIsland2 />} />
           <Route path="/vibe-island-2" element={<VibeIsland2 />} />
           {/* San Palmas — tropical San Francisco. The vibeverse's open-world FPS. */}

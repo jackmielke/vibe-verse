@@ -38,6 +38,7 @@ import { IOS_APP } from "../lib/iosApp.ts";
  */
 const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
+  "thalassa",            // the harbour from the painting: walk it, swim it, VR
   "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
   "bots",                // …then the thirty-second loop: your handle becomes a bot that fights
   "oni",                 // the room game: everybody's phone, one square, zombie tag
@@ -556,6 +557,24 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#38bdf8",
     featured: true,
     source: "src/terminal",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "thalassa",
+    route: "/thalassa",
+    aliases: ["/harbor", "/harbour", "/greek-harbor"],
+    name: "Thalassa",
+    emoji: "🏛️",
+    kind: "world",
+    blurb:
+      "A walled harbour town on a turquoise bay. Wander the market on the quay, climb the winding stair to the temple on the cliff island, swim out to the galleys, or put on a headset and do it in VR.",
+    status: "New: walk it, swim it, VR",
+    accent: "#2fb6d0",
+    backdrop: "#cfe6f3",
+    featured: true,
+    source: "src/thalassa + src/pages/Thalassa.tsx",
     nav: true,
     passport: true,
     chromeless: true,

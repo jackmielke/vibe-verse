@@ -60,14 +60,15 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "30e05a25", iso: "2026-09-09T04:04:21+00:00", subject: "Beck Road: buildings from the footprints, with roofs that follow them" },
   ],
   "better-fortnite": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c2dec86b", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "999d2a42", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a3411", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92ac", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad323", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
-    { sha: "6ed0d1c7", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
   ],
   "blob": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "64140cc0", iso: "2026-08-10T23:09:13+00:00", subject: "BLOB: a phone sets a course, and a room code shares the dish" },
     { sha: "9423a4a4", iso: "2026-08-08T05:45:14+00:00", subject: "BLOB: agar.io in the vibeverse — one dish, twenty-four rivals" },
@@ -84,6 +85,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7512e1f9", iso: "2026-08-02T18:29:32+00:00", subject: "Start on the Space Needle, and blow up when you hit it" },
     { sha: "349d5c1c", iso: "2026-08-02T14:27:36+00:00", subject: "On a desktop, the cursor is the stick" },
   ],
+  "bots": [
+    { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
+  ],
   "characters": [
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
     { sha: "d9cd716c", iso: "2026-07-02T19:19:25+00:00", subject: "Vibe karts, cleaner clouds, VibeVerse marquee, saved character" },
@@ -94,12 +98,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "be85b80f", iso: "2026-08-18T23:30:37+00:00", subject: "Vibe City: make The Deep a place you can actually see" },
     { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "5a0721d9", iso: "2026-08-17T16:54:36+00:00", subject: "The jetpack is on your back now, and the sea stops following you home" },
-    { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -138,12 +142,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "10b01051", iso: "2026-09-03T06:49:42+00:00", subject: "Four worlds from one week: the Dipsea, Pathfinder, Developer Trail, Duck On My Head" },
   ],
   "drop-zero": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c2dec86b", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "999d2a42", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a3411", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92ac", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad323", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
-    { sha: "6ed0d1c7", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
   ],
   "duck": [
     { sha: "10b01051", iso: "2026-09-03T06:49:42+00:00", subject: "Four worlds from one week: the Dipsea, Pathfinder, Developer Trail, Duck On My Head" },
@@ -153,17 +157,18 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "c7d5b2c6", iso: "2026-08-16T18:38:10+00:00", subject: "The Dune Sea: sandboarding a sunset, on one function" },
   ],
   "edm-town": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "2e62671b", iso: "2026-08-01T06:06:01+00:00", subject: "The passport: nine worlds that finally know about each other" },
     { sha: "c02b5ca9", iso: "2026-06-17T20:19:43+00:00", subject: "Changes" },
   ],
   "empyrean": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "8328bd37", iso: "2026-08-20T21:32:15+00:00", subject: "Write down the night's four features and its two worst lessons" },
     { sha: "613a2edd", iso: "2026-08-20T21:28:28+00:00", subject: "You can ride the ring tram, and a moving floor is now a primitive" },
     { sha: "9ecb358d", iso: "2026-08-20T20:20:20+00:00", subject: "The camera rig allocated two vectors a frame" },
     { sha: "52c5fd20", iso: "2026-08-20T20:15:20+00:00", subject: "The black rectangle was one NaN, and four rooms somebody lives in" },
     { sha: "10eb3a5e", iso: "2026-08-20T18:50:36+00:00", subject: "A camp on the ice, a festival after dark, a camera, and the bridges back" },
-    { sha: "6345a15f", iso: "2026-08-20T11:51:45+00:00", subject: "Twice as many people, and 334 benches that finally have somebody on them" },
   ],
   "evolve": [
     { sha: "9064949f", iso: "2026-07-01T12:12:14-07:00", subject: "Add universal character selector" },
@@ -204,6 +209,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "550ec4e7", iso: "2026-07-27T04:50:37+00:00", subject: "🌍 Globetrotter — the world, inside the world" },
   ],
   "go": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "0ebad2b8", iso: "2026-07-04T19:35:41+00:00", subject: "VIBE FM retro deck, Cloud Kingdom physics fix, VIBE GO gets AR + avatar" },
     { sha: "28f6b299", iso: "2026-07-04T18:30:13+00:00", subject: "VIBE GO — catch the VibeVerse in the real world (/go)" },
@@ -227,6 +233,14 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "eef0d16d", iso: "2026-08-02T09:14:33+00:00", subject: "Home Alone: put the lights up, and let them talk" },
     { sha: "502f02a5", iso: "2026-08-02T09:14:33+00:00", subject: "Home Alone: a house you can walk, and two men who want it" },
   ],
+  "horizon": [
+    { sha: "3b7e9af8", iso: "2026-10-09T09:22:41-07:00", subject: "Horizon Garden: retire Ten Sports a Year, 22 frontiers" },
+    { sha: "bab3a010", iso: "2026-10-06T22:30:29-07:00", subject: "Horizon Garden: films for the last six stations, arrival sweep, generated garden sounds, phone layout fixes" },
+    { sha: "33be83f4", iso: "2026-10-06T22:25:22-07:00", subject: "Horizon Garden: live real-sun sky and clock, station films, visitors and notes, other walkers, decluttered labels, smooth mode" },
+    { sha: "8f65a8bd", iso: "2026-10-06T21:50:27-07:00", subject: "Horizon Garden: Vibe Island-style controls (orbit tilt, zoom to bird's-eye map, run, jump, joystick, minimap), fly-around and station videos" },
+    { sha: "c8d520f2", iso: "2026-10-06T17:36:15-07:00", subject: "Horizon Garden: look picker with Photoreal, Golden Hour, Vibe Island, Night, Neon, Winter and Live" },
+    { sha: "1c472096", iso: "2026-10-05T23:23:22-07:00", subject: "Horizon Garden: Personal Computers 2.0 and Abundant Energy; pop-up cities reach space, kids station cites Taking Children Seriously" },
+  ],
   "i-spy": [
     { sha: "e29527aa", iso: "2026-08-18T22:20:14+00:00", subject: "Light the level, and stack it into a Spire" },
     { sha: "a409687e", iso: "2026-08-06T17:20:04+00:00", subject: "Eleven levels, one per corner of the vibeverse" },
@@ -236,12 +250,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ee1f96cf", iso: "2026-08-02T21:05:51+00:00", subject: "Nothing is spawned. It is drawn." },
   ],
   "island": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
-    { sha: "7077dd7e", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
   ],
   "island-2": [
     { sha: "0779cb94", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -256,28 +270,28 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "262ce61b", iso: "2026-08-01T19:03:01+00:00", subject: "The character picker was rendering everyone as a silhouette" },
   ],
   "kart": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "26a8a939", iso: "2026-08-07T16:36:48+00:00", subject: "🏁 One Vibe Kart, and a lobby that starts the race for you" },
     { sha: "10c85339", iso: "2026-08-04T17:48:06+00:00", subject: "Changes" },
     { sha: "2dd76057", iso: "2026-08-04T17:47:56+00:00", subject: "Changes" },
     { sha: "ff173129", iso: "2026-08-04T17:47:51+00:00", subject: "Changes" },
-    { sha: "c1bf1089", iso: "2026-08-04T17:47:40+00:00", subject: "Changes" },
   ],
   "lobby": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "1bf8d5ab", iso: "2026-08-01T22:52:51+00:00", subject: "Flux everywhere, via one shared character rig" },
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
     { sha: "a7f37098", iso: "2026-06-24T21:06:00+00:00", subject: "Changes" },
     { sha: "fd40c52a", iso: "2026-06-24T21:05:53+00:00", subject: "Changes" },
-    { sha: "21f5a459", iso: "2026-06-24T21:05:46+00:00", subject: "Changes" },
   ],
   "magician": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "f59aaba5", iso: "2026-09-28T06:12:27+00:00", subject: "Magician: phones cast spells onto a projector; Vibey remembers you" },
     { sha: "85b66e42", iso: "2026-09-26T19:20:57+00:00", subject: "Magician: film real footage frame by frame; 'stop the rain' stops it" },
     { sha: "5860ef00", iso: "2026-09-26T18:09:58+00:00", subject: "Magician: Zombie Tag in the play menu and by voice; Vibey in front of you" },
     { sha: "ff4ffb4b", iso: "2026-09-25T17:15:09+00:00", subject: "Oni is Zombie Tag now: green zombies, not horned oni" },
     { sha: "30cb1d49", iso: "2026-09-25T03:27:57+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
-    { sha: "17448162", iso: "2026-09-25T03:09:04+00:00", subject: "Changes" },
   ],
   "manifesto": [
     { sha: "56590fb9", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
@@ -286,12 +300,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "f4715e0e", iso: "2026-09-04T09:28:00+00:00", subject: "Mars College: ten weeks in the desert on one wheel, at /mars" },
   ],
   "moon": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
-    { sha: "7077dd7e", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
   ],
   "museum": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -311,6 +325,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "efe0b65f", iso: "2026-06-12T02:00:05+00:00", subject: "Changes" },
   ],
   "oni": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "f59aaba5", iso: "2026-09-28T06:12:27+00:00", subject: "Magician: phones cast spells onto a projector; Vibey remembers you" },
     { sha: "ff4ffb4b", iso: "2026-09-25T17:15:09+00:00", subject: "Oni is Zombie Tag now: green zombies, not horned oni" },
     { sha: "30cb1d49", iso: "2026-09-25T03:27:57+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
@@ -321,6 +336,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "08687746", iso: "2026-08-07T06:58:26+00:00", subject: "🛰️ ORBIT, invite links and a pot: the vibeverse gets something to bet on" },
   ],
   "passport": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c53bd6d7", iso: "2026-08-17T07:15:04+00:00", subject: "Exploring pays, because nothing else did" },
     { sha: "9e1e6e4e", iso: "2026-08-14T13:41:03+00:00", subject: "Your own line in the history" },
     { sha: "51778ca0", iso: "2026-08-12T06:08:52+00:00", subject: "The wink arrives as a picture, then wakes up" },
@@ -354,12 +370,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1ee", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c2dec86b", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "52d6e227", iso: "2026-08-29T07:01:41+00:00", subject: "The real weather, and a painted mountain on Twin Peaks" },
     { sha: "9fd6cfae", iso: "2026-08-28T08:23:33+00:00", subject: "The day passes now, and you can wave at people" },
     { sha: "620ba8b3", iso: "2026-08-26T08:54:18+00:00", subject: "Other people are in San Francisco now" },
     { sha: "68d1e745", iso: "2026-08-26T07:28:25+00:00", subject: "Stroll is the default. The loud version is a button." },
-    { sha: "9df38e07", iso: "2026-08-25T10:13:39+00:00", subject: "A way back to first person, and a hint that says how to get in a car" },
   ],
   "shop": [
     { sha: "64186e31", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
@@ -368,12 +384,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e8", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
-    { sha: "7077dd7e", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
   ],
   "space": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -384,12 +400,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "45648c1d", iso: "2026-05-14T04:33:38+00:00", subject: "Changes" },
   ],
   "splash-royale": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c2dec86b", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "999d2a42", iso: "2026-09-02T08:13:54+00:00", subject: "Locker: fit skins off a render, hang the weapon on the bone three actually names" },
     { sha: "f34a3411", iso: "2026-09-02T06:56:05+00:00", subject: "Locker: posed bounds for skinned previews, harness telemetry for skins" },
     { sha: "2b7b92ac", iso: "2026-09-02T06:27:29+00:00", subject: "Play the island as anybody in the vibeverse (checkpoint)" },
     { sha: "666ad323", iso: "2026-09-02T05:20:44+00:00", subject: "BETTER FORTNITE: eat the augment digit in fixed(), harness filter, card art" },
-    { sha: "6ed0d1c7", iso: "2026-09-02T04:45:51+00:00", subject: "BETTER FORTNITE: a third game on the island (checkpoint)" },
   ],
   "strange-new-worlds": [
     { sha: "b919650d", iso: "2026-08-08T21:04:25+00:00", subject: "Changes" },
@@ -427,27 +443,28 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fb4e2dc9", iso: "2026-08-02T10:01:00+00:00", subject: "Two ways to end Balance of Terror, and one fewer way to lose unfairly" },
   ],
   "venus": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
+    { sha: "7c896d5a", iso: "2026-09-30T21:07:35+00:00", subject: "Venus Rising: drop the dedication line from the title" },
+    { sha: "1c696c6e", iso: "2026-09-30T20:47:17+00:00", subject: "Venus Rising: a darker scrim behind the title on phones" },
+    { sha: "badf8d38", iso: "2026-09-30T20:45:00+00:00", subject: "Venus Rising: softer lanterns at night, lighter keel" },
     { sha: "99192bb2", iso: "2026-09-30T20:42:17+00:00", subject: "Venus Rising: night is a moment, not a stall" },
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
-    { sha: "3dc32d45", iso: "2026-09-30T20:14:21+00:00", subject: "Venus Rising: card art, postcards, a name for your city" },
-    { sha: "d9f2363b", iso: "2026-09-30T20:01:15+00:00", subject: "Venus Rising: walk the deck, neighbours on the wind, and a gauntlet of fixes" },
-    { sha: "572b7fdf", iso: "2026-09-30T19:25:42+00:00", subject: "Venus Rising: build a city floating 54 km up in the clouds of Venus" },
   ],
   "vibestar": [
+    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
     { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
     { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
     { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
     { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
-    { sha: "7077dd7e", iso: "2026-08-12T19:53:02+00:00", subject: "Swimming, and snow that settles" },
   ],
   "vibeverse": [
+    { sha: "fc206f2a", iso: "2026-09-30T20:54:00+00:00", subject: "Vibeverse: Venus reads as a pearl from orbit; number keys go to 6" },
     { sha: "d9f2363b", iso: "2026-09-30T20:01:15+00:00", subject: "Venus Rising: walk the deck, neighbours on the wind, and a gauntlet of fixes" },
     { sha: "cae1ead5", iso: "2026-09-09T12:01:53+00:00", subject: "Beck Road: the five elements merged, card art, passport cap" },
     { sha: "da791439", iso: "2026-09-03T19:20:24+00:00", subject: "Card art, stamped dates and a wider passport panel for the four new worlds" },
     { sha: "207af005", iso: "2026-08-18T22:36:55+00:00", subject: "Passport rows to forty-two, and stop raising it one world at a time" },
     { sha: "a86765f9", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
-    { sha: "53371bc3", iso: "2026-08-17T08:08:54+00:00", subject: "Vibe Francisco: a toy San Francisco you can fly around" },
   ],
   "village": [
     { sha: "fbba2b4f", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },
