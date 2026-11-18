@@ -1,36 +1,19 @@
 /**
- * `/redesign/:id` — three front doors drawn from the VibeVerse cover, for Jack
- * to choose between before one replaces `/`.
+ * `/redesign/:id` — each of the three cover-art front doors on its own URL, for
+ * linking or filming one. The homepage at `/` shows the same three with a
+ * switcher (see `pages/Home.tsx`).
  *
  * Each direction is a whole, working homepage (real registry, real search,
  * real balance and price), so what gets picked is already built. The bar at
  * the bottom belongs to the picker, not to the design, and hides on `?bare`
  * so a direction can be filmed or framed without it.
  */
-import { lazy, Suspense, useEffect } from "react";
+import { Suspense, useEffect } from "react";
+
+import { DIRECTIONS } from "@/redesign/directions";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
-export const DIRECTIONS = [
-  {
-    id: "sky",
-    name: "Sky",
-    note: "The cover, taken literally: blue sky, pixel wordmark, the islands along the bottom.",
-    Component: lazy(() => import("@/redesign/Sky")),
-  },
-  {
-    id: "arcade",
-    name: "Arcade",
-    note: "The pixel half of the cover: a title screen, a game HUD, cards like cartridges.",
-    Component: lazy(() => import("@/redesign/Arcade")),
-  },
-  {
-    id: "postcard",
-    name: "Postcard",
-    note: "The serif half of the cover: warm paper, the art as a postcard, calm and personal.",
-    Component: lazy(() => import("@/redesign/Postcard")),
-  },
-] as const;
 
 export default function Redesign() {
   const { id } = useParams<{ id: string }>();
@@ -55,7 +38,7 @@ export default function Redesign() {
     window.scrollTo(0, 0);
   }, [id]);
 
-  if (i < 0) return <Navigate to="/redesign/sky" replace />;
+  if (i < 0) return <Navigate to="/redesign/arcade" replace />;
   const d = DIRECTIONS[i];
   const prev = DIRECTIONS[(i - 1 + DIRECTIONS.length) % DIRECTIONS.length];
   const next = DIRECTIONS[(i + 1) % DIRECTIONS.length];
@@ -72,7 +55,7 @@ export default function Redesign() {
             <Link to={`/redesign/${prev.id}`} aria-label={`Previous: ${prev.name}`} className="grid h-10 w-10 place-items-center rounded-full text-white/70 hover:bg-white/10 hover:text-white">
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            {DIRECTIONS.map((o, n) => (
+            {DIRECTIONS.map((o) => (
               <Link
                 key={o.id}
                 to={`/redesign/${o.id}`}
@@ -81,7 +64,6 @@ export default function Redesign() {
                   o.id === d.id ? "bg-white text-[#0b1526]" : "text-white/70 hover:text-white"
                 }`}
               >
-                <span className="mr-1 text-[11px] opacity-50">{String.fromCharCode(65 + n)}</span>
                 {o.name}
               </Link>
             ))}

@@ -11,6 +11,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Search, X, ChevronDown, Shuffle } from "lucide-react";
 
 import { useHomeData } from "@/home/kit";
+import VibeMark from "@/components/VibeMark";
 import Account from "./Account";
 import {
   CardArt,
@@ -165,16 +166,19 @@ export default function Sky() {
         </header>
 
         <div className="relative z-10 mx-auto max-w-4xl px-4 pb-6 pt-10 text-center sm:px-6 sm:pt-12">
+          <div className="flex items-center justify-center gap-3 sm:gap-5">
+          <VibeMark size={96} rotateSeconds={30} priority className="hidden shrink-0 sm:block" />
           <h1
             className="font-bold leading-none tracking-[0.02em] text-white"
             style={{
               fontFamily: PIXEL,
-              fontSize: "clamp(2.9rem, 12.5vw, 8.4rem)",
+              fontSize: "clamp(2.9rem, 11vw, 7.4rem)",
               textShadow: "0 4px 0 rgba(6,70,160,0.35), 0 18px 40px rgba(6,60,150,0.25)",
             }}
           >
             VIBEVERSE
           </h1>
+          </div>
           <p
             className="mx-auto mt-5 max-w-xl leading-[1.12] sm:mt-7"
             style={{ fontFamily: SERIF, fontSize: "clamp(1.6rem, 4.6vw, 2.7rem)", color: "#06204a" }}
@@ -209,9 +213,10 @@ export default function Sky() {
               {coinLabel(d.coin.balance, d.coin.display)}
             </Link>
             {price.price && (
-              <a href={price.href} target="_blank" rel="noreferrer noopener" className={chip} title={`Market cap ${price.cap}`}>
+              <a href={price.href} target="_blank" rel="noreferrer noopener" className={chip} title={`${price.price} per VIBE`}>
                 <span className="text-white/75">$VIBE</span>
-                <span className="tabular-nums">{price.price}</span>
+                <span className="tabular-nums">{price.cap}</span>
+                <span className="text-white/60">mcap</span>
                 {price.change && (
                   <span className={`tabular-nums ${price.direction === "down" ? "text-[#ffd0d0]" : "text-[#d4ffe9]"}`}>
                     {price.change}
@@ -287,7 +292,7 @@ export default function Sky() {
         </div>
 
         <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {list.visible.map((w) => (
+          {list.shown.map((w) => (
             <Card key={w.key} world={w} />
           ))}
         </div>
@@ -296,17 +301,6 @@ export default function Sky() {
           <p className="py-16 text-center text-[15px] text-[#0b2a55]/60">Nothing called “{list.query}” yet. Try another word?</p>
         )}
 
-        {list.collapsed && (
-          <div className="mt-8 flex justify-center">
-            <button
-              type="button"
-              onClick={list.expand}
-              className="flex h-12 items-center gap-2 rounded-full bg-white px-7 text-[14px] font-bold ring-1 ring-[#0b2a55]/10 transition-shadow hover:shadow-lg"
-            >
-              Show all {list.shown.length} worlds <ChevronDown className="h-4 w-4" />
-            </button>
-          </div>
-        )}
 
         <footer className="mt-20 flex flex-col items-center gap-3 text-center text-[13px] text-[#0b2a55]/55">
           <span style={{ fontFamily: PIXEL }} className="text-[13px] tracking-[0.08em] text-[#0b2a55]/70">

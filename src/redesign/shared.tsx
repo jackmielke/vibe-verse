@@ -42,6 +42,8 @@ import pix500 from "@/assets/redesign/pixelify-sans-latin-500-normal.woff2";
 import pix700 from "@/assets/redesign/pixelify-sans-latin-700-normal.woff2";
 import serif400 from "@/assets/redesign/instrument-serif-latin-400-normal.woff2";
 import serif400i from "@/assets/redesign/instrument-serif-latin-400-italic.woff2";
+import round600 from "@/assets/redesign/fredoka-latin-600-normal.woff2";
+import round700 from "@/assets/redesign/fredoka-latin-700-normal.woff2";
 
 export { default as coverUrl } from "@/assets/redesign/cover.webp";
 export { default as coverBandUrl } from "@/assets/redesign/cover-band.webp";
@@ -49,6 +51,8 @@ export { default as coverHeroesUrl } from "@/assets/redesign/cover-heroes.webp";
 
 export const PIXEL = "'VV Pixel', 'Courier New', monospace";
 export const SERIF = "'VV Serif', Georgia, 'Times New Roman', serif";
+/** Rounded and chunky: the Arcade look's headings, where pixels were too crude at length. */
+export const ROUND = "'VV Round', 'Arial Rounded MT Bold', system-ui, sans-serif";
 export const SANS = "Manrope, system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 /**
@@ -66,6 +70,8 @@ export function CoverFonts() {
 @font-face{font-family:'VV Pixel';src:url(${pix700}) format('woff2');font-weight:700;font-display:block}
 @font-face{font-family:'VV Serif';src:url(${serif400}) format('woff2');font-weight:400;font-style:normal;font-display:swap;size-adjust:96%}
 @font-face{font-family:'VV Serif';src:url(${serif400i}) format('woff2');font-weight:400;font-style:italic;font-display:swap;size-adjust:96%}
+@font-face{font-family:'VV Round';src:url(${round600}) format('woff2');font-weight:500 600;font-display:swap}
+@font-face{font-family:'VV Round';src:url(${round700}) format('woff2');font-weight:700;font-display:swap}
 `}</style>
   );
 }
@@ -73,7 +79,7 @@ export function CoverFonts() {
 /** Preload the two fonts the first frame needs, so `block` is a few ms, not a flash. */
 export function usePreloadFonts() {
   useEffect(() => {
-    const links = [pix700, serif400i].map((href) => {
+    const links = [pix700, serif400i, round700].map((href) => {
       const l = document.createElement("link");
       l.rel = "preload";
       l.as = "font";
@@ -91,8 +97,6 @@ export function usePreloadFonts() {
 /* The world list                                                             */
 /* -------------------------------------------------------------------------- */
 
-export const PREVIEW_COUNT = 8;
-
 export function useWorldList() {
   const [query, setQuery] = useState("");
   const lastPlayed = useMemo(() => {
@@ -107,7 +111,6 @@ export function useWorldList() {
     setSortState(s);
     rememberSort(s);
   }, []);
-  const [expanded, setExpanded] = useState(false);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -117,7 +120,6 @@ export function useWorldList() {
     return sortWorlds(hit, sort, lastPlayed);
   }, [query, sort, lastPlayed]);
 
-  const collapsed = !expanded && !query.trim() && shown.length > PREVIEW_COUNT;
   return {
     query,
     setQuery,
@@ -125,9 +127,6 @@ export function useWorldList() {
     setSort,
     tabs,
     shown,
-    visible: collapsed ? shown.slice(0, PREVIEW_COUNT) : shown,
-    collapsed,
-    expand: () => setExpanded(true),
     total: WORLDS.length,
   };
 }
@@ -210,6 +209,9 @@ export function CardArt({
 }) {
   const [ever, setEver] = useState(false);
   const [ready, setReady] = useState(false);
+  /* The still fades in when its bytes land, over the accent tile, so a
+     scrolling grid fills in softly instead of popping image by image. */
+  const [stillReady, setStillReady] = useState(false);
   useEffect(() => {
     if (hovering) setEver(true);
   }, [hovering]);
@@ -229,7 +231,13 @@ export function CardArt({
           alt=""
           loading="lazy"
           decoding="async"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+          onLoad={() => setStillReady(true)}
+          ref={(el) => {
+            /* Already in the cache: onLoad fired before React attached it. */
+            if (el?.complete && el.naturalWidth && !stillReady) setStillReady(true);
+          }}
+          className="absolute inset-0 h-full w-full object-cover transition-[transform,opacity] duration-500 ease-out group-hover:scale-[1.04]"
+          style={{ opacity: stillReady ? 1 : 0 }}
         />
       ) : (
         <div className="absolute inset-0 grid place-items-center text-4xl" aria-hidden>

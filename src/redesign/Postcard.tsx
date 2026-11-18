@@ -11,6 +11,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Search, X } from "lucide-react";
 
 import { useHomeData, Grain } from "@/home/kit";
+import VibeMark from "@/components/VibeMark";
 import Account from "./Account";
 import {
   CardArt,
@@ -45,7 +46,7 @@ function Stamp() {
       href={price.href}
       target="_blank"
       rel="noreferrer noopener"
-      title={price.cap ? `$VIBE market cap ${price.cap}` : "$VIBE on Base"}
+      title={price.price ? `${price.price} per VIBE` : "$VIBE on Base"}
       className="absolute -right-4 -top-12 w-[96px] rotate-[7deg] transition-transform hover:rotate-[3deg] sm:-right-10 sm:-top-16 sm:w-[120px]"
       style={{ filter: "drop-shadow(0 6px 10px rgba(28,43,69,0.25))" }}
     >
@@ -55,8 +56,9 @@ function Stamp() {
             $VIBE
           </span>
           <span className="text-[13px] tabular-nums leading-none sm:text-[14px]" style={{ fontFamily: SANS, fontWeight: 800 }}>
-            {price.price ?? "on Base"}
+            {price.cap ?? "on Base"}
           </span>
+          <span className="text-[10px] uppercase tracking-[0.12em] opacity-80">{price.cap ? "market cap" : ""}</span>
           {price.change && <span className="text-[11px] tabular-nums opacity-85">{price.change} today</span>}
         </div>
       </div>
@@ -104,7 +106,8 @@ export default function Postcard() {
       </div>
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center gap-1 px-5 pt-5 sm:px-8 sm:pt-7">
-        <Link to="/" className="mr-auto text-[17px] tracking-[0.04em] sm:text-[19px]" style={{ fontFamily: PIXEL, fontWeight: 700 }}>
+        <Link to="/" className="mr-auto flex items-center gap-2 text-[17px] tracking-[0.04em] sm:text-[19px]" style={{ fontFamily: PIXEL, fontWeight: 700 }}>
+          <VibeMark size={40} rotateSeconds={30} priority className="shrink-0" />
           VIBEVERSE
         </Link>
         <a href="#worlds" className="hidden px-3 py-2 text-[14px] text-[#1c2b45]/75 hover:text-[#1c2b45] sm:block">Worlds</a>
@@ -198,7 +201,7 @@ export default function Postcard() {
         </div>
 
         <div className="mt-4 grid auto-rows-fr grid-cols-2 gap-3 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
-          {list.visible.map((w) => (
+          {list.shown.map((w) => (
             <Print key={w.key} world={w} />
           ))}
         </div>
@@ -209,13 +212,6 @@ export default function Postcard() {
           </p>
         )}
 
-        {list.collapsed && (
-          <div className="mt-10 flex justify-center">
-            <button type="button" onClick={list.expand} className="h-12 rounded-full border border-[#1c2b45]/30 px-7 text-[15px] font-semibold transition-colors hover:border-[#1c2b45]">
-              See all {list.shown.length} worlds
-            </button>
-          </div>
-        )}
 
         <footer className="mt-24 flex flex-col items-center gap-3 text-center">
           <p style={{ fontFamily: SERIF, fontSize: 24 }}>

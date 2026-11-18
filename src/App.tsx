@@ -15,6 +15,7 @@ import { CHROMELESS_ROUTES, worldByRoute } from "./worlds/registry.ts";
    second round trip: one is what most visits open on, and the other is what a
    broken link lands on. Everything else in this file is lazy. */
 import Game from "./pages/Game.tsx";
+import { IOS_APP } from "@/lib/iosApp";
 import SafetyLayer from "./safety/SafetyLayer.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -67,6 +68,7 @@ const Manifesto = lazy(() => import("./pages/Manifesto.tsx"));
 const Passport = lazy(() => import("./pages/Passport.tsx"));
 const HomeLooks = lazy(() => import("./pages/HomeLooks.tsx"));
 const Homes = lazy(() => import("./pages/Homes.tsx"));
+const Home = lazy(() => import("./pages/Home.tsx"));
 const Redesign = lazy(() => import("./pages/Redesign.tsx"));
 const HomeThemePage = lazy(() => import("./pages/Homes.tsx").then((m) => ({ default: m.HomeThemePage })));
 const Orbit = lazy(() => import("./pages/Orbit.tsx"));
@@ -170,6 +172,10 @@ const AppChrome = () => {
   if (pathname.startsWith("/homes/")) return null;
   /* Same for the cover-art directions at `/redesign`: each draws its own nav. */
   if (pathname.startsWith("/redesign")) return null;
+  /* The front door draws its own header too; only the radio stays, so a track
+     started elsewhere keeps playing. The App Store edition keeps the flat grid
+     and the normal nav. */
+  if (pathname === "/" && !IOS_APP) return <VibeRadio />;
 
   /* OAuth landing pads. Nobody is *at* these — they are a second of spinner
      between a provider and wherever the visitor was actually going. Chrome
@@ -239,7 +245,7 @@ const App = () => (
               "/", "/game" and "/worlds" are all the same page — one grid, three
               names, because there is no version of this where two different
               grids of the same worlds stay in agreement. */}
-          <Route path="/" element={<Game />} />
+          <Route path="/" element={<Home />} />
           {/* Bot Battle: X handle -> bot -> one RPS match -> share card. */}
           <Route path="/bots" element={<Bots />} />
           <Route path="/bot" element={<Bots />} />
