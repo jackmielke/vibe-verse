@@ -67,6 +67,7 @@ const Manifesto = lazy(() => import("./pages/Manifesto.tsx"));
 const Passport = lazy(() => import("./pages/Passport.tsx"));
 const HomeLooks = lazy(() => import("./pages/HomeLooks.tsx"));
 const Homes = lazy(() => import("./pages/Homes.tsx"));
+const Redesign = lazy(() => import("./pages/Redesign.tsx"));
 const HomeThemePage = lazy(() => import("./pages/Homes.tsx").then((m) => ({ default: m.HomeThemePage })));
 const Orbit = lazy(() => import("./pages/Orbit.tsx"));
 const Join = lazy(() => import("./pages/Join.tsx"));
@@ -167,6 +168,8 @@ const AppChrome = () => {
      be a second nav sitting on top of the thing being judged. The picker's own
      bar is the way out, and `/homes` itself keeps normal chrome. */
   if (pathname.startsWith("/homes/")) return null;
+  /* Same for the cover-art directions at `/redesign`: each draws its own nav. */
+  if (pathname.startsWith("/redesign")) return null;
 
   /* OAuth landing pads. Nobody is *at* these — they are a second of spinner
      between a provider and wherever the visitor was actually going. Chrome
@@ -323,6 +326,9 @@ const App = () => (
               setting — it goes away once one of the six wins. */}
           <Route path="/homes" element={<Homes />} />
           <Route path="/homes/:id" element={<HomeThemePage />} />
+          {/* Three cover-art directions for the front door, picked by Jack. */}
+          <Route path="/redesign" element={<Redesign />} />
+          <Route path="/redesign/:id" element={<Redesign />} />
           <Route path="/looks" element={<HomeLooks />} />
           <Route path="/stamps" element={<Navigate to="/passport" replace />} />
           <Route path="/future" element={<Navigate to="/manifesto" replace />} />
