@@ -112,21 +112,9 @@ export async function refreshVibeMarket(force = false): Promise<VibeMarket> {
 
   inFlight = (async () => {
     try {
-      const { data, error } = await supabase.functions.invoke("vibe-holdings", {
-        // No addresses: this is the price-only call. The function answers it
-        // without touching the chain at all, which is why it is quick.
-        body: { addresses: [] },
-      });
-      if (error) throw new Error(error.message);
-      const usd = Number(data?.data?.price?.usd);
-      if (!Number.isFinite(usd) || usd <= 0) throw new Error("no price");
-      const change24h = Number(data?.data?.price?.change24h);
-      const next: VibeMarket = {
-        usd,
-        change24h: Number.isFinite(change24h) ? change24h : null,
-        at: Date.now(),
-        loading: false,
-      };
+      const got = (await priceFromEdge()) ?? (await priceFromPool()) ?? (await priceFromScreener());
+      if (!got) throw new Error("no price");
+      const next: VibeMarket = { ...got, at: Date.now(), loading: false };
       set(next);
       try {
         localStorage.setItem(
@@ -146,6 +134,97 @@ export async function refreshVibeMarket(force = false): Promise<VibeMarket> {
   })();
 
   return inFlight;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sources, tried in order                                                     */
+/*                                                                            */
+/* The edge function was the only source, and for most first-time visitors     */
+/* the chip read "$VIBE —" and stayed that way: a first visit has no cached     */
+/* figure, so any miss on the one request (the function's own upstream read     */
+/* coming back null, a preflight that never turns into a POST, a slow cold      */
+/* start) was the whole story. Both public APIs below send                       */
+/* `Access-Control-Allow-Origin: *`, so the browser asks them itself, from its  */
+/* own IP, whenever the server-side read comes back empty.                      */
+/* -------------------------------------------------------------------------- */
+
+type Reading = { usd: number; change24h: number | null };
+
+/** Walk third-party JSON without trusting its shape. */
+function at(o: unknown, ...path: string[]): unknown {
+  let v: unknown = o;
+  for (const k of path) {
+    if (v == null || typeof v !== "object") return undefined;
+    v = (v as Record<string, unknown>)[k];
+  }
+  return v;
+}
+
+const POOL_ADDRESS = "0xc3ad498815597f1e6f71d3cb1166856e947efb46";
+
+const finite = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const reading = (usd: unknown, change: unknown): Reading | null => {
+  const u = finite(usd);
+  return u != null && u > 0 ? { usd: u, change24h: finite(change) } : null;
+};
+
+/** A fetch that gives up, so one slow source cannot hold the next one back. */
+async function getJson(url: string, ms = 5000): Promise<unknown> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctl.signal, headers: { Accept: "application/json" } });
+    return res.ok ? await res.json() : null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function priceFromEdge(): Promise<Reading | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke("vibe-holdings", {
+      // No addresses: this is the price-only call. The function answers it
+      // without touching the chain at all, which is why it is quick.
+      body: { addresses: [] },
+    });
+    if (error) return null;
+    return reading(data?.data?.price?.usd, data?.data?.price?.change24h);
+  } catch {
+    return null;
+  }
+}
+
+async function priceFromPool(): Promise<Reading | null> {
+  try {
+    const j = await getJson(
+      `https://api.geckoterminal.com/api/v2/networks/base/pools/${POOL_ADDRESS}`,
+    );
+    return reading(
+      at(j, "data", "attributes", "base_token_price_usd"),
+      at(j, "data", "attributes", "price_change_percentage", "h24"),
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function priceFromScreener(): Promise<Reading | null> {
+  try {
+    const j = await getJson(`https://api.dexscreener.com/latest/dex/tokens/${VIBE_CONTRACT}`);
+    const pairs = at(j, "pairs");
+    if (!Array.isArray(pairs)) return null;
+    /* The deepest pool is the honest price; a dust pair can be anywhere. */
+    const pair = pairs
+      .filter((p) => at(p, "chainId") === "base")
+      .sort((a, b) => (finite(at(b, "liquidity", "usd")) ?? 0) - (finite(at(a, "liquidity", "usd")) ?? 0))[0];
+    return pair ? reading(at(pair, "priceUsd"), at(pair, "priceChange", "h24")) : null;
+  } catch {
+    return null;
+  }
 }
 
 export const marketCap = (usd: number | null): number | null =>
