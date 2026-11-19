@@ -1,10 +1,11 @@
 /**
  * `/` — the front door, in whichever of the three cover-art looks you prefer.
  *
- * Arcade is the default and the only look on a phone, where a switcher would
+ * Postcard is the default and the only look on a phone, where a switcher would
  * be one more control between a visitor and the worlds. On a wider screen a
- * small switcher in the corner flips between Arcade, Sky and Postcard, and the
- * choice is remembered on this device. `?look=sky` previews one without
+ * small switcher in the corner leads with Postcard, then Arcade and Sky, and
+ * the choice is remembered on this device. With nothing saved, the page opens
+ * on Postcard; a stored pick still wins. `?look=sky` previews one without
  * saving it, which is what a link to somebody else should do.
  *
  * The App Store edition keeps the flat grid (`Game`): it hides the currency
@@ -47,7 +48,7 @@ export default function Home() {
 
 function Front() {
   const wide = useWide();
-  const [preview] = useState(() => {
+  const [preview, setPreview] = useState(() => {
     const v = new URLSearchParams(window.location.search).get("look");
     return isDirection(v) ? v : null;
   });
@@ -62,12 +63,18 @@ function Front() {
     } catch {
       /* Private browsing: the pick lasts for this visit. */
     }
-    if (preview) window.history.replaceState(null, "", window.location.pathname);
+    /* The query is a preview, not a choice. Drop it in state as well as the
+       URL, or the click saves and the page keeps showing the link's look. */
+    if (preview) {
+      setPreview(null);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   };
 
   return (
     <>
-      <Suspense fallback={<div className="min-h-[100dvh] w-full" style={{ background: "#1585f5" }} />}>
+      {/* Postcard's paper, so a first visit does not flash Arcade blue. */}
+      <Suspense fallback={<div className="min-h-[100dvh] w-full" style={{ background: "#f6f0e4" }} />}>
         <Page />
       </Suspense>
       {wide && (
