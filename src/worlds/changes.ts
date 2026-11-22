@@ -370,12 +370,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1ee", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "383af062", iso: "2026-11-22T03:27:34+00:00", subject: "San Francisco: fix the white roofs, relight for hard sun and a real sunset, /free-fall opens the game" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c2dec86b", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "52d6e227", iso: "2026-08-29T07:01:41+00:00", subject: "The real weather, and a painted mountain on Twin Peaks" },
     { sha: "9fd6cfae", iso: "2026-08-28T08:23:33+00:00", subject: "The day passes now, and you can wave at people" },
     { sha: "620ba8b3", iso: "2026-08-26T08:54:18+00:00", subject: "Other people are in San Francisco now" },
-    { sha: "68d1e745", iso: "2026-08-26T07:28:25+00:00", subject: "Stroll is the default. The loud version is a button." },
   ],
   "shop": [
     { sha: "64186e31", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
