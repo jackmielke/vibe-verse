@@ -562,6 +562,26 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "fogcity",
+    route: "/fogcity",
+    aliases: ["/fog-city"],
+    name: "Fog City",
+    emoji: "🌁",
+    kind: "game",
+    blurb:
+      "An open-world San Francisco built to run fast. Walk the hills, borrow any car on the street, run courier jobs between the Painted Ladies, the Pyramid, Coit Tower and the far side of the Golden Gate, and lose the police when you drive like it. Day turns to night, the windows come on, and the fog rolls in when you ask it to.",
+    status: "New: drive it, walk it, outrun the heat",
+    accent: "#ff8a3d",
+    backdrop: "#16202c",
+    featured: true,
+    source: "src/fogcity + src/pages/FogCity.tsx",
+    nav: true,
+    /* No passport stamp yet: the cockpit panel that lists them is full at 54
+       rows and truncates silently past that. Add `passport: true` here and a
+       `useWorldStamp` in the page together, once the panel has room. */
+    chromeless: true,
+  },
+  {
     key: "thalassa",
     route: "/thalassa",
     aliases: ["/harbor", "/harbour", "/greek-harbor"],
