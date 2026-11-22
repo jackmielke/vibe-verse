@@ -10,7 +10,7 @@
  */
 import { Suspense, useEffect } from "react";
 
-import { DIRECTIONS } from "@/redesign/directions";
+import { DEFAULT_DIRECTION, DIRECTIONS } from "@/redesign/directions";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
@@ -38,7 +38,7 @@ export default function Redesign() {
     window.scrollTo(0, 0);
   }, [id]);
 
-  if (i < 0) return <Navigate to="/redesign/arcade" replace />;
+  if (i < 0) return <Navigate to={`/redesign/${DEFAULT_DIRECTION}`} replace />;
   const d = DIRECTIONS[i];
   const prev = DIRECTIONS[(i - 1 + DIRECTIONS.length) % DIRECTIONS.length];
   const next = DIRECTIONS[(i + 1) % DIRECTIONS.length];
