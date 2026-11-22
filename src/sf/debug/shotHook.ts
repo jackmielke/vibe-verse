@@ -257,6 +257,13 @@ export interface PickHit {
   instanceId?: number;
   /** World-space hit point. */
   point: [number, number, number];
+  /**
+   * For a building: the paint, the surface id and the face normal of the
+   * triangle that was hit. "Why is that roof white" turned out to be a trim
+   * slab 12 cm above the roof deck, and nothing but this could have said so:
+   * the object and the material are the same for both.
+   */
+  surface?: { tint: number[]; facade: number[]; normal: [number, number, number] };
   /** World-space scale of the hit instance — a "Lego" is a big flat one. */
   scale?: [number, number, number];
   /** World-space centre of the hit instance. */

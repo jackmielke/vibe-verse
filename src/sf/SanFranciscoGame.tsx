@@ -168,6 +168,15 @@ function FrameDriver({ shotKey }: { shotKey: string | null }) {
           point: [h.point.x, h.point.y, h.point.z].map((n) => Math.round(n * 100) / 100) as
             [number, number, number],
         };
+        const ga = (obj.geometry as THREE.BufferGeometry | undefined)?.attributes;
+        if (h.face && ga?.aTint && ga?.aFacade) {
+          const i = h.face.a * 4;
+          hit.surface = {
+            tint: Array.from((ga.aTint.array as Uint8Array).slice(i, i + 4)),
+            facade: Array.from((ga.aFacade.array as Uint8Array).slice(i, i + 4)),
+            normal: [h.face.normal.x, h.face.normal.y, h.face.normal.z],
+          };
+        }
         if (obj.isInstancedMesh && h.instanceId !== undefined) {
           hit.instanceId = h.instanceId;
           (obj as THREE.InstancedMesh).getMatrixAt(h.instanceId, mat);

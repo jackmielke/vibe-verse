@@ -9,7 +9,7 @@
  * world itself is `@/sf`, lazily.
  */
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { useActiveCharacter } from "@/hooks/use-active-character";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
@@ -289,7 +289,15 @@ export default function SanFrancisco() {
   // Stroll unless somebody asked for the other thing, and they have to ask by
   // name — no remembered preference, no "last time you played". Opening a link
   // to San Francisco should never drop you into a firefight.
-  const vibe = params.get("vibe") === "mayhem" ? "mayhem" : "stroll";
+  /* The one exception is the door with the game's own name on it. `/free-fall`
+     is not "a link to San Francisco": somebody who opens it asked for the game,
+     so it starts as the game, and the chip still switches back to the city. */
+  const { pathname } = useLocation();
+  const vibeParam = params.get("vibe");
+  const vibe =
+    vibeParam === "mayhem" || (vibeParam === null && pathname.replace(/\/+$/, "") === "/free-fall")
+      ? "mayhem"
+      : "stroll";
   const forced = params.get("quality");
   const quality =
     forced === "low" || forced === "medium" || forced === "high" || forced === "ultra"

@@ -259,7 +259,19 @@ function parapet(c: Ctx, y: number, hw: number, hd: number, h: number, thick: nu
 function cornice(c: Ctx, y: number, hw: number, hd: number, over: number, h: number, surf: number = SURF.STONE): void {
   if (c.lod >= 2) return;
   c.sink.setSurface(surf, c.fh, c.hash, 0).setColor(_trim.r, _trim.g, _trim.b);
-  c.sink.box(wx(c, 0, 0), y + h * 0.5, wz(c, 0, 0), hw + over, h * 0.5, hd + over, c.yaw, c.base, 0b111111);
+  /* No top face on the band itself. It is a solid slab the full size of the
+     building, and most callers stand it up to (or 12 cm past) the roof line,
+     so its lid was drawn over the roof deck: every flat roof on every
+     corniced building in the city was a sheet of trim paint, pure white from
+     the air on a painted lady. The only part of the lid anybody can see is the
+     ring that overhangs the wall, so that is the only part that is built. */
+  c.sink.box(wx(c, 0, 0), y + h * 0.5, wz(c, 0, 0), hw + over, h * 0.5, hd + over, c.yaw, c.base, 0b111111 & ~16);
+  const lid = y + h - 0.01;
+  const o2 = over * 0.5;
+  c.sink.box(wx(c, 0, -hd - o2), lid, wz(c, 0, -hd - o2), hw + over, 0.01, o2, c.yaw, c.base, 16);
+  c.sink.box(wx(c, 0, hd + o2), lid, wz(c, 0, hd + o2), hw + over, 0.01, o2, c.yaw, c.base, 16);
+  c.sink.box(wx(c, -hw - o2, 0), lid, wz(c, -hw - o2, 0), o2, 0.01, hd, c.yaw, c.base, 16);
+  c.sink.box(wx(c, hw + o2, 0), lid, wz(c, hw + o2, 0), o2, 0.01, hd, c.yaw, c.base, 16);
   if (c.lod === 0) {
     // Dentil/bracket course under the cornice: a run of small blocks. Cheap
     // geometry, and it is what your eye reads as "carved" from the sidewalk.

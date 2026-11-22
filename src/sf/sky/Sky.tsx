@@ -89,7 +89,14 @@ const SODIUM_BOUNCE = new THREE.Color(0.19, 0.145, 0.10);
 export function sunIntensity(hour: number): number {
   const elev = sunDirection(hour).y;
   if (elev <= 0) return 0.05 + clamp01((elev + 0.2) / 0.2) * 0.12;
-  return 0.4 + smoothstep(0, 0.5, elev) * 3.4;
+  /* Two ramps rather than one. A single ramp to noon left the last hour of the
+     day with a key light under 1.0, which is exactly backwards: golden hour is
+     when the sun does the most visible work in a city, because it is the only
+     time it reaches under the awnings and down the length of a street. So the
+     light comes up fast in the first six degrees and the rest of the climb to
+     noon is gentle. The noon peak is also lower than it was (3.2, from 3.8):
+     pale stucco in full sun was clipping to white before the grade saw it. */
+  return 0.35 + smoothstep(0, 0.1, elev) * 1.75 + smoothstep(0.1, 0.55, elev) * 1.1;
 }
 
 /** Ambient/sky fill colour for the hour. */
@@ -248,6 +255,21 @@ void main() {
   vec3 dir = normalize(vDir);
 
   vec3 col = scatter(dir, uSunDirection, uTurbidity) * uExposure;
+
+  /* The low-sun sky. The scattering integral above is honest and honest is
+     pale: sixteen steps of single scattering give a sunset that is a faint
+     yellow smear, because the deep orange of a real one is multiple scattering
+     through a long, dirty path that this does not march. So the last hour gets
+     what the eye expects: a warm band hugging the horizon, strongest toward the
+     sun, and a rose band opposite it. Both go with the sun's height and both are
+     gone by mid-morning. */
+  float lowSun = (1.0 - smoothstep(0.02, 0.34, uSunDirection.y)) * smoothstep(-0.16, 0.0, uSunDirection.y);
+  float horizonBand = pow(clamp(1.0 - abs(dir.y), 0.0, 1.0), 5.0);
+  vec2 sunAz = normalize(uSunDirection.xz + vec2(1e-5));
+  float toward = dot(normalize(dir.xz + vec2(1e-5)), sunAz) * 0.5 + 0.5;
+  vec3 ember = mix(vec3(0.95, 0.36, 0.42), vec3(1.0, 0.52, 0.16), toward);
+  col += ember * horizonBand * lowSun * (0.10 + 0.55 * toward * toward) * (1.0 - uFogDensity * 0.6);
+  col = mix(col, col * vec3(1.06, 0.97, 0.90), lowSun * 0.6);
 
   // The solar disc itself, softened by the aerosol.
   float mu = dot(dir, uSunDirection);
@@ -439,7 +461,12 @@ export default function Sky() {
       const warm = sunColor(hour, scratch.sun);
       bounceRef.current.color.copy(warm);
       bounceRef.current.groundColor.copy(warm).multiplyScalar(0.15);
-      bounceRef.current.intensity = 0.55 * sunIntensity(hour) * (1 - frame.fogDensity * 0.4);
+      /* 0.26, down from 0.55. At 0.55 this was a second sun: it put more light
+         on a roof or a road in shadow than the sky did, so a shadow was barely
+         darker than the ground beside it and the whole city read as overcast
+         at noon. A shadow you can see the edge of is most of what "hard
+         California light" means. */
+      bounceRef.current.intensity = 0.26 * sunIntensity(hour) * (1 - frame.fogDensity * 0.4);
     }
 
     // Scene fog tracks the atmosphere so distant geometry and sky agree.
