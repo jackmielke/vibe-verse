@@ -185,6 +185,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b9912596", iso: "2026-08-02T00:05:06+00:00", subject: "Thirty seconds up, then the system falls over" },
     { sha: "0a6ba9a0", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
+  "fogcity": [
+    { sha: "3b479f42", iso: "2026-11-22T04:29:14+00:00", subject: "Fog City: a new open-world San Francisco, built from scratch to run fast" },
+  ],
   "frisco": [
     { sha: "07bca5b8", iso: "2026-08-19T05:26:25+00:00", subject: "Towers meet the ground now, and the card art stopped being a rooftop" },
     { sha: "57ae7cce", iso: "2026-08-19T05:18:21+00:00", subject: "Streets that are lit at night, and headlights on the traffic" },
@@ -370,7 +373,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1ee", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
-    { sha: "383af062", iso: "2026-11-22T03:27:34+00:00", subject: "San Francisco: fix the white roofs, relight for hard sun and a real sunset, /free-fall opens the game" },
+    { sha: "7e6ae7b4", iso: "2026-11-22T03:27:43+00:00", subject: "San Francisco: fix the white roofs, relight for hard sun and a real sunset, /free-fall opens the game" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c2dec86b", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "52d6e227", iso: "2026-08-29T07:01:41+00:00", subject: "The real weather, and a painted mountain on Twin Peaks" },
