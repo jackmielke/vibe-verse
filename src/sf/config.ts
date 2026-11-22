@@ -270,6 +270,19 @@ export function sanFranciscoHour(now: Date = new Date()): number {
   }
 }
 
+/**
+ * The real hour if the sun is up in San Francisco, otherwise late afternoon.
+ *
+ * For the door that promises a game (`/free-fall`). The real clock is right
+ * for the city, and wrong for somebody who opened a game at eight in the
+ * evening and got a black street they could not see to play on. The clock
+ * still runs from here, so night still comes, just not as the first thing.
+ */
+export function daylightHour(now: Date = new Date()): number {
+  const h = sanFranciscoHour(now);
+  return h >= 8 && h <= 18 ? h : 16.5;
+}
+
 /** Advance a clock, wrapping at midnight. */
 export function advanceClock(hour: number, dtSeconds: number): number {
   const next = hour + dtSeconds * CLOCK_RATE;

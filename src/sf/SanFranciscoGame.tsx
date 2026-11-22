@@ -511,6 +511,8 @@ export interface SanFranciscoGameProps {
   mode?: "walk" | "fly";
   /** Character id from `@/lib/characters`. Only read in `walk`. */
   charId?: string;
+  /** Hour to open on instead of the real San Francisco clock. */
+  startHour?: number;
 }
 
 export default function SanFranciscoGame({
@@ -522,6 +524,7 @@ export default function SanFranciscoGame({
   spawn = "coit",
   mode = "walk",
   charId,
+  startHour,
 }: SanFranciscoGameProps) {
   const peaceful = vibe !== "mayhem";
   const quality = useSfStore((s) => s.quality);
@@ -545,7 +548,10 @@ export default function SanFranciscoGame({
     }
     if (forcedQuality) setQuality(forcedQuality);
     // Open on the real city's clock, unless the harness asked for an hour.
-    if (!shot) frame.timeOfDay = sanFranciscoHour();
+    if (!shot) {
+      frame.timeOfDay =
+        startHour !== undefined && Number.isFinite(startHour) ? ((startHour % 24) + 24) % 24 : sanFranciscoHour();
+    }
     const sp = SPAWNS.find((s) => s.key === spawn) ?? SPAWNS[0];
     /* A spawn's `yOffset` is where a *flying* observer starts — 266 m up the
        Transamerica, on the Golden Gate's south tower. Dropping a walking
@@ -560,7 +566,7 @@ export default function SanFranciscoGame({
       : terrainHeight(sp.x, sp.z) + sp.yOffset;
     resetFrame(sp.x, y, sp.z, sp.heading);
     setPhase("playing");
-  }, [shot, spawn, mode, forcedQuality, setQuality, setPhase]);
+  }, [shot, spawn, mode, forcedQuality, setQuality, setPhase, startHour]);
 
   const q = QUALITY[quality];
 

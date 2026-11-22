@@ -366,6 +366,13 @@ export default function Sky() {
       // Fog robs the key light of its punch and hands it to the ambient.
       light.intensity = sunIntensity(hour) * (1 - frame.fogDensity * 0.55);
       light.castShadow = q.shadowCascades > 0;
+      /* No sun, no shadow pass. After sunset the key light is a 0.05-0.17
+         moon fill, yet the shadow map was still re-rendering every frame:
+         every building, car and prop near the camera drawn a second time to
+         produce shadows nobody could see. The map is kept (toggling
+         castShadow recompiles every lit material in the city, a long hitch at
+         dusk) and simply stops updating until the sun is back. */
+      if (light.shadow) light.shadow.autoUpdate = dir.y > -0.03;
       if (light.shadow) {
         const cam = light.shadow.camera as THREE.OrthographicCamera;
         /**

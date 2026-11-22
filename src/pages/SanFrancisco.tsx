@@ -14,6 +14,7 @@ import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { useActiveCharacter } from "@/hooks/use-active-character";
 import { useVibeIdentity } from "@/hooks/use-vibe-identity";
 import { SPAWN_DEFS } from "@/sf/geo/spawnList";
+import { daylightHour } from "@/sf/config";
 
 const SanFranciscoGame = lazy(() => import("@/sf/SanFranciscoGame"));
 
@@ -294,10 +295,21 @@ export default function SanFrancisco() {
      so it starts as the game, and the chip still switches back to the city. */
   const { pathname } = useLocation();
   const vibeParam = params.get("vibe");
-  const vibe =
-    vibeParam === "mayhem" || (vibeParam === null && pathname.replace(/\/+$/, "") === "/free-fall")
-      ? "mayhem"
-      : "stroll";
+  const isFreeFall = pathname.replace(/\/+$/, "") === "/free-fall";
+  const vibe = vibeParam === "mayhem" || (vibeParam === null && isFreeFall) ? "mayhem" : "stroll";
+  /* `?tod=17.5` opens on that hour. The game's own door opens in daylight:
+     the real clock put an evening visitor on an unlit street, which read as
+     "it doesn't work". `/sf` keeps the real San Francisco clock. */
+  /* Read once: a fresh hour on every render would re-run the spawn effect
+     and teleport the player back to the start each time the page re-renders. */
+  const todParam = params.get("tod");
+  const [startHour] = useState(() =>
+    todParam !== null && Number.isFinite(Number(todParam))
+      ? Number(todParam)
+      : isFreeFall
+        ? daylightHour()
+        : undefined,
+  );
   const forced = params.get("quality");
   const quality =
     forced === "low" || forced === "medium" || forced === "high" || forced === "ultra"
@@ -345,6 +357,7 @@ export default function SanFrancisco() {
         room={room}
         playerName={displayName}
         charId={charId}
+        startHour={startHour}
       />
       {capturing ? null : (
         <Overlay

@@ -14,8 +14,17 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { WORLD } from "../geo/sfGeo";
 import { frame } from "../state/store";
+import { fogColor, skyFillColor, sunColor, sunDirection, sunIntensity } from "../sky/Sky";
 
+/* Log depth, in both stages. The renderer is created with
+   logarithmicDepthBuffer, so every built-in material writes gl_FragDepth on a
+   log curve; a ShaderMaterial without these chunks writes ordinary perspective
+   depth instead, which is ~0.999 at any distance worth looking at and loses
+   the depth test to everything. The water had never drawn a pixel: what read
+   as "flat grey water" was the seabed. */
 const vertexShader = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
 uniform float uTime;
 uniform vec2 uWind;
 uniform float uWindSpeed;
@@ -55,10 +64,10 @@ void main() {
   vec3 disp = vec3(0.0);
 
   float energy = clamp(uWindSpeed / 12.0, 0.25, 1.6);
-  disp += gerstner(uWind,             0.16 * energy, 128.0, p, uTime, tangent, binormal);
-  disp += gerstner(uWind + vec2(0.6, -0.4), 0.13 * energy, 61.0,  p, uTime, tangent, binormal);
-  disp += gerstner(uWind + vec2(-0.8, 0.5), 0.10 * energy, 27.0,  p, uTime, tangent, binormal);
-  disp += gerstner(uWind + vec2(1.2, 0.9),  0.07 * energy, 11.0,  p, uTime, tangent, binormal);
+  disp += gerstner(uWind,             0.08 * energy, 128.0, p, uTime, tangent, binormal);
+  disp += gerstner(uWind + vec2(0.6, -0.4), 0.065 * energy, 61.0,  p, uTime, tangent, binormal);
+  disp += gerstner(uWind + vec2(-0.8, 0.5), 0.05 * energy, 27.0,  p, uTime, tangent, binormal);
+  disp += gerstner(uWind + vec2(1.2, 0.9),  0.035 * energy, 11.0,  p, uTime, tangent, binormal);
 
   world.xyz += disp;
   vWave = disp.y;
@@ -66,10 +75,12 @@ void main() {
   vNormal = normalize(cross(binormal, tangent));
 
   gl_Position = projectionMatrix * viewMatrix * world;
+  #include <logdepthbuf_vertex>
 }
 `;
 
 const fragmentShader = /* glsl */ `
+#include <logdepthbuf_pars_fragment>
 uniform float uTime;
 uniform vec3  uSunDirection;
 uniform vec3  uSunColor;
@@ -104,10 +115,15 @@ vec3 detailNormal(vec2 p, float t) {
   float h  = noise(d1) * 0.55 + noise(d2) * 0.30 + noise(d3) * 0.15;
   float hx = noise(d1 + vec2(e,0.0)) * 0.55 + noise(d2 + vec2(e,0.0)) * 0.30 + noise(d3 + vec2(e,0.0)) * 0.15;
   float hz = noise(d1 + vec2(0.0,e)) * 0.55 + noise(d2 + vec2(0.0,e)) * 0.30 + noise(d3 + vec2(0.0,e)) * 0.15;
-  return normalize(vec3(h - hx, 0.09, h - hz));
+  // A slope to tilt the surface normal by, not a normal. This used to return
+  // normalize(vec3(dx, 0.09, dz)), which is a vector lying almost flat, and
+  // adding that to the wave normal tipped every pixel toward the horizon: the
+  // whole bay mirrored the pale sky and read as snow.
+  return vec3(h - hx, 0.0, h - hz) * 1.4;
 }
 
 void main() {
+  #include <logdepthbuf_fragment>
   vec3 viewDir = normalize(cameraPosition - vWorldPos);
   float dist = length(cameraPosition - vWorldPos);
 
@@ -120,7 +136,7 @@ void main() {
 
   // Sky reflection: a cheap two-colour gradient standing in for the real sky.
   vec3 refl = reflect(-viewDir, n);
-  vec3 sky = mix(uHorizonColor, uSkyColor, clamp(refl.y * 1.6, 0.0, 1.0));
+  vec3 sky = mix(uHorizonColor, uSkyColor, clamp(refl.y * 1.6, 0.0, 1.0)) * 0.78;
 
   // Sun specular — a tight Blinn lobe plus a broad glitter lobe.
   vec3 h = normalize(uSunDirection + viewDir);
@@ -140,8 +156,10 @@ void main() {
   vec3 color = mix(body, sky, fres);
   color += uSunColor * (spec + glitter);
 
-  // Whitecaps on steep crests.
-  float caps = smoothstep(0.55, 1.15, vWave * 1.4) * clamp(length(uWind) * 0.6, 0.2, 1.0);
+  // Whitecaps on the tallest crests only. These thresholds were written for
+  // waves twice this height, back when the water never drew at all (see the
+  // log-depth note at the top of the file), and covered half the bay in foam.
+  float caps = smoothstep(1.2, 2.1, vWave) * clamp(length(uWind) * 0.6, 0.2, 1.0);
   color = mix(color, vec3(0.86, 0.90, 0.93), caps * 0.55 * detailFade);
 
   // Distance haze so the bay melts into the marine layer instead of ending.
@@ -153,6 +171,9 @@ void main() {
   #include <colorspace_fragment>
 }
 `;
+
+const SHALLOW = new THREE.Color(0.055, 0.135, 0.130);
+const DEEP = new THREE.Color(0.012, 0.031, 0.055);
 
 export default function Bay() {
   const matRef = useRef<THREE.ShaderMaterial>(null);
@@ -193,6 +214,20 @@ export default function Bay() {
       m.uniforms.uWind.value.copy(frame.windDirection);
       m.uniforms.uWindSpeed.value = frame.windSpeed;
       m.uniforms.uFogDensity.value = frame.fogDensity;
+      /* The sky the water reflects is the sky that is actually up there.
+         These were constants, which nobody noticed while the water was
+         invisible, and which made the bay glow noon blue at midnight. */
+      const hour = frame.timeOfDay;
+      const u = m.uniforms;
+      sunDirection(hour, u.uSunDirection.value);
+      const up = u.uSunDirection.value.y > 0 ? Math.min(sunIntensity(hour) / 2.4, 1.2) : 0;
+      sunColor(hour, u.uSunColor.value).multiplyScalar(up);
+      skyFillColor(hour, u.uSkyColor.value);
+      fogColor(hour, frame.fogDensity, u.uHorizonColor.value);
+      fogColor(hour, frame.fogDensity, u.uFogColor.value);
+      const lit = Math.max(0.12, Math.min(1, sunIntensity(hour) / 2));
+      u.uShallowColor.value.copy(SHALLOW).multiplyScalar(lit);
+      u.uDeepColor.value.copy(DEEP).multiplyScalar(lit);
     }
     const mesh = meshRef.current;
     if (mesh) {

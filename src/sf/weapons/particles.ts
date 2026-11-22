@@ -66,6 +66,8 @@ export const pspec: ParticleSpec = {
 };
 
 const VERT = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
 attribute vec3 aPos;
 attribute vec3 aVel;
 attribute float aSize;
@@ -102,6 +104,7 @@ void main() {
 
   mv.xy += corner;
   gl_Position = projectionMatrix * mv;
+  #include <logdepthbuf_vertex>
 
   // 2x2 atlas.
   float col = mod(aTile, 2.0);
@@ -113,12 +116,14 @@ void main() {
 `;
 
 const FRAG = /* glsl */ `
+#include <logdepthbuf_pars_fragment>
 uniform sampler2D uMap;
 varying vec2 vUv;
 varying vec3 vColor;
 varying float vAlpha;
 
 void main() {
+  #include <logdepthbuf_fragment>
   vec4 t = texture2D(uMap, vUv);
   float a = t.a * vAlpha;
   if (a < 0.004) discard;

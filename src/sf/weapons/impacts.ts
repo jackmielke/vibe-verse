@@ -208,6 +208,8 @@ const RESPONSE: Record<SurfaceTag, SurfaceResponse> = {
  * ------------------------------------------------------------------ */
 
 const DECAL_VERT = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
 attribute vec3 aPos;
 attribute vec3 aNrm;
 attribute float aRot;
@@ -235,6 +237,7 @@ void main() {
 
   vec3 world = aPos + t * r.x + b * r.y;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 1.0);
+  #include <logdepthbuf_vertex>
 
   float col = mod(aTile, 2.0);
   float row = floor(aTile * 0.5);
@@ -245,12 +248,14 @@ void main() {
 `;
 
 const DECAL_FRAG = /* glsl */ `
+#include <logdepthbuf_pars_fragment>
 uniform sampler2D uMap;
 varying vec2 vUv;
 varying float vAlpha;
 varying vec3 vColor;
 
 void main() {
+  #include <logdepthbuf_fragment>
   vec4 t = texture2D(uMap, vUv);
   float a = t.a * vAlpha;
   if (a < 0.006) discard;

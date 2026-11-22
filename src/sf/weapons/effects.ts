@@ -244,16 +244,21 @@ export class WeaponEffects {
     this.ringMat = new THREE.ShaderMaterial({
       uniforms: { uColor: { value: new THREE.Color(0xffbb70) } },
       vertexShader: /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
         varying vec2 vUv;
         void main() {
           vUv = uv;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  #include <logdepthbuf_vertex>
         }`,
       fragmentShader: /* glsl */ `
+#include <logdepthbuf_pars_fragment>
         uniform vec3 uColor;
         uniform float uAlpha;
         varying vec2 vUv;
         void main() {
+  #include <logdepthbuf_fragment>
           float r = length(vUv - 0.5) * 2.0;
           // A thin shell with a soft inner falloff — a blast front, not a disc.
           float shell = smoothstep(0.72, 0.98, r) * (1.0 - smoothstep(0.98, 1.0, r));
@@ -290,12 +295,16 @@ export class WeaponEffects {
         uHeat: { value: 0 },
       },
       vertexShader: /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
         varying vec2 vUv;
         void main() {
           vUv = uv;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  #include <logdepthbuf_vertex>
         }`,
       fragmentShader: /* glsl */ `
+#include <logdepthbuf_pars_fragment>
         uniform float uTime;
         uniform float uHeat;
         varying vec2 vUv;
@@ -311,6 +320,7 @@ export class WeaponEffects {
         }
 
         void main() {
+  #include <logdepthbuf_fragment>
           if (uHeat < 0.02) discard;
           vec2 uv = vUv;
           // Rising columns of hot air: scroll up, stretch vertically.
