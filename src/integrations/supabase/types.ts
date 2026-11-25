@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
+    PostgrestVersion: "12.2.3"
   }
   public: {
     Tables: {
@@ -2481,6 +2481,75 @@ export type Database = {
           },
         ]
       }
+      horizon_signals: {
+        Row: {
+          created_at: string
+          day: string
+          direction: string
+          era: string
+          headline: string
+          hidden: boolean
+          id: string
+          source: string
+          station_key: string
+          updated_at: string
+          updated_by: string | null
+          url: string | null
+          why: string
+        }
+        Insert: {
+          created_at?: string
+          day?: string
+          direction?: string
+          era?: string
+          headline: string
+          hidden?: boolean
+          id?: string
+          source?: string
+          station_key: string
+          updated_at?: string
+          updated_by?: string | null
+          url?: string | null
+          why?: string
+        }
+        Update: {
+          created_at?: string
+          day?: string
+          direction?: string
+          era?: string
+          headline?: string
+          hidden?: boolean
+          id?: string
+          source?: string
+          station_key?: string
+          updated_at?: string
+          updated_by?: string | null
+          url?: string | null
+          why?: string
+        }
+        Relationships: []
+      }
+      horizon_stations: {
+        Row: {
+          fields: Json
+          key: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          fields?: Json
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          fields?: Json
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       inquiries: {
         Row: {
           business: string | null
@@ -3679,6 +3748,54 @@ export type Database = {
         }
         Relationships: []
       }
+      ugc_reports: {
+        Row: {
+          content: string | null
+          created_at: string
+          id: string
+          kind: string
+          notes: string | null
+          path: string | null
+          reason: string | null
+          reporter_device: string | null
+          reporter_user: string | null
+          status: string
+          target_id: string | null
+          target_name: string | null
+          world: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          notes?: string | null
+          path?: string | null
+          reason?: string | null
+          reporter_device?: string | null
+          reporter_user?: string | null
+          status?: string
+          target_id?: string | null
+          target_name?: string | null
+          world?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          notes?: string | null
+          path?: string | null
+          reason?: string | null
+          reporter_device?: string | null
+          reporter_user?: string | null
+          status?: string
+          target_id?: string | null
+          target_name?: string | null
+          world?: string | null
+        }
+        Relationships: []
+      }
       universe_requests: {
         Row: {
           author: string | null
@@ -4015,6 +4132,66 @@ export type Database = {
           owner_kind?: string
           owner_ref?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      vibe_dream_worlds: {
+        Row: {
+          caption: string | null
+          collider_path: string | null
+          created_at: string
+          device_id: string | null
+          error: string | null
+          id: string
+          ip: string | null
+          model: string
+          name: string
+          operation_id: string | null
+          prompt: string
+          prompt_key: string
+          splat_path: string | null
+          status: string
+          thumb_path: string | null
+          updated_at: string
+          world_id: string | null
+        }
+        Insert: {
+          caption?: string | null
+          collider_path?: string | null
+          created_at?: string
+          device_id?: string | null
+          error?: string | null
+          id?: string
+          ip?: string | null
+          model?: string
+          name?: string
+          operation_id?: string | null
+          prompt: string
+          prompt_key: string
+          splat_path?: string | null
+          status?: string
+          thumb_path?: string | null
+          updated_at?: string
+          world_id?: string | null
+        }
+        Update: {
+          caption?: string | null
+          collider_path?: string | null
+          created_at?: string
+          device_id?: string | null
+          error?: string | null
+          id?: string
+          ip?: string | null
+          model?: string
+          name?: string
+          operation_id?: string | null
+          prompt?: string
+          prompt_key?: string
+          splat_path?: string | null
+          status?: string
+          thumb_path?: string | null
+          updated_at?: string
+          world_id?: string | null
         }
         Relationships: []
       }
@@ -4954,6 +5131,21 @@ export type Database = {
           },
         ]
       }
+      vibey_heartbeat: {
+        Row: {
+          id: string
+          last_seen: string
+        }
+        Insert: {
+          id: string
+          last_seen?: string
+        }
+        Update: {
+          id?: string
+          last_seen?: string
+        }
+        Relationships: []
+      }
       vibey_journal_entries: {
         Row: {
           body: string
@@ -5173,6 +5365,33 @@ export type Database = {
           reviewed_by?: string | null
           source_entry_id?: string | null
           status?: string
+        }
+        Relationships: []
+      }
+      vibey_telegram_inbox: {
+        Row: {
+          chat_id: number | null
+          offline_replied_at: string | null
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          update_id: number
+        }
+        Insert: {
+          chat_id?: number | null
+          offline_replied_at?: string | null
+          payload: Json
+          processed_at?: string | null
+          received_at?: string
+          update_id: number
+        }
+        Update: {
+          chat_id?: number | null
+          offline_replied_at?: string | null
+          payload?: Json
+          processed_at?: string | null
+          received_at?: string
+          update_id?: number
         }
         Relationships: []
       }
