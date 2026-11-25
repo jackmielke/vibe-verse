@@ -5,6 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ExplorerStamp from "./components/ExplorerStamp.tsx";
+import BuildModeLauncher from "./build-mode/BuildModeLauncher.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import HomeButton from "./components/HomeButton.tsx";
 import VibeRadio from "./components/VibeRadio.tsx";
@@ -233,6 +234,10 @@ const App = () => (
               takes no pointer events and sits above everything, so it can play
               over a crosshair without becoming part of the game. */}
           <ExplorerStamp />
+          {/* Build mode: admins type a change to the world they are in, and a
+              coding agent ships it. Renders nothing for anybody else, and
+              nothing outside the worlds it covers. See src/build-mode. */}
+          <BuildModeLauncher />
           {/* iOS app only: terms gate, report/block, App Store edition routing. */}
           <SafetyLayer />
           {/* One Suspense for the whole router. There used to be fifteen of
