@@ -126,7 +126,7 @@ export interface Water {
 
 export function createWater(): Water {
   const size = 1024;
-  const tex = new THREE.DataTexture(depthTexels(size), size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  const tex = new THREE.DataTexture(depthTexels(size) as Uint8Array<ArrayBuffer>, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearFilter;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;

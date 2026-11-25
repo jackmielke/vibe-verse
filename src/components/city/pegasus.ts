@@ -21,7 +21,7 @@ export function buildPegasus(center: THREE.Vector3): PegasusWorld {
   const mane = new THREE.MeshStandardMaterial({ color: 0xff8fd8, roughness: 0.4, emissive: 0xaa3388, emissiveIntensity: 0.5 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xffd76a, metalness: 0.8, roughness: 0.25, emissive: 0x996611, emissiveIntensity: 0.6 });
   const wingMat = new THREE.MeshStandardMaterial({ color: 0xe8f0ff, roughness: 0.5, side: THREE.DoubleSide, emissive: 0x6677cc, emissiveIntensity: 0.3 });
-  const mats = [white, mane, gold, wingMat];
+  const mats: THREE.Material[] = [white, mane, gold, wingMat];
   const geos: THREE.BufferGeometry[] = [];
   const mesh = (g: THREE.BufferGeometry, m: THREE.Material) => { geos.push(g); const x = new THREE.Mesh(g, m); x.castShadow = true; return x; };
 
