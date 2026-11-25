@@ -4,16 +4,20 @@
  * Pure procedural geometry; mount once, call update(dt, now) per frame.
  */
 import * as THREE from "three";
+import type { MountKind } from "./mountFlight";
 
 export interface PegasusWorld {
   group: THREE.Group;
+  body: THREE.Group;
+  pose: { x: number; y: number; z: number; yaw: number; bank: number; flap: boolean } | null;
   update(dt: number, now: number): void;
   dispose(): void;
 }
 
-export function buildPegasus(center: THREE.Vector3): PegasusWorld {
+export function buildPegasus(center: THREE.Vector3, kind: MountKind = "pegasus"): PegasusWorld {
+  const dragon = kind === "dragon";
   const group = new THREE.Group();
-  group.name = "pegasus";
+  group.name = kind;
   const body = new THREE.Group();
   group.add(body);
 
@@ -21,6 +25,7 @@ export function buildPegasus(center: THREE.Vector3): PegasusWorld {
   const mane = new THREE.MeshStandardMaterial({ color: 0xff8fd8, roughness: 0.4, emissive: 0xaa3388, emissiveIntensity: 0.5 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xffd76a, metalness: 0.8, roughness: 0.25, emissive: 0x996611, emissiveIntensity: 0.6 });
   const wingMat = new THREE.MeshStandardMaterial({ color: 0xe8f0ff, roughness: 0.5, side: THREE.DoubleSide, emissive: 0x6677cc, emissiveIntensity: 0.3 });
+  if (dragon) { white.color.setHex(0x239c83); mane.color.setHex(0x184f59); mane.emissive.setHex(0x123c34); wingMat.emissive.setHex(0x194d3c); wingMat.color.setHex(0x65d4b2); }
   const mats: THREE.Material[] = [white, mane, gold, wingMat];
   const geos: THREE.BufferGeometry[] = [];
   const mesh = (g: THREE.BufferGeometry, m: THREE.Material) => { geos.push(g); const x = new THREE.Mesh(g, m); x.castShadow = true; return x; };
@@ -89,6 +94,38 @@ export function buildPegasus(center: THREE.Vector3): PegasusWorld {
     body.add(wing);
     wings.push(wing);
   }
+  if (dragon) {
+    horn.visible = false;
+    for (const side of [-1, 1]) {
+      const h = mesh(new THREE.ConeGeometry(0.17, 1.0, 8), gold);
+      h.position.set(side * 0.38, 2.1, 1.8); h.rotation.z = -side * 0.4; body.add(h);
+    }
+    for (let i = 0; i < 9; i++) {
+      const spike = mesh(new THREE.ConeGeometry(0.18, 0.55, 5), gold);
+      spike.position.set(0, 0.9 - i * 0.08, 1.2 - i * 0.55); body.add(spike);
+    }
+    tail.scale.set(1, 0.7, 2.5);
+    wings.forEach((wing, i) => {
+      while (wing.children.length) wing.remove(wing.children[0]);
+      const side = i === 0 ? -1 : 1;
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0); shape.lineTo(4.8 * side, -0.6);
+      shape.quadraticCurveTo(3.1 * side, -0.7, 3.2 * side, -2.3);
+      shape.quadraticCurveTo(1.8 * side, -1.7, 1.4 * side, -3.0);
+      shape.lineTo(0, -1.4); shape.closePath();
+      const membrane = mesh(new THREE.ShapeGeometry(shape), wingMat);
+      membrane.rotation.x = Math.PI / 2; wing.add(membrane);
+      for (const [x,z] of [[4.8,-0.6],[3.2,-2.3],[1.4,-3]]) {
+        const length = Math.hypot(x,z);
+        const strut = mesh(new THREE.CylinderGeometry(0.055, 0.08, length, 5), mane);
+        strut.position.set(x * side / 2, 0, -z / 2);
+        strut.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), new THREE.Vector3(x*side,0,-z).normalize());
+        wing.add(strut);
+      }
+    });
+  }
+  const saddle = mesh(new THREE.BoxGeometry(0.65, 0.16, 0.8), mane);
+  saddle.position.set(0, 0.91, 0); body.add(saddle);
   body.scale.setScalar(1.6);
 
   // Rainbow sparkle trail
@@ -116,18 +153,27 @@ export function buildPegasus(center: THREE.Vector3): PegasusWorld {
 
   return {
     group,
+    body,
+    pose: null,
     update(dt, now) {
       const s = now / 1000;
       const t = s * 0.12;
+      if (this.pose) {
+        const pose = this.pose;
+        p.set(pose.x, pose.y, pose.z);
+        body.position.copy(p);
+        body.rotation.set(0, pose.yaw, pose.bank, "YXZ");
+      } else {
       at(t, p); at(t + 0.01, q);
       body.position.copy(p);
       body.lookAt(q);
       const bank = Math.cos(t) * 0.35;
       body.rotateZ(-bank);
-      const flap = Math.sin(s * 4.5);
+      }
+      const flap = Math.sin(s * (this.pose?.flap ? 10 : 4.5));
       wings[0].rotation.z = -flap * 0.7 + 0.1;
       wings[1].rotation.z = flap * 0.7 - 0.1;
-      body.position.y += -flap * 0.4;
+      if (!this.pose) body.position.y += -flap * 0.4;
       legs.forEach((l, i) => (l.rotation.x = 0.6 + Math.sin(s * 3 + i) * 0.25));
       tail.rotation.y = Math.sin(s * 2) * 0.3;
 

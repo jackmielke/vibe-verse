@@ -13,6 +13,11 @@
  * network), the world keeps working solo and the chat shows offline.
  */
 import * as THREE from "three";
+import { buildPegasus, type PegasusWorld } from "./pegasus";
+import { MOUNT_SEAT, type MountKind } from "./mountFlight";
+import { createRiderPose } from "./riderPose";
+import { buildRemotePilot, remoteName } from "./remoteIdentity";
+import { initialTagger, canSkyTag, acceptSkyTag, type SkyTag, type SkyRider } from "./aerialTag";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -41,6 +46,10 @@ export interface PlayerState {
   yaw: number;
   air: boolean;
   char: string;
+  mount?: MountKind | null;
+  flap?: boolean;
+  skyTag?: boolean;
+  skyEvent?: SkyTag | null;
   /** Player body scale multiplier (1 = normal). Defaults to 1 if omitted. */
   scale?: number;
   /**
@@ -99,6 +108,8 @@ export interface RebelEvent {
 
 export interface Multiplayer {
   update(dt: number, me: PlayerState): void;
+  peerStates(): Array<{ name: string; char: string; design: string | null; mount: MountKind | null; x: number; y: number; z: number; }>;
+  skyState(): { it: string | null; self: boolean; players: number; name: string | null; online: boolean; };
   sendChat(text: string): void;
   setName(name: string): void;
   setUserId(userId: string | null): void;
@@ -163,6 +174,13 @@ export function pickHubSpawn(
 }
 
 interface Ghost {
+  nameSprite: THREE.Sprite | null;
+  air: boolean;
+  mount: PegasusWorld | null;
+  mountKind: MountKind | null;
+  flap: boolean;
+  skyTag: boolean;
+  heardAt: number;
   group: THREE.Group;
   /** The inner character instance — scale lives here so the label sprite isn't blown up too. */
   inst: THREE.Object3D | null;
@@ -368,7 +386,7 @@ export function drawNamePill(
   ctx.shadowColor = "rgba(0,0,0,0.85)";
   ctx.shadowBlur = 8;
   ctx.fillStyle = palette.text;
-  ctx.fillText(text, cx, cy + 2);
+  ctx.fillText(text, cx, cy + 2, canvas.width - 40);
   ctx.shadowBlur = 0;
 }
 
@@ -379,7 +397,7 @@ function makeLabelSprite(name: string): THREE.Sprite {
   canvas.width = 512;
   canvas.height = 112;
   const ctx = canvas.getContext("2d")!;
-  drawNamePill(ctx, `👤 ${name.slice(0, 16)}`, {
+  drawNamePill(ctx, `👤 ${name.slice(0, 32)}`, {
     fill: "rgba(16, 185, 132, 0.30)",
     border: "rgba(110, 255, 220, 0.85)",
     text: "#e3fff5",
@@ -413,6 +431,7 @@ export function createMultiplayer(opts: {
   /** Scratch pose, refilled per dancing ghost — dances are pure functions of
    *  the clock, so one buffer is enough for the whole crowd. */
   const ghostPose = createDancePose();
+  const riderPose = createRiderPose();
   const loader = new GLTFLoader();
   const baseCache = new Map<string, Promise<{ scene: THREE.Group; clips: THREE.AnimationClip[]; fit: number; lift: number }>>();
   let online = false;
@@ -467,6 +486,8 @@ export function createMultiplayer(opts: {
   const spawnGhost = async (key: string, char: string, label: string, userId: string | null = null, initialScale = 1) => {
     if (ghosts.has(key) || disposed) return;
     const placeholder: Ghost = {
+      nameSprite: null, air: false,
+      mount: null, mountKind: null, flap: false, skyTag: false, heardAt: performance.now(),
       group: new THREE.Group(),
       inst: null,
       baseFit: 1,
@@ -495,19 +516,20 @@ export function createMultiplayer(opts: {
     // so peers playing one are visible to everyone else instead of
     // silently becoming an invisible placeholder.
     if (!characterUrl(char)) {
-      const p = buildProceduralPilot();
+      const p = buildRemotePilot(char, buildProceduralPilot);
+      p.group.userData.characterId = char;
       placeholder.proc = p;
       placeholder.inst = p.group;
       placeholder.baseFit = 1;
       p.group.scale.setScalar(placeholder.appliedScale);
       placeholder.group.add(p.group);
-      placeholder.group.add(makeLabelSprite(label));
+      setGhostName(placeholder, label);
       scene.add(placeholder.group);
       return;
     }
     try {
       const base = await loadBase(char);
-      if (disposed || !ghosts.has(key)) return;
+      if (disposed || ghosts.get(key) !== placeholder) return;
       const inst = cloneSkinned(base.scene);
       inst.scale.setScalar(base.fit * placeholder.appliedScale);
       inst.position.y = base.lift;
@@ -525,7 +547,7 @@ export function createMultiplayer(opts: {
       // Before any clip plays — see the note on Ghost.danceSk.
       placeholder.danceSk = bindGltfDanceSkeleton(inst);
       placeholder.group.add(inst);
-      placeholder.group.add(makeLabelSprite(label));
+      setGhostName(placeholder, label);
       const walkClip = base.clips.find((c) => /walk/i.test(c.name) && !/carry/i.test(c.name));
       const idleClip = base.clips.find((c) => /idle/i.test(c.name));
       if (walkClip || idleClip) {
@@ -541,6 +563,15 @@ export function createMultiplayer(opts: {
     }
   };
 
+  function setGhostName(g: Ghost, name: string) {
+    if (g.nameSprite && g.label === name) return;
+    if (g.nameSprite) {
+      g.nameSprite.removeFromParent(); g.nameSprite.material.map?.dispose(); g.nameSprite.material.dispose();
+    }
+    g.label = name;
+    g.nameSprite = makeLabelSprite(name);
+    g.group.add(g.nameSprite);
+  }
   const removeGhost = (key: string) => {
     const g = ghosts.get(key);
     if (!g) return;
@@ -549,6 +580,8 @@ export function createMultiplayer(opts: {
     // Cloned GLB ghosts share cached geometry with the base, so they
     // must NOT be disposed here — but a procedural ghost owns its own,
     // and leaking one per peer per session adds up.
+    g.mount?.dispose();
+    g.nameSprite?.material.map?.dispose(); g.nameSprite?.material.dispose();
     g.proc?.dispose();
     g.proc = null;
   };
@@ -578,9 +611,62 @@ export function createMultiplayer(opts: {
 
 
 
+  let skyEvent: SkyTag | null = null;
+  let ownState: PlayerState | null = null;
+  const localMode = new URLSearchParams(location.search).get("net") === "local";
+  const room = new URLSearchParams(location.search).get("room") ?? "vibe-city";
+  const local = localMode ? new BroadcastChannel(`city:${room}`) : null;
+  function receivePosition(payload: unknown) {
+        const p = payload as PlayerState & { id: string; name?: string; userId?: string | null };
+        if (!p || p.id === sessionId) return;
+        if (isBlocked(p.name, p.userId ?? undefined) || keyBlocked(p.id)) return;
+        let g = ghosts.get(p.id);
+        const name = remoteName(p.name, g?.label);
+        const scale = typeof p.scale === "number" && Number.isFinite(p.scale) ? p.scale : 1;
+        if (g && g.char !== p.char) { removeGhost(p.id); g = undefined; }
+        if (!g) {
+          void spawnGhost(p.id, p.char, name, p.userId ?? null, scale);
+          g = ghosts.get(p.id);
+        }
+        if (g) {
+          setGhostName(g, name);
+          g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale };
+          g.heardAt = performance.now(); g.air = !!p.air;
+          g.mountKind = p.mount === "dragon" || p.mount === "pegasus" ? p.mount : null;
+          g.flap = !!p.flap; g.skyTag = !!p.skyTag && !!g.mountKind;
+          g.dance = typeof p.dance === "string" ? p.dance : null;
+          if (p.userId && g.userId !== p.userId) g.userId = p.userId;
+          if (p.skyEvent) receiveTag(p.skyEvent);
+        }
+  }
+  const riders = (): SkyRider[] => [
+    ...(ownState ? [{id:sessionId,name:myName,x:ownState.x,y:ownState.y,z:ownState.z,playing:!!ownState.skyTag && !!ownState.mount}] : []),
+    ...[...ghosts.entries()].map(([id,g]) => ({id,name:g.label,...g.target,playing:g.skyTag && !!g.mountKind})),
+  ];
+  const tagger = () => {
+    const list = riders();
+    if (list.filter(r => r.playing).length < 2) return null;
+    return skyEvent && list.some(r => r.id === skyEvent?.to && r.playing) ? skyEvent.to : initialTagger(list);
+  };
+  function receiveTag(payload: unknown) {
+    const e = payload as SkyTag;
+    if (!e || !riders().some(r => r.id === e.from && r.playing) || !riders().some(r => r.id === e.to && r.playing)) return;
+    skyEvent = acceptSkyTag(skyEvent, e);
+  }
+  if (local) {
+    online = true;
+    local.onmessage = ({data}) => {
+      if (data.event === "pos") receivePosition(data.payload);
+      if (data.event === "sky-tag") receiveTag(data.payload);
+      if (data.event === "leave") removeGhost(data.id);
+      onPeers(ghosts.size + 1, true);
+    };
+  }
+
   let channel: RealtimeChannel | null = null;
   try {
-    channel = supabase.channel("vibe-city", {
+    if (!localMode) {
+    channel = supabase.channel(room, {
       config: {
         presence: { key: sessionId },
         broadcast: { self: false, ack: false },
@@ -605,6 +691,7 @@ export function createMultiplayer(opts: {
             void spawnGhost(key, meta.char, meta.name, meta.userId ?? null);
           } else if (meta) {
             const g = ghosts.get(key);
+            if (g) setGhostName(g, remoteName(meta.name,g.label));
             if (g && meta.userId && g.userId !== meta.userId) g.userId = meta.userId;
           }
         }
@@ -629,26 +716,9 @@ export function createMultiplayer(opts: {
         onPeers(keys.size, online);
       })
       .on("broadcast", { event: "pos" }, ({ payload }) => {
-        const p = payload as PlayerState & { id: string; name?: string; userId?: string | null };
-        if (!p || p.id === sessionId) return;
-        if (isBlocked(p.name, p.userId ?? undefined) || keyBlocked(p.id)) return;
-        let g = ghosts.get(p.id);
-        if (!g) {
-          void spawnGhost(p.id, p.char, p.name ?? "pilot", p.userId ?? null);
-          g = ghosts.get(p.id);
-        }
-        if (g) {
-          const s = typeof p.scale === "number" && isFinite(p.scale) ? p.scale : 1;
-          g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale: s };
-          g.dance = typeof p.dance === "string" ? p.dance : null;
-          if (p.userId && g.userId !== p.userId) g.userId = p.userId;
-          if (g.char !== p.char) {
-            // Character switched mid-session: respawn the ghost (preserve scale).
-            removeGhost(p.id);
-            void spawnGhost(p.id, p.char, g.label, g.userId, s);
-          }
-        }
+        receivePosition(payload);
       })
+      .on("broadcast", { event: "sky-tag" }, ({payload}) => receiveTag(payload))
       .on("broadcast", { event: "chat" }, ({ payload }) => {
         const m = payload as { id: string; name: string; text: string };
         if (!m?.text) return;
@@ -690,6 +760,7 @@ export function createMultiplayer(opts: {
         }
         onPeers(Object.keys(channel!.presenceState()).length, online);
       });
+    }
   } catch {
     online = false;
     onPeers(0, false);
@@ -715,10 +786,19 @@ export function createMultiplayer(opts: {
   });
 
   return {
+    peerStates() {
+      return [...ghosts.values()].map(g=>({name:g.label,char:g.char,design:g.proc?.group.userData.characterId ?? null,mount:g.mountKind,...g.target}));
+    },
+    skyState() {
+      const it=tagger();
+      return {it,self:it===sessionId,players:riders().filter(r=>r.playing).length,name:riders().find(r=>r.id===it)?.name ?? null,online};
+    },
     update(dt, me) {
+      ownState = me;
+
       // Throttled position broadcast — only when something changed.
       const now = performance.now();
-      if (online && channel && now - lastSend > SEND_INTERVAL_MS) {
+      if (!document.hidden && online && (channel || local) && now - lastSend > SEND_INTERVAL_MS) {
         const moved =
           !lastSent ||
           Math.abs(lastSent.x - me.x) > 0.03 ||
@@ -726,6 +806,7 @@ export function createMultiplayer(opts: {
           Math.abs(lastSent.z - me.z) > 0.03 ||
           Math.abs(lastSent.yaw - me.yaw) > 0.02 ||
           lastSent.char !== me.char ||
+          lastSent.mount !== me.mount || lastSent.flap !== me.flap || lastSent.skyTag !== me.skyTag || lastSent.air !== me.air ||
           // A dance is a state, not an event, so it rides the position
           // broadcast — but starting one usually means standing perfectly
           // still, which is exactly the case this check would otherwise skip.
@@ -734,20 +815,31 @@ export function createMultiplayer(opts: {
           now - lastSend > 1500; // heartbeat
         if (moved) {
           lastSend = now;
+          if (channel && lastSent?.char !== me.char) void channel.track({ name:myName,char:me.char,day:myDay ?? undefined,userId:myUserId });
           lastSent = { ...me };
-          void channel.send({
-            type: "broadcast",
-            event: "pos",
-            payload: { id: sessionId, name: myName, userId: myUserId, ...me },
-          });
+          const packet = { type: "broadcast" as const, event: "pos", payload: { id: sessionId, name: myName, userId: myUserId, ...me, skyEvent } };
+          if (local) local.postMessage(packet);
+          else if (channel) void channel.send(packet);
         }
       }
 
+      const list = riders();
+      const self = list.find(r=>r.id===sessionId);
+      if (self && tagger() === sessionId) {
+        const other = list.find(r=>canSkyTag(self,r,Date.now(),skyEvent?.at ?? 0));
+        if (other) {
+          const ev={from:sessionId,to:other.id,at:Date.now()}; skyEvent=ev;
+          if(local) local.postMessage({event:"sky-tag",payload:ev});
+          else if(channel) void channel.send({type:"broadcast",event:"sky-tag",payload:ev});
+        }
+      }
       // Interpolate ghosts toward their latest reported state.
-      for (const g of ghosts.values()) {
+      for (const [id, g] of ghosts) {
+        if (local && now - g.heardAt > 60000) { removeGhost(id); continue; }
         const p = g.group.position;
         const k = 1 - Math.pow(0.002, dt);
         const wasAt = p.x;
+        if (p.distanceTo(new THREE.Vector3(g.target.x,g.target.y,g.target.z)) > 40) p.set(g.target.x,g.target.y,g.target.z);
         p.x += (g.target.x - p.x) * k;
         p.y += (g.target.y - p.y) * k;
         p.z += (g.target.z - p.z) * k;
@@ -771,10 +863,18 @@ export function createMultiplayer(opts: {
           g.inst.scale.setScalar(g.baseFit * g.appliedScale);
         }
 
+        if (g.mount?.group.name !== g.mountKind) {
+          g.mount?.dispose(); g.mount = g.mountKind ? buildPegasus(new THREE.Vector3(),g.mountKind) : null;
+          if (g.mount) scene.add(g.mount.group);
+        }
+        if (g.mount) {
+          g.mount.pose={x:p.x,y:p.y-MOUNT_SEAT,z:p.z,yaw:g.group.rotation.y,bank:0,flap:g.flap};
+          g.mount.update(dt,now);
+        }
         // Walk vs idle from how far the ghost still has to travel.
         const moving =
           Math.hypot(g.target.x - p.x, g.target.z - p.z) > 0.25 || Math.abs(wasAt - p.x) > 0.02;
-        const want: "walk" | "idle" = moving && g.walk ? "walk" : "idle";
+        const want: "walk" | "idle" = !g.mountKind && moving && g.walk ? "walk" : "idle";
         if (want !== g.active && g.mixer) {
           const from = g.active === "walk" ? g.walk : g.idle;
           const to = want === "walk" ? g.walk : g.idle;
@@ -813,12 +913,12 @@ export function createMultiplayer(opts: {
             speed: step / Math.max(dt, 1e-4),
             // Peers report position, not contact — treat a clear rise as
             // airborne so jumps and jetpack climbs still read.
-            grounded: p.y - g.prevPos.y < 0.02 * (dt * 60),
+            grounded: !g.air && !g.mountKind,
             verticalVel: (p.y - g.prevPos.y) / Math.max(dt, 1e-4),
             yawRate: dy / Math.max(dt, 1e-4),
             thrusting: false,
             dance:
-              g.danceWeight > 0
+              g.mountKind ? {pose:riderPose,weight:1} : g.danceWeight > 0
                 ? { pose: ghostPose, weight: g.danceWeight, lag: g.danceDef?.lag }
                 : null,
           });
@@ -828,7 +928,9 @@ export function createMultiplayer(opts: {
           // GLB peers: the mixer has just written the walk/idle pose onto every
           // bone, so the dance slerps on top of a live frame and blends away
           // cleanly when the peer stops.
-          if (g.danceWeight > 0) {
+          if (g.mountKind) {
+            applyDancePose(g.danceSk,riderPose,1,dt); g.danceReleased=false;
+          } else if (g.danceWeight > 0) {
             applyDancePose(g.danceSk, ghostPose, g.danceWeight, dt, g.danceDef?.lag);
           }
           else if (g.danceReleased === false) {
@@ -878,8 +980,10 @@ export function createMultiplayer(opts: {
       }
     },
     setName(name) {
-      myName = name;
-      if (online && channel) void channel.track({ name, char: lastSent?.char ?? "", day: myDay ?? undefined, userId: myUserId });
+      myName = remoteName(name,myName);
+      const character = lastSent?.char ?? ownState?.char ?? "";
+      lastSend = 0; lastSent = null;
+      if (online && channel) void channel.track({ name:myName, char:character, day: myDay ?? undefined, userId: myUserId });
     },
     setUserId(userId) {
       myUserId = userId;
@@ -1001,6 +1105,7 @@ export function createMultiplayer(opts: {
       disposed = true;
       unsubSafety();
       for (const key of [...ghosts.keys()]) removeGhost(key);
+      if(local) { local.postMessage({event:"leave",id:sessionId}); local.close(); }
       if (channel) void supabase.removeChannel(channel);
     },
   };

@@ -40,6 +40,9 @@ import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
 import { buildPegasus } from "@/components/city/pegasus";
+import { createRiderPose } from "@/components/city/riderPose";
+import { stepMount, MOUNT_SEAT, type MountKind, type FlightState } from "@/components/city/mountFlight";
+import { Button } from "@/components/ui/button";
 import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
 import { buildKart } from "@/components/city/karts";
 import { buildNinjaPalaceShow, NINJA_CAST } from "@/components/city/ninjaPalace";
@@ -512,6 +515,14 @@ export default function City() {
   // Zeppelin helm: "aboard" once you're standing on the deck, "piloting"
   // once you take the wheel. The ref is what the render loop reads.
   const [zepMode, setZepMode] = useState<"off" | "aboard" | "piloting">("off");
+  const [mountKind, setMountKind] = useState<MountKind | null>(null);
+  const activeMountRef = useRef<MountKind | null>(null);
+  const mountActionRef = useRef<((kind: MountKind | null) => void) | null>(null);
+  const [nearMounts, setNearMounts] = useState(() => new URLSearchParams(window.location.search).get("spawn") === "island");
+  const [skyTagOn, setSkyTagOn] = useState(false);
+  const skyTagRef = useRef(false);
+  const diveMountRef = useRef(false);
+  const [skyStatus, setSkyStatus] = useState("Waiting for another rider");
   const zepPilotRef = useRef(false);
   const zepHelmRef = useRef<((on: boolean) => void) | null>(null);
   // Gremlin Mines (underground) — world handle + per-tick state.
@@ -2090,6 +2101,10 @@ export default function City() {
     scene.add(skyIslands.group);
     const pegasus = buildPegasus(new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z));
     scene.add(pegasus.group);
+    const dragon = buildPegasus(new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), "dragon");
+    dragon.pose = { x: ISLAND_X + 12, y: ISLAND_TOP + 2.5, z: ISLAND_Z + 8, yaw: Math.PI, bank: 0, flap: false };
+    scene.add(dragon.group);
+    let mountFlight: FlightState | null = null;
 
     // ---- Sky-island mini games: one per island, paid in $VIBE --------
     const skyGames = buildSkyGames();
@@ -3179,6 +3194,7 @@ export default function City() {
     if (isLive) player.visible = false; // /live: the player is a camera dolly
     player.position.set(0, 0, 6);
     scene.add(player);
+    const riderPose = createRiderPose();
     const modelHolder = new THREE.Group(); // takes the flight tilt
     player.add(modelHolder);
     /* Declared up here, hundreds of lines before the hat code that reads it,
@@ -4134,7 +4150,11 @@ export default function City() {
        * on the keyboard, and taking them off to aim a mouse at a pill-shaped
        * target is the wrong ask.
        */
-      if (e.code === "KeyF") {
+      if (e.code === "KeyF" && !e.repeat) {
+        if (activeMountRef.current) { mountActionRef.current?.(null); return; }
+        const p = player.position;
+        const nearest = p.distanceTo(pegasus.body.position) < 7 ? "pegasus" : p.distanceTo(dragon.body.position) < 7 ? "dragon" : null;
+        if (nearest) { mountActionRef.current?.(nearest); return; }
         if (drivingKartRef.current >= 0) exitKartRef.current?.();
         else if (nearKartNow >= 0) enterKartRef.current?.(nearKartNow);
         else if (nearRideNow >= 0) enterRideRef.current?.(nearRideNow);
@@ -4617,6 +4637,27 @@ export default function City() {
       }
     }
     zepHelmRef.current = setZepPilotMode;
+    mountActionRef.current = (kind) => {
+      if (kind && (drivingKartRef.current >= 0 || undergroundActiveRef.current || riding || swinging)) return;
+      if (kind === null) {
+        activeMountRef.current = null; setMountKind(null);
+        mountFlight = null; skyTagRef.current = false; setSkyTagOn(false);
+        pegasus.pose = null;
+        dragon.pose = { x: ISLAND_X+12, y: ISLAND_TOP+2.5, z: ISLAND_Z+8, yaw: Math.PI, bank: 0, flap: false };
+        vel.set(0, 0, 0);
+        player.position.set(ISLAND_X+8, ISLAND_TOP+0.1, ISLAND_Z+6);
+        peakY=player.position.y; camSnap=true;
+        return;
+      }
+      arrivalStart=0; setZepPilotMode(false); setDance(null);
+      const creature = kind === "pegasus" ? pegasus : dragon;
+      const near = player.position.distanceTo(creature.body.position) < 7;
+      const base = near ? creature.body.position : player.position;
+      mountFlight={x:base.x,y:Math.max(base.y,ISLAND_TOP+2.5),z:base.z,yaw:camYaw+Math.PI,speed:22,lift:0,bank:0};
+      activeMountRef.current=kind; setMountKind(kind);
+      player.position.set(mountFlight.x,mountFlight.y+MOUNT_SEAT,mountFlight.z);
+      camDist=Math.max(camDist,12); camPitch=0.18; camSnap=true; vel.set(0,0,0);
+    };
     // Cloud Kingdom: launches and cloud-trampoline bounces briefly lift
     // the vertical speed cap so you can actually reach the sky.
     let superBounceUntil = 0;
@@ -4853,6 +4894,11 @@ export default function City() {
       setMarsGame((g) => (g.onMars === onMarsNow ? g : { ...g, onMars: onMarsNow }));
 
 
+      setNearMounts(Math.hypot(player.position.x-ISLAND_X,player.position.z-ISLAND_Z)<100 && player.position.y>ISLAND_TOP-10);
+      if (skyTagRef.current) {
+        const sky=mp.skyState();
+        setSkyStatus(!sky.online ? "Connecting…" : sky.players<2 ? "Waiting for another rider" : sky.self ? "You're IT — chase the other rider!" : `${sky.name ?? "Your friend"} is IT — fly away!`);
+      }
       // Nearest chattable person (real player OR AI agent) within ~3.2m.
       const NEAR_RADIUS = 3.2;
       const nP = mpRef.current?.getNearestPlayer(player.position.x, player.position.y, player.position.z, NEAR_RADIUS) ?? null;
@@ -4870,6 +4916,7 @@ export default function City() {
       } else if (nA) {
         pick = { kind: "agent", ref: nA.agentId, name: nA.name };
       }
+      if (activeMountRef.current) pick=null;
       setNearPerson((prev) => {
         if (!prev && !pick) return prev;
         if (prev && pick && prev.kind === pick.kind && prev.ref === pick.ref && prev.name === pick.name) return prev;
@@ -5101,6 +5148,13 @@ export default function City() {
     const devWindow = window as unknown as {
       __cityDebug?: {
         teleport: (x: number, y: number, z: number) => void;
+        mount: (kind: MountKind | null) => void;
+        mountState: () => { kind: MountKind | null; flight: FlightState | null; };
+        skyTag: (on: boolean) => void;
+        skyState: () => ReturnType<typeof mp.skyState>;
+        peerStates: () => ReturnType<typeof mp.peerStates>;
+        identity: (name: string, character: string) => void;
+        mountPose: (x: number, y: number, z: number) => void;
         zeppelin: () => [number, number, number];
         player: () => [number, number, number];
         setCam: (yaw: number, pitch?: number, dist?: number) => void;
@@ -5138,6 +5192,20 @@ export default function City() {
       };
     };
     devWindow.__cityDebug = {
+      mount: (kind) => mountActionRef.current?.(kind),
+      mountState: () => ({kind:activeMountRef.current,flight:mountFlight ? {...mountFlight} : null}),
+      skyTag: (on) => { skyTagRef.current=on; setSkyTagOn(on); },
+      skyState: () => mp.skyState(),
+      peerStates: () => mp.peerStates(),
+      identity: (name, character) => {
+        mp.setName(name); setPlayerName(name);
+        charRef.current=character; setCharName(character); loadPilotRef.current?.(character);
+      },
+      mountPose: (x,y,z) => {
+        if (mountFlight) { mountFlight.x=x; mountFlight.y=y-MOUNT_SEAT; mountFlight.z=z; }
+        player.position.set(x,y,z); vel.set(0,0,0);
+        mp.update(0.05,{x,y,z,yaw:mountFlight?.yaw ?? modelYaw,air:!!mountFlight,char:charRef.current,mount:activeMountRef.current,skyTag:skyTagRef.current});
+      },
       teleport: (x, y, z) => {
         player.position.set(x, y, z);
         vel.set(0, 0, 0);
@@ -5563,7 +5631,7 @@ export default function City() {
         }
       }
       const intent = new THREE.Vector3();
-      if (enteredRef.current && !piloting) {
+      if (enteredRef.current && !piloting && !activeMountRef.current) {
         if (keys.has("KeyW") || keys.has("ArrowUp")) intent.add(fwd);
         if (keys.has("KeyS") || keys.has("ArrowDown")) intent.sub(fwd);
         if (keys.has("KeyD") || keys.has("ArrowRight")) intent.add(right);
@@ -5579,7 +5647,7 @@ export default function City() {
       if (devForward > 0) intent.addScaledVector(fwd, devForward);
       // Full thumbstick deflection runs, like holding Shift.
       const running = keys.has("ShiftLeft") || keys.has("ShiftRight") || touchLen > 0.92;
-      const jetInput = enteredRef.current && !piloting && (keys.has("Space") || touchJetRef.current);
+      const jetInput = enteredRef.current && !piloting && !activeMountRef.current && (keys.has("Space") || touchJetRef.current);
       // The Gremlin Mines deaden the jetpack — you fight on foot down there.
       const undergroundNow = undergroundActiveRef.current;
       const thrusting = jetpackEquipped && jetInput && !undergroundNow;
@@ -5596,7 +5664,24 @@ export default function City() {
         : running ? FLY_RUN_SPEED : FLY_SPEED;
 
       const pos = player.position;
-      if (swinging) {
+      if (mountFlight && activeMountRef.current) {
+        const control={
+          throttle:(keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0)-(keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0)-tm.y,
+          steer:(keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0)-(keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0)+tm.x,
+          flap:keys.has("Space") || touchJetRef.current,
+          dive:keys.has("KeyC") || diveMountRef.current,
+        };
+        const floor=supportHeightAt(mountFlight.x,mountFlight.z,mountFlight.y);
+        stepMount(mountFlight,control,dt,Math.max(0,floor));
+        pos.set(mountFlight.x,mountFlight.y+MOUNT_SEAT,mountFlight.z);
+        vel.set(Math.sin(mountFlight.yaw)*mountFlight.speed,mountFlight.lift,Math.cos(mountFlight.yaw)*mountFlight.speed);
+        onGround=false; peakY=pos.y;
+        const creature=activeMountRef.current==="dragon" ? dragon : pegasus;
+        creature.pose={x:mountFlight.x,y:mountFlight.y,z:mountFlight.z,yaw:mountFlight.yaw,bank:mountFlight.bank,flap:control.flap};
+        let turn=mountFlight.yaw+Math.PI-camYaw;
+        turn=Math.atan2(Math.sin(turn),Math.cos(turn));
+        camYaw+=turn*(1-Math.exp(-4*dt));
+      } else if (swinging) {
         // The swing seat owns your position. Jetpack (Space) hops you off.
         const seatWorld = new THREE.Vector3();
         island.swingSeat.getWorldPosition(seatWorld);
@@ -6190,7 +6275,7 @@ export default function City() {
         // Swimming holds the idle clip underneath and lets the solved stroke
         // do the work on top. A walk cycle fighting a front crawl for the same
         // bones is a mess no blend weight rescues.
-        if (swimming || thrusting) playClip([/^idle$/i, /idle/i], true);
+        if (activeMountRef.current || swimming || thrusting) playClip([/^idle$/i, /idle/i], true);
         else if (!onGround) playClip([/jump_idle/i, /jump/i, /fall/i, /idle/i], true);
         else if (hSpeed > 6.5) playClip([/^run/i, /run/i, /walk/i], true);
         else if (hSpeed > 0.6) playClip([/^walk/i, /walk/i, /run/i], true);
@@ -6238,8 +6323,8 @@ export default function City() {
       // clip and melts back into it as the weight falls away. Swimming wins
       // over a dance: you cannot floss and front crawl at once, and entering
       // the water already cancelled the dance anyway.
-      const bodyPose = swimWeight > 0 ? swimPose : dancePose;
-      const bodyWeight = swimWeight > 0 ? swimWeight : danceWeight;
+      const bodyPose = activeMountRef.current ? riderPose : swimWeight > 0 ? swimPose : dancePose;
+      const bodyWeight = activeMountRef.current ? 1 : swimWeight > 0 ? swimWeight : danceWeight;
       // Follow-through for dancing only. Swimming solves its own arcs and was
       // tuned against a rig that snaps; lag 0 there keeps it exactly as it was.
       const bodyLag = swimWeight > 0 ? 0 : danceDef?.lag;
@@ -6368,6 +6453,15 @@ export default function City() {
       tjsWorld.update(dt, now);
       skyIslands.update(dt, now);
       pegasus.update(dt, now);
+      dragon.update(dt, now);
+      if (!activeMountRef.current && enteredRef.current && vel.y <= 0 && drivingKartRef.current < 0 && !riding && !swinging) {
+        for (const [kind, creature] of [["pegasus",pegasus],["dragon",dragon]] as const) {
+          const bp=creature.body.position;
+          if (Math.hypot(pos.x-bp.x,pos.z-bp.z)<2.4 && pos.y>=bp.y+MOUNT_SEAT-0.7 && pos.y<=bp.y+MOUNT_SEAT+1.5) {
+            mountActionRef.current?.(kind); break;
+          }
+        }
+      }
       skyGames.update(dt, now, player.position);
       skiWorld.update(dt, now);
       moonGolf.update(dt, now, player.position, vel);
@@ -6914,6 +7008,9 @@ export default function City() {
         char: charRef.current,
         scale: playerScaleRef.current,
         dance: danceId,
+        mount: activeMountRef.current,
+        flap: keys.has("Space") || touchJetRef.current,
+        skyTag: skyTagRef.current && !!activeMountRef.current,
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
@@ -7418,6 +7515,8 @@ export default function City() {
       travelRef.current = null;
       resetRunRef.current = null;
       vibeyExciteRef.current = null;
+      mountActionRef.current=null; activeMountRef.current=null; skyTagRef.current=false;
+      pegasus.dispose(); dragon.dispose();
       danceFloor.dispose();
       club.dispose();
       stairPad.geometry.dispose();
@@ -7830,7 +7929,7 @@ export default function City() {
               className={`w-3.5 h-3.5 ${hud.jet ? "text-primary animate-pulse" : "text-muted-foreground"}`}
             />
             <span className={hud.jet ? "text-primary" : "text-muted-foreground"}>
-              JETPACK {hud.jet ? "FIRING" : "READY"}
+              {mountKind ? "WINGS" : "JETPACK"} {hud.jet ? (mountKind ? "FLAPPING" : "FIRING") : (mountKind ? "GLIDING" : "READY")}
             </span>
           </div>
           <div className="text-muted-foreground">
@@ -9100,6 +9199,22 @@ export default function City() {
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+          {(mountKind || nearMounts) && drivingKart < 0 && (
+            <div className="glass-panel rounded-lg px-3 py-2 flex flex-wrap justify-center items-center gap-2 w-[min(36rem,calc(100vw-2rem))]">
+              {!mountKind ? <>
+                <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={(e) => { mountActionRef.current?.("pegasus");e.currentTarget.blur(); }}>🦄 Ride Pegasus</Button>
+                <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={(e) => { mountActionRef.current?.("dragon");e.currentTarget.blur(); }}>🐉 Ride dragon</Button>
+              </> : <>
+                <span className="text-xs text-primary">{mountKind === "dragon" ? "🐉 Dragon" : "🦄 Pegasus"}</span>
+                <Button size="sm" variant="ghost" className="text-primary touch-none" aria-label="Flap wings" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);touchJetRef.current=true;}} onPointerUp={()=>{touchJetRef.current=false;}} onPointerCancel={()=>{touchJetRef.current=false;}}>Flap{isTouch ? "" : " · Space"}</Button>
+                <Button size="sm" variant="ghost" className="text-primary touch-none" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);diveMountRef.current=true;}} onPointerUp={()=>{diveMountRef.current=false;}} onPointerCancel={()=>{diveMountRef.current=false;}}>Dive{isTouch ? "" : " · C"}</Button>
+                <Button size="sm" variant={skyTagOn ? "default" : "ghost"} onClick={(e)=>{skyTagRef.current=!skyTagRef.current;setSkyTagOn(skyTagRef.current);e.currentTarget.blur();}}>{skyTagOn ? "Stop sky tag" : "Play sky tag"}</Button>
+                <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={async()=>{const url=new URL(window.location.href);url.searchParams.set("spawn","island");url.searchParams.delete("net");try {await navigator.clipboard.writeText(url.toString());toast("Riding link copied");} catch {toast("Share this page's address with your friend");}}}>Invite</Button>
+                <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={(e)=>{mountActionRef.current?.(null);e.currentTarget.blur();}}>Land & hop off</Button>
+                {skyTagOn && <span className="basis-full text-center text-xs text-primary">{skyStatus}</span>}
+              </>}
+            </div>
+          )}
           {drivingKart >= 0 && (
             <div className="flex items-center gap-2 animate-fade-in">
               <span className="glass-panel rounded-full px-4 py-2 text-xs text-muted-foreground">
