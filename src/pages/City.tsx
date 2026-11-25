@@ -39,6 +39,7 @@ import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
+import { buildPegasus } from "@/components/city/pegasus";
 import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
 import { buildKart } from "@/components/city/karts";
 import { buildNinjaPalaceShow, NINJA_CAST } from "@/components/city/ninjaPalace";
@@ -2087,6 +2088,8 @@ export default function City() {
     // circling the city. All landable via the shared collision boxes.
     const skyIslands = buildSkyIslands({ boxes });
     scene.add(skyIslands.group);
+    const pegasus = buildPegasus(new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z));
+    scene.add(pegasus.group);
 
     // ---- Sky-island mini games: one per island, paid in $VIBE --------
     const skyGames = buildSkyGames();
@@ -6364,6 +6367,7 @@ export default function City() {
       marsWorld.update(dt, now);
       tjsWorld.update(dt, now);
       skyIslands.update(dt, now);
+      pegasus.update(dt, now);
       skyGames.update(dt, now, player.position);
       skiWorld.update(dt, now);
       moonGolf.update(dt, now, player.position, vel);
