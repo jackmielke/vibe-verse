@@ -127,6 +127,8 @@ import { ArcadeModal } from "@/components/city/ArcadeModal";
 import RockPaperScissors, { RpsDevHook } from "@/components/city/RockPaperScissors";
 import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
 import CharacterDashboardModal from "@/components/city/CharacterDashboardModal";
+import { STICKER_ART, STICKER_SLOTS, placeSticker, sanitizeStickers, type Sticker } from "@/components/city/stickers";
+import { applyStickers } from "@/components/city/stickerMesh";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
 import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
@@ -884,6 +886,16 @@ export default function City() {
   ensureAudioRef.current = ensureAudio;
   const [charName, setCharName] = useState(initialCharacter);
   const [charPanelOpen, setCharPanelOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const [stickerArt, setStickerArt] = useState<string>(STICKER_ART[0]);
+  const [stickers, setStickers] = useState<Sticker[]>(() => {
+    try { return sanitizeStickers(JSON.parse(localStorage.getItem("city.stickers") ?? "[]")); } catch { return []; }
+  });
+  const stickersRef = useRef(stickers);
+  useEffect(() => {
+    stickersRef.current = stickers;
+    localStorage.setItem("city.stickers", JSON.stringify(stickers));
+  }, [stickers]);
   const charRef = useRef(charName);
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
@@ -3196,6 +3208,7 @@ export default function City() {
     scene.add(player);
     const riderPose = createRiderPose();
     const modelHolder = new THREE.Group(); // takes the flight tilt
+    let stickerKey = "";
     player.add(modelHolder);
     /* Declared up here, hundreds of lines before the hat code that reads it,
        because `loadPilot` below attaches to it — and for a procedural
@@ -6239,6 +6252,10 @@ export default function City() {
       } // end of free-movement physics (vs. riding the zipline)
 
       // Face the direction of travel; tilt forward while flying fast.
+      {
+        const key = JSON.stringify(stickersRef.current) + modelHolder.children.filter((c) => c.name !== "__stickers").map((c) => c.uuid).join();
+        if (key !== stickerKey) { stickerKey = key; applyStickers(modelHolder, stickersRef.current); }
+      }
       const hSpeed = Math.hypot(vel.x, vel.z);
       const prevModelYaw = modelYaw;
       if (hSpeed > 0.6) {
@@ -7011,6 +7028,7 @@ export default function City() {
         mount: activeMountRef.current,
         flap: keys.has("Space") || touchJetRef.current,
         skyTag: skyTagRef.current && !!activeMountRef.current,
+        stickers: stickersRef.current,
       });
       soundsRef.current?.update(thrusting, vel.length(), !onGround);
 
@@ -8172,6 +8190,15 @@ export default function City() {
             </button>
             <button
               onClick={(e) => {
+                setStickerOpen((v) => !v);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+            >
+              ✨ Stickers
+            </button>
+            <button
+              onClick={(e) => {
                 // Quick jetpack on/off. Off = "none" (parkour mode:
                 // Space becomes a jump). On = restore the previously
                 // equipped pack (default "stock").
@@ -8432,6 +8459,30 @@ export default function City() {
               >
                 ✏️ {playerName}
               </button>
+            </div>
+          )}
+          {stickerOpen && (
+            <div className="glass-panel rounded-2xl p-3 w-64 space-y-2" onKeyDown={(e) => e.stopPropagation()}>
+              <div className="text-xs font-heading text-foreground">Pick a sticker, then tap where it goes</div>
+              <div className="grid grid-cols-6 gap-1">
+                {STICKER_ART.map((a) => (
+                  <button key={a} onClick={() => setStickerArt(a)} className={`text-lg rounded-lg py-1 ${stickerArt === a ? "bg-primary/30 ring-1 ring-primary" : "hover:bg-muted/50"}`}>{a}</button>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {STICKER_SLOTS.map((slot) => {
+                  const on = stickers.find((x) => x.slot === slot.id);
+                  return (
+                    <button key={slot.id} onClick={() => setStickers((l) => on && on.art === stickerArt ? l.filter((x) => x.slot !== slot.id) : placeSticker(l, { art: stickerArt, slot: slot.id }))} className={`text-[11px] rounded-lg px-1 py-1.5 ${on ? "bg-primary/20 text-primary" : "bg-muted/30 text-foreground/80 hover:bg-muted/50"}`}>
+                      {on ? on.art + " " : ""}{slot.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Everyone nearby sees them</span>
+                <button onClick={() => setStickers([])} className="hover:text-foreground">Clear all</button>
+              </div>
             </div>
           )}
           {charPanelOpen && (

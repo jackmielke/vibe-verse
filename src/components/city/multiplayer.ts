@@ -1,3 +1,5 @@
+import { sanitizeStickers, type Sticker } from "./stickers";
+import { applyStickers } from "./stickerMesh";
 /**
  * multiplayer — shared Vibe City through Supabase Realtime.
  *
@@ -49,6 +51,7 @@ export interface PlayerState {
   mount?: MountKind | null;
   flap?: boolean;
   skyTag?: boolean;
+  stickers?: Sticker[];
   skyEvent?: SkyTag | null;
   /** Player body scale multiplier (1 = normal). Defaults to 1 if omitted. */
   scale?: number;
@@ -174,6 +177,8 @@ export function pickHubSpawn(
 }
 
 interface Ghost {
+  stickers?: Sticker[];
+  stickerKey?: string;
   nameSprite: THREE.Sprite | null;
   air: boolean;
   mount: PegasusWorld | null;
@@ -635,6 +640,7 @@ export function createMultiplayer(opts: {
           g.mountKind = p.mount === "dragon" || p.mount === "pegasus" ? p.mount : null;
           g.flap = !!p.flap; g.skyTag = !!p.skyTag && !!g.mountKind;
           g.dance = typeof p.dance === "string" ? p.dance : null;
+          g.stickers = sanitizeStickers(p.stickers);
           if (p.userId && g.userId !== p.userId) g.userId = p.userId;
           if (p.skyEvent) receiveTag(p.skyEvent);
         }
@@ -854,6 +860,10 @@ export function createMultiplayer(opts: {
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
         g.group.rotation.y += d * Math.min(1, dt * 8);
+        if (g.inst) {
+          const key = JSON.stringify(g.stickers ?? []) + g.inst.uuid;
+          if (key !== g.stickerKey) { g.stickerKey = key; applyStickers(g.inst, g.stickers ?? []); }
+        }
 
         // Smoothly ease body scale toward the peer's target so size
         // changes don't pop — and don't blow up the label sprite.
