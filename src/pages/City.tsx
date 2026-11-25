@@ -8163,7 +8163,7 @@ export default function City() {
             </button>
             <button
               onClick={(e) => {
-                setCharPanelOpen((v) => !v);
+                setAvatarDashOpen(true);
                 e.currentTarget.blur();
               }}
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"

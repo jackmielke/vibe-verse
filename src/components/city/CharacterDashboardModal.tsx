@@ -11,6 +11,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CHARACTERS, type CharSpec } from "@/lib/characters";
+import { characterArt } from "@/lib/characterArt";
+import { characterFace } from "@/lib/characterFaces";
 
 export default function CharacterDashboardModal({
   activeId,
@@ -83,6 +85,7 @@ export default function CharacterDashboardModal({
           <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2.5">
             {filtered.map((c) => {
               const active = c.id === activeId;
+              const art = characterArt(c.id) ?? characterFace(c.id);
               return (
                 <button
                   key={c.id}
@@ -98,9 +101,13 @@ export default function CharacterDashboardModal({
                       : "border-cyan-300/20 bg-black/25 hover:border-cyan-300/60 hover:bg-cyan-400/10"
                   }`}
                 >
-                  <span className="text-2xl" aria-hidden>
-                    {c.emoji ?? "🧍"}
-                  </span>
+                  {art ? (
+                    <img src={art} alt="" loading="lazy" draggable={false} className="h-3/4 w-full object-contain" />
+                  ) : (
+                    <span className="text-2xl" aria-hidden>
+                      {c.emoji ?? "🧍"}
+                    </span>
+                  )}
                   <span className="text-[9px] leading-tight text-cyan-100/80 text-center line-clamp-2 px-0.5">
                     {c.label}
                   </span>
