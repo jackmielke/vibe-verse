@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { Joystick } from "@/magician/ui/Joystick";
 import { QrCode } from "@/oni/ui/QrCode";
 import { Comic } from "@/cannonrun/Comic";
+import { LOOKS, LookSwitcher, SplashLook, type Look } from "@/cannonrun/ui/Splash";
 import type { CannonRun as Game, ChaseHud, Mode, RiderHud } from "@/cannonrun/engine";
 import type { FinaleHud as FinaleHudT } from "@/cannonrun/finale";
 import { openTransport, readBank, roomCode, writeBank, UPGRADES, UPGRADE_COST, type NetMode, type Transport, type Upgrades, type Wire } from "@/cannonrun/net";
@@ -61,6 +62,17 @@ export default function CannonRun() {
   const [lobbyNote, setLobbyNote] = useState("");
   const [phone] = useState(() => typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches ?? false));
   const bare = params.has("shot");
+  // ?look=reel|news|wanted|comic previews a redesigned start screen; the plain one stays the default.
+  const [look, setLook] = useState<Look | "classic" | null>(() => {
+    const l = params.get("look");
+    return l === null ? null : (LOOKS as readonly string[]).includes(l) ? (l as Look) : "classic";
+  });
+  const pickLook = (l: Look | "classic"): void => {
+    setLook(l);
+    const u = new URL(window.location.href);
+    u.searchParams.set("look", l);
+    window.history.replaceState(null, "", u.toString());
+  };
   const screenRef = useRef(screen);
   screenRef.current = screen;
 
@@ -185,6 +197,9 @@ export default function CannonRun() {
     writeBank(b.bank - UPGRADE_COST[lvl], { ...b.up, [key]: lvl + 1 });
     setBank(readBank());
   };
+
+  const toggleAurora = (): void => { const v = !aurora; setAurora(v); try { localStorage.setItem("cannonrun.sky", v ? "aurora" : "moon"); } catch { /* private window */ } };
+  const toggleThanks = (): void => { const v = !thanks; setThanks(v); try { localStorage.setItem("cannonrun.thanks", v ? "on" : "off"); } catch { /* private window */ } };
 
   const card = "rounded-xl bg-black/55 ring-1 ring-white/10 backdrop-blur-sm";
   const over = hud?.phase === "over";
@@ -334,7 +349,24 @@ export default function CannonRun() {
 
       {screen === "comic" ? <Comic phone={phone} two={params.get("comic") === "duo"} onDone={() => setScreen("splash")} /> : null}
 
-      {screen === "splash" ? (
+      {screen === "splash" && look && look !== "classic" ? (
+        <SplashLook
+          look={look}
+          phone={phone}
+          aurora={aurora}
+          thanks={thanks}
+          bank={bank.bank}
+          onSolo={() => start("solo")}
+          onDuo={() => start("duo")}
+          onHost={() => { setRoom(""); setScreen("host"); }}
+          onGarage={() => setScreen("garage")}
+          onAurora={toggleAurora}
+          onThanks={toggleThanks}
+        />
+      ) : null}
+      {screen === "splash" && look ? <LookSwitcher look={look} onPick={pickLook} /> : null}
+
+      {screen === "splash" && (!look || look === "classic") ? (
         <Backdrop>
           <div className="text-6xl">💣🛻</div>
           <h1 className="mt-4 text-4xl font-bold tracking-tight">Cannon Chase</h1>
@@ -358,13 +390,13 @@ export default function CannonRun() {
             </button>
             <button
               className={`w-64 rounded-full px-6 py-2 text-[13px] font-semibold ring-1 ${aurora ? "bg-[#1f6b55] ring-[#5dffb0]/60 text-[#cfffe8]" : "bg-white/5 ring-white/15 text-white/70"}`}
-              onClick={() => { const v = !aurora; setAurora(v); try { localStorage.setItem("cannonrun.sky", v ? "aurora" : "moon"); } catch { /* private window */ } }}
+              onClick={toggleAurora}
             >
               {aurora ? "✦ Aurora sky: on" : "✦ Aurora sky: off"}
             </button>
             <button
               className={`w-64 rounded-full px-6 py-2 text-[13px] font-semibold ring-1 ${thanks ? "bg-[#8a3a12] ring-[#ffa64a]/60 text-[#ffe2c0]" : "bg-white/5 ring-white/15 text-white/70"}`}
-              onClick={() => { const v = !thanks; setThanks(v); try { localStorage.setItem("cannonrun.thanks", v ? "on" : "off"); } catch { /* private window */ } }}
+              onClick={toggleThanks}
             >
               {thanks ? "🦃 Thanksgiving: on" : "🦃 Thanksgiving: off"}
             </button>
