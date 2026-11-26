@@ -1,9 +1,9 @@
 /**
- * 671 Lincoln Avenue, Winnetka, Illinois — the floor plan, as data.
+ * The house on Juniper Lane: the floor plan, as data.
  *
  * The whole house exists at once: basement, ground floor and bedroom floor,
  * one continuous scene with real stairs between them. Nothing loads, nothing
- * fades, and when Marv is coming up the stairs he is genuinely on the stairs.
+ * fades, and when Lenny is coming up the stairs he is genuinely on the stairs.
  * That is the same call Five Nights made about the pizzeria and it buys the
  * same things here — a burglar's footsteps are a function of a real distance,
  * and the light you left on upstairs lights the actual landing he walks onto.
@@ -77,9 +77,9 @@ export type RoomId =
   | "family"
   | "corridor"
   | "bathroom"
-  | "kevin"
+  | "kid"
   | "parents"
-  | "buzz"
+  | "brother"
   | "guest"
   | "basement";
 
@@ -131,16 +131,16 @@ export const ROOMS: Record<RoomId, Room> = {
     id: "bathroom", name: "Bathroom", floor: "upper",
     x0: IN.W, x1: X.w1, z0: 0.4, z1: IN.S, paper: 2, ground: "tile",
   },
-  kevin: {
-    id: "kevin", name: "Kevin's Room", floor: "upper",
+  kid: {
+    id: "kid", name: "Pip's Room", floor: "upper",
     x0: X.w2, x1: 2.2, z0: 0.4, z1: IN.S, paper: 3, ground: "carpet", carpetColor: "#3e5a74",
   },
   parents: {
     id: "parents", name: "Mom & Dad's Room", floor: "upper",
     x0: 2.2, x1: IN.E, z0: 0.4, z1: IN.S, paper: 1, ground: "carpet", carpetColor: "#5b4a5e",
   },
-  buzz: {
-    id: "buzz", name: "Buzz's Room", floor: "upper",
+  brother: {
+    id: "brother", name: "Otis's Room", floor: "upper",
     x0: 1.0, x1: IN.E, z0: IN.N, z1: -1.2, paper: 3, ground: "carpet", carpetColor: "#3c4a3a",
   },
   guest: {
@@ -253,20 +253,20 @@ export const DOORWAYS: Doorway[] = [
 
   /* bedroom floor */
   { along: "x", at: 0.4, centre: -5.2, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: 1.4 }, // corridor ↔ bathroom
-  { along: "x", at: 0.4, centre: 0.4, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: -1.4 }, // corridor ↔ Kevin
+  { along: "x", at: 0.4, centre: 0.4, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: -1.4 }, // corridor ↔ Pip
   { along: "x", at: 0.4, centre: 4.4, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: 1.4 }, // corridor ↔ parents
-  { along: "x", at: -1.2, centre: 4.0, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: -1.4 }, // corridor ↔ Buzz
+  { along: "x", at: -1.2, centre: 4.0, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: -1.4 }, // corridor ↔ Otis
   { along: "x", at: -1.2, centre: -3.0, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: 1.4 }, // corridor ↔ guest
 ];
 
 /* ------------------------------------------------------------------ *
  * NAVIGATION
  *
- * Twenty-six nodes and the links between them. Harry and Marv breadth-first
+ * Twenty-six nodes and the links between them. The intruders breadth-first
  * their way through this; the player ignores it entirely.
  *
  * Nodes carry a floor because the graph is the only place the three storeys
- * meet. A burglar walking from the kitchen to Kevin's room routes through the
+ * meet. A burglar walking from the kitchen to Pip's room routes through the
  * stair nodes, and the stair nodes carry the ramp's height, so he climbs.
  * ------------------------------------------------------------------ */
 
@@ -327,9 +327,9 @@ export const NAV: NavNode[] = [
   u("u_corr_m", 0.4, -0.4, "corridor"),
   u("u_corr_e", 4.4, -0.4, "corridor"),
   u("u_bath", -5.2, 2.4, "bathroom"),
-  u("u_kevin", 0.4, 3.2, "kevin"),
+  u("u_kid", 0.4, 3.2, "kid"),
   u("u_parents", 4.6, 3.0, "parents"),
-  u("u_buzz", 4.0, -3.4, "buzz"),
+  u("u_brother", 4.0, -3.4, "brother"),
   u("u_guest", -3.0, -3.4, "guest"),
 ];
 
@@ -375,9 +375,9 @@ const LINKS: Array<[string, string]> = [
   ["u_landing", "u_corr_m"],
   ["u_corr_m", "u_corr_e"],
   ["u_corr_w", "u_bath"],
-  ["u_corr_m", "u_kevin"],
+  ["u_corr_m", "u_kid"],
   ["u_corr_e", "u_parents"],
-  ["u_corr_e", "u_buzz"],
+  ["u_corr_e", "u_brother"],
   ["u_landing", "u_guest"],
 ];
 
@@ -391,7 +391,7 @@ for (const [a, b] of LINKS) {
 
 export function node(id: string): NavNode {
   const n = NODE_BY_ID.get(id);
-  if (!n) throw new Error(`[home alone] no nav node "${id}"`);
+  if (!n) throw new Error(`[house rules] no nav node "${id}"`);
   return n;
 }
 
@@ -411,31 +411,56 @@ export function nearestNode(x: number, y: number, z: number): NavNode {
   return best;
 }
 
-/** Breadth-first route between two nodes, inclusive of both ends. */
+/**
+ * Shortest route between two nodes by distance walked, inclusive of both ends.
+ *
+ * By distance and not by hops: the side yard joins the two doors in two hops,
+ * and a hop count sends a burglar round the outside of the house to reach a
+ * room he could have crossed the hall to.
+ */
 export function pathBetween(from: string, to: string): NavNode[] {
   if (from === to) return [node(from)];
+  const dist = new Map<string, number>([[from, 0]]);
   const prev = new Map<string, string>();
-  const seen = new Set([from]);
-  const queue = [from];
-  while (queue.length) {
-    const cur = queue.shift()!;
-    for (const next of ADJ.get(cur) ?? []) {
-      if (seen.has(next)) continue;
-      seen.add(next);
-      prev.set(next, cur);
-      if (next === to) {
-        const out: NavNode[] = [];
-        let step: string | undefined = to;
-        while (step) {
-          out.unshift(node(step));
-          step = prev.get(step);
-        }
-        return out;
+  const done = new Set<string>();
+  for (;;) {
+    let cur: string | null = null;
+    let best = Infinity;
+    for (const [id, d] of dist) {
+      if (!done.has(id) && d < best) {
+        best = d;
+        cur = id;
       }
-      queue.push(next);
+    }
+    if (cur === null) return [node(from)];
+    if (cur === to) break;
+    done.add(cur);
+    const a = node(cur);
+    for (const next of ADJ.get(cur) ?? []) {
+      if (done.has(next)) continue;
+      const b = node(next);
+      const d = best + Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+      if (d < (dist.get(next) ?? Infinity)) {
+        dist.set(next, d);
+        prev.set(next, cur);
+      }
     }
   }
-  return [node(from)];
+  const out: NavNode[] = [];
+  let step: string | undefined = to;
+  while (step) {
+    out.unshift(node(step));
+    step = prev.get(step);
+  }
+  return out;
+}
+
+/** Metres walked along a route. */
+export function pathLength(path: NavNode[]): number {
+  let d = 0;
+  for (let i = 1; i < path.length; i++)
+    d += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y, path[i].z - path[i - 1].z);
+  return d;
 }
 
 /** Which room contains a point, if any. Used for the HUD's room name. */
@@ -449,82 +474,6 @@ export function roomAt(x: number, y: number, z: number): Room | null {
   }
   return best;
 }
-
-/* ------------------------------------------------------------------ *
- * TRAPS
- *
- * Eight stations, in the order the movie uses them. Each is a fixed spot in
- * the house with a radius; arm it in the setup phase and it fires when a
- * burglar walks through during the battle.
- *
- * They are fixed rather than free-placed on purpose. Free placement sounds
- * better and plays worse: on a phone, aiming a trap at a stair tread is
- * miserable, and the fun of this sequence was never the aiming — it is
- * knowing the iron is waiting at the top of the cellar steps and running that
- * way on purpose.
- * ------------------------------------------------------------------ */
-
-export type TrapKind =
-  | "cars"
-  | "tar"
-  | "iron"
-  | "torch"
-  | "paint"
-  | "ornaments"
-  | "glue"
-  | "doorknob";
-
-export interface TrapSpot {
-  kind: TrapKind;
-  name: string;
-  /** One line, in Kevin's voice, shown when you arm it. */
-  quip: string;
-  x: number;
-  y: number;
-  z: number;
-  floor: FloorName;
-  radius: number;
-  /** Seconds the victim spends on the floor. */
-  stun: number;
-  /** How much of a burglar's nerve it takes. Two hits and one of them leaves. */
-  damage: number;
-  room: RoomId;
-}
-
-export const TRAPS: TrapSpot[] = [
-  {
-    kind: "cars", name: "Micro Machines", quip: "Cars on the floor. Nobody walks in here.",
-    x: 0.4, y: FLOOR.ground, z: 3.6, floor: "ground", radius: 1.5, stun: 3.4, damage: 34, room: "hall",
-  },
-  {
-    kind: "doorknob", name: "Red-Hot Doorknob", quip: "Charcoal starter, one doorknob. Grab that.",
-    x: 3.2, y: FLOOR.ground, z: -4.9, floor: "ground", radius: 1.3, stun: 3.0, damage: 30, room: "kitchen",
-  },
-  {
-    kind: "torch", name: "Blowtorch Over the Door", quip: "Right over the back door. Hats off.",
-    x: 3.2, y: FLOOR.ground, z: -4.2, floor: "ground", radius: 1.4, stun: 3.2, damage: 32, room: "kitchen",
-  },
-  {
-    kind: "iron", name: "The Iron on a String", quip: "Down the laundry chute. Bombs away.",
-    x: -1.9, y: FLOOR.ground, z: -4.65, floor: "ground", radius: 1.3, stun: 3.6, damage: 40, room: "backhall",
-  },
-  {
-    kind: "tar", name: "Tar and a Nail", quip: "Tar on every step. Take your shoes off, Marv.",
-    x: -4.3, y: (FLOOR.basement + FLOOR.ground) / 2, z: -4.65, floor: "basement", radius: 1.7, stun: 4.0, damage: 42, room: "basement",
-  },
-  {
-    kind: "ornaments", name: "Ornaments Under the Window", quip: "Glass, on the floor, in the dark.",
-    x: -4.2, y: FLOOR.ground, z: -1.6, floor: "ground", radius: 1.6, stun: 3.4, damage: 34, room: "family",
-  },
-  {
-    kind: "paint", name: "Paint Cans on a Rope", quip: "Two cans, one rope, straight down the stairs.",
-    x: -2.6, y: FLOOR.ground + 1.0, z: 3.2, floor: "ground", radius: 1.6, stun: 4.2, damage: 46, room: "stairbay",
-  },
-  {
-    kind: "glue", name: "Glue and Feathers", quip: "Feathers stick to glue. That's just science.",
-    x: 0.4, y: FLOOR.upper, z: 1.2, floor: "upper", radius: 1.5, stun: 3.2, damage: 32, room: "kevin",
-  },
-];
 
 /* ------------------------------------------------------------------ *
  * THE NEIGHBOURHOOD

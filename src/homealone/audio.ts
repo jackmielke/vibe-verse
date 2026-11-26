@@ -3,15 +3,15 @@
  *
  * A house at night is mostly *quiet*, and the job of this file is to make the
  * quiet expensive: a furnace two floors down, wind on the storm windows, and
- * one board that creaks under a foot that is not yours. When Marv is upstairs
+ * one board that creaks under a foot that is not yours. When Lenny is upstairs
  * you should know it from the ceiling before you know it from the screen.
  *
- * Two pieces of real music, both long out of copyright:
+ * Two pieces of music, both written here and neither borrowed:
  *
- * - **Shchedryk / Carol of the Bells** (Leontovych, 1914). Four notes, endless,
- *   and it turns menace into slapstick the instant it starts. It plays over the
- *   battle, which is exactly what it is for.
- * - An original celeste line over the menu, because a title needs to be warm
+ * - **The sneak.** A tiptoeing minor line in pizzicato steps that plays over a
+ *   break-in. It is deliberately a little silly, because the moment it starts
+ *   two men creeping through a hall stop being frightening.
+ * - A slow celeste waltz over the menu, because a title needs to be warm
  *   before the house gets cold.
  */
 
@@ -235,9 +235,9 @@ export class HomeAudio {
       this.tone(280 + Math.random() * 500, 0.1, { type: "square", gain: 0.045, delay: i * 0.045 + Math.random() * 0.03 });
   }
 
-  /** Harry growls, Marv yelps. Two formants and a pitch envelope is plenty. */
-  yell(who: "harry" | "marv") {
-    const base = who === "harry" ? 116 : 208;
+  /** Gus growls, Lenny yelps. Two formants and a pitch envelope is plenty. */
+  yell(who: "gus" | "lenny") {
+    const base = who === "gus" ? 116 : 208;
     const ctx = this.ensure();
     if (!ctx || !this.master) return;
     const t0 = ctx.currentTime;
@@ -247,13 +247,13 @@ export class HomeAudio {
     const g = ctx.createGain();
     osc.type = "sawtooth";
     osc.frequency.setValueAtTime(base * 1.25, t0);
-    osc.frequency.exponentialRampToValueAtTime(base * (who === "harry" ? 0.7 : 1.9), t0 + 0.14);
+    osc.frequency.exponentialRampToValueAtTime(base * (who === "gus" ? 0.7 : 1.9), t0 + 0.14);
     osc.frequency.exponentialRampToValueAtTime(base * 0.6, t0 + 0.7);
     f1.type = "bandpass";
-    f1.frequency.value = who === "harry" ? 620 : 880;
+    f1.frequency.value = who === "gus" ? 620 : 880;
     f1.Q.value = 5;
     f2.type = "bandpass";
-    f2.frequency.value = who === "harry" ? 1180 : 1620;
+    f2.frequency.value = who === "gus" ? 1180 : 1620;
     f2.Q.value = 6;
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(0.19, t0 + 0.05);
@@ -266,7 +266,7 @@ export class HomeAudio {
     osc.stop(t0 + 0.8);
   }
 
-  /** Kevin. Everybody knows this one, and it is a sine sweep with vibrato. */
+  /** Pip. Everybody knows this one, and it is a sine sweep with vibrato. */
   scream() {
     const ctx = this.ensure();
     if (!ctx || !this.master) return;
@@ -310,7 +310,7 @@ export class HomeAudio {
 
   /**
    * A brick leaving a hand, and a brick arriving. `hit` is the difference
-   * between it landing on boards and landing on Marv, and the second one is
+   * between it landing on boards and landing on Lenny, and the second one is
    * duller and lower, because that is what a person sounds like.
    */
   brickThrow() {
@@ -325,6 +325,36 @@ export class HomeAudio {
       this.tone(150, 0.14, { type: "triangle", gain: 0.16, sweep: 70 });
       this.noise(0.1, { gain: 0.13, freq: 1400, q: 1.4 });
     }
+  }
+
+  /** A wind-up alarm clock: two bells and a hammer between them. */
+  alarm() {
+    for (let i = 0; i < 26; i++) {
+      this.tone(i % 2 ? 2350 : 2093, 0.07, { type: "square", gain: 0.05, delay: i * 0.055 });
+    }
+  }
+
+  /** A spring letting go. */
+  boing() {
+    this.tone(180, 0.5, { type: "sawtooth", gain: 0.12, sweep: 420 });
+    this.tone(360, 0.35, { type: "triangle", gain: 0.08, sweep: 500, delay: 0.03 });
+  }
+
+  /** Something heavy coming round on a rope. */
+  whoosh() {
+    this.noise(0.4, { gain: 0.16, freq: 500, q: 0.8, sweep: 1400, type: "bandpass" });
+    this.tone(70, 0.3, { type: "sine", gain: 0.28, sweep: 28, delay: 0.16 });
+  }
+
+  /** A bag of flour finding the floor. */
+  poof() {
+    this.noise(0.7, { gain: 0.2, freq: 900, q: 0.4, sweep: 180, type: "lowpass" });
+  }
+
+  /** Setting something down carefully. */
+  place() {
+    this.tone(330, 0.08, { type: "triangle", gain: 0.1 });
+    this.tone(495, 0.12, { type: "triangle", gain: 0.1, delay: 0.07 });
   }
 
   /** A light switch. Small, dry, and the sound of a decision. */
@@ -346,22 +376,19 @@ export class HomeAudio {
   /* ---- music -------------------------------------------------------- */
 
   /**
-   * Shchedryk, 1914. Four notes, a bar each, forever — which is exactly the
-   * shape of a chase where the same two men keep coming back.
+   * The sneak: eight bars of tiptoe in A minor. Short notes, a rest on the
+   * fourth beat of every bar (a foot held in the air), and a walk down to the
+   * dominant at the end so it loops without ever arriving anywhere.
    */
-  private static BELLS: Array<[number, number]> = (() => {
-    const n = (semi: number) => 440 * Math.pow(2, semi / 12);
-    // G#4 as tonic; the ostinato is A4 G#4 A4 F#4 in the original's shape.
-    const A = n(0), Gs = n(-1), Fs = n(-3), E = n(-5), Cs = n(-8), B = n(-10), Ds = n(-7);
-    const bar = (a: number, b: number, c: number, d: number): Array<[number, number]> => [
-      [a, 0.22], [b, 0.22], [c, 0.22], [d, 0.22],
+  private static SNEAK: Array<[number, number]> = (() => {
+    const n = (semi: number) => 220 * Math.pow(2, semi / 12);
+    const bars: number[][] = [
+      [0, 3, 7, -99], [0, 3, 8, -99], [0, 3, 7, -99], [2, 5, 8, -99],
+      [0, 3, 7, 12], [10, 8, 7, -99], [5, 3, 2, -99], [-1, 2, -5, -99],
     ];
-    return [
-      ...bar(A, Gs, A, Fs), ...bar(A, Gs, A, Fs),
-      ...bar(A, Gs, A, Fs), ...bar(A, Gs, A, Fs),
-      ...bar(B, A, B, Gs), ...bar(B, A, B, Gs),
-      ...bar(Cs, B, Cs, A), ...bar(E, Ds, E, Cs),
-    ];
+    const seq: Array<[number, number]> = [];
+    for (const bar of bars) for (const semi of bar) seq.push([semi === -99 ? 0 : n(semi), 0.24]);
+    return seq;
   })();
 
   /** A warm original for the menu — a slow celeste waltz, nothing borrowed. */
@@ -373,7 +400,7 @@ export class HomeAudio {
     return seq;
   })();
 
-  playMusic(which: "bells" | "home" | null, volume = 0.5) {
+  playMusic(which: "sneak" | "home" | null, volume = 0.5) {
     const ctx = this.ensure();
     if (!ctx || !this.musicGain) return;
     if (this.musicTimer !== null) {
@@ -385,16 +412,24 @@ export class HomeAudio {
       return;
     }
     this.musicGain.gain.setTargetAtTime(volume, ctx.currentTime, 0.6);
-    const seq = which === "bells" ? HomeAudio.BELLS : HomeAudio.HOME;
+    const seq = which === "sneak" ? HomeAudio.SNEAK : HomeAudio.HOME;
     let i = 0;
     const step = () => {
       if (!this.ctx || !this.musicGain) return;
       const [freq, dur] = seq[i % seq.length];
-      // Two voices an octave apart with a plucked envelope reads as a celeste.
-      this.tone(freq, dur * 2.6, { type: "triangle", gain: 0.14, attack: 0.004, dest: this.musicGain });
-      this.tone(freq * 2, dur * 1.6, { type: "sine", gain: 0.06, attack: 0.003, dest: this.musicGain });
-      if (which === "bells" && i % 4 === 0)
-        this.tone(freq / 2, dur * 3.4, { type: "sine", gain: 0.10, attack: 0.01, dest: this.musicGain });
+      if (freq > 0) {
+        if (which === "sneak") {
+          // Plucked and dry, with a low string under the first beat of the bar.
+          this.tone(freq, dur * 1.1, { type: "triangle", gain: 0.15, attack: 0.003, dest: this.musicGain });
+          this.tone(freq * 2, dur * 0.6, { type: "sine", gain: 0.05, attack: 0.002, dest: this.musicGain });
+          if (i % 4 === 0)
+            this.tone(freq / 2, dur * 2.6, { type: "sine", gain: 0.11, attack: 0.01, dest: this.musicGain });
+        } else {
+          // Two voices an octave apart with a plucked envelope reads as a celeste.
+          this.tone(freq, dur * 2.6, { type: "triangle", gain: 0.14, attack: 0.004, dest: this.musicGain });
+          this.tone(freq * 2, dur * 1.6, { type: "sine", gain: 0.06, attack: 0.003, dest: this.musicGain });
+        }
+      }
       i++;
       this.musicTimer = window.setTimeout(step, dur * 1000);
     };

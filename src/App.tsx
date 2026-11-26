@@ -549,10 +549,10 @@ const App = () => (
           {["/2048", "/twenty48", "/merge"].map((path) => (
             <Route key={path} path={path} element={<Twenty48 />} />
           ))}
-          {/* HOME ALONE — 671 Lincoln Avenue at Christmas. Walk an empty
-              house, light it up, arm eight traps, then survive the two men who
-              came for it. First of the films-as-worlds. */}
-          {["/home-alone", "/kevin"].map((path) => (
+          {/* HOUSE RULES: a trap-laying home defence game. Plan a night, lay
+              the kit on the routes, then chain one trap into the next.
+              /home-alone is where it used to live. */}
+          {["/house-rules", "/home-alone", "/traps"].map((path) => (
             <Route key={path} path={path} element={<HomeAlone />} />
           ))}
           {/* AIRPLANE! — Trans American 209, LAX to Chicago. The crew had the

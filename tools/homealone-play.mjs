@@ -1,481 +1,149 @@
 #!/usr/bin/env node
 /**
- * homealone-play — drive every level to its ending, headless, and assert.
+ * homealone-play: run whole nights, headless, and assert on what happened.
  *
- * A screenshot proves the house renders. It proves nothing about whether the
- * stairs carry you up, whether a trap fires when Marv walks over it, or
- * whether level 2 can be won at all. Those are the failures that waste a
+ * A screenshot proves the house renders. It proves nothing about whether a
+ * trap fires when somebody walks over it, whether one trap throws him onto the
+ * next, or whether a night can end at all. Those are the failures that waste a
  * player's evening, and none of them show up in `npm run build`.
  *
- * So this walks the game. It uses real keyboard input for the movement tests
- * (because the controller is what is being tested) and reaches into the engine
- * for the teleports (because walking to the basement to check one beacon is a
- * waste of thirty seconds per run).
+ * The sandbox draws this house at about a frame a second, so everything here
+ * goes through `engine.settle()`, which steps the simulation without drawing.
  *
  *   node tools/homealone-play.mjs
  */
-import { chromium } from "playwright";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { open } from "./hr-lib.mjs";
 
-const PORT = Number(process.env.HA_PORT ?? 5186);
-const BASE = `http://127.0.0.1:${PORT}`;
-
-async function up(url, ms) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    try {
-      const r = await fetch(url);
-      if (r.ok || r.status === 404) return true;
-    } catch {
-      /* not yet */
-    }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  return false;
-}
-
-const server = (await up(BASE, 1200))
-  ? null
-  : spawn("npx", ["vite", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], {
-      stdio: ["ignore", "ignore", "inherit"],
-      env: { ...process.env, BROWSER: "none" },
-    });
-if (server && !(await up(BASE, 120000))) {
-  console.error("dev server never came up");
-  process.exit(1);
-}
-
-const exe = ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome", "/opt/pw-browsers/chromium/chrome"].find((p) =>
-  existsSync(p),
-);
-const browser = await chromium.launch({
-  ...(exe ? { executablePath: exe } : {}),
-  args: [
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--ignore-gpu-blocklist",
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-  ],
-});
-// Tiny viewport on purpose: on SwiftShader fragment cost dominates, and at
-// 900x520 the world ticks about twice a second.
-const page = await browser.newPage({ viewport: { width: 360, height: 220 } });
-const errors = [];
-page.on("pageerror", (e) => errors.push(`PAGEERROR: ${e.message}`));
-page.on("console", (m) => {
-  if (m.type() === "error" && !/ERR_CONNECTION_RESET|favicon/.test(m.text())) errors.push(`console: ${m.text()}`);
-});
-
+const { page, errors, load, lay, close } = await open();
 const results = [];
 const check = (name, ok, detail = "") => {
-  results.push({ name, ok, detail });
-  console.log(`${ok ? "  ok  " : "FAIL  "} ${name}${detail ? `  — ${detail}` : ""}`);
+  results.push({ name, ok });
+  console.log(`${ok ? "  ok  " : "FAIL  "} ${name}${detail ? `  (${detail})` : ""}`);
 };
+const settle = (s) => page.evaluate((s) => window.__homeAlone.settle(s), s);
+const snap = () => page.evaluate(() => window.__homeAlone.snapshot());
 
-async function load(level) {
-  await page.goto(`${BASE}/home-alone?shot=1&level=${level}`, { waitUntil: "domcontentloaded", timeout: 90000 });
-  await page.waitForFunction(() => window.__homeAloneReady, null, { timeout: 90000 });
-  await page.waitForTimeout(900);
-}
-
-const state = () =>
-  page.evaluate(() => {
+/** Step until the night is over or `max` seconds pass, collecting what the HUD said. */
+async function runNight(max) {
+  return page.evaluate((max) => {
     const e = window.__homeAlone;
+    const seen = { banners: new Set(), feed: new Map(), minLoot: 6, states: new Set() };
+    for (let t = 0; t < max; t += 0.5) {
+      e.settle(0.5);
+      const s = e.snapshot();
+      if (s.banner) seen.banners.add(s.banner);
+      for (const f of s.feed) seen.feed.set(f.id, `${f.who}: ${f.text} (${f.chain}x)`);
+      for (const b of s.intruders) seen.states.add(b.state);
+      seen.minLoot = Math.min(seen.minLoot, s.loot.filter((l) => l.state === "safe").length);
+      if (s.phase !== "playing") break;
+    }
     const s = e.snapshot();
     return {
-      phase: s.phase, done: s.done, total: s.total, room: s.room, timeLeft: s.timeLeft,
-      pos: [+e.pos.x.toFixed(2), +e.pos.y.toFixed(2), +e.pos.z.toFixed(2)],
-      burglars: s.burglars,
-      armed: [...e.armed],
-      suspicion: +s.suspicion.toFixed(3),
-      compass: s.compassLabel,
-      action: s.action,
+      phase: s.phase, result: s.result, bestChain: s.bestChain, hearts: s.hearts, parts: s.parts,
+      banners: [...seen.banners], feed: [...seen.feed.values()], states: [...seen.states], minLoot: seen.minLoot,
     };
-  });
-
-const put = (x, y, z, yaw = Math.PI) =>
-  page.evaluate(
-    ([px, py, pz, yw]) => {
-      const e = window.__homeAlone;
-      e.pos.set(px, py, pz);
-      e.vel.set(0, 0, 0);
-      e.yaw = yw;
-      e.camYaw = yw;
-    },
-    [x, y, z, yaw],
-  );
-
-/** Wait for the world to actually render `n` frames. */
-const frames = async (n = 3) => {
-  const from = await page.evaluate(() => window.__homeAlone.frames);
-  await page.waitForFunction(
-    ([f, k]) => window.__homeAlone.frames >= f + k,
-    [from, n],
-    { timeout: 30000, polling: 120 },
-  );
-};
-
-const hold = async (key, ms) => {
-  await page.keyboard.down(key);
-  await page.waitForTimeout(ms);
-  await page.keyboard.up(key);
-  await page.waitForTimeout(220);
-};
-
-/* ------------------------------------------------------------------ *
- * 0. The controller
- *
- * The floor and the walls are asked directly rather than walked into. Walking
- * into them is what a player does, but this runs on SwiftShader at a handful
- * of frames a second, so "hold W for two seconds" measures the renderer and
- * not the game. `groundAt` and `resolve` are the real subjects and they answer
- * in one frame.
- * ------------------------------------------------------------------ */
-console.log("\n— controller —");
-await load(6);
-{
-  /*
-   * Direction, not just distance.
-   *
-   * The first version of this only checked that he moved *at all*, and passed
-   * happily for weeks while W walked him backwards and D strafed him left —
-   * both axes of the camera basis were negated. A magnitude test cannot see
-   * that. These four can.
-   */
-  const axis = async (key, camYaw) => {
-    await page.evaluate(
-      (y) => {
-        const e = window.__homeAlone;
-        e.pos.set(0.4, 0, 9.5);
-        e.vel.set(0, 0, 0);
-        e.camYaw = y;
-        e.yaw = y;
-      },
-      camYaw,
-    );
-    await frames(2);
-    const before = await state();
-    await hold(key, 1400);
-    const after = await state();
-    return { dx: after.pos[0] - before.pos[0], dz: after.pos[2] - before.pos[2] };
-  };
-
-  // camYaw 0 means the lens points at +Z, so forward is +Z and right is -X.
-  const w = await axis("KeyW", 0);
-  check("W walks towards what the camera is looking at", w.dz > 0.05, `dz=${w.dz.toFixed(2)}`);
-  const sKey = await axis("KeyS", 0);
-  check("S walks back towards the camera", sKey.dz < -0.05, `dz=${sKey.dz.toFixed(2)}`);
-  const d = await axis("KeyD", 0);
-  check("D strafes to screen right", d.dx < -0.05, `dx=${d.dx.toFixed(2)}`);
-  const aKey = await axis("KeyA", 0);
-  check("A strafes to screen left", aKey.dx > 0.05, `dx=${aKey.dx.toFixed(2)}`);
-  // And with the camera turned a quarter, forward must follow it.
-  const wTurned = await axis("KeyW", Math.PI / 2);
-  check("forward follows the camera when it turns", wTurned.dx > 0.05, `dx=${wTurned.dx.toFixed(2)}`);
-
-  const pitch = await page.evaluate(() => {
-    const e = window.__homeAlone;
-    e.camPitch = 0;
-    // A drag UP the screen is a negative dy and must raise the view.
-    e.look(0, -0.3);
-    const up = e.camPitch;
-    e.camPitch = 0;
-    e.look(0, 0.3);
-    return { up, down: e.camPitch };
-  });
-  check("dragging up looks up", pitch.up > 0 && pitch.down < 0, `up=${pitch.up.toFixed(2)} down=${pitch.down.toFixed(2)}`);
-
-  const z = await page.evaluate(() => {
-    const e = window.__homeAlone;
-    e.camBoom = 3;
-    e.zoom(1.4);
-    const out = e.camBoom;
-    e.zoom(1 / 2.2);
-    return { out, back: e.camBoom };
-  });
-  check("zoom moves the boom both ways", z.out > 3.2 && z.back < 3, `out=${z.out.toFixed(2)} in=${z.back.toFixed(2)}`);
-
-  const stair = await page.evaluate(() => {
-    const e = window.__homeAlone;
-    const main = [];
-    for (let i = 0; i <= 8; i++) {
-      const z = 0.4 + (5.0 - 0.4) * (i / 8);
-      main.push(+e.groundAt(-2.6, z, 4.0).toFixed(2));
-    }
-    const cellar = [];
-    for (let i = 0; i <= 8; i++) {
-      const x = -2.2 - (6.4 - 2.2) * (i / 8);
-      cellar.push(+e.groundAt(x, -4.65, 0.6).toFixed(2));
-    }
-    return { main, cellar, hall: e.groundAt(0.4, 3.0, 0.6), upper: e.groundAt(0.4, 3.0, 3.7) };
-  });
-  const mono = stair.main.every((v, i, arr) => i === 0 || v <= arr[i - 1] + 0.001);
-  check(
-    "the main flight is a continuous ramp from the landing to the hall",
-    mono && stair.main[0] > 3.0 && stair.main[8] < 0.2,
-    stair.main.join(" "),
-  );
-  check(
-    "the cellar flight reaches the basement floor",
-    stair.cellar[8] < -2.8 && stair.cellar[0] > -0.2,
-    stair.cellar.join(" "),
-  );
-  check("standing in the hall finds the ground floor", Math.abs(stair.hall) < 0.05, `y=${stair.hall}`);
-  check("standing upstairs finds the bedroom floor", Math.abs(stair.upper - 3.15) < 0.05, `y=${stair.upper}`);
-
-  const walls = await page.evaluate(() => {
-    const e = window.__homeAlone;
-    return {
-      // A solid stretch of the front wall — not x=0.4, which is the doorway.
-      front: +e.resolve(-5.0, 5.5, 0).z.toFixed(2),
-      east: +e.resolve(7.6, 0, 0).x.toFixed(2),
-    };
-  });
-  check("the front wall pushes him back inside", walls.front < 5.2, `z=${walls.front}`);
-  check("the east wall pushes him back outside", walls.east > 7.1, `x=${walls.east}`);
+  }, max);
 }
 
-/* ------------------------------------------------------------------ *
- * 1. Explore
- * ------------------------------------------------------------------ */
-console.log("\n— level 1: the empty house —");
+/* ---- 1. Do nothing, and they take everything ------------------------------ */
 await load(1);
-{
-  const beacons = await page.evaluate(() => window.__homeAlone.level.beacons.map((b) => [b.x, b.y, b.z, b.id]));
-  for (const [x, y, z] of beacons) {
-    await put(x, y + 0.05, z);
-    await frames(3);
-  }
-  const s = await state();
-  check("visiting every beacon clears it", s.phase === "won", `phase=${s.phase} ${s.done}/${s.total}`);
-}
+let s = await snap();
+check("night 1 opens in the planning stage", s.stage === "plan" && s.parts === 12 && s.kit.length === 4, `${s.stage}, ${s.parts} parts, ${s.kit.length} traps`);
+check("the list shows who is coming and when", s.intruders.length === 2 && s.intruders.every((b) => b.eta > 0));
+await page.evaluate(() => window.__homeAlone.ready());
+let r = await runNight(400);
+check("an undefended house is cleaned out", r.phase === "lost" && r.result?.won === false, r.phase);
+check("they carry things out and come back for more", r.banners.some((b) => /GOT AWAY WITH/.test(b)) && r.banners.some((b) => /BACK FOR MORE/.test(b)));
 
-/* ------------------------------------------------------------------ *
- * 2. Lights
- * ------------------------------------------------------------------ */
-console.log("\n— level 2: the wet bandits —");
-await load(2);
-{
-  const s0 = await state();
-  check("level 2 starts with a clock", (s0.timeLeft ?? 0) > 60, `${s0.timeLeft}s`);
-  check("level 2 points at a dark room", !!s0.compass, s0.compass ?? "none");
+/* ---- 2. Night 1 with a sensible layout and nobody at the controls --------- */
+await load(1);
+const plan1 = [
+  ["tripwire", 0.4, 0, 5.4], ["marbles", 0.4, 0, 3.6], ["tripwire", 0.4, 0, 1.6],
+  ["glue", 2.2, 0, 3.4], ["marbles", 3.4, 0, 3.2],
+  ["tripwire", 3.6, 0, -3.0], ["tripwire", 4.2, 0, -2.0],
+];
+let laid = 0;
+for (const [k, x, y, z] of plan1) if ((await lay(k, x, y, z)).ok) laid++;
+s = await snap();
+check("traps can be laid and cost parts", laid === plan1.length && s.laid === laid && s.parts === 2, `${laid} laid, ${s.parts} parts left`);
+await page.evaluate(() => { const e = window.__homeAlone; e.teleport(-5.5, 3.1, -3.0, 0); e.ready(); });
+r = await runNight(400);
+console.log(r.feed.map((f) => `        ${f}`).join("\n"));
+check("traps fire on people walking the routes", r.feed.length >= 4, `${r.feed.length} lines`);
+check("a body thrown onto another trap is a chain", r.bestChain >= 2, `best ${r.bestChain}x`);
+check("hits pay parts back", r.parts > 2, `${r.parts}`);
+check("somebody lost his nerve and ran", r.banners.some((b) => /HAS HAD ENOUGH/.test(b)));
 
-  const crowded = await page.evaluate(() => {
-    const sw = window.__homeAlone.interactables.filter((i) => i.kind === "switch");
-    const bad = [];
-    for (let i = 0; i < sw.length; i++)
-      for (let j = i + 1; j < sw.length; j++) {
-        if (Math.abs(sw[i].y - sw[j].y) > 1.5) continue;
-        const d = Math.hypot(sw[i].x - sw[j].x, sw[i].z - sw[j].z);
-        if (d < 1.6) bad.push(`${sw[i].room}/${sw[j].room} ${d.toFixed(2)}m`);
-      }
-    return bad;
-  });
-  check("no two light switches are within reach of each other", crowded.length === 0, crowded.join(", "));
+/* ---- 3. Being caught costs a heart, not the night -------------------------- */
+await load(1);
+await page.evaluate(() => { const e = window.__homeAlone; e.spectator = false; e.teleport(0.4, 0, 2.6, 0); e.ready(); });
+await settle(14);
+s = await snap();
+const d = await page.evaluate(() => window.__homeAlone.debug().pos);
+check("caught: one heart gone, back in your own room", s.hearts === 2 && s.phase === "playing" && d.y > 2.5, `${s.hearts} hearts, y ${d.y.toFixed(1)}`);
 
-  // Stand on each switch and press it, exactly as a player would.
-  const sw = await page.evaluate(() =>
-    window.__homeAlone.interactables
-      .filter((i) => i.kind === "switch" && window.__homeAlone.level.streetRooms.includes(i.room))
-      .map((i) => [i.x, i.y - 1.2, i.z, i.room]),
-  );
-  for (const [x, y, z, room] of sw) {
-    // Only the dark ones. The hall starts lit, and a player does not walk up
-    // to a burning lamp and switch it off — the prompt literally says "turn
-    // off". Pressing everything blindly is how this test convinced itself the
-    // level was unwinnable at 6/7.
-    const alreadyOn = await page.evaluate((r) => window.__homeAlone.world.roomLights.get(r).on, room);
-    if (alreadyOn) continue;
-    // Frames, not milliseconds. A fixed wait is sometimes less than one frame
-    // here, and then the prompt is still the *previous* switch and you toggle
-    // a room two rooms away.
-    await put(x, y, z);
-    await frames(3);
-    await page.keyboard.press("KeyE");
-    await frames(3);
-  }
-  const s = await state();
-  const dark = await page.evaluate(() =>
-    window.__homeAlone.level.streetRooms.filter((r) => !window.__homeAlone.world.roomLights.get(r).on),
-  );
-  check("lighting every street-facing room wins it", s.phase === "won",
-    `phase=${s.phase} ${s.done}/${s.total}${dark.length ? ` still dark: ${dark.join(",")}` : ""}`);
-}
-{
-  // And the losing side: sit in the dark and let them look.
-  await load(2);
-  await page.evaluate(() => {
-    window.__homeAlone.levelTime = 0.3;
-  });
-  await page.waitForTimeout(4000);
-  const s = await state();
-  check("running the clock out loses it", s.phase === "lost", `phase=${s.phase}`);
-}
-
-/* ------------------------------------------------------------------ *
- * 3. Traps
- * ------------------------------------------------------------------ */
-console.log("\n— level 3: setting the traps —");
-await load(3);
-{
-  const spots = await page.evaluate(() =>
-    window.__homeAlone.interactables.filter((i) => i.kind === "trap").map((i) => [i.x, i.y - 0.5, i.z, i.trap]),
-  );
-  check("all eight traps are reachable objects", spots.length === 8, `${spots.length} spots`);
-  for (const [x, y, z] of spots) {
-    // Frames, not milliseconds. A fixed wait is sometimes less than one frame
-    // here, and then the prompt is still the *previous* switch and you toggle
-    // a room two rooms away.
-    await put(x, y, z);
-    await frames(3);
-    await page.keyboard.press("KeyE");
-    await frames(3);
-  }
-  await frames(4);
-  const s = await state();
-  check("arming all eight wins it", s.phase === "won", `phase=${s.phase} armed=${s.armed.length}`);
-}
-
-/* ------------------------------------------------------------------ *
- * 4. The battle
- * ------------------------------------------------------------------ */
-console.log("\n— level 4: the battle —");
+/* ---- 4. Night 4: every trap, the stairs, and Nell --------------------------- */
 await load(4);
-{
-  const s0 = await state();
-  check("both burglars are in play", s0.burglars.every((b) => b.state !== "gone"), JSON.stringify(s0.burglars));
+const plan4 = [
+  ["slick", 0.4, 0, 3.8, 0], ["spring", 0.4, 0, 0.9, Math.PI / 2], ["sack", 3.4, 0, -3.6, Math.PI],
+  ["flour", 2.2, 0, 3.4, 0], ["marbles", -2.6, 0, 3.4, 0], ["spring", -2.6, 3.1, -0.2, 0],
+];
+laid = 0;
+for (const [k, x, y, z, yaw] of plan4) if ((await lay(k, x, y, z, yaw)).ok) laid++;
+check("night 4 has the whole box", laid === plan4.length && (await snap()).kit.length === 8);
+await page.evaluate(() => { const e = window.__homeAlone; e.teleport(-5.5, 3.1, -3.0, 0); e.ready(); });
+r = await runNight(500);
+console.log(r.feed.map((f) => `        ${f}`).join("\n"));
+check("a three-link chain lands", r.bestChain >= 3, `best ${r.bestChain}x`);
+check("walls and stairs count as links", r.feed.some((f) => /WALL SLAM|TUMBLE|BOWLING/.test(f)));
+check("the night ends", r.phase !== "playing", r.phase);
+check("the scorecard is filled in", !!r.result && r.result.lines.length === 3, JSON.stringify(r.result?.stars));
 
-  // Walk Harry onto the micro machines by hand and watch what it costs him.
-  const nerve0 = s0.burglars[0].nerve;
-  const trapUsed = await page.evaluate(() => {
-    const e = window.__homeAlone;
-    const kind = [...e.armed][0];
-    const spot = e.traps.visuals.get(kind).spot;
-    const b = e.burglars[0];
-    b.spawn(spot.x, spot.y, spot.z, 0);
-    b.state = "prowl";
-    return kind;
-  });
-  await page.waitForTimeout(3000);
-  const s1 = await state();
-  check("standing a burglar on an armed trap fires it", s1.burglars[0].nerve < nerve0,
-    `${trapUsed}: nerve ${nerve0} → ${s1.burglars[0].nerve}, state=${s1.burglars[0].state}`);
+/* ---- 5. The sandbox --------------------------------------------------------- */
+await load(100);
+await lay("clock", 0.4, 0, 1.0);
+await lay("glue", 0.4, 0, 3.8);
+await page.evaluate(() => { const e = window.__homeAlone; e.callIn("moose"); e.settle(5); e.ring(); e.settle(6); });
+s = await snap();
+check("sandbox: everything in the box, somebody came when called", s.kit.length === 8 && s.intruders.length === 1 && s.sandbox);
+check("sandbox: the glue caught him", s.feed.some((f) => /Glue/.test(f.text)));
+const before = s.laid;
+await page.evaluate(() => {
+  const e = window.__homeAlone;
+  const p = e.debug().placed.find((p) => p.kind === "clock");
+  e.teleport(p.x, p.y, p.z, 0);
+  e.settle(0.2);
+  e.act();
+  e.settle(0.2);
+});
+check("a trap at your feet can be picked back up", (await snap()).laid === before - 1);
 
-  // Drain them both and check they leave.
-  await page.evaluate(() => {
-    for (const b of window.__homeAlone.burglars) {
-      b.nerve = 0;
-      b.state = "flee";
-      b.path = [];
-    }
-  });
-  await page.waitForTimeout(22000);
-  const s2 = await state();
-  check("out of nerve, they give up and walk out",
-    s2.burglars.every((b) => b.state === "gone" || b.state === "flee"),
-    `phase=${s2.phase} ${JSON.stringify(s2.burglars.map((b) => b.state))}`);
-}
-{
-  /* Bricks. Infinite, and they have to actually connect — a projectile that
-     misses a man standing four metres away is worse than no projectile. */
-  await load(4);
-  const nerve0 = await page.evaluate(() => {
-    const e = window.__homeAlone;
-    e.grace = 0;
-    const b = e.burglars[0];
-    // Four metres dead ahead of where the camera is pointing.
-    e.pos.set(0.4, 0, 3.0);
-    e.camYaw = 0;
-    e.yaw = 0;
-    b.spawn(0.4, 0, 7.0, Math.PI);
-    b.state = "prowl";
-    return b.nerve;
-  });
-  await frames(3);
-  await page.keyboard.press("Space");
-  // The brick is a real projectile, so give it a flight.
-  await page.waitForFunction(
-    (n) => window.__homeAlone.burglars[0].nerve < n,
-    nerve0,
-    { timeout: 40000, polling: 150 },
-  ).catch(() => {});
-  const hit = await state();
-  check("a thrown brick knocks a burglar down", hit.burglars[0].nerve < nerve0,
-    `nerve ${nerve0} → ${hit.burglars[0].nerve}, state=${hit.burglars[0].state}`);
+/* ---- 6. The quiet modes still finish ---------------------------------------- */
+await load(102);
+await page.evaluate(() => {
+  const e = window.__homeAlone;
+  for (let i = 0; i < 40 && e.snapshot().phase === "playing"; i++) {
+    const s = e.snapshot();
+    if (s.compass === null) break;
+    // Walk the compass: stand at the next dark room's switch and press it.
+    const t = e.compassTarget;
+    e.teleport(t.x, t.y, t.z);
+    e.settle(0.2);
+    e.act();
+    e.settle(0.3);
+  }
+});
+s = await snap();
+check("Somebody's Home can be won", s.phase === "won", `${s.done}/${s.total}`);
 
-  const infinite = await page.evaluate(async () => {
-    const e = window.__homeAlone;
-    let thrown = 0;
-    for (let i = 0; i < 12; i++) {
-      e.throwCd = 0;
-      const before = e.bricks.group.children.length;
-      e.throwBrick();
-      if (e.bricks.group.children.length > before) thrown++;
-    }
-    return thrown;
-  });
-  check("the bricks never run out", infinite === 12, `${infinite}/12 thrown`);
-}
-{
-  // Getting caught has to end it too.
-  await load(4);
-  await page.evaluate(() => {
-    const e = window.__homeAlone;
-    // Skip the opening grace — it is 3.5 seconds of *sim* time, which is most
-    // of a minute at this frame rate.
-    e.grace = 0;
-    const b = e.burglars[0];
-    b.spawn(e.pos.x, e.pos.y, e.pos.z + 0.6, 0);
-    b.state = "hunt";
-  });
-  await page.waitForTimeout(9000);
-  const s = await state();
-  check("walking into a burglar loses it", s.phase === "lost", `phase=${s.phase}`);
-}
+/* ---- 7. The nights do not run out ------------------------------------------- */
+await load(8);
+s = await snap();
+check("night 8 exists", s.kind === "night" && s.intruders.length >= 8 && s.parts > 26, `${s.intruders.length} coming, ${s.parts} parts`);
 
-/* ------------------------------------------------------------------ *
- * 5. Escape
- * ------------------------------------------------------------------ */
-console.log("\n— level 5: the zipline —");
-await load(5);
-{
-  const deckY = await page.evaluate(() => +window.__homeAlone.groundAt(-10.5, -15, 6).toFixed(2));
-  check("the treehouse deck is standable ground", deckY > 2.5, `y=${deckY}`);
-  const zip = await page.evaluate(() => {
-    const i = window.__homeAlone.interactables.find((x) => x.kind === "zip");
-    return [i.x, i.y - 0.95, i.z];
-  });
-  await put(zip[0], zip[1], zip[2]);
-  await page.waitForTimeout(500);
-  const near = await state();
-  check("the window offers the zipline", !!near.action, near.action ?? "no prompt");
-  await page.keyboard.press("KeyE");
-  await page.waitForTimeout(9000);
-  const rode = await state();
-  check("the ride lands him on the treehouse deck", rode.pos[1] > 2.5 && rode.pos[0] < -8,
-    `at ${JSON.stringify(rode.pos)}`);
-  await page.waitForTimeout(400);
-  await page.keyboard.press("KeyE");
-  // The rope-cut plays a 3.4-second outro *in sim time*, which is a lot longer
-  // than that in wall-clock here. Wait for the phase, not for a stopwatch.
-  await page
-    .waitForFunction(() => window.__homeAlone.snapshot().phase === "won", null, { timeout: 90000, polling: 200 })
-    .catch(() => {});
-  const cut = await state();
-  check("cutting the rope wins the game", cut.phase === "won", `phase=${cut.phase}`);
-}
-
-/* ------------------------------------------------------------------ */
-console.log("\n— page errors —");
-if (errors.length) errors.slice(0, 12).forEach((e) => console.log("  " + e));
-else console.log("  none");
-
-const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
-
-await browser.close();
-if (server) server.kill();
-process.exit(failed.length || errors.length ? 1 : 0);
+if (errors.length) console.log(errors.join("\n"));
+check("no page errors", errors.length === 0);
+await close();
+const failed = results.filter((r) => !r.ok).length;
+console.log(`\n${results.length - failed}/${results.length} passed`);
+process.exit(failed ? 1 : 0);

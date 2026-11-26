@@ -29,7 +29,7 @@ const CANDIDATES = [
   { key: "drop-zero", route: "/drop-zero?shot" },
   { key: "i-spy", route: "/i-spy?shot" },
   { key: "run", route: "/run?shot" },
-  { key: "home-alone", route: "/home-alone?shot" },
+  { key: "home-alone", route: "/house-rules?shot" },
   { key: "fnaf", route: "/fnaf?shot" },
   { key: "sf", route: "/sf?shot" },
   /* Vibe Francisco has a real attract mode — a slow crane over the Financial

@@ -1,19 +1,23 @@
 /**
  * Everything anybody says.
  *
- * Harry and Marv talk *constantly* in the film, and that is most of why two
- * men breaking into a house is funny rather than frightening. A silent burglar
- * is a horror-game monster; one who yells "you little jerk" from the bottom of
- * the stairs is a cartoon you are winning against, and the difference is
- * entirely in this file.
+ * The intruders talk constantly, and that is most of why people breaking into
+ * a house is funny rather than frightening. A silent intruder is a horror-game
+ * monster; one who complains about his knees from the bottom of the stairs is
+ * a cartoon you are winning against, and the difference is entirely in this
+ * file.
  *
  * Lines are picked by situation and spoken with a cooldown, so they punctuate
- * rather than chatter. Each character keeps its own bag and shuffles rather
- * than rolling, which is the difference between "he says something new every
- * time" and "he said that four times in a row".
+ * rather than chatter. Each voice keeps its own bag and shuffles rather than
+ * rolling, which is the difference between "he says something new every time"
+ * and "he said that four times in a row".
+ *
+ * There are two adult voices, one per body: the stocky ones talk like `gus`
+ * and the tall ones like `lenny`. Five intruders with five scripts would be
+ * five times the writing for a difference nobody hears in a shouting match.
  */
 
-export type Who = "harry" | "marv" | "kevin" | "marley";
+export type Who = "gus" | "lenny" | "kid";
 
 export type Beat =
   | "enter"        // coming through a door
@@ -24,47 +28,51 @@ export type Beat =
   | "trap"         // just took one in the face
   | "hurt"         // getting up, second time
   | "flee"         // done, going home
-  | "taunt"        // Kevin shouting at them
+  | "grab"         // filling his bag
+  | "disarm"       // found one of your traps
+  | "taunt"        // the kid shouting at them
+  | "chain"        // the kid, watching one thing lead to another
   | "gotcha";      // he has you
 
 const LINES: Record<Who, Partial<Record<Beat, string[]>>> = {
-  harry: {
-    enter: ["Silent night… holy night…", "It's a kid. How much trouble can a kid be.", "Nobody home. I told ya."],
-    prowl: ["Kid? Come out, come out.", "Marv! Will you keep it down!", "This place is full of good stuff.", "I know you're in here."],
-    spot: ["There you are.", "Come here, you little—", "Got you now, kid."],
-    chase: ["You can't hide forever!", "Get back here!", "Marv! He's over here!"],
-    lost: ["Where'd he go…", "Marv, did you see him?", "He's around here somewhere."],
-    trap: ["ARGH!", "You little jerk!", "That's it. That's IT."],
-    hurt: ["I'm gonna get that kid.", "This is not worth it.", "Marv, I'm bleedin'."],
-    flee: ["Forget it! FORGET IT!", "I'm going to the van.", "That house is cursed."],
-    gotcha: ["Gotcha.", "End of the line, kid."],
+  gus: {
+    enter: ["In and out. Ten minutes.", "Nobody's home. I checked twice.", "Wipe your feet. We're professionals."],
+    prowl: ["Something's off about this place.", "Keep it down, will you.", "Good stuff in here. Old money.", "I can hear you breathing, kid."],
+    spot: ["There!", "Hold it right there!", "Oh, you're in for it now."],
+    chase: ["You can't run forever!", "Get back here!", "Somebody cut him off!"],
+    lost: ["Where'd he go…", "He was right here.", "Check behind the couch."],
+    trap: ["GAAH!", "Who PUTS that there!", "My back. My actual back."],
+    hurt: ["I'm too old for this.", "That one I felt in my teeth.", "This was meant to be easy."],
+    flee: ["Forget it! FORGET IT!", "I'm going to the van.", "This house has a problem with me."],
+    grab: ["Come to papa.", "This'll do nicely.", "Bag it."],
+    disarm: ["Well, well. What's this.", "Not today, kid."],
+    gotcha: ["Gotcha.", "End of the line."],
   },
-  marv: {
-    enter: ["Harry, I'm scared.", "Let's leave the water running. The Wet Bandits!", "It's cold out here."],
-    prowl: ["Nice house.", "Harry? Harry, where'd you go?", "Kid? We just wanna talk to ya.", "Ooh, a Christmas tree."],
-    spot: ["HARRY! I found him!", "Hey! Hey, kid!", "There he is!"],
-    chase: ["Come here!", "You're not getting away!", "Harry! HARRY!"],
-    lost: ["He was right here…", "Harry, I lost him.", "Kid? Little buddy?"],
-    trap: ["AAAAAH!", "My face! MY FACE!", "OW! OW OW OW!"],
-    hurt: ["Harry, I don't feel so good.", "That really hurt.", "I want to go home."],
-    flee: ["Harry, I'm out! I'm OUT!", "Nope. Nope nope nope.", "Merry Christmas! Bye!"],
-    gotcha: ["Got him! HARRY, I GOT HIM!", "Hiya, kid."],
+  lenny: {
+    enter: ["I don't like this.", "It's very dark in here.", "Did you hear that? I heard that."],
+    prowl: ["Nice house.", "Hello? Anybody?", "We only want to talk.", "Ooh, a tree."],
+    spot: ["FOUND HIM!", "Hey! Hey, you!", "There he is!"],
+    chase: ["Come here!", "Stop running, it's rude!", "Wait up!"],
+    lost: ["He was right here…", "I lost him.", "Little buddy?"],
+    trap: ["AAAAAH!", "NOT AGAIN!", "OW! OW OW OW!"],
+    hurt: ["I don't feel so good.", "That really hurt.", "I want to go home."],
+    flee: ["I'm out! I'M OUT!", "Nope. Nope nope nope.", "Happy holidays! Bye!"],
+    grab: ["Ooh. Shiny.", "Mine now.", "Don't mind if I do."],
+    disarm: ["Somebody's been busy.", "Careful… careful… got it."],
+    gotcha: ["Got him! I GOT HIM!", "Hiya."],
   },
-  kevin: {
+  kid: {
     taunt: [
-      "Hey! I'm up here, you big horse's ass! Come and get me!",
-      "You guys give up, or are you thirsty for more?",
-      "Down here, ya filthy animals!",
+      "Hey! Up here, you big lump!",
+      "Had enough yet?",
+      "Yoo-hoo! Over here!",
       "Come on! I'm right here!",
-      "Hey! Over here!",
+      "You call that sneaking?",
     ],
-    trap: ["Yes!", "That's what I'm talking about.", "This is my house. I have to defend it.", "Merry Christmas."],
+    trap: ["Yes!", "That's what I'm talking about.", "House rules.", "Mind the step."],
+    chain: ["Did you SEE that?", "Oh, that was beautiful.", "And another one!", "I planned that. I definitely planned that."],
     spot: ["Uh oh.", "Okay. Okay okay okay.", "Don't panic. DON'T PANIC."],
-    enter: ["They're in.", "It's showtime.", "This is it. Nine o'clock."],
-  },
-  marley: {
-    prowl: ["Evening.", "Cold one tonight.", "You be careful out here."],
-    trap: ["I think you've had enough.", "That's about enough of that."],
+    enter: ["They're in.", "Showtime.", "Here we go."],
   },
 };
 
@@ -78,8 +86,8 @@ export function line(who: Who, beat: Beat): string | null {
   let bag = bags.get(key);
   if (!bag || !bag.length) {
     bag = [...pool];
-    // Deterministic-ish shuffle: no seeded RNG needed, and a repeat across a
-    // reload is not something anybody will notice.
+    // No seeded RNG needed: a repeat across a reload is not something anybody
+    // will notice.
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j], bag[i]];
@@ -89,7 +97,7 @@ export function line(who: Who, beat: Beat): string | null {
   return bag.pop() ?? null;
 }
 
-/** Forget every bag. Called when a level restarts so it does not open mid-set. */
+/** Forget every bag. Called when a night restarts so it does not open mid-set. */
 export function resetBanter() {
   bags.clear();
 }

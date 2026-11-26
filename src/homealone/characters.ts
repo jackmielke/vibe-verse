@@ -1,5 +1,5 @@
 /**
- * Kevin, Harry and Marv.
+ * Pip, Gus and Lenny.
  *
  * All three come off the same skeleton — hips, torso, head, two arms with
  * elbows, two legs with knees — and everything that makes one recognisable is
@@ -9,22 +9,22 @@
  *
  * The proportions are doing the heavy lifting:
  *
- * - **Kevin** is 1.27 m with a head a third of his height. Children read as
+ * - **Pip** is 1.27 m with a head a third of his height. Children read as
  *   children because of head-to-body ratio long before anything else, and
  *   pushing it further than life does is what stops him reading as a short man.
- * - **Harry** is 1.70 m and wide, with his neck inside his collar.
- * - **Marv** is 1.96 m of coat with nothing in it. Every measurement of his is
- *   the same as Harry's except taller and thinner, which is the joke.
+ * - **Gus** is 1.70 m and wide, with his neck inside his collar.
+ * - **Lenny** is 1.96 m of coat with nothing in it. Every measurement of his is
+ *   the same as Gus's except taller and thinner, which is the joke.
  *
  * The faces are drawn (see `textures.face`) and wrapped round the front of a
  * squashed sphere. A face is the one thing boxes will never do, and it is
- * worth saying plainly: nothing else in this file would make you say "that's
- * the kid from the film" — the drawing does all of it.
+ * worth saying plainly: nothing else in this file would make you say "that is
+ * a person", and the drawing does all of it.
  */
 import * as THREE from "three";
 import * as T from "./textures";
 
-export type Who = "kevin" | "harry" | "marv" | "marley";
+export type Who = "kid" | "gus" | "lenny" | "neighbour";
 
 export interface Character {
   who: Who;
@@ -49,9 +49,9 @@ export interface Character {
   gait: number;
   /** 0 upright … 1 flat on his back. Drives the pratfall. */
   down: number;
-  /** Set true for one frame to make Kevin scream. */
+  /** Set true for one frame to make Pip scream. */
   setScream(on: boolean): void;
-  /** Show or hide what he is holding — Kevin's BB gun, Marley's shovel. */
+  /** Show or hide what he is holding — Pip's BB gun, Neighbour's shovel. */
   setProp(on: boolean): void;
   /** Hide the brick in his other hand while one is in the air. */
   setBrick(on: boolean): void;
@@ -78,7 +78,7 @@ interface Build {
 
 const BUILDS: Record<Who, Build> = {
   /*
-   * Kevin is 1.31 m with a head about a fifth of his height.
+   * Pip is 1.31 m with a head about a fifth of his height.
    *
    * The first build made it a *third*, on the theory that children read as
    * children because of head-to-body ratio. They do — but a third is a Funko
@@ -87,28 +87,28 @@ const BUILDS: Record<Who, Build> = {
    * come from everywhere else instead: narrow shoulders, no waist to speak
    * of, short forearms, and a stride that is quick rather than long.
    */
-  kevin: {
+  kid: {
     height: 1.31, headR: 0.116, headSquash: 1.13, shoulder: 0.15,
     torsoH: 0.42, torsoW: 0.245, torsoD: 0.155,
     legLen: 0.60, legW: 0.078, armLen: 0.42, armW: 0.055,
     walkSpeed: 2.7, runSpeed: 5.3,
   },
-  harry: {
+  gus: {
     height: 1.70, headR: 0.132, headSquash: 1.16, shoulder: 0.24,
     torsoH: 0.58, torsoW: 0.44, torsoD: 0.28,
     legLen: 0.76, legW: 0.135, armLen: 0.58, armW: 0.105,
     walkSpeed: 2.5, runSpeed: 4.6,
   },
-  marv: {
+  lenny: {
     height: 1.96, headR: 0.129, headSquash: 1.3, shoulder: 0.215,
     torsoH: 0.62, torsoW: 0.34, torsoD: 0.215,
     legLen: 1.00, legW: 0.105, armLen: 0.74, armW: 0.082,
     walkSpeed: 2.6, runSpeed: 4.9,
   },
-  // Old Man Marley: tall, stooped, and slow. Everything about him is built to
+  // the neighbour: tall, stooped, and slow. Everything about him is built to
   // be misread from a distance as something to be frightened of, which is the
   // entire point of the character.
-  marley: {
+  neighbour: {
     height: 1.84, headR: 0.135, headSquash: 1.18, shoulder: 0.225,
     torsoH: 0.60, torsoW: 0.41, torsoD: 0.25,
     legLen: 0.88, legW: 0.12, armLen: 0.66, armW: 0.095,
@@ -116,8 +116,17 @@ const BUILDS: Record<Who, Build> = {
   },
 };
 
-export function makeCharacter(who: Who): Character {
+/** How one body differs from the next person built on the same frame. */
+export interface Variant {
+  /** Coat colour, as a hex string. */
+  coat?: string;
+  /** Overall size. 1 is the frame as drawn. */
+  scale?: number;
+}
+
+export function makeCharacter(who: Who, variant: Variant = {}): Character {
   const b = BUILDS[who];
+  const size = variant.scale ?? 1;
   const owned: Array<{ dispose(): void }> = [];
   const keep = <M extends THREE.Material | THREE.BufferGeometry>(m: M) => {
     owned.push(m);
@@ -219,10 +228,10 @@ export function makeCharacter(who: Who): Character {
   };
 
   const PAL = {
-    kevin: { skin: 0xf2c49e, coat: 0xe9e0cc, trouser: 0x36537f, shoe: 0xdedad0, hair: 0xe4c36a },
-    harry: { skin: 0xd9a97f, coat: 0x6d4d2c, trouser: 0x2f2a26, shoe: 0x231d18, hair: 0x241a12 },
-    marv: { skin: 0xe4c09a, coat: 0x2b2f3a, trouser: 0x1e2029, shoe: 0x1a1a1e, hair: 0x3a2a1a },
-    marley: { skin: 0xd6b89c, coat: 0x3d4148, trouser: 0x2c2f36, shoe: 0x241f1b, hair: 0xc8c4bc },
+    kid: { skin: 0xf2c49e, coat: 0xc2452e, trouser: 0x36537f, shoe: 0xdedad0, hair: 0x4a2a18 },
+    gus: { skin: 0xd9a97f, coat: 0x6d4d2c, trouser: 0x2f2a26, shoe: 0x231d18, hair: 0x241a12 },
+    lenny: { skin: 0xe4c09a, coat: 0x2b2f3a, trouser: 0x1e2029, shoe: 0x1a1a1e, hair: 0x3a2a1a },
+    neighbour: { skin: 0xd6b89c, coat: 0x3d4148, trouser: 0x2c2f36, shoe: 0x241f1b, hair: 0xc8c4bc },
   }[who];
 
   const skin = mat(PAL.skin, 0.82);
@@ -246,21 +255,13 @@ export function makeCharacter(who: Who): Character {
   torso.position.y = hipY;
   body.add(torso);
 
-  const heavyCoat = who === "harry" || who === "marv" || who === "marley";
+  const heavyCoat = who === "gus" || who === "lenny" || who === "neighbour";
   const coatMat =
-    who === "kevin"
-      ? keep(
-          (() => {
-            const t = T.nordicSweater().clone();
-            t.needsUpdate = true;
-            t.wrapS = t.wrapT = THREE.RepeatWrapping;
-            owned.push(t);
-            return new THREE.MeshStandardMaterial({ map: t, roughness: 0.98 });
-          })(),
-        )
+    who === "kid"
+      ? clothMat(variant.coat ?? "#c2452e", 4, 1.4, 1.4)
       : clothMat(
-          who === "harry" ? "#6d4d2c" : who === "marley" ? "#3d4148" : "#2b2f3a",
-          who === "harry" ? 3 : who === "marley" ? 7 : 5,
+          variant.coat ?? (who === "gus" ? "#6d4d2c" : who === "neighbour" ? "#3d4148" : "#2b2f3a"),
+          who === "gus" ? 3 : who === "neighbour" ? 7 : 5,
           1.4,
           1.4,
         );
@@ -286,19 +287,19 @@ export function makeCharacter(who: Who): Character {
       ball(torso, coatMat, sd * b.torsoW * 0.44, b.torsoH * 0.86, 0, b.torsoD * 0.42, 0.8);
   }
 
-  if (who === "kevin") {
+  if (who === "kid") {
     // Snow boots and jeans, and the sweater's ribbed hem.
-    cube(torso, mat(0xd8cdb4), 0, 0.03, 0, b.torsoW + 0.02, 0.07, b.torsoD + 0.02);
+    cube(torso, mat(0x8f2f1f), 0, 0.03, 0, b.torsoW + 0.02, 0.07, b.torsoD + 0.02);
   } else {
     // The overcoat: skirts below the hips, which is most of the silhouette.
-    const skirtH = who === "marv" ? 0.78 : who === "marley" ? 0.62 : 0.56;
+    const skirtH = who === "lenny" ? 0.78 : who === "neighbour" ? 0.62 : 0.56;
     cube(torso, coatMat, 0, -skirtH / 2 + 0.02, 0, b.torsoW * 1.06, skirtH, b.torsoD * 1.06);
     // Lapels.
     for (const s of [-1, 1])
-      cube(torso, mat(who === "harry" ? 0x543a20 : who === "marley" ? 0x2b2f36 : 0x1e222c), s * b.torsoW * 0.2, b.torsoH * 0.68, b.torsoD / 2 + 0.005, b.torsoW * 0.3, b.torsoH * 0.6, 0.02);
-    // Something under the coat — Marv's is a dirty pink, Harry's a green
-    // shirt, Marley's a scarf.
-    cube(torso, mat(who === "harry" ? 0x4a5c3a : who === "marley" ? 0x7a2b2b : 0x8e5f66), 0, b.torsoH * 0.62, b.torsoD / 2 + 0.004, b.torsoW * (who === "marley" ? 0.5 : 0.22), b.torsoH * 0.6, 0.03);
+      cube(torso, mat(who === "gus" ? 0x543a20 : who === "neighbour" ? 0x2b2f36 : 0x1e222c), s * b.torsoW * 0.2, b.torsoH * 0.68, b.torsoD / 2 + 0.005, b.torsoW * 0.3, b.torsoH * 0.6, 0.02);
+    // Something under the coat — Lenny's is a dirty pink, Gus's a green
+    // shirt, Neighbour's a scarf.
+    cube(torso, mat(who === "gus" ? 0x4a5c3a : who === "neighbour" ? 0x7a2b2b : 0x8e5f66), 0, b.torsoH * 0.62, b.torsoD / 2 + 0.004, b.torsoW * (who === "neighbour" ? 0.5 : 0.22), b.torsoH * 0.6, 0.03);
   }
 
   /* ---- head -------------------------------------------------------- */
@@ -356,7 +357,7 @@ export function makeCharacter(who: Who): Character {
   // Neck: tapered, and long enough to be visible under the jaw.
   limb(torso, skin, b.torsoH + b.headR * 0.34, b.headR * 0.55, b.headR * 0.34, b.headR * 0.42);
 
-  if (who === "kevin") {
+  if (who === "kid") {
     /* The bowl cut.
      *
      * The thing to get right is what it does *not* cover. A hemisphere over
@@ -403,7 +404,24 @@ export function makeCharacter(who: Who): Character {
     const rim = new THREE.Mesh(rimGeo, hairMat);
     rim.position.y = -b.headR * 0.5;
     rim.scale.set(1.0, 1, 1.03);
-    head.add(rim);
+    void rim; // The blunt cut line is gone: there is a hat over it now.
+
+    /* The bobble hat. It is the thing you pick him out by at the far end of a
+       dark landing: a teal dome, a turned-up cuff and a pompom, all of it
+       above the fringe so the face underneath stays a face. */
+    const wool = clothMat("#1f8a8a", 6, 2, 1);
+    const hatGeo = keep(new THREE.SphereGeometry(b.headR * 1.13, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.46));
+    const hat = new THREE.Mesh(hatGeo, wool);
+    hat.position.y = b.headR * 0.16;
+    hat.scale.set(1.02, b.headSquash * 1.12, 1.05);
+    head.add(hat);
+    const cuffGeo = keep(new THREE.CylinderGeometry(b.headR * 1.14, b.headR * 1.12, b.headR * 0.3, 22, 1, true));
+    const cuff = new THREE.Mesh(cuffGeo, clothMat("#f1ead8", 8, 3, 1));
+    cuff.position.y = b.headR * 0.36;
+    cuff.scale.set(1.02, 1, 1.05);
+    (cuff.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    head.add(cuff);
+    ball(head, mat(0xf1ead8, 0.98), 0, b.headR * (0.16 + 1.13 * b.headSquash * 1.12), 0, b.headR * 0.3);
 
     /* Fringe: a fine arc across the forehead, hanging to just above the brows.
      *
@@ -420,7 +438,7 @@ export function makeCharacter(who: Who): Character {
       );
       f.rotation.y = a;
     }
-  } else if (who === "marley") {
+  } else if (who === "neighbour") {
     /* White hair and a flat cap. He is the only adult here who is not a
        cartoon, so nothing about him is exaggerated. */
     const hairMat = mat(PAL.hair, 0.98);
@@ -436,28 +454,28 @@ export function makeCharacter(who: Who): Character {
     head.add(cap);
     cube(head, capMat, 0, b.headR * 0.5, b.headR * 0.72, b.headR * 1.5, 0.035, b.headR * 0.7);
   } else {
-    /* Both burglars wear the black knit cap. Marv's sits higher because his
-       head is longer; Harry's is pulled down to his eyebrows. */
-    const capMat = clothMat("#1c1c20", who === "harry" ? 8 : 9, 2, 2);
+    /* Both burglars wear the black knit cap. Lenny's sits higher because his
+       head is longer; Gus's is pulled down to his eyebrows. */
+    const capMat = clothMat("#1c1c20", who === "gus" ? 8 : 9, 2, 2);
     const capGeo = keep(new THREE.SphereGeometry(b.headR * 1.07, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55));
     const cap = new THREE.Mesh(capGeo, capMat);
-    cap.position.y = who === "harry" ? b.headR * 0.06 : b.headR * 0.12;
+    cap.position.y = who === "gus" ? b.headR * 0.06 : b.headR * 0.12;
     cap.scale.set(1.02, b.headSquash * 1.06, 1.02);
     head.add(cap);
     const brimGeo = keep(new THREE.CylinderGeometry(b.headR * 1.09, b.headR * 1.09, b.headR * 0.42, 18, 1, true));
     const brim = new THREE.Mesh(brimGeo, capMat);
-    brim.position.y = (who === "harry" ? 0.16 : 0.28) * b.headR;
+    brim.position.y = (who === "gus" ? 0.16 : 0.28) * b.headR;
     brim.scale.set(1, b.headSquash, 1);
     head.add(brim);
-    if (who === "marv") {
-      // Marv's hair sticks out under the cap at the back.
+    if (who === "lenny") {
+      // Lenny's hair sticks out under the cap at the back.
       cube(head, mat(PAL.hair), 0, 0, -b.headR * 0.85, b.headR * 1.2, b.headR * 0.5, b.headR * 0.5);
     }
   }
 
   /* ---- limbs ------------------------------------------------------- */
-  const limbMat = who === "kevin" ? coatMat : coatMat;
-  const legMat = clothMat(who === "kevin" ? "#36537f" : who === "harry" ? "#2f2a26" : "#1e2029", 11, 1, 2);
+  const limbMat = who === "kid" ? coatMat : coatMat;
+  const legMat = clothMat(who === "kid" ? "#36537f" : who === "gus" ? "#2f2a26" : "#1e2029", 11, 1, 2);
   const shoeMat = mat(PAL.shoe, 0.7);
 
   /* Arms: upper tapers to the elbow, forearm tapers to the wrist, and there
@@ -507,29 +525,26 @@ export function makeCharacter(who: Who): Character {
    * A socket in the right hand, and the two things that go in it.
    *
    * Both are hidden by default and toggled from the engine, so a character
-   * carrying something is one boolean rather than a second model. Kevin's BB
-   * gun only appears once he has been to Buzz's room, and Marley's shovel is
-   * the reason his silhouette on the street is unmistakable and slightly
-   * alarming, which is exactly how the film introduces him.
+   * carrying something is one boolean rather than a second model.
    */
   const grip = new THREE.Group();
   grip.position.set(0, -b.armLen * 0.5, 0.03);
   ra.fore.add(grip);
   let prop: THREE.Group | null = null;
   let brick: THREE.Mesh | null = null;
-  if (who === "kevin") {
+  if (who === "kid") {
     /* A brick in the left hand, always. It is infinite ammunition and it
        should look like it — a throw button with nothing visible attached to it
        is a button, and a boy holding a brick is a threat. */
-    const brickMat = keep(new THREE.MeshStandardMaterial({ color: 0xa8624e, roughness: 0.95 }));
-    brick = new THREE.Mesh(BOX, brickMat);
-    brick.scale.set(0.17, 0.075, 0.085);
+    const brickMat = keep(new THREE.MeshStandardMaterial({ color: 0xf6f9ff, roughness: 0.85, emissive: 0x8fa4c4, emissiveIntensity: 0.25 }));
+    brick = new THREE.Mesh(BALL, brickMat);
+    brick.scale.set(0.07, 0.07, 0.07);
     brick.position.set(0, -b.armLen * 0.5, 0.045);
     brick.rotation.x = 0.3;
     brick.castShadow = true;
     la.fore.add(brick);
   }
-  if (who === "kevin") {
+  if (who === "kid") {
     prop = new THREE.Group();
     cube(prop, mat(0x4a3116, 0.75), 0, -0.04, -0.12, 0.045, 0.08, 0.22); // stock
     cube(prop, mat(0x2a2c31, 0.4, 0.7), 0, 0.01, 0.16, 0.03, 0.03, 0.42); // barrel
@@ -537,7 +552,7 @@ export function makeCharacter(who: Who): Character {
     prop.rotation.x = 1.35;
     prop.visible = false;
     grip.add(prop);
-  } else if (who === "marley") {
+  } else if (who === "neighbour") {
     prop = new THREE.Group();
     cube(prop, mat(0x6a4a28, 0.9), 0, 0, 0.5, 0.04, 0.04, 1.0); // handle
     cube(prop, mat(0xb9c0c8, 0.35, 0.6), 0, 0, 1.05, 0.3, 0.03, 0.34); // blade
@@ -556,7 +571,7 @@ export function makeCharacter(who: Who): Character {
     screaming: false,
   };
 
-  const screamTex = who === "kevin" ? T.face("kevinScream").clone() : null;
+  const screamTex = who === "kid" ? T.face("kidScream").clone() : null;
   if (screamTex) {
     screamTex.needsUpdate = true;
     screamTex.wrapS = screamTex.wrapT = THREE.ClampToEdgeWrapping;
@@ -577,8 +592,8 @@ export function makeCharacter(who: Who): Character {
     },
     walkSpeed: b.walkSpeed,
     runSpeed: b.runSpeed,
-    eyeY: b.height * 0.92,
-    height: b.height,
+    eyeY: b.height * 0.92 * size,
+    height: b.height * size,
     get gait() {
       return state.gait;
     },
@@ -643,7 +658,11 @@ export function makeCharacter(who: Who): Character {
       // The pratfall: flat on his back, legs in the air, arms out.
       if (down > 0.001) {
         body.rotation.x = -down * Math.PI * 0.5;
-        body.position.y = -down * (b.legLen * 0.86);
+        // The body pivots at the feet, so flat on his back his spine is at
+        // floor height already. Lift him by half a chest so he lies on the
+        // boards. (This used to *lower* him by most of a leg, which put every
+        // man who fell over neatly under the floor.)
+        body.position.y = down * 0.2;
         ll.thigh.rotation.x = down * 1.1;
         rl.thigh.rotation.x = down * 0.8;
         ll.shin.rotation.x = -down * 1.5;
@@ -661,5 +680,6 @@ export function makeCharacter(who: Who): Character {
     },
   };
 
+  root.scale.setScalar(size);
   return character;
 }

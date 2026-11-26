@@ -154,14 +154,14 @@ const WINDOWS: Win[] = [
   { along: "z", at: X.W, centre: -3.2, width: 1.0, height: 1.1, sill: 1.3, floor: "ground", room: "backhall" },
   /* upper, front */
   { along: "x", at: Z.S, centre: -5.2, width: 1.2, height: 1.4, sill: 0.9, floor: "upper", room: "bathroom" },
-  { along: "x", at: Z.S, centre: 0.4, width: 1.4, height: 1.5, sill: 0.8, floor: "upper", room: "kevin" },
+  { along: "x", at: Z.S, centre: 0.4, width: 1.4, height: 1.5, sill: 0.8, floor: "upper", room: "kid" },
   { along: "x", at: Z.S, centre: 4.6, width: 1.5, height: 1.5, sill: 0.8, floor: "upper", room: "parents" },
   /* upper, back */
-  { along: "x", at: Z.N, centre: 4.0, width: 1.4, height: 1.4, sill: 0.9, floor: "upper", room: "buzz" },
+  { along: "x", at: Z.N, centre: 4.0, width: 1.4, height: 1.4, sill: 0.9, floor: "upper", room: "brother" },
   { along: "x", at: Z.N, centre: -3.0, width: 1.4, height: 1.4, sill: 0.9, floor: "upper", room: "guest" },
   /* upper, sides */
   { along: "z", at: X.E, centre: 3.0, width: 1.3, height: 1.4, sill: 0.9, floor: "upper", room: "parents" },
-  { along: "z", at: X.E, centre: -3.4, width: 1.3, height: 1.4, sill: 0.9, floor: "upper", room: "buzz" },
+  { along: "z", at: X.E, centre: -3.4, width: 1.3, height: 1.4, sill: 0.9, floor: "upper", room: "brother" },
   { along: "z", at: X.W, centre: 3.0, width: 1.2, height: 1.3, sill: 1.0, floor: "upper", room: "bathroom" },
   { along: "z", at: X.W, centre: -3.4, width: 1.3, height: 1.4, sill: 0.9, floor: "upper", room: "guest" },
 ];
@@ -209,7 +209,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   const M = {
     trimGreen: track(new THREE.MeshStandardMaterial({ color: 0x21382c, roughness: 0.6 })),
     door: track(new THREE.MeshStandardMaterial({ map: T.doorPanel("#5c3c1e"), roughness: 0.55 })),
-    frontDoor: track(new THREE.MeshStandardMaterial({ map: T.doorPanel("#1f4030"), roughness: 0.45 })),
+    frontDoor: track(new THREE.MeshStandardMaterial({ map: T.doorPanel("#c08a2a"), roughness: 0.45 })),
     oak: track(new THREE.MeshStandardMaterial({ color: 0x6a4526, roughness: 0.62 })),
     darkOak: track(new THREE.MeshStandardMaterial({ color: 0x4a2e17, roughness: 0.6 })),
     brass: track(new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.28, metalness: 0.85 })),
@@ -236,12 +236,12 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
    * ------------------------------------------------------------------ */
 
   type Kind =
-    | "brick" | "trim" | "roof" | "snow" | "street" | "wood" | "ktile"
+    | "brick" | "siding" | "trim" | "roof" | "snow" | "street" | "wood" | "ktile"
     | "concrete" | "ceiling" | "stone" | "carpet" | `paper${number}`;
 
   /** Metres per texture tile, per kind. Brick is the one worth getting right. */
   const SCALE: Record<string, [number, number]> = {
-    brick: [1.55, 1.2], trim: [1.4, 1.4], roof: [2.4, 2.4], snow: [3.0, 3.0],
+    brick: [1.55, 1.2], siding: [1.4, 1.4], trim: [1.4, 1.4], roof: [2.4, 2.4], snow: [3.0, 3.0],
     street: [4.0, 4.0], wood: [2.1, 2.1], ktile: [1.15, 1.15], concrete: [2.2, 2.2],
     ceiling: [2.4, 2.4], stone: [1.6, 1.6], carpet: [1.6, 1.6], paper: [0.92, 0.92],
   };
@@ -250,6 +250,8 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     if (kind.startsWith("paper")) return T.wallpaper(Number(kind.slice(5)) || 0);
     switch (kind) {
       case "brick": return T.brick();
+      // The outside of the house: painted boards, slate blue.
+      case "siding": return T.clapboard("#5e7688");
       case "trim": return T.clapboard(tint ?? "#efece2");
       case "roof": return T.shingles();
       case "snow": return T.snow();
@@ -375,7 +377,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       // Two faces, so a room sees its own paper and the street sees brick.
       // `neg` is the -x / -z side; `pos` is the other. Naming them for the axis
       // rather than "inside"/"outside" is not pedantry — the first cut of this
-      // had the hall's wallpaper facing Lincoln Avenue for exactly that reason.
+      // had the hall's wallpaper facing the street for exactly that reason.
       const mNeg = surface(faces.neg, len, y1 - y0, faces.negTint);
       const mPos = surface(faces.pos, len, y1 - y0, faces.posTint);
       if (along === "x") {
@@ -405,10 +407,10 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   /* The brick shell. Brick faces the street on all four sides — which means
      the +Z wall wants brick on its `pos` face and the -Z wall on its `neg`. */
   for (const floor of ["ground", "upper"] as FloorName[]) {
-    wall("x", Z.S, X.W, X.E, floor, { neg: "paper0", pos: "brick" }, WALL_T);
-    wall("x", Z.N, X.W, X.E, floor, { neg: "brick", pos: "paper0" }, WALL_T);
-    wall("z", X.W, Z.N, Z.S, floor, { neg: "brick", pos: "paper0" }, WALL_T);
-    wall("z", X.E, Z.N, Z.S, floor, { neg: "paper0", pos: "brick" }, WALL_T);
+    wall("x", Z.S, X.W, X.E, floor, { neg: "paper0", pos: "siding" }, WALL_T);
+    wall("x", Z.N, X.W, X.E, floor, { neg: "siding", pos: "paper0" }, WALL_T);
+    wall("z", X.W, Z.N, Z.S, floor, { neg: "siding", pos: "paper0" }, WALL_T);
+    wall("z", X.E, Z.N, Z.S, floor, { neg: "paper0", pos: "siding" }, WALL_T);
   }
   // Basement: poured concrete, no openings.
   const CON = { neg: "concrete" as Kind, pos: "concrete" as Kind };
@@ -435,9 +437,9 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   wall("x", 0.4, IN.W, IN.E, "upper", { neg: P(0), pos: P(0) });
   wall("x", -1.2, IN.W, IN.E, "upper", { neg: P(0), pos: P(0) });
   wall("z", X.w1, 0.4, IN.S, "upper", { neg: "ktile", pos: P(0) }); // bathroom | stairwell
-  wall("z", X.w2, 0.4, IN.S, "upper", { neg: P(0), pos: P(3) }); // stairwell | Kevin
-  wall("z", 2.2, 0.4, IN.S, "upper", { neg: P(3), pos: P(1) }); // Kevin | parents
-  wall("z", 1.0, IN.N, -1.2, "upper", { neg: P(1), pos: P(3) }); // guest | Buzz
+  wall("z", X.w2, 0.4, IN.S, "upper", { neg: P(0), pos: P(3) }); // stairwell | Pip
+  wall("z", 2.2, 0.4, IN.S, "upper", { neg: P(3), pos: P(1) }); // Pip | parents
+  wall("z", 1.0, IN.N, -1.2, "upper", { neg: P(1), pos: P(3) }); // guest | Otis
 
   /* ---- floors and ceilings ------------------------------------------ */
 
@@ -776,7 +778,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     deco(M.snowCap, bx, sill + hgt + 0.3, bz + depth * 0.55, halfW * 2.45, 0.1, depth * 1.45);
     deco(M.snowCap, bx, sill - 0.04, bz + depth * 0.62, halfW * 2.2, 0.07, depth * 1.1);
     // Below the sill, brick, and a solid box so you cannot walk into the bay.
-    deco(surface("brick", halfW * 2.3, sill), bx, 0, bz + depth * 0.55, halfW * 2.3, sill, depth * 1.2);
+    deco(surface("siding", halfW * 2.3, sill), bx, 0, bz + depth * 0.55, halfW * 2.3, sill, depth * 1.2);
     colliders.push({ x0: bx - halfW * 1.15, x1: bx + halfW * 1.15, z0: bz, z1: bz + depth * 1.2, y0: 0, y1: sill + hgt });
   }
 
@@ -871,7 +873,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
        reason the living room reads as *abandoned* rather than *unfinished*. */
     prop(M.black, 2.7, 0, 4.6, 1.0, 0.75, 0.6);
     deco(M.darkOak, 2.7, 0.75, 4.6, 1.04, 0.06, 0.64);
-    tv = track(new THREE.MeshBasicMaterial({ map: T.filmFrame(0) }));
+    tv = track(new THREE.MeshBasicMaterial({ map: T.tvFrame(0) }));
     deco(tv, 2.7, 0.2, 4.27, 0.74, 0.48, 0.02);
     // Its light on the room, which flickers with the cut.
     const tvLight = new THREE.PointLight(0xbcd4ea, 5, 4.5, 1.9);
@@ -972,7 +974,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   }
   prop(M.darkOak, IN.E - 0.3, 0, 0.0, 0.55, 1.0, 1.6); // sideboard
 
-  /* Kitchen: counters round three walls, the table Kevin eats at. */
+  /* Kitchen: counters round three walls, the table Pip eats at. */
   prop(M.white, 1.4, 0, IN.N + 0.32, 5.4, 0.9, 0.62);
   deco(M.darkOak, 1.4, 0.9, IN.N + 0.32, 5.5, 0.05, 0.66);
   prop(M.white, IN.E - 0.32, 0, -4.0, 0.62, 0.9, 2.2);
@@ -1057,11 +1059,11 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     deco(M.white, x, FLOOR.upper + 0.6, z - 0.72, w - 0.3, 0.14, 0.42);
     deco(M.darkOak, x, FLOOR.upper + 0.42, z - 1.02, w, 0.7, 0.08);
   };
-  bed(0.2, 3.4, 1.0, "#2f5a8a"); // Kevin
+  bed(0.2, 3.4, 1.0, "#2f5a8a"); // Pip
   bed(4.6, 3.2, 1.5, "#6a4a6e"); // Mom & Dad
-  bed(4.4, -3.4, 1.0, "#3c5a3a"); // Buzz
+  bed(4.4, -3.4, 1.0, "#3c5a3a"); // Otis
   bed(-3.2, -3.4, 1.0, "#7a6a4a"); // guest
-  /* Buzz's tarantula, in its tank, which everybody remembers. */
+  /* Otis's tarantula, in its tank, which everybody remembers. */
   {
     const y = FLOOR.upper;
     prop(M.darkOak, 6.2, y, -4.6, 0.9, 0.75, 0.5);
@@ -1075,10 +1077,10 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       l.rotation.y = -a;
     }
   }
-  /* The toboggan Kevin rides down the front stairs, parked at the top of them. */
+  /* The toboggan Pip rides down the front stairs, parked at the top of them. */
   deco(M.red, X.w2 - 0.42, FLOOR.upper + 0.04, 0.95, 0.42, 0.08, 1.15);
   deco(M.darkOak, X.w2 - 0.42, FLOOR.upper + 0.12, 0.95, 0.36, 0.05, 1.0);
-  prop(M.darkOak, 1.7, FLOOR.upper, 1.2, 0.5, 1.4, 0.9); // Kevin's dresser
+  prop(M.darkOak, 1.7, FLOOR.upper, 1.2, 0.5, 1.4, 0.9); // Pip's dresser
   prop(M.darkOak, 6.2, FLOOR.upper, 1.4, 0.5, 1.3, 1.4);
   prop(M.white, IN.W + 0.6, FLOOR.upper, 4.6, 0.9, 0.6, 1.7); // bathtub
   prop(M.white, -4.4, FLOOR.upper, 1.1, 0.6, 0.8, 0.5); // basin

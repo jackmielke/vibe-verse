@@ -1,7 +1,614 @@
 {
-  "generated_at": "2026-11-22T04:27:10.263Z",
+  "generated_at": "2026-11-26T22:17:57.248Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "e4f89efe",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates after the House Rules rebuild",
+      "lede": "Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNVNK7tt11aeVFC21pC",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "de534cee",
+      "date": "2026-11-26",
+      "subject": "House Rules: the trap game, rebuilt around laying traps",
+      "lede": "What was /home-alone is now its own game at /house-rules (the old link still opens it). The film's names, address, dialogue, music and look are gone; the directory and registry key kept their first name.",
+      "places": [],
+      "files": 25
+    },
+    {
+      "sha": "40e969d7",
+      "date": "2026-11-26",
+      "subject": "City: samurai bodyguards you can order by voice or text (behind ?squad)",
+      "lede": "Kenji, Hana and Goro follow you, fight police cruisers and take orders (follow, attack, stay, peace, cheer) from a squad panel, a typed box, or the Magician's voice session with the squad's own prompts and tools. Off unless ?squad is in the URL, so the normal city is unchanged while Jack tries it.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "9cae94da",
+      "date": "2026-11-26",
+      "subject": "City: Vibe Arms, a weapons shop with a Super Soaker, Glock 19, Nova Blaster and sticky pineapple bombs",
+      "lede": "Weapons are bought with Vibey Coins through the same buy_cosmetic till as hats, and live in vibe_inventory as weapon:<id>, so they are yours on every device and show up on /shop and the arcade's Items tab too. None of them run out.",
+      "places": [
+        "Vibe Island",
+        "the machinery underneath"
+      ],
+      "files": 9
+    },
+    {
+      "sha": "059d588f",
+      "date": "2026-11-26",
+      "subject": "Build mode: docked sidebar that shrinks the world, or a small widget",
+      "lede": "The panel used to float over the right of the screen. Now it has two layouts, remembered per device. Sidebar docks beside the world: a class on <html> pins #root left of it and makes #root the containing block for fixed elements, so the canvas and HUD of any world fit the narrower box without the world knowing. Mini is a small card in the corner with the prompt, mic, speed, send, and the latest build's status; tappin",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "79d312f8",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: one-tap shareable Gatch News clips",
+      "lede": "Each replay clip gets a Share button. It sends the clip to the new gatch-clip edge function, which checks it is a real WebM or MP4 under 8 MB, caps uploads per day, stores it in the public gatch-clips bucket and returns an id. /gatch/<id> plays the clip with its headline and a way into the game. The bucket, table and function still need deploying.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "7f346ed5",
+      "date": "2026-11-26",
+      "subject": "What's New: Vibe Commons and Vibe Marina",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNTaN7XUaVDFbg76vkV",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "cb183e5c",
+      "date": "2026-11-26",
+      "subject": "Add What's New: a dated changelog of every update",
+      "lede": "A /whats-new page lists every update to the Vibe Verse with dates, in player words, newest first. It is reachable from a New chip in the top bar, a WHAT'S NEW box on the Arcade front page (and links in Sky and Postcard), and a New button in Vibe Island's world controls that opens it as a sheet without leaving the world. A badge counts entries this device has not seen.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 15
+    },
+    {
+      "sha": "fa466be1",
+      "date": "2026-11-26",
+      "subject": "City: Vibe Commons park with a playable soccer pitch, and a marina with a speedboat",
+      "lede": "Vibe Commons takes two west-side blocks: a striped five-a-side pitch with goals, nets, a fence and a scoreboard, and a ball you kick by running into it (a goal gets a toast and counts on the board), next to a garden with a pond, a three-tier fountain, flower beds, a hedge ring and lush trees.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "a2481ede",
+      "date": "2026-11-26",
+      "subject": "README: rewrite it as the VibeVerse's front page",
+      "lede": "Covers what has been built since the last rewrite: Cannon Chase (Mort, Linda, Gatch News, endless chase, replay, story book), Vibe City GTA Junior, build mode, the Magician, Zombie Tag, My Vibe, the scoreboard and the portal, with screenshots in docs/readme/ and every world listed.",
+      "places": [],
+      "files": 10
+    },
+    {
+      "sha": "78a88cbb",
+      "date": "2026-11-26",
+      "subject": "City: bad guys, warehouse hideout, police station, wheels on cruisers",
+      "lede": "Summon up to three bad guys from the pad on the warehouse roof. Each jumps into a traffic car and runs; two cruisers peel off after each one and ram him until his car blows up. Press F beside his car to ride on the roof and shoot. The warehouse is a walk-in shed with stairs up the side; the police station has a garage the cruisers roll out of and two parked out front. Cruisers get their wheels back: the city car shar",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 4
+    },
+    {
+      "sha": "722b9071",
+      "date": "2026-11-26",
+      "subject": "City: Space Needle, Empire State Building and Eiffel Tower you can go up",
+      "lede": "Three landmarks in Vibe City, each with rides and something to do on top: - Space Needle: two gold glass elevators to a 104 m deck, a rotating glass Loupe floor that carries you round, a walkable roof, binoculars, and the Legacy Light at night. - Empire State: walk into an Art Deco lobby, take the express elevator (a brass floor dial sweeps 1 to 86), step out on the observatory, binoculars, colour-cycling floodlights",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 9
+    },
+    {
+      "sha": "5e77bee9",
+      "date": "2026-11-26",
+      "subject": "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter",
+      "lede": "Cops now take damage from barging traffic, walls and ramming, smoke and burn when hurt, and blow up at zero. Heat holds for 63 s after the last crime, then lets go, while the getaway kart still draws them. On-foot hits only count when you are standing on the ground. Cruisers are built from the same car model as traffic, painted black with a blue strobe bar. A red helicopter waits on a pad by spawn and flies on the mo",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "70a89924",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: the highlight reel is now the start screen",
+      "lede": "Jack picked it. The other three looks and the old splash are still at ?look=news|wanted|comic|classic, with the switcher only when ?look is set.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "8b08c5a1",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase start-screen looks: add Read the story, drop the copy that promised an ending",
+      "lede": "Each ?look= design now opens the story book the classic splash got, and the reel and comic no longer say the chase ends at Dot's Diner, since the game is becoming endless.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "df6d5398",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "f11f9fbd",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: endless chase, Gatch News replay, read-the-story book",
+      "lede": "- The chase never ends: past the train the next ride just keeps coming. The diner finale only opens via ?ending or ?finale, for films. - Gatch News records the canvas while each bulletin airs (replay.ts), and the end card has a replay reel with every story of the night. - A storybook (?story, or Read the story on the start screen) tells it for one player or two, with pictures captured from the game.",
+      "places": [],
+      "files": 18
+    },
+    {
+      "sha": "a25c5003",
+      "date": "2026-11-26",
+      "subject": "Vibe City: fold the build-mode rifle into GTA Junior's",
+      "lede": "Build f0bc2c3a added a rifle that fired tracers but hurt nothing, on G and Q, landing at the same time as the GTA Junior guns, which also use G. One rifle now: the one that does damage, and Q fires it as well as R.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "a9e59548",
+      "date": "2026-11-26",
+      "subject": "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police",
+      "lede": "- Rifle hidden on a rooftop near the middle of town (jetpack up to the glint) and a Glock 19 on the plaza. Walk over one to pick it up; R fires with assisted aim, G switches. Works from behind the wheel too. - Trees catch fire from any explosion or a rifle round, spread to their neighbours and fall over burnt through. - Hit a building hard and the facade blows up and keeps burning. About a third of buildings go up at",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "005bc47c",
+      "date": "2026-11-26",
+      "subject": "Add a rifle to Vibe City: G to raise it, Q to fire",
+      "lede": "You can now carry a rifle in Vibe City. Press G to raise or lower it, and press Q to fire. It has a muzzle flash, a bit of recoil and a bright tracer streak. Nothing gets hurt by the shots yet.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "fd734ef7",
+      "date": "2026-11-26",
+      "subject": "Build mode: rebase onto main before pushing the build branch",
+      "lede": "Run 4 was refused at the branch push: main had a newer copy of the workflow, and GitHub will not let the Actions token create a branch whose tree differs from main in a workflow file.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "68fcb113",
+      "date": "2026-11-26",
+      "subject": "Build mode: pay-with toggle, stop, retry, edit, undo, live step and full history",
+      "lede": "The panel now picks API credits or the Claude plan per build, shows what a live build is doing, can stop a queued or running build, retry or edit a finished one, undo a shipped one (a git revert run through the same checks), and pages through every past build.",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 4
+    },
+    {
+      "sha": "b4427d7a",
+      "date": "2026-11-26",
+      "subject": "Build mode: print what the agent cost in the run log and summary",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXYkzKbTjbqAiHoFAv",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "0e458ce3",
+      "date": "2026-11-26",
+      "subject": "Build mode: say in the log which credential paid for the run",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXYkzKbTjbqAiHoFAv",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "dd4c660e",
+      "date": "2026-11-26",
+      "subject": "Build mode: cleaner commit messages, API key wins over the plan token",
+      "lede": "The first shipped build's commit subject was cut mid-sentence because the agent's whole closing summary was used. It now writes the message to a file outside the repo. When ANTHROPIC_API_KEY is set it is used instead of the OAuth token, so builds can bill prepaid console credits.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "a5284faf",
+      "date": "2026-11-26",
+      "subject": "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type",
+      "lede": "- **Mower:** its top speed is 26, or 34 with Shift. Nothing hurts it, so it can't blow up. - **Trees, lamps, signs:** it knocks them down with a spray of leaves, sparks and debris, and barely slows. - **Bots and cars:** a car it touches is destroyed on contact. It keeps most of its speed and throws debris. - **Buildings and walls:** it grinds against them with sparks and chewed-up debris. It slows but doesn't bounce ",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 3
+    },
+    {
+      "sha": "dfa500c6",
+      "date": "2026-11-26",
+      "subject": "Build mode: strip line breaks from the agent token",
+      "lede": "The first real run failed with invalid_credential_header: the pasted CLAUDE_CODE_OAUTH_TOKEN had a line break in it (terminal wrap). Strip all whitespace from either credential before handing it to Claude Code.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "ae2ddfc3",
+      "date": "2026-11-26",
+      "subject": "My Vibe: rebuild /profile as the arcade shop's locker",
+      "lede": "The profile was a grid of emoji that answered none of: who am I, what do I own, where does it go. It also listed the paid arcade characters with no lock, so it was the one door where they were free.",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "3206e3c6",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: three new face styles for Mort and Linda, behind ?face=",
+      "lede": "Cartoon (glossy eyes with heavy lids, bushy brows, toothy grimace), Muppet (ping-pong eyes, ball nose, big hinged mouth) and Claymation (eyes close under a heavy brow, bulb nose, wide toothy grin). The game keeps the classic face until Jack picks one; ?face=cartoon|muppet|clay tries one.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "872d5baf",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: four start-screen designs to preview with ?look=",
+      "lede": "Highlight reel (crossfading action shots with the story beat for each), Gatch News (chopper footage, breaking headlines, ticker, rundown menu), Wanted poster (Mort and Linda on a nailed-up poster, reward: one pie) and Comic book (the heist panels, then the rides, the train and Dot's Diner). All four use the real buttons and toggles; aurora and Thanksgiving change which shots lead. The current splash is still the defa",
+      "places": [],
+      "files": 23
+    },
+    {
+      "sha": "e1448517",
+      "date": "2026-11-26",
+      "subject": "Scoreboard: pin Cannon Chase and Vibe Island to the top as featured",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNTfc8PE5k5sNF73FKv",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "e5000ad1",
+      "date": "2026-11-26",
+      "subject": "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves",
+      "lede": "- A giant turkey in a pilgrim hat waits on the island's north lawn. Walk up and press F (or tap Ride), like Pegasus; it flies slower, sinks unless you flap, gobbles when you get on, and stays wherever you hop off. - A parade float with a turkey on top loops the High Street under a HAPPY THANKSGIVING banner; pumpkins, hay bales and corn shocks line the avenues and the plaza, a little harvest round the town plaza below",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 9
+    },
+    {
+      "sha": "6fd4b629",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "4e459f08",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: the finale, a pie showdown at Dot's Diner",
+      "lede": "Wreck the train and the chase ends: everybody pulls over at a diner and it is settled on foot. Pie Mort (and Linda in two-player) before Mort hauls the cannon out of your truck bed; win and he gives up on the curb, tells you to take care of Grandpa's cannon, and you drive off into the sunrise with it for good. Its own 3D scene with cutscenes, subtitles drawn into the canvas, keyboard, two-on-one-screen, phone stick a",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "74b8c87b",
+      "date": "2026-11-26",
+      "subject": "Score every world on lore, fun and smooth, and count playtime anonymously",
+      "lede": "- PlayTracker (mounted once in App) counts active seconds in whichever world is on screen, plus the browser's measured frame rate, and adds them to that world's totals once a minute. Nothing per player or per session is stored: the browser forgets its count after sending, and \"players\" is a +1 sent once per device per world. - RatePrompt asks for lore / fun / smooth (1 to 5) after two minutes of play, but only once y",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "d1cc3d69",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "4fcd3f09",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: Gatch News covers the chase live, truck radio between bulletins",
+      "lede": "A chopper camera circles the chase in a picture-in-picture with BREAKING headlines for each new ride, wrecks, the henchmen and the takeback, plus a Gatch Radio strip with DJ lines. On phones it sits above the controls so it never covers the chaser.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "b4758cdc",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "78583a05",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: comic out of the game, Thanksgiving mode, Linda grinds her teeth",
+      "lede": "The comic no longer plays before a run (Jack wants the game all 3D). Its panels are now rendered in 3D from the game's own models and kept for the trailer at ?comic (solo: Mort sets off alone) and ?comic=duo (he calls Lunatic Linda and she races over).",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "771b53db",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: Lunatic Linda joins two-player; junkyard henchmen",
+      "lede": "Mort's cousin Linda now chases the leading truck in two-player, in the same six rides (her own colours), with the same throws and the same backup. The henchmen are no longer masked: scruffy junkyard guys in ridiculous hats (cowboy, top hat, traffic cone, sombrero, horns, propeller beanie, hard hat, burger crown), swinging nail boards, branches and taped pipes. Runs open with a skippable comic.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "a93fecfe",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "68ed9c02",
+      "date": "2026-11-26",
+      "subject": "Cannon Chase: train finale, 18-wheeler after the cement truck, aurora sky",
+      "lede": "Stages now run wagon, tow truck, monster pickup, cement truck, 18-wheeler (a box trailer and eighteen wheels), then a cab-forward steam locomotive on real spoked driving wheels with side rods, smoke from the stack and a whistle when it arrives. Two-player chasers have a little more health, ram a little harder and throw a little more often. A splash toggle (or ?aurora) puts northern lights over the desert.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "45b45535",
+      "date": "2026-11-26",
+      "subject": "Cannon Run is now Cannon Chase",
+      "lede": "Old routes still work.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "1456de8e",
+      "date": "2026-11-26",
+      "subject": "Vibe Island on phones: controls clear of the joystick; ride Pegasus by walking up and pressing F",
+      "lede": "- Ride, drive and nearby-place pills sit above the joystick on touch screens (and beside it in landscape); Flap and keyboard hints hidden on touch. - Pegasus now waits on the island across from the dragon instead of circling 28 m up, so the always-on Ride buttons are gone: walk up and press F, or tap the Ride prompt that appears within 7 m. - __cityMounts dev hook; scripts/city-phone-hud.mjs walks up to Pegasus and c",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 3
+    },
+    {
+      "sha": "04466ef2",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "fec5dbed",
+      "date": "2026-11-26",
+      "subject": "Cannon Run: Mort only throws at civilians in his way",
+      "lede": "Whenever a civilian car is ahead of him he lobs a can or a tyre at it and yells \"Get out!\", \"Get out of the way!\" or \"Swerve to the right or left, buddy!\". He no longer throws at the player at all.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "6de05381",
+      "date": "2026-11-26",
+      "subject": "Build mode: say what to build with a mic button",
+      "lede": "The Build panel on Vibe Island gets a mic. What you say becomes the prompt, Vibey reads it back, and it sends itself after a four second beat you can cancel. It also says so when a voice-started change goes live. Uses the browser's own speech in and out, so no new keys; hidden where the browser cannot listen.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "419529d7",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "529ca5f7",
+      "date": "2026-11-26",
+      "subject": "Cannon Run: angrier Mort, quicker backup, throws that miss you",
+      "lede": "Mort's brows were rotated the wrong way, which made him look frightened. Now they come down at the middle, his mouth is a grimace, his right hand is on a steering wheel and his left arm flails out of the window shaking a fist the whole time.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "eff330d5",
+      "date": "2026-11-26",
+      "subject": "Work in progress",
+      "lede": "",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "afa0757a",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "8caa2468",
+      "date": "2026-11-26",
+      "subject": "Cannon Run: two trucks, Mort's backup, and a garage",
+      "lede": "Two players: two pickups with their own health bars, on one keyboard or with a friend on their phone (host a room, they scan the QR code). The host runs the chase over Supabase Realtime; ?net=local runs the same protocol over a BroadcastChannel for testing in two tabs.",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "54959774",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates for Vibe Island crashes",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNVbriCfK2x9LiVXEd9",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "2015a8ac",
+      "date": "2026-11-26",
+      "subject": "Vibe Island driving: crashes, damage, explosions, a monster truck and a rare Comet",
+      "lede": "Driving on /city was bumper cars with no consequences. Now:",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 10
+    },
+    {
+      "sha": "11e5487b",
+      "date": "2026-11-26",
+      "subject": "Five Nights: a real desk fan sound, and the band poster draws Bonnie and Chica as themselves",
+      "lede": "The fan was one band of filtered noise with a tremolo, which reads as tape hiss. It is now motor hum, a low air whoosh chopped at the blades' real rate (3 blades at the model's 3.5 turns a second), a faint cage tick per turn and a slow drift, panned to where the fan sits as the chair swivels. It spins up at the start of the night and winds down on a blackout, and the blades on screen now slow to a stop with it.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "a28aa5e0",
+      "date": "2026-11-26",
+      "subject": "route-smoke: find the sandbox Chromium wherever it is now",
+      "lede": "The hardcoded chromium-1194 path no longer exists, so every smoke run died before opening a page.",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "365ddee1",
+      "date": "2026-11-26",
+      "subject": "Stamp world dates for Cannon Run",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWPpSNLL5smxws4Zoc",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "4da138f8",
+      "date": "2026-11-26",
+      "subject": "Cannon Run: a night chase with a ship's cannon in the back of your pickup",
+      "lede": "New world at /cannon-run (also /chase, /car-chase). You ride looking back over the tailgate at Mad Mort, whose headlights fill the road behind you. Click the road to lob a ballistic cannonball, A/D to swerve, Shift for nitro. Wreck his station wagon and he returns in a tow truck, a monster pickup, then a big rig, throwing tyres and cans you can dodge or shoot down.",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "eb5e54bf",
+      "date": "2026-11-25",
+      "subject": "Document build mode in CLAUDE.md",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXYkzKbTjbqAiHoFAv",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "be650d6a",
+      "date": "2026-11-25",
+      "subject": "Add build mode v1: type a change on Vibe Island and an agent ships it",
+      "lede": "Admins see a small Build pill at the top of /city. A prompt goes to the new vibe-build edge function, which checks has_role admin and dispatches the build-mode GitHub Actions workflow. There a Claude Code agent (Fast: Sonnet, Smart: Opus) makes the change on a build/ branch, fenced to Vibe Island's files; typecheck and build must pass before it lands on main. With Ship to main off it waits on its branch for a Ship it",
+      "places": [
+        "the machinery underneath"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "09531b8e",
+      "date": "2026-11-25",
+      "subject": "Add body stickers on Vibe Island, visible to other players",
+      "lede": "",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "a2573c5a",
+      "date": "2026-11-25",
+      "subject": "Vibe Island character button opens the picture grid of all characters",
+      "lede": "",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "b3af56f6",
+      "date": "2026-11-25",
+      "subject": "Add rideable sky mounts, aerial tag, and fix multiplayer identities",
+      "lede": "Adds the project north star (.lovable/north-star/north-star.md).",
+      "places": [],
+      "files": 1
+    },
+    {
+      "sha": "6479738c",
+      "date": "2026-11-25",
+      "subject": "Add rideable sky mounts, aerial tag, and fix multiplayer identities",
+      "lede": "",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 11
+    },
+    {
+      "sha": "1286e73b",
+      "date": "2026-11-25",
+      "subject": "Add Pegasus flying over Vibe Island; fix typecheck errors",
+      "lede": "",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "2c812ab4",
+      "date": "2026-11-25",
+      "subject": "Updated session expiry and auth",
+      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "9a2c079c",
+      "date": "2026-11-25",
+      "subject": "Work in progress",
+      "lede": "",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "74e199a7",
+      "date": "2026-11-22",
+      "subject": "Free Fall: draw the water and the weapon effects, skip the night shadow pass, open in daylight",
+      "lede": "The renderer runs with a logarithmic depth buffer, and five custom shaders never included three's logdepthbuf chunks. They wrote ordinary perspective depth (about 0.999 at any useful distance) against a scene writing log depth, so they lost the depth test to everything:",
+      "places": [
+        "San Francisco"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "8eb38981",
+      "date": "2026-11-22",
+      "subject": "Stamp Fog City's date on its card",
+      "lede": "Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNVi6kzvkjDEKmkx21V",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "3b479f42",
+      "date": "2026-11-22",
+      "subject": "Fog City: a new open-world San Francisco, built from scratch to run fast",
+      "lede": "/fogcity is a separate game from /sf, written for frame rate first: plain three.js, no physics engine, no post-processing, no downloaded textures, and about thirty draw calls for the whole city.",
+      "places": [],
+      "files": 10
+    },
     {
       "sha": "09564359",
       "date": "2026-11-22",
@@ -51,30 +658,6 @@
       "lede": "The market chip had one source, the vibe-holdings edge function, and a first visit has no cached figure, so any miss on that one request left the chip reading \"$VIBE —\" for the whole visit. The function logs show far more browser preflights than POSTs, and the function returns price: null whenever its own GeckoTerminal read fails.",
       "places": [],
       "files": 2
-    },
-    {
-      "sha": "67bbe93b",
-      "date": "2026-10-10",
-      "subject": "Stamp Thalassa's date on its card",
-      "lede": "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_015ocLbKcPCnGU1s2wF9DriN",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "f6742350",
-      "date": "2026-10-10",
-      "subject": "Thalassa: a Greek harbour town you can walk, swim and visit in VR",
-      "lede": "A new world at /thalassa (also /harbor, /harbour, /greek-harbor), built to look like Jack's painting: a walled town with terracotta roofs wrapped round a turquoise bay, a market on the quay, docks and a lighthouse mole, cypress and olive hills, and a temple on a cliff island reached by an arched stone bridge and a winding stair, with galleys under striped sails out at sea.",
-      "places": [],
-      "files": 23
-    },
-    {
-      "sha": "3b7e9af8",
-      "date": "2026-10-09",
-      "subject": "Horizon Garden: retire Ten Sports a Year, 22 frontiers",
-      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
-      "places": [],
-      "files": 3
     }
   ]
 }

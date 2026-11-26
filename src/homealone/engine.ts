@@ -1,15 +1,15 @@
 /**
- * The engine: renderer, camera, the boy, the clock, and the loop that ties the
- * house to the two men walking round it.
+ * The engine: renderer, camera, the kid, the clock, and the loop that ties the
+ * house to the people walking round it.
  *
- * Three decisions worth stating, because everything else follows from them.
+ * Four decisions worth stating, because everything else follows from them.
  *
- * **It is third person.** Home Alone is a film about watching a small child do
- * something enormous, and a first-person camera throws that away — you would
- * never once see the sweater, the bowl cut, or him legging it down a corridor
- * two sizes too big for him. The cost is a camera that has to survive being
- * indoors, which `settleCamera` pays for by pulling the boom in whenever a
- * wall gets between the lens and his head.
+ * **It is third person.** This is a game about watching a small child do
+ * something enormous, and a first-person camera throws that away: you would
+ * never once see the bobble hat, or him legging it down a corridor two sizes
+ * too big for him. The cost is a camera that has to survive being indoors,
+ * which `settleCamera` pays for by pulling the boom in whenever a wall gets
+ * between the lens and his head.
  *
  * **Height is a query, not a state.** There is no "which floor am I on" flag.
  * `groundAt` takes the highest floor slab or stair ramp beneath you that is
@@ -17,17 +17,24 @@
  * off the landing and the ground under you becomes the hall floor, so you fall
  * into it; walk up the flight and the ramp lifts you. Nothing switches.
  *
- * **The burglars run on the same floor you do.** They path the nav graph, they
- * climb the same ramps, and their footsteps are attenuated by real distance.
- * When you hear one upstairs, one is upstairs.
+ * **The intruders run on the same floor you do.** They path the nav graph,
+ * they climb the same ramps, and their footsteps are attenuated by real
+ * distance. When you hear one upstairs, one is upstairs.
+ *
+ * **Traps are laid, not switched on.** You carry a box of parts, you put a
+ * thing down where you are standing, and what it does to somebody is a
+ * direction and a distance (`kit.ts`). This file's half of that is carrying
+ * the body: `advanceFling` walks a thrown intruder along his throw and asks,
+ * every twelve centimetres, what he has just hit. A wall is a slam. Another
+ * trap is the next link. The top of the stairs is a very long way down.
  */
 import * as THREE from "three";
 import { line as banterLine, resetBanter } from "./banter";
 import { makeBricks, type BrickRig, type BrickTarget } from "./bricks";
 import { twinkle } from "./christmas";
-import { buildTraps, type TrapRig } from "./traps";
-import { Burglar, clearLine, spawnPoint } from "./ai";
-import { buildWorld, type BuiltWorld, type Collider } from "./build";
+import { buildPlaced, type PlacedRig } from "./placed";
+import { Burglar, clearLine, entryNode, spawnPoint, type WorldCtx } from "./ai";
+import { buildWorld, type BuiltWorld } from "./build";
 import { HomeAudio } from "./audio";
 import { makeCharacter, type Character } from "./characters";
 import {
@@ -35,44 +42,91 @@ import {
   FLOOR,
   ROOMS,
   STREET,
-  TRAPS,
-  TREEHOUSE,
   ZIP_END,
   ZIP_START,
+  nearestNode,
+  node,
+  pathBetween,
+  pathLength,
   roomAt,
   type Ramp,
   type RoomId,
-  type TrapKind,
 } from "./house";
-import { LEVELS, LEVEL_COUNT, ROOM_LINES, levelByNumber, type Level } from "./levels";
+import {
+  CHAIN_WINDOW,
+  chainMult,
+  linkScore,
+  KIT,
+  KIT_ORDER,
+  PLACE_PROBLEM_TEXT,
+  kitForNight,
+  placeProblem,
+  resolveTrap,
+  resolveTrick,
+  scoreNight,
+  type KitKind,
+  type NightResult,
+  type Placed,
+  type PlaceProblem,
+  type Trick,
+} from "./kit";
+import { EXPLORE, LEVELS, LIGHTS, ROAM, ROOM_LINES, levelByNumber, type Level } from "./levels";
+import { INTRUDERS, LOOT, NIGHT_COUNT, newKitOn, type Arrival, type Entry } from "./nights";
 import * as T from "./textures";
 
-export type Phase = "menu" | "brief" | "playing" | "won" | "lost" | "outro";
+export type Phase = "menu" | "brief" | "playing" | "won" | "lost";
 
-export interface TrapState {
-  kind: TrapKind;
+export interface KitSlot {
+  kind: KitKind;
   name: string;
-  /** Kevin's line when he sets it. */
-  quip: string;
-  armed: boolean;
-  spent: boolean;
-  room: string;
+  icon: string;
+  cost: number;
+  blurb: string;
+  affordable: boolean;
+  selected: boolean;
+  /** The number key that picks it. */
+  key: number;
 }
 
-export interface BurglarState {
-  who: "harry" | "marv";
+export interface IntruderState {
+  id: number;
+  name: string;
+  /** 0 … 100, as a share of what he arrived with. */
   nerve: number;
   state: string;
   down: boolean;
   /** What he is shouting, if anything. */
   says: string | null;
+  /** The name of what is on his back. */
+  carrying: string | null;
+  status: "stuck" | "blind" | "flying" | null;
+  entry: Entry;
+  /** Seconds until he arrives; 0 once he is in play. */
+  eta: number;
+  /** Whose lines he speaks, which is also which body he has. */
+  voice: "gus" | "lenny";
+}
+
+export interface LootState {
+  id: string;
+  name: string;
+  state: "safe" | "taken" | "gone";
+}
+
+export interface FeedLine {
+  id: number;
+  who: string;
+  /** "Marbles → Springboard → WALL SLAM" */
+  text: string;
+  chain: number;
+  /** Still fresh enough to shout about. */
+  hot: boolean;
 }
 
 export interface Snapshot {
   phase: Phase;
   level: number;
   title: string;
-  quote: string;
   brief: string[];
   goal: string;
   kind: Level["kind"];
@@ -80,35 +134,29 @@ export interface Snapshot {
   room: string;
   /** The action button's label right now, or null when there is nothing to do. */
   action: string | null;
-  /** Kevin's most recent line. */
+  /** The kid's most recent line. */
   say: string | null;
-  /** A big banner: "CAUGHT", "THEY'RE GONE", that sort of thing. */
+  /** A big banner: "CAUGHT", "3x CHAIN", that sort of thing. */
   banner: string | null;
   timeLeft: number | null;
   /** Objective progress, whatever the level counts. */
   done: number;
   total: number;
-  traps: TrapState[];
-  burglars: BurglarState[];
   /** Bearing to the objective, relative to where the camera is looking. */
   compass: number | null;
   compassLabel: string | null;
   compassDist: number;
   /** 0 … 1. Drives the heartbeat and the vignette. */
   danger: number;
-  /** Level 2's meter. */
+  /** LIGHTS's meter. */
   suspicion: number;
-  /** 0 … 1 while a burglar has hold of you. */
+  /** 0 … 1 while somebody has hold of you. */
   caught: number;
   running: boolean;
+  /** The highest night finished. */
   cleared: number;
-  /** Kevin has been to Buzz's room and taken the BB gun. */
-  hasBB: boolean;
-  ammo: number;
   /** 0 when the shout is ready, otherwise seconds left. */
   tauntCooldown: number;
-  /** True while Old Man Marley is on screen doing something about it. */
-  marley: boolean;
   /**
    * Where the floating touch stick is, in CSS pixels, so the HUD can draw a
    * ring around the thumb. Null when nothing is touching the left side.
@@ -116,10 +164,41 @@ export interface Snapshot {
   stick: { ox: number; oy: number; x: number; y: number } | null;
   /** Boom length, for the zoom readout. */
   boom: number;
-  /** Seconds until another brick can be thrown; 0 when ready. */
+  /** Seconds until another snowball can be thrown; 0 when ready. */
   brickCooldown: number;
   invertLook: boolean;
+
+  /* ---- the trap game ------------------------------------------------- */
+  /** `plan` while you are laying traps, `raid` once they are in. */
+  stage: "plan" | "raid" | null;
+  /** Seconds of planning left. */
+  planLeft: number;
+  parts: number;
+  /** No budget, no score, nobody comes unless asked. */
+  sandbox: boolean;
+  kit: KitSlot[];
+  /** Why the thing in your hand cannot go where you are pointing. */
+  placeHint: string | null;
+  /** How many traps are on the floor. */
+  laid: number;
+  /** Alarm clocks ready to ring. */
+  clocks: number;
+  intruders: IntruderState[];
+  loot: LootState[];
+  hearts: number;
+  score: number;
+  bestChain: number;
+  feed: FeedLine[];
+  result: NightResult | null;
+  /** Who is on tonight's list, for the brief card. */
+  cast: Array<{ name: string; trait: string; entry: Entry }>;
+  /** What is new in the box tonight, for the brief card. */
+  newKit: Array<{ name: string; icon: string; blurb: string }>;
+  /** There is a written night after this one. */
+  hasNext: boolean;
+  bestScore: number;
 }
+
 
 const STEP_UP = 0.62;
 const PLAYER_R = 0.26;
@@ -127,16 +206,21 @@ const GRAVITY = 20;
 
 interface Interactable {
   id: string;
-  kind: "switch" | "trap" | "zip" | "rope" | "bb";
+  kind: "switch" | "zip";
   label: string;
   x: number;
   y: number;
   z: number;
   radius: number;
   room?: RoomId;
-  trap?: TrapKind;
   done?: boolean;
 }
+
+/** Caught this many times and the night is over. */
+const HEARTS = 3;
+/** How far in front of you a trap goes down. */
+const REACH = 1.25;
+
 
 /** Where each room's light switch lives — by the door, at hand height. */
 const SWITCHES: Partial<Record<RoomId, [number, number]>> = {
@@ -159,9 +243,9 @@ const SWITCHES: Partial<Record<RoomId, [number, number]>> = {
   backhall: [-3.0, -3.0],
   corridor: [-2.0, 0.15],
   bathroom: [-4.6, 0.65],
-  kevin: [1.0, 0.65],
+  kid: [1.0, 0.65],
   parents: [3.9, 0.65],
-  buzz: [3.4, -1.45],
+  brother: [3.4, -1.45],
   guest: [-2.5, -1.45],
   basement: [0.55, -1.5],
 };
@@ -171,10 +255,10 @@ export class HomeAloneEngine {
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
   private world: BuiltWorld;
-  private traps: TrapRig;
+  private placedRig: PlacedRig;
   private bricks: BrickRig;
   private audio = new HomeAudio();
-  private kevin: Character;
+  private kid: Character;
   private burglars: Burglar[] = [];
   private clock = new THREE.Clock();
   private raf = 0;
@@ -221,7 +305,6 @@ export class HomeAloneEngine {
   private levelTime = 0;
   private beaconsHit = new Set<string>();
   private interactables: Interactable[] = [];
-  private armed = new Set<TrapKind>();
   private say: string | null = null;
   private sayUntil = 0;
   private banner: string | null = null;
@@ -233,34 +316,55 @@ export class HomeAloneEngine {
   private vanActive = false;
   private danger = 0;
   private lastChatter = 0;
-  /** Seconds at the start of a fight during which they cannot see you. */
+  /** Seconds during which nobody can see you: the start of a raid, and after being caught. */
   private grace = 0;
   private zipRide = -1;
-  private ropeCut = false;
-  private outroT = 0;
   private muted = false;
   private cleared = 0;
+  private bestScores: Record<string, number> = {};
   private nearest: Interactable | null = null;
-  /* ---- Kevin's kit -------------------------------------------------- */
-  private hasBB = false;
-  private ammo = 0;
   private tauntCd = 0;
-  private muzzle = 0;
   /** Counts down through the throwing animation. */
   private throwT = 0;
   private throwCd = 0;
-  /* ---- Old Man Marley ----------------------------------------------- */
-  private marley: Character | null = null;
-  private marleyT = 0;
-  private marleyActive = false;
-  private marleyUsed = false;
-  private marleyShowUntil = 0;
-  private compassTarget: { x: number; y: number; z: number; label: string } | null = null;
+  compassTarget: { x: number; y: number; z: number; label: string } | null = null;
   private time = 0;
   private tvFrame = -1;
+
+  /* ---- the trap game -------------------------------------------------- */
+  private stage: "plan" | "raid" | null = null;
+  private planLeft = 0;
+  private raidT = 0;
+  private queue: Arrival[] = [];
+  private seat = 0;
+  private parts = 0;
+  private selected: KitKind | null = null;
+  private placed: Placed[] = [];
+  private nextTrapId = 1;
+  /** Where the thing in your hand would go, and what is wrong with that. */
+  private ghost = { x: 0, y: 0, z: 0, yaw: 0, problem: null as PlaceProblem };
+  private hint: string | null = null;
+  private hintUntil = 0;
+  private clockTurn = 0;
+  /** A trap near enough to pick back up. */
+  private pickable: Placed | null = null;
+  private lootState = new Map<string, "safe" | "taken" | "gone">();
+  private hearts = HEARTS;
+  private points = 0;
+  private bestChain = 0;
+  private routed = 0;
+  private arrived = 0;
+  private feed: Array<{ id: number; who: Burglar; parts: string[]; chain: number; until: number }> = [];
+  private feedId = 1;
+  private result: NightResult | null = null;
+  /**
+   * Nobody can see or grab the player. For `tools/homealone-play.mjs`, which
+   * needs to watch a whole raid play out without a pair of hands on the stick.
+   */
+  spectator = false;
   /**
    * Frames rendered. Public for `tools/homealone-play.mjs`, which has to wait
-   * for the world to actually tick between teleporting and pressing a key —
+   * for the world to actually tick between teleporting and pressing a key:
    * on a software renderer a fixed millisecond wait is sometimes less than one
    * frame, and the test then presses against a stale prompt and toggles a room
    * two rooms away. Waiting on this number cannot go wrong at any frame rate.
@@ -272,6 +376,7 @@ export class HomeAloneEngine {
    * thumbnail, and every character bug found so far was found by pulling in.
    */
   shotDist: number | null = null;
+
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -321,40 +426,27 @@ export class HomeAloneEngine {
     this.scene.add(new THREE.AmbientLight(0x415067, 0.35));
 
     this.world = buildWorld(this.scene);
-    this.traps = buildTraps(this.world.root);
+    this.placedRig = buildPlaced(this.world.root);
     this.bricks = makeBricks(this.scene);
 
-    this.kevin = makeCharacter("kevin");
-    this.scene.add(this.kevin.root);
-
-    /*
-     * Old Man Marley. He shovels the pavement in the quiet levels and he is
-     * *meant* to be alarming there — a tall stooped shape with a snow shovel
-     * that Kevin runs away from. In the last level he is the one who turns up
-     * when they finally have hold of you, which only works because you have
-     * spent four levels being frightened of him.
-     */
-    this.marley = makeCharacter("marley");
-    this.marley.setProp(true);
-    this.marley.root.visible = false;
-    this.scene.add(this.marley.root);
-
-    this.burglars = [new Burglar("harry"), new Burglar("marv")];
-    for (const b of this.burglars) {
-      this.scene.add(b.char.root);
-      b.char.root.visible = false;
-    }
+    this.kid = makeCharacter("kid");
+    this.scene.add(this.kid.root);
 
     this.bindInput(canvas);
     try {
-      this.cleared = Number(localStorage.getItem("homealone:cleared") ?? "0") || 0;
+      this.cleared = Number(localStorage.getItem("houserules:cleared") ?? "0") || 0;
     } catch {
       this.cleared = 0;
     }
     try {
-      this.invertLook = localStorage.getItem("homealone:invert") === "1";
+      this.invertLook = localStorage.getItem("houserules:invert") === "1";
     } catch {
       this.invertLook = false;
+    }
+    try {
+      this.bestScores = JSON.parse(localStorage.getItem("houserules:best") ?? "{}") ?? {};
+    } catch {
+      this.bestScores = {};
     }
     this.setLevelLights(LEVELS[0]);
     this.pos.set(0.4, 0, 12.0);
@@ -413,17 +505,17 @@ export class HomeAloneEngine {
     this.phase = "brief";
     this.audio.resume();
     this.audio.playMusic("home", 0.35);
-    this.setupLevel(this.level, false);
+    this.setupLevel(this.level);
     this.emit();
   }
 
   begin() {
     if (this.phase !== "brief") return;
-    this.setupLevel(this.level, true);
+    this.setupLevel(this.level);
     this.phase = "playing";
     this.audio.resume();
     this.audio.startAmbience();
-    this.audio.playMusic(this.level.kind === "battle" || this.level.kind === "escape" ? "bells" : null, 0.34);
+    this.audio.playMusic(null);
     this.emit();
   }
 
@@ -432,9 +524,9 @@ export class HomeAloneEngine {
     this.begin();
   }
 
+  /** The night after this one. They do not run out. */
   next() {
-    const n = Math.min(LEVEL_COUNT, this.level.n + 1);
-    this.select(n);
+    this.select(this.level.kind === "night" ? this.level.n + 1 : 1);
   }
 
   toMenu() {
@@ -442,6 +534,7 @@ export class HomeAloneEngine {
     this.audio.playMusic("home", 0.35);
     this.emit();
   }
+
 
   /* ---- input surface used by the touch HUD --------------------------- */
 
@@ -470,7 +563,7 @@ export class HomeAloneEngine {
   setInvertLook(on: boolean) {
     this.invertLook = on;
     try {
-      localStorage.setItem("homealone:invert", on ? "1" : "0");
+      localStorage.setItem("houserules:invert", on ? "1" : "0");
     } catch {
       /* private browsing */
     }
@@ -484,20 +577,19 @@ export class HomeAloneEngine {
     this.actionQueued = true;
   }
 
+
   /**
    * Shout at them.
    *
-   * This is the mechanic the whole battle turns on. You cannot fight them and
-   * you cannot outrun them — what you *can* do is stand at the top of the
-   * stairs where the paint cans are, yell, and make them come to you. Without
-   * it, leading two men onto eight specific spots is a matter of luck; with
-   * it, it is a plan. It is also the single most quoted thing in the film,
-   * which is not a coincidence.
+   * This is the mechanic the whole raid turns on. You cannot fight them and
+   * you cannot outrun them; what you *can* do is stand on the far side of
+   * something you laid earlier, yell, and make them come to you. Without it,
+   * leading somebody onto a trap is luck; with it, it is a plan.
    */
   taunt() {
     if (this.phase !== "playing" || this.tauntCd > 0 || this.caught > 0) return;
     this.tauntCd = 5.5;
-    const l = banterLine("kevin", "taunt");
+    const l = banterLine("kid", "taunt");
     if (l) this.speak(l, 3.2);
     this.audio.scream();
     // Heard through walls, through floors, from anywhere in the house.
@@ -505,23 +597,20 @@ export class HomeAloneEngine {
   }
 
   /**
-   * Throw a brick.
+   * Throw a snowball.
    *
-   * There is always another brick. Kevin's supply is not a resource to manage:
-   * the moment you make somebody count bricks they stop throwing them, and the
-   * entire point of this is that you throw one at Marv because you can. The
-   * only limit is the half-second between throws, which exists so the arm
-   * animation can finish rather than to ration anything.
+   * There is always another one, and the only limit is the beat between
+   * throws. What it will not do is win the night: see `Burglar.pelt`.
    */
   throwBrick() {
     if (this.phase !== "playing" || this.caught > 0 || this.throwCd > 0 || this.zipRide >= 0) return;
-    this.throwCd = 0.55;
+    this.throwCd = 0.8;
     this.throwT = 1;
-    this.kevin.setBrick(false);
+    this.kid.setBrick(false);
     this.audio.brickThrow();
 
     // Out of his hand, in the direction the camera is looking.
-    const from = new THREE.Vector3(this.pos.x, this.pos.y + this.kevin.height * 0.84, this.pos.z);
+    const from = new THREE.Vector3(this.pos.x, this.pos.y + this.kid.height * 0.84, this.pos.z);
     const dir = new THREE.Vector3(
       Math.sin(this.camYaw) * Math.cos(this.camPitch),
       Math.sin(this.camPitch),
@@ -531,64 +620,128 @@ export class HomeAloneEngine {
     this.bricks.hurl(from, dir, this.brickTargets());
     // He turns to face the throw, or it looks like he lobbed it sideways.
     this.yaw = Math.atan2(dir.x, dir.z);
-    // And it is loud.
-    for (const b of this.burglars) b.hear(this.pos.x, this.pos.y, this.pos.z, 14);
   }
 
-  /** The burglars, as things a brick can hit. */
+  /** The intruders, as things a snowball can hit. */
   private brickTargets(): BrickTarget[] {
     const out: BrickTarget[] = [];
     for (const b of this.burglars) {
-      if (b.state === "gone") continue;
+      if (!b.active || b.flung) continue;
       out.push({
         x: b.pos.x,
         y: b.pos.y,
         z: b.pos.z,
         height: b.char.height,
-        hit: () => b.brick(this.time),
+        hit: () => {
+          const how = b.pelt(this.time);
+          if (!how) return false;
+          // Stuck or blind, a snowball is enough to put him on the floor.
+          if (how === "floor") {
+            const chain = this.liveChain(b) + 1;
+            this.link(b, "Snowball", Math.round(16 * chainMult(chain)), 2.6, chain, linkScore(chain, 1), ["STUCK SHOT"]);
+          }
+          else if (b.nerve <= 0) this.flash(`${b.name.toUpperCase()} HAS HAD ENOUGH`, 2.4);
+          return true;
+        },
       });
     }
     return out;
   }
 
-  /**
-   * Fire the BB gun.
-   *
-   * It never knocks anybody down — see `Burglar.sting`. A gun that solved the
-   * problem would replace the traps, and the traps are the game; this buys a
-   * second and a half and a very satisfying noise.
-   */
-  fire() {
-    if (this.phase !== "playing" || !this.hasBB || this.ammo <= 0 || this.caught > 0) return;
-    this.ammo--;
-    this.muzzle = 1;
-    this.audio.bb();
-    const eye = this.pos.clone();
-    eye.y += 1.0;
-    let best: Burglar | null = null;
-    let bestD = 15;
-    for (const b of this.burglars) {
-      if (b.state === "gone") continue;
-      const dx = b.pos.x - this.pos.x;
-      const dz = b.pos.z - this.pos.z;
-      const d = Math.hypot(dx, dz);
-      if (d > bestD) continue;
-      let diff = Math.atan2(dx, dz) - this.yaw;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      if (Math.abs(diff) > 0.4) continue;
-      const target = b.pos.clone();
-      target.y += b.char.eyeY * 0.7;
-      if (!clearLine(eye, target, this.world.colliders)) continue;
-      best = b;
-      bestD = d;
-    }
-    if (best?.sting(this.time)) {
-      this.flash("HIT", 1.1);
-      // The other one hears it and comes looking.
-      for (const o of this.burglars) if (o !== best) o.hear(best.pos.x, best.pos.y, best.pos.z, 20);
-    }
+  /* ---- the kit ------------------------------------------------------- */
+
+  /** What is in the box right now. */
+  private kitNow(): KitKind[] {
+    if (this.level.kind === "roam") return KIT_ORDER;
+    if (this.level.kind === "night") return kitForNight(this.level.n);
+    return [];
   }
+
+  /** Pick something out of the box, or put it back (null, or the same again). */
+  selectKit(kind: KitKind | null) {
+    if (this.phase !== "playing") return;
+    if (kind && !this.kitNow().includes(kind)) return;
+    this.selected = kind && kind !== this.selected ? kind : null;
+    this.audio.tick();
+    this.emit();
+  }
+
+  /** Lay the thing in your hand where the ghost is. */
+  place() {
+    if (this.phase !== "playing" || !this.selected || this.caught > 0 || this.zipRide >= 0) return false;
+    this.updateGhost();
+    const g = this.ghost;
+    if (g.problem) {
+      this.hint = PLACE_PROBLEM_TEXT[g.problem];
+      this.hintUntil = this.time + 1.6;
+      this.audio.chime(false);
+      return false;
+    }
+    const def = KIT[this.selected];
+    const p: Placed = {
+      id: this.nextTrapId++, kind: def.kind, x: g.x, y: g.y, z: g.z, yaw: g.yaw,
+      usesLeft: def.uses, cool: 0, firing: 0,
+    };
+    this.placed.push(p);
+    this.placedRig.add(p);
+    if (this.level.kind !== "roam") this.parts -= def.cost;
+    this.audio.place();
+    // Out of parts for this one: put it away rather than leave a red ghost up.
+    if (this.parts < def.cost) this.selected = null;
+    this.emit();
+    return true;
+  }
+
+  /** Ring the next alarm clock. They take turns, in the order you laid them. */
+  ring() {
+    if (this.phase !== "playing") return;
+    const clocks = this.placed.filter((p) => p.kind === "clock" && p.usesLeft > 0 && p.cool <= 0);
+    if (!clocks.length) return;
+    const p = clocks[this.clockTurn++ % clocks.length];
+    const def = KIT.clock;
+    p.usesLeft--;
+    p.cool = def.rearm;
+    p.firing = 1;
+    this.placedRig.ring(p.id);
+    this.audio.alarm();
+    let heard = 0;
+    for (const b of this.burglars) if (b.hear(p.x, p.y, p.z, def.area)) heard++;
+    this.hint = heard ? `${heard} of them heard that` : "Nobody close enough to hear it";
+    this.hintUntil = this.time + 1.8;
+  }
+
+  /** Stop planning and open the doors. */
+  ready() {
+    if (this.phase === "playing" && this.stage === "plan") this.startRaid();
+  }
+
+  /** Sandbox: send one in. */
+  callIn(who?: string) {
+    if (this.phase !== "playing" || this.level.kind !== "roam") return;
+    if (this.burglars.filter((b) => b.active).length >= 6) return;
+    const cast = Object.keys(INTRUDERS);
+    const id = who && INTRUDERS[who] ? who : cast[this.seat % cast.length];
+    this.spawnIntruder({ who: id, entry: this.seat % 2 ? "back" : "front", at: 0 });
+  }
+
+  /**
+   * Run the simulation forward without drawing it.
+   *
+   * The sandbox renders this house at well under a frame a second, so a
+   * ninety-second raid is a quarter of an hour of wall clock and tells you
+   * nothing while it runs. This steps the same `tick` the loop calls, at a
+   * fixed thirtieth of a second, which is how `tools/homealone-play.mjs`
+   * watches a whole night happen.
+   */
+  settle(seconds: number) {
+    const dt = 1 / 30;
+    for (let i = 0; i < seconds * 30 && !this.disposed; i++) {
+      this.time += dt;
+      this.tick(dt);
+    }
+    this.emit();
+  }
+
 
   /* ================================================================== *
    * Level setup
@@ -601,7 +754,7 @@ export class HomeAloneEngine {
     }
   }
 
-  private setupLevel(level: Level, live: boolean) {
+  private setupLevel(level: Level) {
     this.setLevelLights(level);
     this.beaconsHit.clear();
     this.suspicion = 0;
@@ -611,77 +764,70 @@ export class HomeAloneEngine {
     this.caughtBy = null;
     this.danger = 0;
     this.zipRide = -1;
-    this.ropeCut = false;
-    this.outroT = 0;
     this.say = null;
     this.banner = null;
+    this.hint = null;
     this.levelTime = level.time ?? 0;
-    this.kevin.setScream(false);
+    this.kid.setScream(false);
 
     this.pos.set(level.spawn.x, level.spawn.y + 0.05, level.spawn.z);
     this.vel.set(0, 0, 0);
     this.yaw = level.spawn.yaw;
     this.camYaw = level.spawn.yaw;
     this.camPitch = 0.1;
-    this.kevin.root.visible = true;
+    this.kid.root.visible = true;
 
-    /* Traps. Level 3 arms them; level 4 inherits whatever level 3 left; level 5
-       starts with the lot spent, because that is the premise of level 5. */
     resetBanter();
     this.bricks.clear();
     this.throwT = 0;
     this.throwCd = 0;
-    this.hasBB = false;
-    this.ammo = 0;
     this.tauntCd = 0;
-    this.kevin.setProp(false);
-    this.marleyUsed = false;
-    this.marleyShowUntil = 0;
-    // He shovels his path on the quiet nights and turns up on the loud one.
-    this.marleyActive = level.kind === "explore" || level.kind === "lights" || level.kind === "traps" || level.kind === "roam";
-    this.marleyT = 0;
-    if (this.marley) this.marley.root.visible = this.marleyActive;
+    this.grace = 0;
 
-    this.traps.reset();
-    if (level.kind === "traps") {
-      this.armed.clear();
-    } else if (level.kind === "battle") {
-      if (!this.armed.size) {
-        // Straight into the battle from the menu — hand out a fair starting set
-        // rather than an empty house, which is unplayable and not a lesson.
-        for (const k of ["cars", "paint", "iron", "ornaments", "torch"] as TrapKind[]) this.armed.add(k);
-      }
-      for (const k of this.armed) this.traps.arm(k, true);
-    } else if (level.kind === "escape") {
-      this.armed.clear();
-    }
-
-    /* Burglars. */
+    /* Everybody out, and everything off the floor. */
     for (const b of this.burglars) {
-      b.char.root.visible = false;
-      b.state = "gone";
+      this.scene.remove(b.char.root);
+      b.dispose();
     }
-    /*
-     * Three and a half seconds before either of them can see you.
-     *
-     * Harry comes in the front door and Kevin starts in the hall; without this
-     * the level opens with a man already sprinting at you from four metres,
-     * before you have found the run button. The grace is the beat where you
-     * hear the door and decide where to go, which is the beat the film is
-     * actually built on.
-     */
-    this.grace = level.kind === "battle" || level.kind === "escape" ? 3.5 : 0;
-    if (live && (level.kind === "battle" || level.kind === "escape")) {
-      const h = spawnPoint("front", "harry");
-      const m = spawnPoint("back", "marv");
-      this.burglars[0].spawn(h.x, h.y, h.z, h.yaw);
-      this.burglars[1].spawn(m.x, m.y, m.z, m.yaw);
-      if (level.kind === "escape") for (const b of this.burglars) b.nerve = 100;
+    this.burglars = [];
+    this.placed = [];
+    this.placedRig.clear();
+    this.selected = null;
+    this.pickable = null;
+    this.clockTurn = 0;
+    this.seat = 0;
+    this.arrived = 0;
+    this.feed = [];
+    this.points = 0;
+    this.bestChain = 0;
+    this.routed = 0;
+    this.hearts = HEARTS;
+    this.result = null;
+    this.raidT = 0;
+    this.queue = [];
+    this.lootState.clear();
+    this.compassTarget = null;
+
+    const trapGame = level.kind === "night" || level.kind === "roam";
+    if (trapGame) for (const l of LOOT) this.lootState.set(l.id, "safe");
+    if (level.kind === "night" && level.night) {
+      this.stage = "plan";
+      this.planLeft = level.night.planTime;
+      this.parts = level.night.parts;
+      this.queue = [...level.night.arrivals].sort((a, b) => a.at - b.at);
+      this.placedRig.routes(this.likelyRoutes(this.queue));
+    } else if (level.kind === "roam") {
+      // The sandbox is a raid that nobody has turned up to yet.
+      this.stage = "raid";
+      this.parts = 99;
+    } else {
+      this.stage = null;
+      this.parts = 0;
     }
 
-    this.world.van.visible = level.kind === "lights" || level.kind === "battle" || level.kind === "escape";
+    this.world.van.visible = level.kind === "lights" || level.kind === "night";
     this.world.van.position.set(level.kind === "lights" ? -40 : -2, 0, STREET.centre - 1.2);
-    this.world.zip.visible = level.kind === "escape" || level.kind === "roam";
+    this.world.zip.visible = trapGame;
 
     this.buildInteractables(level);
     this.settleCamera(0.999);
@@ -689,8 +835,8 @@ export class HomeAloneEngine {
 
   private buildInteractables(level: Level) {
     const list: Interactable[] = [];
-    // Light switches exist in every level — flicking a light is always allowed,
-    // and in level 2 it is the whole game.
+    // Light switches exist everywhere. In LIGHTS they are the whole game; on a
+    // night they are a move, because a dark room hides both you and your traps.
     for (const [id, xz] of Object.entries(SWITCHES) as Array<[RoomId, [number, number]]>) {
       const room = ROOMS[id];
       list.push({
@@ -698,33 +844,57 @@ export class HomeAloneEngine {
         x: xz[0], y: FLOOR[room.floor] + 1.2, z: xz[1], radius: 1.25, room: id,
       });
     }
-    // Buzz's BB gun. It lives on his dresser in every level that has anybody
-    // to shoot at, and finding it is a small reward for going up two floors
-    // while there are men in the house.
-    if (level.kind === "battle" || level.kind === "escape" || level.kind === "roam") {
+    // The wire from the guest-room window to the treehouse: the way out when
+    // they have you cornered upstairs. You walk back in through the yard.
+    if (level.kind === "night" || level.kind === "roam") {
       list.push({
-        id: "bb", kind: "bb", label: "Take Buzz's BB gun",
-        x: 6.2, y: FLOOR.upper + 1.3, z: -4.6, radius: 1.6,
-      });
-    }
-    if (level.kind === "traps") {
-      for (const t of TRAPS)
-        list.push({
-          id: `tr:${t.kind}`, kind: "trap", label: t.name,
-          x: t.x, y: t.y + 0.5, z: t.z, radius: 1.7, trap: t.kind,
-        });
-    }
-    if (level.kind === "escape" || level.kind === "roam") {
-      list.push({
-        id: "zip", kind: "zip", label: "Ride the zipline",
+        id: "zip", kind: "zip", label: "Ride the wire to the treehouse",
         x: ZIP_START.x, y: ZIP_START.y, z: ZIP_START.z + 0.5, radius: 1.5,
-      });
-      list.push({
-        id: "rope", kind: "rope", label: "Cut the rope",
-        x: ZIP_END.x + 1.0, y: ZIP_END.y, z: ZIP_END.z, radius: 1.8,
       });
     }
     this.interactables = list;
+  }
+
+  /**
+   * Where they are likely to walk, as dots.
+   *
+   * Each arrival, in order, takes the nearest valuable nobody ahead of him has
+   * taken, which is exactly what the AI does when the doors open. So the line
+   * on the floor during planning is not a hint about the route, it *is* the
+   * route, right up until you do something to change it.
+   */
+  private likelyRoutes(arrivals: Arrival[]) {
+    const taken = new Set<string>();
+    const dots: Array<{ x: number; y: number; z: number }> = [];
+    for (const a of arrivals) {
+      const from = entryNode(a.entry);
+      let best: ReturnType<typeof pathBetween> | null = null;
+      let bestLen = Infinity;
+      let bestId = "";
+      for (const l of LOOT) {
+        if (taken.has(l.id)) continue;
+        const path = pathBetween(from, l.node);
+        const len = pathLength(path);
+        if (len < bestLen) {
+          bestLen = len;
+          best = path;
+          bestId = l.id;
+        }
+      }
+      if (!best) break;
+      taken.add(bestId);
+      for (let i = 1; i < best.length; i++) {
+        const p = best[i - 1];
+        const q = best[i];
+        const len = Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z);
+        const n = Math.max(1, Math.round(len / 0.55));
+        for (let k = 0; k < n; k++) {
+          const f = k / n;
+          dots.push({ x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f, z: p.z + (q.z - p.z) * f });
+        }
+      }
+    }
+    return dots;
   }
 
   /* ================================================================== *
@@ -736,15 +906,18 @@ export class HomeAloneEngine {
 
     if (this.zipRide >= 0) this.updateZip(dt);
     else if (playing && this.caught <= 0) this.updatePlayer(dt);
-    else this.kevin.update(dt, this.time, 0);
+    else this.kid.update(dt, this.time, 0);
 
     if (playing) {
+      this.updateRaid(dt);
       this.updateBurglars(dt);
+      this.updateTraps(dt);
       this.updateLevel(dt);
       this.updateInteract();
     }
+    this.updateLoot();
+    this.updateGhost();
 
-    this.updateMarley(dt);
     this.bricks.update(
       dt,
       {
@@ -752,27 +925,19 @@ export class HomeAloneEngine {
         blocked: (x, y, z) => this.blocked(x, y, z),
       },
       this.brickTargets(),
-      (t) => {
-        this.audio.brickHit(true);
-        this.flash("BRICK", 1.2);
-        // The other one hears his partner go down.
-        for (const b of this.burglars) b.hear(t.x, t.y, t.z, 24);
-      },
+      () => this.audio.brickHit(true),
     );
-    this.traps.update(dt, this.time);
+    this.placedRig.update(dt, this.time, this.placed);
     this.updateDoors(dt);
     this.updateAtmosphere(dt);
     this.settleCamera(dt);
 
     if (this.caught > 0) {
       this.caught = Math.min(1, this.caught + dt * 1.4);
-      if (this.caught >= 1 && this.phase === "playing") this.lose("CAUGHT");
-    }
-    if (this.phase === "outro") {
-      this.outroT += dt;
-      if (this.outroT > 3.4) this.win();
+      if (this.caught >= 1 && this.phase === "playing") this.thrownOut();
     }
   }
+
 
   /* ---- player -------------------------------------------------------- */
 
@@ -792,7 +957,7 @@ export class HomeAloneEngine {
     const input = Math.min(1, mag);
 
     const running = this.sprintHeld || this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
-    // Kevin is eight. He is fast for eight and slow for a burglar, and the whole
+    // Pip is eight. He is fast for eight and slow for a burglar, and the whole
     // battle is balanced on that: you cannot outrun them in a straight line,
     // only round a corner and over something you left on the floor.
     const top = running ? 5.1 : 2.55;
@@ -871,18 +1036,18 @@ export class HomeAloneEngine {
       }
     }
 
-    this.kevin.root.position.copy(this.pos);
-    this.kevin.root.rotation.y = this.yaw;
-    this.kevin.update(dt, this.time, this.speed);
+    this.kid.root.position.copy(this.pos);
+    this.kid.root.rotation.y = this.yaw;
+    this.kid.update(dt, this.time, this.speed);
     /* The throw: the right arm goes over the top. It is applied *after*
        `update`, because the gait would otherwise overwrite it every frame —
        and a throw you cannot see is a button that does nothing. */
     if (this.throwT > 0) {
       const f = 1 - this.throwT; // 0 wind-up … 1 follow-through
       const swing = f < 0.35 ? -(f / 0.35) * 2.6 : -2.6 + ((f - 0.35) / 0.65) * 4.0;
-      this.kevin.limbs.rArm.rotation.x = swing;
-      this.kevin.limbs.rFore.rotation.x = -1.1 + f * 0.9;
-      this.kevin.body.rotation.y = -0.35 * Math.sin(f * Math.PI);
+      this.kid.limbs.rArm.rotation.x = swing;
+      this.kid.limbs.rFore.rotation.x = -1.1 + f * 0.9;
+      this.kid.body.rotation.y = -0.35 * Math.sin(f * Math.PI);
     }
   }
 
@@ -936,102 +1101,544 @@ export class HomeAloneEngine {
     return best;
   }
 
-  /* ---- burglars ------------------------------------------------------- */
+
+  /* ---- the raid -------------------------------------------------------- */
+
+  private startRaid() {
+    this.stage = "raid";
+    this.raidT = 0;
+    this.grace = 3;
+    this.placedRig.routes(null);
+    this.flash("THEY'RE HERE", 2.4);
+    this.speak(banterLine("kid", "enter") ?? "They're in.", 3);
+    this.audio.doorbell();
+    this.audio.playMusic("sneak", 0.3);
+  }
+
+  private spawnIntruder(a: Arrival) {
+    const kind = INTRUDERS[a.who] ?? INTRUDERS.gus;
+    const b = new Burglar(kind, a.entry, this.seat);
+    const at = spawnPoint(a.entry, this.seat);
+    this.seat++;
+    const back = a.nerve !== undefined;
+    if (!back) this.arrived++;
+    b.spawn(at.x, at.y, at.z, at.yaw);
+    if (a.nerve !== undefined) b.nerve = a.nerve;
+    this.scene.add(b.char.root);
+    this.burglars.push(b);
+    b.speak(this.time, "enter", true);
+    this.flash(
+      back ? `${kind.name.toUpperCase()} IS BACK FOR MORE` : `${kind.name.toUpperCase()} · ${a.entry.toUpperCase()} DOOR`,
+      2.2,
+    );
+    this.audio.creak(0.8);
+  }
+
+  /** The clock of a night: the planning countdown, then who arrives when. */
+  private updateRaid(dt: number) {
+    if (this.level.kind !== "night") return;
+    if (this.stage === "plan") {
+      this.planLeft = Math.max(0, this.planLeft - dt);
+      if (this.planLeft <= 0) this.startRaid();
+      return;
+    }
+    this.raidT += dt;
+    while (this.queue.length && this.queue[0].at <= this.raidT) this.spawnIntruder(this.queue.shift()!);
+
+    if (this.result) return;
+    const left = this.burglars.some((b) => b.active) || this.queue.length > 0;
+    const anything = [...this.lootState.values()].some((s) => s !== "gone");
+    if (!anything) this.finishNight("THEY CLEANED YOU OUT");
+    else if (!left) this.finishNight();
+  }
+
+  private finishNight(why?: string) {
+    const kept = [...this.lootState.values()].filter((s) => s === "safe").length;
+    this.result = scoreNight({
+      lootKept: kept,
+      lootTotal: LOOT.length,
+      points: this.points,
+      bestChain: this.bestChain,
+      routed: this.routed,
+      intruders: this.arrived,
+      heartsLeft: this.hearts,
+      partsLeft: this.parts,
+    });
+    const key = `n${this.level.n}`;
+    if (this.result.won && this.result.score > (this.bestScores[key] ?? 0)) {
+      this.bestScores[key] = this.result.score;
+      try {
+        localStorage.setItem("houserules:best", JSON.stringify(this.bestScores));
+      } catch {
+        /* private browsing; the score still counts for this session */
+      }
+    }
+    if (this.result.won) {
+      this.flash("THEY'RE GONE", 2.6);
+      this.win();
+    } else {
+      this.lose(why ?? (this.hearts <= 0 ? "CAUGHT ONE TIME TOO MANY" : "THEY CLEANED YOU OUT"));
+    }
+  }
+
+  /* ---- intruders ------------------------------------------------------- */
+
+  private ctx: WorldCtx | null = null;
+
+  private worldCtx(): WorldCtx {
+    if (this.ctx) return this.ctx;
+    this.ctx = {
+      colliders: this.world.colliders,
+      litAt: (x, y, z) => {
+        const room = roomAt(x, y, z);
+        return room ? !!this.world.roomLights.get(room.id)?.on : false;
+      },
+      pickLoot: (b) => {
+        if (this.stage !== "raid") return null;
+        const from = nearestNode(b.pos.x, b.pos.y, b.pos.z).id;
+        let best: { id: string; node: string } | null = null;
+        let bestLen = Infinity;
+        for (const l of LOOT) {
+          if (this.lootState.get(l.id) !== "safe") continue;
+          if (this.burglars.some((o) => o !== b && o.active && o.lootId === l.id)) continue;
+          const len = pathLength(pathBetween(from, l.node));
+          if (len < bestLen) {
+            bestLen = len;
+            best = { id: l.id, node: l.node };
+          }
+        }
+        return best;
+      },
+      spotTrap: (b) => {
+        const eye = new THREE.Vector3(b.pos.x, b.pos.y + b.char.eyeY, b.pos.z);
+        let best: Placed | null = null;
+        let bestD = 3.4;
+        for (const p of this.placed) {
+          if (KIT[p.kind].hidden || p.usesLeft <= 0) continue;
+          if (Math.abs(p.y - b.pos.y) > 1.2) continue;
+          const d = Math.hypot(p.x - b.pos.x, p.z - b.pos.z);
+          if (d >= bestD) continue;
+          // She has to be able to see it: the light on, and nothing in between.
+          const room = roomAt(p.x, p.y + 0.3, p.z);
+          if (!room || !this.world.roomLights.get(room.id)?.on) continue;
+          if (!clearLine(eye, new THREE.Vector3(p.x, p.y + 0.3, p.z), this.world.colliders)) continue;
+          best = p;
+          bestD = d;
+        }
+        return best;
+      },
+      onGrab: (b, lootId) => {
+        this.lootState.set(lootId, "taken");
+        const l = LOOT.find((x) => x.id === lootId);
+        this.flash(`${b.name.toUpperCase()} HAS ${(l?.name ?? "something").toUpperCase()}`, 2.4);
+        this.audio.chime(false);
+      },
+      onDisarm: (b, trapId) => {
+        const p = this.placed.find((x) => x.id === trapId);
+        if (!p) return;
+        this.removeTrap(p);
+        this.flash(`${b.name.toUpperCase()} TOOK YOUR ${KIT[p.kind].name.toUpperCase()} APART`, 2.6);
+        this.audio.clatter();
+      },
+      onGone: (b) => {
+        if (b.carrying) {
+          this.lootState.set(b.carrying, "gone");
+          const l = LOOT.find((x) => x.id === b.carrying);
+          this.flash(`${b.name.toUpperCase()} GOT AWAY WITH ${(l?.name ?? "something").toUpperCase()}`, 2.8);
+          this.audio.chime(false);
+          b.carrying = null;
+          // One trip is never enough. He drops it in the van and comes back,
+          // exactly as rattled as he left, for as long as there is anything
+          // to come back for. The only way to end a night is to scare them.
+          const more = [...this.lootState.values()].some((s) => s === "safe");
+          if (this.level.kind === "night" && more && b.nerve > 0) {
+            this.queue.push({ who: b.kind.id, entry: b.entry, at: this.raidT + 7, nerve: b.nerve });
+            this.queue.sort((x, y) => x.at - y.at);
+          }
+        } else if (b.nerve <= 0) {
+          this.routed++;
+        }
+      },
+    };
+    return this.ctx;
+  }
 
   private updateBurglars(dt: number) {
-    if (this.level.kind !== "battle" && this.level.kind !== "escape") return;
-    const ctx = { colliders: this.world.colliders };
+    if (!this.burglars.length) {
+      this.danger += (0 - this.danger) * Math.min(1, dt * 3);
+      return;
+    }
+    const ctx = this.worldCtx();
     this.grace = Math.max(0, this.grace - dt);
-    const hidden = this.grace > 0;
+    const hidden = this.grace > 0 || this.spectator;
+    const aggression = this.level.night?.aggression ?? 0.5;
     let worst = 0;
-    let alive = 0;
 
     for (const b of this.burglars) {
-      if (b.state === "gone") continue;
-      alive++;
-      b.update(dt, this.time, this.pos, ctx, {
-        aggression: this.level.aggression ?? 0.5,
-        playerHidden: hidden,
-      });
+      if (!b.active) continue;
+      if (b.flung) this.advanceFling(b, dt);
+      b.update(dt, this.time, this.pos, ctx, { aggression, playerHidden: hidden });
+      if (!b.active) continue;
+      // A flight arcs. The body is the engine's to move, so the arc is too.
+      if (b.flung && b.flung.mode === "fly") {
+        const f = 1 - b.flung.left / Math.max(0.01, b.flung.total);
+        b.char.root.position.y += Math.sin(f * Math.PI) * Math.min(1.1, b.flung.total * 0.2);
+      }
       worst = Math.max(worst, b.proximity);
-
-      // `update` can change his state — including to "gone" — so re-read it
-      // rather than leaning on what it was at the top of the iteration.
-      const st: string = b.state;
-      const upright = st !== "down" && st !== "gone";
 
       // Footsteps, attenuated by distance. This is most of the tension: you
       // hear where they are long before you see them.
-      if (upright) {
+      if (b.upright) {
         const d = b.pos.distanceTo(this.pos);
-        if (d < 16 && Math.random() < dt * (st === "hunt" ? 5.5 : 3.2)) {
-          this.audio.thud(d * 0.55);
-        }
+        if (d < 16 && Math.random() < dt * (b.state === "hunt" ? 5.5 : 3.2)) this.audio.thud(d * 0.55);
       }
 
-      // Traps.
-      if (upright && this.armed.size) {
-        for (const t of TRAPS) {
-          if (!this.armed.has(t.kind)) continue;
-          const dy = Math.abs(b.pos.y - t.y);
-          if (dy > 1.6) continue;
-          if (Math.hypot(b.pos.x - t.x, b.pos.z - t.z) > t.radius) continue;
-          const spot = this.traps.fire(t.kind);
-          if (!spot) continue;
-          this.armed.delete(t.kind);
-          b.hit(spot.stun, spot.damage);
-          this.audio.yell(b.who);
-          this.trapSound(t.kind);
-          this.flash(`${spot.name.toUpperCase()} — ${b.who === "harry" ? "HARRY" : "MARV"} IS DOWN`, 2.2);
-          // The other one comes running. That is the price of a trap firing.
-          for (const o of this.burglars) if (o !== b) o.hear(t.x, t.y, t.z, 22);
-          if (b.nerve <= 0) {
-            b.state = "flee";
-            this.flash(`${b.who === "harry" ? "HARRY" : "MARV"} HAS HAD ENOUGH`, 2.4);
-          }
-          break;
-        }
+      // Whatever he has just walked onto.
+      if (b.upright) {
+        const p = this.trapUnder(b, null);
+        if (p) this.fireTrap(p, b);
       }
 
-      // Caught. Any burglar still on his feet and still in the fight — not
-      // just one who has seen you. Walking into Marv's back in a dark
-      // corridor has to count, or the safest place in the house is behind him.
-      const grabby = st !== "down" && st !== "gone" && st !== "flee" && this.grace <= 0;
+      // Caught. Anybody still on his feet and still in the fight, not just one
+      // who has seen you: walking into somebody's back in a dark corridor has
+      // to count, or the safest place in the house is behind him.
+      const grabby =
+        b.upright && b.state !== "flee" && b.state !== "carry" && b.blind <= 0 && this.grace <= 0 && !this.spectator;
       if (grabby && this.caught <= 0 && this.zipRide < 0) {
         const d = Math.hypot(b.pos.x - this.pos.x, b.pos.z - this.pos.z);
         if (d < 0.85 && Math.abs(b.pos.y - this.pos.y) < 1.4) {
-          if (this.level.kind === "escape" && !this.marleyUsed) {
-            b.speak(this.time, "gotcha", true);
-            this.marleySave(b);
-          } else {
-            this.caught = 0.01;
-            this.caughtBy = b;
-            b.speak(this.time, "gotcha", true);
-            this.kevin.setScream(true);
-            this.audio.scream();
-            this.audio.playMusic(null);
-          }
+          this.caught = 0.01;
+          this.caughtBy = b;
+          b.speak(this.time, "gotcha", true);
+          this.kid.setScream(true);
+          this.audio.scream();
         }
       }
     }
 
     this.danger += (worst - this.danger) * Math.min(1, dt * 3);
-    if (this.level.kind === "battle" && alive === 0 && this.phase === "playing") {
-      this.flash("THEY'RE GONE", 2.6);
-      this.phase = "outro";
+
+    // Anybody who walked out with something is finished with this body; he
+    // comes back as a new arrival. Only the routed stay, for the list.
+    if (this.burglars.some((b) => !b.active && b.nerve > 0)) {
+      this.burglars = this.burglars.filter((b) => {
+        if (b.active || b.nerve <= 0) return true;
+        this.scene.remove(b.char.root);
+        b.dispose();
+        return false;
+      });
     }
   }
 
-  private trapSound(kind: TrapKind) {
-    switch (kind) {
-      case "iron": this.audio.clang(); break;
-      case "ornaments": this.audio.glass(); break;
-      case "torch": case "doorknob": this.audio.fire(); break;
-      case "cars": case "tar": this.audio.slip(); break;
-      case "paint": this.audio.clang(); this.audio.thud(0.4); break;
-      case "glue": this.audio.clatter(); break;
+  /**
+   * Somebody had hold of you. On a night that costs a heart and puts you back
+   * in your own room with a few seconds' head start; in the sandbox it costs
+   * nothing, because the sandbox is for finding out what things do.
+   */
+  private thrownOut() {
+    const by = this.caughtBy;
+    this.caught = 0;
+    this.caughtBy = null;
+    this.kid.setScream(false);
+    if (this.level.kind === "night") {
+      this.hearts--;
+      if (this.hearts <= 0) {
+        this.finishNight();
+        return;
+      }
+      this.flash(this.hearts === 1 ? "CAUGHT. ONE MORE AND IT'S OVER" : `CAUGHT. ${this.hearts} LEFT`, 2.6);
+    } else {
+      this.flash("CAUGHT", 1.8);
     }
-    this.audio.thud(0.5);
+    const home = node("u_kid");
+    this.pos.set(home.x, home.y + 0.05, home.z);
+    this.vel.set(0, 0, 0);
+    this.grace = 4;
+    if (by) by.hear(by.pos.x, by.pos.y, by.pos.z, 1);
+    this.settleCamera(0.999);
+  }
+
+  /* ---- traps going off -------------------------------------------------- */
+
+  private liveChain(b: Burglar) {
+    return this.time < b.chainUntil ? b.chain : 0;
+  }
+
+  /** A trap he is standing in that is ready to go, other than `not`. */
+  private trapUnder(b: Burglar, not: number | null): Placed | null {
+    for (const p of this.placed) {
+      if (p.id === not || p.usesLeft <= 0 || p.cool > 0) continue;
+      const r = KIT[p.kind].radius;
+      if (r <= 0) continue;
+      if (Math.abs(p.y - b.pos.y) > 1.3) continue;
+      if (Math.hypot(p.x - b.pos.x, p.z - b.pos.z) > r) continue;
+      return p;
+    }
+    return null;
+  }
+
+  private fireTrap(p: Placed, b: Burglar) {
+    const def = KIT[p.kind];
+    p.usesLeft--;
+    p.cool = def.rearm;
+    p.firing = 1;
+    this.placedRig.burst(p);
+    this.trapSound(p.kind);
+
+    if (def.effect === "blind") {
+      // Everybody in the cloud, not just whoever set it off.
+      for (const o of this.burglars) {
+        if (!o.active || Math.abs(o.pos.y - p.y) > 1.6) continue;
+        if (o !== b && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) > def.area) continue;
+        const out = resolveTrap(def, p.yaw, { hx: 0, hz: 0, heavy: false, rooted: false, chain: this.liveChain(o) });
+        o.blind = out.blind;
+        this.link(o, def.name, out.damage, 0, out.chain, out.score, []);
+      }
+      return;
+    }
+
+    const { hx, hz } = b.heading();
+    const out = resolveTrap(def, p.yaw, {
+      hx, hz, heavy: b.kind.heavy, rooted: b.rooted > 0, chain: this.liveChain(b),
+    });
+    if (out.root > 0) b.rooted = out.root;
+    else b.rooted = 0;
+    this.link(b, def.name, out.damage, out.stun, out.chain, out.score, out.tricks);
+    // Glue is a set-up, so the chain waits for as long as he is stuck in it.
+    if (out.root > 0) b.chainUntil = this.time + out.root + 1;
+    if (out.dist > 0 && out.mode) this.startFling(b, out.tx, out.tz, out.dist, out.mode, p.id);
+  }
+
+  /**
+   * One more link in somebody's chain: the bookkeeping every hit shares,
+   * whether it was a trap, a wall, the stairs or a snowball.
+   */
+  private link(b: Burglar, label: string, damage: number, stun: number, chain: number, score: number, tricks: Trick[]) {
+    b.chain = chain;
+    b.chainUntil = this.time + CHAIN_WINDOW;
+    this.dropLoot(b);
+    b.hit(stun, damage);
+    this.points += score;
+    this.bestChain = Math.max(this.bestChain, chain);
+    this.audio.yell(b.kind.rig);
+    b.speak(this.time, "trap", true);
+
+    // The running commentary: one line per chain, growing as it grows.
+    const text = [label, ...tricks].join(" + ");
+    let line = this.feed.find((f) => f.who === b && this.time < f.until && chain > 1);
+    if (!line) {
+      line = { id: this.feedId++, who: b, parts: [], chain: 0, until: 0 };
+      this.feed.push(line);
+      if (this.feed.length > 5) this.feed.shift();
+    }
+    line.parts.push(text);
+    line.chain = chain;
+    line.until = this.time + CHAIN_WINDOW;
+
+    if (chain >= 2) {
+      this.flash(`${chain}x CHAIN`, 1.8);
+      this.audio.chime(true);
+      if (chain === 2 || chain === 4) this.speak(banterLine("kid", "chain") ?? "Yes!", 2.6);
+    } else if (stun > 0) {
+      this.flash(`${label.toUpperCase()} · ${b.name.toUpperCase()} IS DOWN`, 1.8);
+    }
+    if (b.nerve <= 0) this.flash(`${b.name.toUpperCase()} HAS HAD ENOUGH`, 2.4);
+
+    // Every hit pays for a little more mischief, and a proper chain for a
+    // little more than that. It is what keeps the second half of a raid from
+    // being a kid with an empty box.
+    if (this.level.kind === "night") this.parts = Math.min(40, this.parts + (chain === 3 ? 2 : 1));
+    // The others come running. That is the price of a trap going off, and
+    // quite often it is also the next link.
+    for (const o of this.burglars) if (o !== b) o.hear(b.pos.x, b.pos.y, b.pos.z, 13);
+  }
+
+  /** A slam, a tumble, a collision: a link that is not a trap. */
+  private trick(b: Burglar, trick: Trick) {
+    const r = resolveTrick(trick, this.liveChain(b));
+    this.placedRig.thump(b.pos.x, b.pos.y, b.pos.z);
+    this.audio.thud(0.2);
+    if (trick === "WALL SLAM") this.audio.clang();
+    this.link(b, trick, r.damage, 2.6, r.chain, r.score, []);
+  }
+
+  private dropLoot(b: Burglar) {
+    if (!b.carrying) return;
+    this.lootState.set(b.carrying, "safe");
+    b.carrying = null;
+    if (b.state === "carry") b.state = "prowl";
+  }
+
+  private removeTrap(p: Placed) {
+    this.placedRig.remove(p.id);
+    const i = this.placed.indexOf(p);
+    if (i >= 0) this.placed.splice(i, 1);
+    if (this.pickable === p) this.pickable = null;
+  }
+
+  private trapSound(kind: KitKind) {
+    switch (kind) {
+      case "marbles": this.audio.clatter(); this.audio.slip(); break;
+      case "slick": this.audio.slip(); break;
+      case "tripwire": this.audio.tick(); this.audio.thud(0.4); break;
+      case "glue": this.audio.slip(); break;
+      case "spring": this.audio.boing(); break;
+      case "sack": this.audio.whoosh(); break;
+      case "flour": this.audio.poof(); break;
+      case "clock": this.audio.alarm(); break;
+    }
+  }
+
+  /** Cooldowns and animations; a trap with nothing left in it is cleared away. */
+  private updateTraps(dt: number) {
+    for (let i = this.placed.length - 1; i >= 0; i--) {
+      const p = this.placed[i];
+      p.cool = Math.max(0, p.cool - dt);
+      p.firing = Math.max(0, p.firing - dt * (p.kind === "clock" ? 0.3 : 1.1));
+      if (p.usesLeft <= 0 && p.firing <= 0) this.removeTrap(p);
+    }
+    if (this.hint && this.time > this.hintUntil) this.hint = null;
+  }
+
+  /* ---- being thrown ------------------------------------------------------ */
+
+  /** The flight of stairs somebody is standing part-way up, if any. */
+  private rampUnder(x: number, y: number, z: number): Ramp | null {
+    for (const r of this.world.ramps) {
+      const h = rampHeight(r, x, z);
+      if (h === null || Math.abs(h - y) > 0.5) continue;
+      // Not at the very foot: there is nowhere left to fall from there.
+      if (h < r.yLow + 0.4) continue;
+      return r;
+    }
+    return null;
+  }
+
+  private startFling(b: Burglar, tx: number, tz: number, dist: number, mode: "slide" | "fly", from: number | null) {
+    // On a flight of stairs there is only one way to go, and it is down.
+    const ramp = this.rampUnder(b.pos.x, b.pos.y, b.pos.z);
+    if (ramp) {
+      const down = -ramp.dir;
+      if (ramp.axis === "z") {
+        tx = 0;
+        tz = down;
+        dist = Math.max(dist, Math.abs((down > 0 ? ramp.z1 : ramp.z0) - b.pos.z) + 0.9);
+      } else {
+        tx = down;
+        tz = 0;
+        dist = Math.max(dist, Math.abs((down > 0 ? ramp.x1 : ramp.x0) - b.pos.x) + 0.9);
+      }
+      mode = "slide";
+    }
+    b.fling({ tx, tz, left: dist, total: dist, mode, startY: b.pos.y, from });
+  }
+
+  /**
+   * Carry a thrown body along its throw, twelve centimetres at a time, and
+   * find out what it hits. This is where chains actually happen.
+   */
+  private advanceFling(b: Burglar, dt: number) {
+    const f = b.flung;
+    if (!f) return;
+    // Slow enough to watch. A chain that is over in half a second is a number
+    // going up; one that takes three is a man crossing the hall on his back.
+    let move = Math.min(f.left, (f.mode === "fly" ? 6.2 : 4.6) * dt);
+    const STEP = 0.12;
+    while (move > 1e-4) {
+      const s = Math.min(STEP, move);
+      const nx = b.pos.x + f.tx * s;
+      const nz = b.pos.z + f.tz * s;
+
+      // A wall, a sofa, a kitchen counter. All the same to a man in the air.
+      if (this.blocked(nx, b.pos.y + 0.55, nz)) {
+        const hard = f.left > 0.9;
+        this.endFling(b, f);
+        if (hard) this.trick(b, "WALL SLAM");
+        return;
+      }
+      // A colleague.
+      for (const o of this.burglars) {
+        if (o === b || !o.upright || Math.abs(o.pos.y - b.pos.y) > 1.2) continue;
+        if (Math.hypot(o.pos.x - nx, o.pos.z - nz) > 0.7) continue;
+        const rest = f.left * 0.7;
+        const { tx, tz } = f;
+        const chain = this.liveChain(b);
+        this.endFling(b, f);
+        this.trick(b, "BOWLING");
+        // He joins the chain that hit him, rather than starting his own.
+        o.chain = Math.max(this.liveChain(o), chain);
+        o.chainUntil = this.time + CHAIN_WINDOW;
+        this.trick(o, "BOWLING");
+        if (rest > 0.6) this.startFling(o, tx, tz, o.kind.heavy ? rest * 0.5 : rest, "slide", null);
+        return;
+      }
+
+      b.pos.x = nx;
+      b.pos.z = nz;
+      const g = this.groundAt(nx, nz, b.pos.y + 0.35);
+      if (g > -20) b.pos.y = g;
+      f.left -= s;
+      move -= s;
+
+      // Whatever he has just been thrown onto. Not the thing that threw him.
+      const p = this.trapUnder(b, f.from);
+      if (p) {
+        const fell = f.startY - b.pos.y > 1.0;
+        b.flung = null;
+        if (fell) this.trick(b, "TUMBLE");
+        this.fireTrap(p, b);
+        return;
+      }
+    }
+    if (f.left <= 1e-3) this.endFling(b, f);
+  }
+
+  private endFling(b: Burglar, f: NonNullable<Burglar["flung"]>) {
+    b.flung = null;
+    // He started this upstairs and finished it down here.
+    if (f.startY - b.pos.y > 1.0) this.trick(b, "TUMBLE");
+  }
+
+  /* ---- placing ------------------------------------------------------------ */
+
+  /** Work out where the thing in your hand would go, and show it. */
+  private updateGhost() {
+    const kind = this.phase === "playing" && this.caught <= 0 && this.zipRide < 0 ? this.selected : null;
+    if (!kind) {
+      this.placedRig.ghost(null, 0, 0, 0, 0, false);
+      return;
+    }
+    const g = this.ghost;
+    g.yaw = this.camYaw;
+    g.x = this.pos.x + Math.sin(this.camYaw) * REACH;
+    g.z = this.pos.z + Math.cos(this.camYaw) * REACH;
+    const floor = this.groundAt(g.x, g.z, this.pos.y + STEP_UP);
+    g.y = floor > -20 ? floor : this.pos.y;
+
+    let problem: PlaceProblem = null;
+    if (floor < -20 || Math.abs(floor - this.pos.y) > 0.75) problem = "air";
+    else if (
+      this.blocked(g.x, g.y + 0.4, g.z) ||
+      this.blocked((g.x + this.pos.x) / 2, g.y + 0.6, (g.z + this.pos.z) / 2)
+    ) problem = "wall";
+    else if (this.burglars.some((b) => b.upright && b.pos.distanceTo(this.pos) < 2.4)) problem = "busy";
+    else problem = placeProblem(kind, g, this.placed, this.parts);
+    g.problem = problem;
+    this.placedRig.ghost(kind, g.x, g.y, g.z, g.yaw, !problem);
+  }
+
+  /** Where each valuable is right now: on its spot, or on somebody's back. */
+  private updateLoot() {
+    for (const l of LOOT) {
+      const state = this.lootState.get(l.id);
+      const carrier = this.burglars.find((b) => b.carrying === l.id);
+      if (carrier) {
+        this.placedRig.loot(l.id, carrier.pos.x, carrier.char.root.position.y + carrier.char.height + 0.35, carrier.pos.z, true, true);
+        continue;
+      }
+      const n = node(l.node);
+      this.placedRig.loot(l.id, n.x, n.y + 1.3, n.z, state === "safe", false);
+    }
   }
 
   /* ---- level rules ---------------------------------------------------- */
@@ -1042,8 +1649,8 @@ export class HomeAloneEngine {
       this.levelTime = Math.max(0, this.levelTime - dt);
     }
 
-    // Kevin narrates his own house, which is most of why the first act works.
-    if (this.time > this.lastChatter && this.caught <= 0) {
+    // On the quiet levels the kid narrates his own house.
+    if ((L.kind === "explore" || L.kind === "lights") && this.time > this.lastChatter && this.caught <= 0) {
       this.lastChatter = this.time + 16 + Math.random() * 14;
       const room = roomAt(this.pos.x, this.pos.y, this.pos.z);
       const lines = room ? ROOM_LINES[room.id] : null;
@@ -1079,38 +1686,28 @@ export class HomeAloneEngine {
         }
         break;
       }
-      case "traps": {
-        this.compassTarget = this.nextTrap();
-        if (this.armed.size >= TRAPS.length) {
-          this.flash("EVERY ONE OF THEM", 2.2);
-          this.win();
-        } else if (this.levelTime <= 0) {
-          if (this.armed.size >= (L.trapsNeeded ?? 4)) this.win();
-          else this.lose("NINE O'CLOCK, AND NOTHING SET");
+      case "night":
+      case "roam": {
+        // The arrow points at whoever is walking out with something.
+        let best: Burglar | null = null;
+        let bestD = Infinity;
+        for (const b of this.burglars) {
+          if (!b.active || !b.carrying) continue;
+          const d = b.pos.distanceTo(this.pos);
+          if (d < bestD) {
+            bestD = d;
+            best = b;
+          }
         }
-        break;
-      }
-      case "battle": {
-        this.compassTarget = this.nextArmedTrap();
-        break;
-      }
-      case "escape": {
-        if (this.ropeCut) break;
-        const b = L.beacons?.[0];
-        this.compassTarget = this.zipRide >= 0 || this.atTreehouse()
-          ? { x: ZIP_END.x + 1.0, y: ZIP_END.y, z: ZIP_END.z, label: "the rope" }
-          : b
-            ? { x: b.x, y: b.y, z: b.z, label: b.label }
-            : null;
+        const what = best ? LOOT.find((l) => l.id === best!.carrying)?.name : null;
+        this.compassTarget = best
+          ? { x: best.pos.x, y: best.pos.y, z: best.pos.z, label: `${best.name} has ${what ?? "something"}` }
+          : null;
         break;
       }
       default:
         this.compassTarget = null;
     }
-  }
-
-  private atTreehouse() {
-    return Math.hypot(this.pos.x - TREEHOUSE.x, this.pos.z - TREEHOUSE.z) < 3.0 && this.pos.y > 2.0;
   }
 
   /**
@@ -1160,34 +1757,6 @@ export class HomeAloneEngine {
     return best;
   }
 
-  private nextTrap() {
-    let best: { x: number; y: number; z: number; label: string } | null = null;
-    let bestD = Infinity;
-    for (const t of TRAPS) {
-      if (this.armed.has(t.kind)) continue;
-      const d = Math.hypot(t.x - this.pos.x, t.z - this.pos.z) + Math.abs(t.y - this.pos.y) * 2.5;
-      if (d < bestD) {
-        bestD = d;
-        best = { x: t.x, y: t.y, z: t.z, label: t.name };
-      }
-    }
-    return best;
-  }
-
-  private nextArmedTrap() {
-    let best: { x: number; y: number; z: number; label: string } | null = null;
-    let bestD = Infinity;
-    for (const t of TRAPS) {
-      if (!this.armed.has(t.kind)) continue;
-      const d = Math.hypot(t.x - this.pos.x, t.z - this.pos.z) + Math.abs(t.y - this.pos.y) * 2.5;
-      if (d < bestD) {
-        bestD = d;
-        best = { x: t.x, y: t.y, z: t.z, label: t.name };
-      }
-    }
-    return best;
-  }
-
   /* ---- interaction ----------------------------------------------------- */
 
   private updateInteract() {
@@ -1195,7 +1764,6 @@ export class HomeAloneEngine {
     let bestD = Infinity;
     for (const it of this.interactables) {
       if (it.done) continue;
-      if (it.kind === "rope" && !this.atTreehouse()) continue;
       const dy = Math.abs(this.pos.y - (it.y - 1.0));
       if (dy > 1.6) continue;
       const d = Math.hypot(this.pos.x - it.x, this.pos.z - it.z);
@@ -1207,8 +1775,38 @@ export class HomeAloneEngine {
     }
     this.nearest = best;
 
+    // A trap at your feet can be picked back up, as long as your hands are empty.
+    let pick: Placed | null = null;
+    if (!this.selected) {
+      let pickD = 1.15;
+      for (const p of this.placed) {
+        if (p.usesLeft <= 0 || p.firing > 0 || Math.abs(p.y - this.pos.y) > 1.0) continue;
+        const d = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
+        if (d < pickD) {
+          pickD = d;
+          pick = p;
+        }
+      }
+    }
+    this.pickable = pick;
+
     if (!this.actionQueued) return;
     this.actionQueued = false;
+
+    // With something in your hand, the action button lays it.
+    if (this.selected) {
+      this.place();
+      return;
+    }
+    if (pick) {
+      const def = KIT[pick.kind];
+      // Untouched, you get all of it back. Used once, you get half.
+      const refund = pick.usesLeft >= def.uses ? def.cost : Math.floor(def.cost / 2);
+      if (this.level.kind !== "roam") this.parts += refund;
+      this.removeTrap(pick);
+      this.audio.tick();
+      return;
+    }
     if (!best) return;
 
     switch (best.kind) {
@@ -1220,45 +1818,17 @@ export class HomeAloneEngine {
         if (on && this.level.kind === "lights") this.speak(`${ROOMS[room].name}. Lit.`, 1.8);
         break;
       }
-      case "trap": {
-        const kind = best.trap!;
-        if (this.armed.has(kind)) break;
-        this.armed.add(kind);
-        this.traps.arm(kind, true);
-        const spot = TRAPS.find((t) => t.kind === kind)!;
-        this.speak(spot.quip, 3.6);
-        this.audio.chime(true);
-        break;
-      }
       case "zip": {
         if (this.zipRide >= 0) break;
         this.zipRide = 0;
         this.audio.slip();
-        this.speak("Whoa—", 2.4);
-        break;
-      }
-      case "bb": {
-        this.hasBB = true;
-        this.ammo = 12;
-        best.done = true;
-        this.kevin.setProp(true);
-        this.audio.chime(true);
-        this.speak("Buzz's BB gun. He'll never know.", 3.4);
-        break;
-      }
-      case "rope": {
-        this.ropeCut = true;
-        best.done = true;
-        this.world.zip.visible = false;
-        this.audio.clang();
-        this.flash("MERRY CHRISTMAS, YA FILTHY ANIMAL", 3.0);
-        this.phase = "outro";
+        this.speak("Whoa!", 2.4);
         break;
       }
     }
   }
 
-  /** The zipline ride: four seconds, on rails, and you cannot be caught on it. */
+  /** The wire: four seconds, on rails, and nobody can catch you on it. */
   private updateZip(dt: number) {
     this.zipRide += dt / 3.6;
     const f = Math.min(1, this.zipRide);
@@ -1270,88 +1840,28 @@ export class HomeAloneEngine {
       ZIP_START.z + (ZIP_END.z - ZIP_START.z) * e,
     );
     this.yaw = Math.atan2(ZIP_END.x - ZIP_START.x, ZIP_END.z - ZIP_START.z);
-    this.kevin.root.position.copy(this.pos);
-    this.kevin.root.rotation.y = this.yaw;
-    this.kevin.limbs.lArm.rotation.x = -2.6;
-    this.kevin.limbs.rArm.rotation.x = -2.6;
-    this.kevin.update(dt, this.time, 0);
-    this.kevin.limbs.lArm.rotation.x = -2.6;
-    this.kevin.limbs.rArm.rotation.x = -2.6;
+    this.kid.root.position.copy(this.pos);
+    this.kid.root.rotation.y = this.yaw;
+    this.kid.limbs.lArm.rotation.x = -2.6;
+    this.kid.limbs.rArm.rotation.x = -2.6;
+    this.kid.update(dt, this.time, 0);
+    this.kid.limbs.lArm.rotation.x = -2.6;
+    this.kid.limbs.rArm.rotation.x = -2.6;
     if (f >= 1) {
       this.zipRide = -1;
       // Land him *on the deck*, explicitly. Dropping him at the wire's height
       // and letting gravity find the boards works right up until it doesn't,
-      // and when it doesn't he falls out of the world with the level half
-      // finished — which is the single worst bug this game could ship.
+      // and when it doesn't he falls out of the world.
       const deck = this.groundAt(this.pos.x, this.pos.z, ZIP_END.y + 1.0);
       this.pos.y = deck > -20 ? deck : ZIP_END.y;
       this.vel.set(0, 0, 0);
       this.grounded = true;
-      this.speak("Made it. Now the rope.", 3);
+      // Whoever was chasing has lost him, and knows it.
+      this.grace = Math.max(this.grace, 2.5);
+      this.speak("Made it. Back in through the yard.", 3);
     }
   }
 
-  /**
-   * Marley, shovelling.
-   *
-   * He walks the pavement, turns at each end, and never comes onto the
-   * property. That distance is the point: for four levels he is a shape at the
-   * edge of the world you are told nothing about.
-   */
-  private updateMarley(dt: number) {
-    const m = this.marley;
-    if (!m) return;
-    if (this.marleyShowUntil > this.time) {
-      m.update(dt, this.time, 0);
-      return;
-    }
-    if (!this.marleyActive) {
-      // Not shovelling tonight, and not mid-rescue: he is simply not here.
-      if (m.root.visible) m.root.visible = false;
-      return;
-    }
-    this.marleyT += dt;
-    const span = 34;
-    const period = 58;
-    const f = (this.marleyT % period) / period;
-    const back = f > 0.5;
-    const g = back ? 1 - (f - 0.5) * 2 : f * 2;
-    m.root.position.set(-18 + g * span, -0.02, STREET.kerb - 2.6);
-    m.root.rotation.y = back ? -Math.PI / 2 : Math.PI / 2;
-    // He stops every so often and looks at the house, which is unnerving and
-    // is meant to be — you find out much later that he is not the problem.
-    const pause = Math.sin(this.marleyT * 0.42) > 0.86;
-    m.update(dt, this.time, pause ? 0 : m.walkSpeed * 0.8);
-    if (pause) m.root.rotation.y = Math.PI;
-  }
-
-  /**
-   * The save.
-   *
-   * In the last level the first time they get hold of you, Marley turns up
-   * with the snow shovel and that is that. Once, and only once — it is a beat,
-   * not a mechanic, and if it happened twice it would be a second life.
-   */
-  private marleySave(b: Burglar) {
-    this.marleyUsed = true;
-    this.caught = 0;
-    this.caughtBy = null;
-    this.kevin.setScream(false);
-    b.hit(6.5, 48);
-    const m = this.marley;
-    if (m) {
-      m.root.visible = true;
-      m.root.position.set(b.pos.x + Math.sin(b.yaw) * 1.4, b.pos.y, b.pos.z + Math.cos(b.yaw) * 1.4);
-      m.root.rotation.y = b.yaw + Math.PI;
-      m.update(0.016, this.time, 0);
-    }
-    this.marleyShowUntil = this.time + 6;
-    this.flash("OLD MAN MARLEY", 3.2);
-    this.speak(banterLine("marley", "trap") ?? "That's about enough of that.", 3.4);
-    this.audio.thud(0.2);
-    this.audio.clang();
-    for (const o of this.burglars) if (o !== b) o.hear(b.pos.x, b.pos.y, b.pos.z, 30);
-  }
 
   /* ---- doors, atmosphere, camera ---------------------------------------- */
 
@@ -1407,23 +1917,22 @@ export class HomeAloneEngine {
     const frame = Math.floor(this.time * 4) % 3;
     if (this.tvFrame !== frame) {
       this.tvFrame = frame;
-      this.world.tv.map = T.filmFrame(frame);
+      this.world.tv.map = T.tvFrame(frame);
       this.world.tv.needsUpdate = true;
       this.world.tvGlow.intensity = frame === 1 ? 11 : 4.5;
     }
     this.tauntCd = Math.max(0, this.tauntCd - dt);
-    this.muzzle = Math.max(0, this.muzzle - dt * 4);
     this.throwCd = Math.max(0, this.throwCd - dt);
     const wasThrowing = this.throwT > 0;
     this.throwT = Math.max(0, this.throwT - dt * 2.6);
     // He reaches for the next one the moment the last has left.
-    if (wasThrowing && this.throwT <= 0) this.kevin.setBrick(true);
+    if (wasThrowing && this.throwT <= 0) this.kid.setBrick(true);
 
     this.world.cullLights(this.pos.x, this.pos.y, this.pos.z);
   }
 
   /**
-   * Boom camera behind Kevin, pulled in whenever the house is in the way.
+   * Boom camera behind Pip, pulled in whenever the house is in the way.
    *
    * Indoors this matters more than anything else about the camera: without it
    * the lens sits in the dining room while you stand in the kitchen and you
@@ -1432,7 +1941,7 @@ export class HomeAloneEngine {
   private settleCamera(dt: number) {
     // Aim at his shoulders, derived from his actual height rather than a
     // magic number — the day he got 4 cm taller the magic number was wrong.
-    const headY = this.pos.y + this.kevin.height * 0.86;
+    const headY = this.pos.y + this.kid.height * 0.86;
     const focus = new THREE.Vector3(this.pos.x, headY, this.pos.z);
 
     if (this.caught > 0 && this.caughtBy) {
@@ -1470,11 +1979,11 @@ export class HomeAloneEngine {
     const hit = this.rayHit(focus, back, dist + 0.35);
     // 0.45 rather than a comfortable metre: in a 1.6 m corridor there is no
     // comfortable metre, and a boom that refuses to shorten puts the lens in
-    // the wall instead. Below 0.95 Kevin is hidden, so it degrades into a
+    // the wall instead. Below 0.95 Pip is hidden, so it degrades into a
     // first-person view rather than a close-up of the back of his head.
     if (hit !== null && this.shotDist === null) d = Math.max(0.45, hit - 0.28);
     this.camDist += (d - this.camDist) * Math.min(1, dt * (d < this.camDist ? 26 : 6));
-    this.kevin.root.visible = this.camDist > 0.9 || this.zipRide >= 0 || this.shotDist !== null;
+    this.kid.root.visible = this.camDist > 0.9 || this.zipRide >= 0 || this.shotDist !== null;
 
     const want = focus.clone().addScaledVector(back, this.camDist);
     // The lift is proportional to the boom. A fixed 42 cm is a gentle
@@ -1532,6 +2041,7 @@ export class HomeAloneEngine {
     return best;
   }
 
+
   /* ---- outcomes --------------------------------------------------------- */
 
   private speak(line: string, secs: number) {
@@ -1547,12 +2057,13 @@ export class HomeAloneEngine {
   private win() {
     if (this.phase === "won") return;
     this.phase = "won";
+    this.selected = null;
     this.audio.playMusic("home", 0.4);
     this.audio.chime(true);
-    if (this.level.n <= LEVEL_COUNT && this.level.n > this.cleared) {
+    if (this.level.kind === "night" && this.level.n > this.cleared) {
       this.cleared = this.level.n;
       try {
-        localStorage.setItem("homealone:cleared", String(this.cleared));
+        localStorage.setItem("houserules:cleared", String(this.cleared));
       } catch {
         /* private browsing; the run still counts for this session */
       }
@@ -1563,6 +2074,7 @@ export class HomeAloneEngine {
   private lose(why: string) {
     if (this.phase === "lost") return;
     this.phase = "lost";
+    this.selected = null;
     this.banner = why;
     this.bannerUntil = this.time + 6;
     this.audio.playMusic(null);
@@ -1589,8 +2101,19 @@ export class HomeAloneEngine {
         e.preventDefault();
       }
       if (e.code === "KeyF") {
-        this.fire();
+        this.place();
         e.preventDefault();
+      }
+      if (e.code === "KeyR") this.ring();
+      if (e.code === "KeyG") this.ready();
+      if (e.code === "KeyB") this.callIn();
+      if (e.code === "Escape" || e.code === "Digit0") {
+        if (this.selected) this.selectKit(null);
+      }
+      const digit = /^Digit([1-8])$/.exec(e.code);
+      if (digit) {
+        const k = this.kitNow()[Number(digit[1]) - 1];
+        if (k) this.selectKit(k);
       }
       if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code))
         e.preventDefault();
@@ -1608,6 +2131,8 @@ export class HomeAloneEngine {
     };
     const onClick = () => {
       this.audio.resume();
+      // With the mouse captured, a click lays whatever is in your hand.
+      if (this.phase === "playing" && this.pointerLocked && this.selected) this.place();
       if (this.phase === "playing" && !this.pointerLocked && !("ontouchstart" in window))
         canvas.requestPointerLock?.();
     };
@@ -1724,18 +2249,20 @@ export class HomeAloneEngine {
 
   private unbind: () => void = () => {};
 
+
   /* ---- snapshot ---------------------------------------------------------- */
 
   /**
    * The current state, as the HUD sees it.
    *
    * Public rather than private because `tools/homealone-play.mjs` drives the
-   * whole game through it — asserting on the same numbers the player is shown
-   * is the only way to know a level can actually be finished.
+   * whole game through it: asserting on the same numbers the player is shown
+   * is the only way to know a night can actually be finished.
    */
   snapshot(): Snapshot {
     const room = roomAt(this.pos.x, this.pos.y, this.pos.z);
     const L = this.level;
+    const trapGame = L.kind === "night" || L.kind === "roam";
 
     let done = 0;
     let total = 0;
@@ -1746,15 +2273,9 @@ export class HomeAloneEngine {
       const rooms = L.streetRooms ?? [];
       done = rooms.filter((r) => this.world.roomLights.get(r)?.on).length;
       total = rooms.length;
-    } else if (L.kind === "traps") {
-      done = this.armed.size;
-      total = TRAPS.length;
-    } else if (L.kind === "battle") {
-      done = this.burglars.filter((b) => b.state === "gone").length;
-      total = 2;
-    } else if (L.kind === "escape") {
-      done = this.ropeCut ? 2 : this.atTreehouse() ? 1 : 0;
-      total = 2;
+    } else if (L.kind === "night") {
+      done = this.routed;
+      total = L.night?.arrivals.length ?? 0;
     }
 
     let compass: number | null = null;
@@ -1766,46 +2287,88 @@ export class HomeAloneEngine {
       compass = Math.atan2(dx, dz) - this.camYaw;
     }
 
+    // What the action button would do, in the order `updateInteract` tries.
+    let action: string | null = null;
+    if (this.phase === "playing") {
+      if (this.selected) {
+        action = this.ghost.problem ? null : `Lay ${KIT[this.selected].name}`;
+      } else if (this.pickable) {
+        action = `Pick up ${KIT[this.pickable.kind].name}`;
+      } else if (this.nearest) {
+        // Verb first, room second. "Turn on the ${name}" cannot be made to
+        // read for all sixteen: the names carry their own articles and
+        // possessives, so it produces "the the den". This shape works for
+        // every one.
+        action =
+          this.nearest.kind === "switch"
+            ? `${this.world.roomLights.get(this.nearest.room!)?.on ? "Lights off" : "Lights on"}: ${ROOMS[this.nearest.room!].name}`
+            : this.nearest.label;
+      }
+    }
+
+    const kinds = this.kitNow();
+    const kit: KitSlot[] = kinds.map((k, i) => ({
+      kind: k,
+      name: KIT[k].name,
+      icon: KIT[k].icon,
+      cost: KIT[k].cost,
+      blurb: KIT[k].blurb,
+      affordable: L.kind === "roam" || this.parts >= KIT[k].cost,
+      selected: this.selected === k,
+      key: i + 1,
+    }));
+
+    // Somebody who walked out with an armful is not "gone", he is on his way
+    // back, and he is in the queue below. Only the routed stay on the list.
+    const intruders: IntruderState[] = this.burglars
+      .map((b, i) => ({ b, i }))
+      .filter(({ b }) => b.active || b.nerve <= 0)
+      .map(({ b, i }) => ({
+      id: i,
+      name: b.name,
+      nerve: Math.max(0, Math.round((b.nerve / b.kind.nerve) * 100)),
+      state: b.state,
+      down: b.state === "down",
+      says: b.says,
+      carrying: b.carrying ? (LOOT.find((l) => l.id === b.carrying)?.name ?? null) : null,
+      status: b.flung ? "flying" : b.rooted > 0 ? "stuck" : b.blind > 0 ? "blind" : null,
+      entry: b.entry,
+      eta: 0,
+      voice: b.kind.rig,
+    }));
+    // The ones who have not turned up yet, so the list is the whole night.
+    this.queue.forEach((a, i) => {
+      const kind = INTRUDERS[a.who] ?? INTRUDERS.gus;
+      intruders.push({
+        id: 100 + i,
+        name: kind.name,
+        nerve: 100,
+        state: "waiting",
+        down: false,
+        says: null,
+        carrying: null,
+        status: null,
+        entry: a.entry,
+        eta: Math.max(0.1, this.stage === "plan" ? this.planLeft + a.at : a.at - this.raidT),
+        voice: kind.rig,
+      });
+    });
+
+    const night = L.night;
     return {
       phase: this.phase,
       level: L.n,
       title: L.title,
-      quote: L.quote,
       brief: L.brief,
       goal: L.goal,
       kind: L.kind,
-      room: room?.name ?? (this.pos.z > 8 ? "Lincoln Avenue" : this.pos.z < -8 ? "The Back Yard" : "Outside"),
-      action: this.nearest
-        ? this.nearest.kind === "switch"
-          // Verb first, room second. "Turn on the ${name}" cannot be made to
-          // read for all sixteen — the names carry their own articles and
-          // possessives ("The Den", "Kevin's Room"), so it produces "the the
-          // den" and "the kevin's room". This shape works for every one.
-          ? `${this.world.roomLights.get(this.nearest.room!)?.on ? "Lights off" : "Lights on"} — ${ROOMS[this.nearest.room!].name}`
-          : this.nearest.kind === "trap"
-            ? this.armed.has(this.nearest.trap!) ? null : `Set: ${this.nearest.label}`
-            : this.nearest.label
-        : null,
+      room: room?.name ?? (this.pos.z > 8 ? "Juniper Lane" : this.pos.z < -8 ? "The Back Yard" : "Outside"),
+      action,
       say: this.time < this.sayUntil ? this.say : null,
       banner: this.time < this.bannerUntil ? this.banner : null,
       timeLeft: L.time ? this.levelTime : null,
       done,
       total,
-      traps: TRAPS.map((t) => ({
-        kind: t.kind,
-        name: t.name,
-        quip: t.quip,
-        armed: this.armed.has(t.kind),
-        spent: this.traps.visuals.get(t.kind)?.spent ?? false,
-        room: ROOMS[t.room].name,
-      })),
-      burglars: this.burglars.map((b) => ({
-        who: b.who,
-        nerve: b.nerve,
-        state: b.state,
-        down: b.state === "down",
-        says: b.says,
-      })),
       compass,
       compassLabel: this.compassTarget?.label ?? null,
       compassDist,
@@ -1814,10 +2377,7 @@ export class HomeAloneEngine {
       caught: this.caught,
       running: this.sprintHeld || this.keys.has("ShiftLeft"),
       cleared: this.cleared,
-      hasBB: this.hasBB,
-      ammo: this.ammo,
       tauntCooldown: this.tauntCd,
-      marley: this.marleyShowUntil > this.time,
       stick:
         this.stickId !== null
           ? { ox: this.stickOrigin.x, oy: this.stickOrigin.y, x: this.stickAt.x, y: this.stickAt.y }
@@ -1825,7 +2385,71 @@ export class HomeAloneEngine {
       boom: this.camBoom,
       brickCooldown: this.throwCd,
       invertLook: this.invertLook,
+
+      stage: this.stage,
+      planLeft: this.planLeft,
+      parts: this.parts,
+      sandbox: L.kind === "roam",
+      kit,
+      placeHint: this.hint ?? (this.selected && this.ghost.problem ? PLACE_PROBLEM_TEXT[this.ghost.problem] : null),
+      laid: this.placed.length,
+      clocks: this.placed.filter((p) => p.kind === "clock" && p.usesLeft > 0 && p.cool <= 0).length,
+      intruders,
+      loot: trapGame
+        ? LOOT.map((l) => ({ id: l.id, name: l.name, state: this.lootState.get(l.id) ?? "safe" }))
+        : [],
+      hearts: this.hearts,
+      score: this.points,
+      bestChain: this.bestChain,
+      feed: this.feed.map((f) => ({
+        id: f.id,
+        who: f.who.name,
+        text: f.parts.join(" → "),
+        chain: f.chain,
+        hot: this.time < f.until,
+      })),
+      result: this.result,
+      cast: night
+        ? night.arrivals.map((a) => {
+            const k = INTRUDERS[a.who] ?? INTRUDERS.gus;
+            return { name: k.name, trait: k.trait, entry: a.entry };
+          })
+        : [],
+      newKit: L.kind === "night" ? newKitOn(L.n, KIT).map((k) => ({ name: KIT[k].name, icon: KIT[k].icon, blurb: KIT[k].blurb })) : [],
+      hasNext: L.kind === "night",
+      bestScore: this.bestScores[`n${L.n}`] ?? 0,
     };
+  }
+
+  /** Test hooks: where everybody is, in numbers. */
+  debug() {
+    return {
+      pos: { x: this.pos.x, y: this.pos.y, z: this.pos.z },
+      camYaw: this.camYaw,
+      placed: this.placed.map((p) => ({ ...p })),
+      paths: (["front", "back"] as Entry[]).map((entry) => ({
+        entry,
+        to: LOOT.map((l) => ({
+          id: l.id,
+          points: pathBetween(entryNode(entry), l.node).map((n) => ({ x: n.x, y: n.y, z: n.z })),
+        })),
+      })),
+      burglars: this.burglars.map((b) => ({
+        name: b.name, state: b.state, x: b.pos.x, y: b.pos.y, z: b.pos.z, nerve: b.nerve,
+        carrying: b.carrying, lootId: b.lootId, chain: b.chain, flung: !!b.flung,
+      })),
+    };
+  }
+
+  /** Test hook: stand somewhere, facing some way. */
+  teleport(x: number, y: number, z: number, yaw?: number) {
+    this.pos.set(x, y + 0.05, z);
+    this.vel.set(0, 0, 0);
+    if (yaw !== undefined) {
+      this.yaw = yaw;
+      this.camYaw = yaw;
+    }
+    this.settleCamera(0.999);
   }
 
   private emit() {
@@ -1842,10 +2466,9 @@ export class HomeAloneEngine {
     if (document.pointerLockElement) document.exitPointerLock?.();
     this.audio.dispose();
     for (const b of this.burglars) b.dispose();
-    this.marley?.dispose();
-    this.kevin.dispose();
+    this.kid.dispose();
     this.bricks.dispose();
-    this.traps.dispose();
+    this.placedRig.dispose();
     this.world.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -1879,4 +2502,4 @@ function rampHeight(r: Ramp, x: number, z: number): number | null {
   return r.yLow + (r.yHigh - r.yLow) * f;
 }
 
-export { CEILING, LEVELS, LEVEL_COUNT, TRAPS };
+export { CEILING, LEVELS, NIGHT_COUNT, ROAM, EXPLORE, LIGHTS };
