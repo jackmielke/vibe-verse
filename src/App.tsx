@@ -102,6 +102,7 @@ const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
 const Thalassa = lazy(() => import("./pages/Thalassa.tsx"));
 const FogCity = lazy(() => import("./pages/FogCity.tsx"));
 const CannonRun = lazy(() => import("./pages/CannonRun.tsx"));
+const GatchClip = lazy(() => import("./pages/GatchClip.tsx"));
 const Terminal = lazy(() => import("./pages/Terminal.tsx"));
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const GlassLake = lazy(() => import("./pages/GlassLake.tsx"));
@@ -439,6 +440,7 @@ const App = () => (
           {["/cannon-run", "/cannon-chase", "/cannonchase", "/cannonrun", "/car-chase", "/chase"].map((path) => (
             <Route key={path} path={path} element={<CannonRun />} />
           ))}
+          <Route path="/gatch/:id" element={<GatchClip />} />
           {["/thalassa", "/harbor", "/harbour", "/greek-harbor"].map((path) => (
             <Route key={path} path={path} element={<Thalassa />} />
           ))}
