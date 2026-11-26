@@ -551,12 +551,12 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   carried.root.position.set(0, -0.42, 0.05);
   carried.root.visible = false;
   walker.hands.add(carried.root);
-  // His backup: cousins in black face-covering hats, armed with sticks.
+  // His backup: scruffy junkyard guys in ridiculous hats, with nail-studded sticks.
   const henchMats = henchKit();
   const MAX_HENCH = 8;
   const henchmen: Henchman[] = [];
   for (let k = 0; k < MAX_HENCH; k++) {
-    const body = buildHench(henchMats);
+    const body = buildHench(henchMats, k);
     body.root.visible = false;
     scene.add(body.root);
     henchmen.push({ s: 0, lat: 0, y: 0, v: 0, vl: 0, vy: 0, state: -1, t: 0, rider: 0, rx: 0, spin: 0, walk: 0, yaw: 0, whack: 0, body });
@@ -689,9 +689,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     ({ en, foe, respawnT, backupT, tauntT, talk, talkT } = c);
   };
   let linda: Chaser | null = null;
-  // Lunatic Linda, Mort's cousin, is built but parked until Jack's two-player
-  // update (Nov 2026: "don't actually add the crazy lady yet"). Flip this then.
-  const LINDA_ON = false;
+  // Lunatic Linda, Mort's cousin: two-player only (Jack, Nov 2026: "go w linda").
+  const LINDA_ON = true;
   if (two && LINDA_ON) {
     const lf = buildFoe(1, true);
     scene.add(lf.root);

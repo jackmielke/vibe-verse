@@ -361,41 +361,53 @@ export interface Hench {
   armR: THREE.Group;
 }
 
-/**
- * One of Mort's cousins: a black hoodie, dark jeans, sneakers, a black
- * face-covering hat with an eye slit, and a stick. Built on y = 0, facing +z.
- * The materials are shared by every henchman, so pass them in.
- */
-export function henchKit(): Record<"hood" | "jeans" | "shoe" | "mask" | "skin" | "stick" | "eyes", THREE.Material> {
+/** Shared henchman materials (each one adds his own shirt and hat). Built on y = 0, facing +z. */
+export function henchKit(): Record<"jeans" | "shoe" | "skin" | "stick" | "eyes" | "stubble" | "iron" | "shade" | "dark", THREE.Material> {
   return {
-    hood: new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.9 }),
-    jeans: new THREE.MeshStandardMaterial({ color: 0x2c3b55, roughness: 0.85 }),
-    shoe: new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.7 }),
-    mask: new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.95 }),
-    skin: new THREE.MeshStandardMaterial({ color: 0xc98a64, roughness: 0.7 }),
-    stick: new THREE.MeshStandardMaterial({ color: 0x7a5432, roughness: 0.9 }),
+    jeans: new THREE.MeshStandardMaterial({ color: 0x5a5236, roughness: 0.9 }),
+    shoe: new THREE.MeshStandardMaterial({ color: 0x3a2a1e, roughness: 0.8 }),
+    skin: new THREE.MeshStandardMaterial({ color: 0xd99a74, roughness: 0.7 }),
+    stick: new THREE.MeshStandardMaterial({ color: 0x8a6234, roughness: 0.9 }),
     eyes: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    stubble: new THREE.MeshStandardMaterial({ color: 0x4a3426, roughness: 1 }),
+    iron: new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.35, metalness: 0.9 }),
+    shade: new THREE.MeshStandardMaterial({ color: 0x101014, roughness: 0.15, metalness: 0.6 }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }),
   };
 }
-export function buildHench(m: ReturnType<typeof henchKit>): Hench {
+
+const SHIRTS = [0xe8e0c8, 0xd2542a, 0x3a8a5a, 0xe0b830, 0x6a4aa0, 0x2a7ab8, 0xc23a5a, 0x8a8a8a];
+
+/** One of his junkyard pals. Each of the eight has his own ridiculous hat and his own stick. */
+export function buildHench(m: ReturnType<typeof henchKit>, n = 0): Hench {
   const root = new THREE.Group();
+  const mat = (c: number, r = 0.8): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: c, roughness: r });
+  const shirt = mat(SHIRTS[n % SHIRTS.length], 0.9);
   const leg = (sx: number): THREE.Group => {
     const g = new THREE.Group();
     g.position.set(sx * 0.11, 0.82, 0);
-    g.add(box(0.17, 0.76, 0.19, 0, -0.38, 0, m.jeans));
+    g.add(box(0.19, 0.5, 0.21, 0, -0.25, 0, m.jeans)); // cargo shorts
+    g.add(box(0.13, 0.28, 0.13, 0, -0.62, 0, m.skin)); // hairy shins
     g.add(box(0.19, 0.1, 0.3, 0, -0.77, 0.05, m.shoe));
     root.add(g);
     return g;
   };
   const legL = leg(1);
   const legR = leg(-1);
-  root.add(box(0.4, 0.62, 0.24, 0, 1.16, 0, m.hood));
-  root.add(box(0.3, 0.12, 0.08, 0, 0.98, 0.13, m.hood)); // the pocket
+  // a stained vest top over a little belly
+  root.add(box(0.42, 0.6, 0.26, 0, 1.17, 0, shirt));
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), shirt);
+  belly.scale.set(1, 0.9, 0.75);
+  belly.position.set(0, 1.05, 0.1);
+  root.add(belly);
+  const stain = new THREE.Mesh(new THREE.CircleGeometry(0.06, 10), mat(0x6a5030));
+  stain.position.set(0.08, 1.12, 0.255);
+  root.add(stain);
   const arm = (sx: number): THREE.Group => {
     const g = new THREE.Group();
-    g.position.set(sx * 0.26, 1.42, 0);
-    g.add(box(0.12, 0.58, 0.13, 0, -0.29, 0, m.hood));
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 6), m.skin);
+    g.position.set(sx * 0.27, 1.42, 0);
+    g.add(box(0.12, 0.58, 0.13, 0, -0.29, 0, m.skin));
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), m.skin);
     hand.position.y = -0.62;
     g.add(hand);
     root.add(g);
@@ -403,25 +415,159 @@ export function buildHench(m: ReturnType<typeof henchKit>): Hench {
   };
   const armL = arm(1);
   const armR = arm(-1);
-  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.95, 8), m.stick);
-  stick.position.set(0, -0.62, 0.38);
-  stick.rotation.x = Math.PI / 2 - 0.3;
-  armR.add(stick);
-  // the head is the hat: a black knit mask pulled all the way down, with a slit for the eyes
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), m.mask);
-  head.scale.set(1, 1.12, 1);
+
+  // the stick, with things sticking out of it
+  const weapon = new THREE.Group();
+  weapon.position.set(0, -0.62, 0.38);
+  weapon.rotation.x = Math.PI / 2 - 0.3;
+  armR.add(weapon);
+  const kind = n % 3;
+  if (kind === 0) {
+    // a two-by-four full of nails
+    weapon.add(box(0.07, 1.0, 0.1, 0, 0, 0, m.stick));
+    for (let i = 0; i < 6; i++) {
+      const nail = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.16, 4), m.iron);
+      nail.rotation.z = Math.PI / 2;
+      nail.position.set((i % 2 ? 1 : -1) * 0.07, 0.15 + i * 0.06, (i % 3 - 1) * 0.03);
+      weapon.add(nail);
+    }
+  } else if (kind === 1) {
+    // a crooked branch, twigs and all
+    weapon.add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 1.0, 7), m.stick));
+    for (const [y, a, l] of [[0.2, 0.8, 0.25], [0.32, -0.9, 0.2], [0.42, 0.6, 0.18], [0.05, -0.7, 0.15]]) {
+      const twig = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, l, 5), m.stick);
+      twig.position.set(Math.sin(a) * l * 0.5, y, 0);
+      twig.rotation.z = -a;
+      weapon.add(twig);
+    }
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), mat(0x5a8a2a));
+    leaf.scale.set(1, 0.4, 1);
+    leaf.position.set(0.1, 0.5, 0);
+    weapon.add(leaf);
+  } else {
+    // a bent pipe wrapped in tape, a bike chain looped round the end
+    weapon.add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.95, 8), m.iron));
+    const tape = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.22, 8), mat(0xd8c020));
+    tape.position.y = -0.32;
+    weapon.add(tape);
+    for (let i = 0; i < 5; i++) {
+      const link = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.009, 4, 8), m.dark);
+      link.position.set(0.05, 0.42 - i * 0.05, (i % 2) * 0.02);
+      link.rotation.y = i % 2 ? Math.PI / 2 : 0;
+      weapon.add(link);
+    }
+  }
+
+  // a face: stubble, a big goofy grin, one of them in shades
+  root.add(box(0.14, 0.1, 0.14, 0, 1.5, 0, m.skin));
+  const head = new THREE.Group();
   head.position.y = 1.66;
   root.add(head);
-  const slit = box(0.22, 0.05, 0.02, 0, 1.69, 0.165, m.skin);
-  root.add(slit);
-  for (const sx of [-1, 1]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 4), m.eyes);
-    e.position.set(sx * 0.055, 1.69, 0.18);
-    root.add(e);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), m.skin));
+  const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), m.stubble);
+  jaw.position.set(0, -0.01, 0.015);
+  head.add(jaw);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), mat(0xe07a5a));
+  nose.position.set(0, -0.01, 0.16);
+  head.add(nose);
+  head.add(box(0.12, 0.03, 0.03, 0, -0.07, 0.145, mat(0x3a0e0e)));
+  const tooth = box(0.03, 0.025, 0.02, 0.025, -0.06, 0.16, m.eyes);
+  head.add(tooth);
+  if (n % 2 === 0) {
+    head.add(box(0.26, 0.06, 0.03, 0, 0.035, 0.15, m.shade)); // sunglasses
+  } else {
+    for (const sx of [-1, 1]) {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), m.eyes);
+      e.position.set(sx * 0.055, 0.04, 0.14);
+      head.add(e);
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.014, 5, 4), m.dark);
+      p.position.set(sx * 0.055 + 0.01 * sx, 0.04, 0.168);
+      head.add(p);
+    }
   }
-  const pom = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), m.mask);
-  pom.position.y = 1.86;
-  root.add(pom);
+
+  // and the hat, the whole point
+  const hat = new THREE.Group();
+  hat.position.y = 0.1;
+  head.add(hat);
+  const style = n % 8;
+  if (style === 0) {
+    // ten-gallon cowboy hat, far too big
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 18), mat(0xc8964a));
+    brim.scale.set(1, 1, 0.8);
+    hat.add(brim);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 0.3, 14), mat(0xc8964a));
+    crown.position.y = 0.15;
+    hat.add(crown);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.185, 0.05, 14), mat(0x3a1e10));
+    band.position.y = 0.04;
+    hat.add(band);
+  } else if (style === 1) {
+    // a giant top hat with a feather
+    hat.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.03, 16), m.dark));
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.55, 14), m.dark);
+    t.position.y = 0.28;
+    hat.add(t);
+    const f = box(0.03, 0.4, 0.08, 0.14, 0.45, 0, mat(0xff3a8a));
+    f.rotation.z = -0.4;
+    hat.add(f);
+  } else if (style === 2) {
+    // a traffic cone
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 14), mat(0xff6a1a, 0.6));
+    cone.position.y = 0.2;
+    hat.add(cone);
+    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.08, 14), mat(0xffffff, 0.6));
+    stripe.position.y = 0.22;
+    hat.add(stripe);
+  } else if (style === 3) {
+    // a propeller beanie, propeller spinning in the breeze
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x2a7ad8));
+    hat.add(cap);
+    const prop = box(0.38, 0.015, 0.05, 0, 0.2, 0, mat(0xffd020));
+    prop.rotation.y = 0.6;
+    hat.add(prop);
+    hat.add(box(0.02, 0.06, 0.02, 0, 0.17, 0, mat(0xd8261a)));
+  } else if (style === 4) {
+    // horns, like a viking who shops at a gas station
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), m.iron);
+    hat.add(lid);
+    for (const sx of [-1, 1]) {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.26, 8), mat(0xf0e6c8));
+      horn.position.set(sx * 0.19, 0.1, 0);
+      horn.rotation.z = -sx * 0.9;
+      hat.add(horn);
+    }
+  } else if (style === 5) {
+    // an enormous sombrero
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.04, 20), mat(0xe0c060));
+    hat.add(brim);
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.4, 14), mat(0xe0c060));
+    crown.position.y = 0.2;
+    hat.add(crown);
+    const trim = new THREE.Mesh(new THREE.TorusGeometry(0.57, 0.02, 4, 24), mat(0xd8261a));
+    trim.rotation.x = Math.PI / 2;
+    hat.add(trim);
+  } else if (style === 6) {
+    // a hard hat with a flashing light on top
+    const hh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xffd020, 0.5));
+    hat.add(hh);
+    hat.add(box(0.4, 0.02, 0.3, 0, 0, 0.06, mat(0xffd020, 0.5)));
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3a1a }));
+    beacon.position.y = 0.2;
+    hat.add(beacon);
+  } else {
+    // a crown off a burger box, gold and slightly bent
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.12, 14, 1, true), new THREE.MeshStandardMaterial({ color: 0xffc020, roughness: 0.3, metalness: 0.7, side: THREE.DoubleSide }));
+    ring.position.y = 0.06;
+    ring.rotation.z = 0.12;
+    hat.add(ring);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const pt = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.1, 4), new THREE.MeshStandardMaterial({ color: 0xffc020, roughness: 0.3, metalness: 0.7 }));
+      pt.position.set(Math.cos(a) * 0.16, 0.17, Math.sin(a) * 0.16);
+      hat.add(pt);
+    }
+  }
   return { root, legL, legR, armL, armR };
 }
 

@@ -13,10 +13,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Joystick } from "@/magician/ui/Joystick";
 import { QrCode } from "@/oni/ui/QrCode";
+import { Comic } from "@/cannonrun/Comic";
 import type { CannonRun as Game, ChaseHud, Mode, RiderHud } from "@/cannonrun/engine";
 import { openTransport, readBank, roomCode, writeBank, UPGRADES, UPGRADE_COST, type NetMode, type Transport, type Upgrades, type Wire } from "@/cannonrun/net";
 
-type Screen = "splash" | "garage" | "host" | "join" | "loading" | "playing" | "failed";
+type Screen = "comic" | "splash" | "garage" | "host" | "join" | "loading" | "playing" | "failed";
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -32,7 +33,7 @@ export default function CannonRun() {
   const guestUpRef = useRef<Upgrades | undefined>(undefined);
   const [mode, setMode] = useState<Mode>(() => (params.has("duo") ? "duo" : "solo"));
   const [screen, setScreen] = useState<Screen>(() =>
-    joinCode ? "join" : hostCode ? "host" : params.has("go") || params.has("duo") ? "loading" : "splash",
+    joinCode ? "join" : hostCode ? "host" : params.has("comic") ? "comic" : params.has("go") || params.has("duo") ? "loading" : "splash",
   );
   const [hud, setHud] = useState<ChaseHud | null>(null);
   const [aurora, setAurora] = useState<boolean>(() => {
@@ -161,7 +162,8 @@ export default function CannonRun() {
   }, []);
 
   const onStick = useCallback((x: number, y: number) => gameRef.current?.setStick(x, y), []);
-  const start = (m: Mode): void => { setMode(m); setEarned(null); setScreen("loading"); };
+  // Every run from the menu opens with the comic (skippable); a guest or a host whose friend just joined goes straight in.
+  const start = (m: Mode): void => { setMode(m); setEarned(null); setScreen("comic"); };
   const again = (): void => { setEarned(null); gameRef.current?.restart(); };
   const buy = (key: keyof Upgrades): void => {
     const b = readBank();
@@ -305,6 +307,8 @@ export default function CannonRun() {
           ) : null}
         </>
       ) : null}
+
+      {screen === "comic" ? <Comic phone={phone} onDone={() => setScreen("loading")} /> : null}
 
       {screen === "splash" ? (
         <Backdrop>
