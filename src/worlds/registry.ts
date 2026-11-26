@@ -569,8 +569,8 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "💣",
     kind: "game",
     blurb:
-      "Midnight on a desert highway, an old ship's cannon bolted into the bed of your pickup, and Mad Mort's headlights filling the rear view. Swerve, hit the nitro, and lob iron at him until his truck gives up. Then he comes back in a bigger one.",
-    status: "New: outrun him, out-shoot him",
+      "Midnight on a desert highway, an old ship's cannon bolted into the bed of your pickup, and Mad Mort's headlights filling the rear view. Swerve, hit the nitro, and lob iron at him until his truck gives up. Then he comes back in a bigger one, with his masked cousins for backup. Two trucks on one screen, or a friend on their phone, and a garage for the cash.",
+    status: "New: two players, henchmen, a garage",
     accent: "#ffb43a",
     backdrop: "#0b0f1c",
     featured: true,

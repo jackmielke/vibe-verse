@@ -89,6 +89,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
   ],
   "cannon-run": [
+    { sha: "fec5dbed", iso: "2026-11-26T06:17:21+00:00", subject: "Cannon Run: Mort only throws at civilians in his way" },
+    { sha: "529ca5f7", iso: "2026-11-26T06:06:53+00:00", subject: "Cannon Run: angrier Mort, quicker backup, throws that miss you" },
+    { sha: "8caa2468", iso: "2026-11-26T05:50:24+00:00", subject: "Cannon Run: two trucks, Mort's backup, and a garage" },
     { sha: "4da138f8", iso: "2026-11-26T04:43:52+00:00", subject: "Cannon Run: a night chase with a ship's cannon in the back of your pickup" },
   ],
   "characters": [
