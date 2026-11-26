@@ -40,7 +40,9 @@ export interface HeistChase {
   group: THREE.Group;
   start(now: number): void;
   /** Advance the sim. Returns "caught" / "escaped" on the frame the run ends. */
-  update(dt: number, now: number, playerPos: THREE.Vector3): "caught" | "escaped" | null;
+  update(dt: number, now: number, playerPos: THREE.Vector3, shredder?: boolean): "caught" | "escaped" | null;
+  /** True while a lawnmower is chewing the kart up; the page throws debris. */
+  shredding(): boolean;
   isActive(): boolean;
   pos(): THREE.Vector3;
 }
@@ -180,12 +182,16 @@ export function buildHeistChase(): HeistChase {
   let active = false;
   let wpIdx = 1;
   let startedAt = 0;
+  let shredT = -1;
+  const SHRED_SECONDS = 1.1;
 
   const api: HeistChase = {
     group,
     isActive: () => active,
     pos: () => kart.position.clone(),
+    shredding: () => active && shredT >= 0,
     start(now) {
+      shredT = -1;
       active = true;
       startedAt = now;
       wpIdx = 1;
@@ -194,8 +200,25 @@ export function buildHeistChase(): HeistChase {
       group.visible = true;
       for (const t of trail) t.bornAt = -Infinity;
     },
-    update(dt, now, playerPos) {
+    update(dt, now, playerPos, shredder = false) {
       if (!active) return null;
+
+      // Under a lawnmower: stops dead, judders and is ground down to nothing.
+      if (shredT < 0 && shredder && playerPos.distanceTo(kart.position) < CATCH_RADIUS + 1) shredT = 0;
+      if (shredT >= 0) {
+        shredT += dt;
+        kart.scale.setScalar(Math.max(0.02, 1 - shredT / SHRED_SECONDS));
+        kart.rotation.y += dt * 30;
+        kart.position.y = Math.random() * 0.3;
+        if (shredT >= SHRED_SECONDS) {
+          shredT = -1;
+          kart.scale.setScalar(1);
+          active = false;
+          group.visible = false;
+          return "caught";
+        }
+        return null;
+      }
 
       // Drive toward the next waypoint, braking into the turn.
       const [tx, tz] = ROUTE[wpIdx];

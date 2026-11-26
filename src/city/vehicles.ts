@@ -13,7 +13,7 @@
 import * as THREE from "three";
 import type { KartMesh } from "@/components/city/karts";
 
-export type VehicleKind = "kart" | "monster" | "comet" | "car";
+export type VehicleKind = "kart" | "monster" | "comet" | "car" | "mower";
 
 export interface VehicleSpec {
   label: string;
@@ -71,6 +71,14 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
   comet: {
     label: "Vibe Comet", max: 48, boost: 66, accel: 52, steer: 2.3, gripSpeed: 9,
     armour: 1.35, crushes: false, nose: 0.4, reach: 1.7, seat: 0.45, wheelR: 0.36, enclosed: true, paint: 0xffc531,
+  },
+  /**
+   * The lawnmower. Nothing hurts it (armour 0): whatever it touches, it
+   * shreds, and a getaway kart it reaches is shredded too.
+   */
+  mower: {
+    label: "lawnmower", max: 26, boost: 34, accel: 34, steer: 2.1, gripSpeed: 6,
+    armour: 0, crushes: false, nose: 0.5, reach: 0.9, seat: 0.8, wheelR: 0.3, enclosed: false, paint: 0x3fae3f,
   },
 };
 
@@ -416,4 +424,30 @@ export function scorch(group: THREE.Object3D, on: boolean) {
       }
     }
   });
+}
+
+/** A red ride-on lawnmower with a spinning blade deck out front. */
+export function buildMower(): KartMesh {
+  const g = new THREE.Group();
+  g.name = "city/mower";
+  const paint = std(0xd23a2a, 0.45, 0.3);
+  const dark = std(0x1a1d22, 0.7, 0.3);
+  const rubber = std(0x111316, 0.9, 0);
+  const steel = std(0xc9ced3, 0.25, 0.9);
+  const { wheels, frontPivots } = wheelSet(g, 0.3, 0.2, 0.55, 0.7, -0.7, rubber, steel);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 1.5), paint);
+  body.position.set(0, 0.55, -0.1);
+  g.add(body);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.4), dark);
+  seat.position.set(0, 0.95, -0.5);
+  g.add(seat);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.16, 0.7), steel);
+  deck.position.set(0, 0.28, 1.15);
+  g.add(deck);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.03, 0.12), std(0xff4a3a, 0.2, 0.9));
+  blade.name = "blade";
+  blade.position.set(0, 0.2, 1.15);
+  g.add(blade);
+  const glow = glowUnder(g, 0x7dff7d, 1.4, 2.4);
+  return { group: g, wheels, frontPivots, glow };
 }

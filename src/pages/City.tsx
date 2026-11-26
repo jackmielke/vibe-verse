@@ -86,7 +86,7 @@ import { createCarSink } from "@/city/carSink";
 import { createCrashFx } from "@/city/crashFx";
 import {
   VEHICLES, MAX_HEALTH, impactDamage, distress, cometSpot,
-  buildMonsterTruck, buildComet, buildBeacon, scorch,
+  buildMonsterTruck, buildComet, buildMower, buildBeacon, scorch,
   type VehicleKind, type ImpactSurface,
 } from "@/city/vehicles";
 import { createWrecks } from "@/city/wrecks";
@@ -206,7 +206,7 @@ const CITY_SEED = "vibe-city-v1";
  * name the vehicle you are standing next to without reaching into the effect.
  * The last slot is the standing one for a commandeered city car.
  */
-const VEHICLE_SLOTS: VehicleKind[] = ["kart", "kart", "monster", "comet", "car"];
+const VEHICLE_SLOTS: VehicleKind[] = ["kart", "kart", "monster", "comet", "mower", "car"];
 const GRID = 9; // city is GRID x GRID cells
 const BLOCK = 28; // buildable block size (m)
 const STREET = 12; // street width between blocks (m)
@@ -2317,6 +2317,8 @@ export default function City() {
     }
     const cometBeacon = buildBeacon();
     scene.add(cometBeacon);
+    // The lawnmower, on the island lawn beside the go-karts.
+    vehicle("mower", ISLAND_X + SITE.karts.x + 4, ISLAND_TOP, ISLAND_Z + SITE.karts.z, 2.4, buildMower());
     vehicle("car", 0, 0, 0, 0, null);
     for (const k of kartStates) {
       if (k.mesh) k.home = { x: k.x, y: k.y, z: k.z, yaw: k.yaw };
@@ -2364,6 +2366,8 @@ export default function City() {
         toldAbout.add(kind);
         if (kind === "comet") {
           toast("☄️ You found the Vibe Comet", { description: "Hold Shift for the afterburner. It is very fast and not very strong." });
+        } else if (kind === "mower") {
+          toast("🌱 Lawnmower", { description: "It shreds trees, buildings, cars and the getaway kart. Nothing hurts it." });
         } else if (kind === "monster") {
           toast("🚚 Monster truck", { description: "Drive over cars to crush them. Trees and signs do not stand a chance." });
         } else {
@@ -4802,7 +4806,21 @@ export default function City() {
       if (i === drivingKartRef.current) setDriveHp(Math.round(k.hp));
       if (k.hp <= 0) blowUp(i);
     };
+    /** The mower's answer to anything it touches: chew it up, keep going. */
+    const shredFx = (x: number, y: number, z: number, fx: number, fz: number) => {
+      crashFx.debris(x, y + 0.4, z, 6, 0x6fbf5a, 6);
+      crashFx.debris(x, y + 0.5, z, 4, 0xb8bcc2, 8);
+      crashFx.sparks(x, y + 0.5, z, fx, fz, 10);
+      crashFx.leaves(x, y + 1, z, 8);
+    };
     const wallHit = (k: (typeof kartStates)[number], impact: number) => {
+      if (k.kind === "mower") {
+        if (impact > 1) {
+          shredFx(k.x + Math.sin(k.yaw) * 1.4, k.y, k.z + Math.cos(k.yaw) * 1.4, -Math.sin(k.yaw), -Math.cos(k.yaw));
+          crashFx.kick(0.05);
+        }
+        return;
+      }
       if (impact > 5) {
         const fx = Math.sin(k.yaw);
         const fz = Math.cos(k.yaw);
@@ -6141,9 +6159,10 @@ export default function City() {
           );
           for (const f of fell) {
             hurtVehicle(drivingKartRef.current, f.kind as ImpactSurface, Math.abs(kart.speed), true);
+            if (kart.kind === "mower") shredFx(f.x, kart.y, f.z, fwdX, fwdZ);
             if (f.kind === "tree") crashFx.leaves(f.x, 3.5, f.z, 22);
             else crashFx.sparks(f.x, 0.8, f.z, fwdX, fwdZ, 10);
-            kart.speed *= spec.crushes ? 0.97 : 0.86;
+            kart.speed *= spec.crushes || kart.kind === "mower" ? 0.97 : 0.86;
             soundsRef.current?.thud?.(Math.min(0.7, 0.2 + Math.abs(kart.speed) / 50));
             crashFx.kick(spec.crushes ? 0.04 : 0.1);
           }
@@ -6198,7 +6217,12 @@ export default function City() {
           kart.speed *= 0.66;
           soundsRef.current?.thud?.(Math.min(1, 0.3 + impactSpeed / 34));
           // Both of you pay. Hard enough and the other car goes up.
-          district.traffic.damage(hitId, impactSpeed * 3.4);
+          // A mower does not bounce off a car, it eats it.
+          district.traffic.damage(hitId, kart.kind === "mower" ? 1000 : impactSpeed * 3.4);
+          if (kart.kind === "mower") {
+            shredFx(knx + rx, kart.y, knz + rz, Math.sin(kart.yaw), Math.cos(kart.yaw));
+            kart.speed = Math.max(kart.speed * 1.5, Math.min(8, spec.max));
+          }
           hurtVehicle(drivingKartRef.current, "car", impactSpeed);
           crashFx.sparks(knx, 0.7, knz, Math.sin(kart.yaw), Math.cos(kart.yaw), 8 + Math.round(impactSpeed / 2));
           crashFx.kick(Math.min(0.5, impactSpeed / 60));
@@ -6219,7 +6243,7 @@ export default function City() {
           wallHit(kart, scrape);
         } else {
           wallHit(kart, Math.abs(kart.speed));
-          kart.speed *= -0.25; // soft bounce off a dead-on wall
+          kart.speed *= kart.kind === "mower" ? 0.4 : -0.25; // soft bounce off a dead-on wall
           soundsRef.current?.thud?.(0.3);
         }
         // Ground follow — and real gravity past an edge (island rim!).
@@ -7028,7 +7052,14 @@ export default function City() {
           chaseAnnounced = true;
         }
         weather.update(dt, player.position);
-        const chaseEv = heistChase.update(dt, now, player.position);
+        const mowing = drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].kind === "mower";
+        const chaseEv = heistChase.update(dt, now, player.position, mowing);
+        if (heistChase.shredding()) {
+          const kp = heistChase.pos();
+          shredFx(kp.x, kp.y, kp.z, Math.random() - 0.5, Math.random() - 0.5);
+          crashFx.debris(kp.x, kp.y + 0.6, kp.z, 6, 0x31161f, 7);
+          crashFx.kick(0.1);
+        }
         if (chaseEv) {
           setHeistChaseOn(false);
           chaseNextAt = now + CHASE_PERIOD_MS;
@@ -7275,6 +7306,10 @@ export default function City() {
         if (drivingKartRef.current === i) {
           for (const w of k.mesh.wheels) w.rotateY((k.speed * dt) / VEHICLES[k.kind].wheelR);
           for (const p of k.mesh.frontPivots) p.rotation.y = -k.steer * 0.42;
+          if (k.kind === "mower") {
+            const bl = k.mesh.group.getObjectByName("blade");
+            if (bl) bl.rotation.y += dt * 60;
+          }
           (k.mesh.glow.material as THREE.MeshBasicMaterial).opacity =
             0.3 + Math.min(0.25, Math.abs(k.speed) / 60);
         }
@@ -10183,7 +10218,9 @@ export default function City() {
                 ? "🚚 Drive the monster truck"
                 : VEHICLE_SLOTS[nearKart] === "comet"
                   ? "☄️ Drive the Vibe Comet"
-                  : "🏎️ Drive the vibe kart"}
+                  : VEHICLE_SLOTS[nearKart] === "mower"
+                    ? "🌱 Ride the lawnmower"
+                    : "🏎️ Drive the vibe kart"}
               {isTouch ? "" : " (F)"}
             </button>
           )}
