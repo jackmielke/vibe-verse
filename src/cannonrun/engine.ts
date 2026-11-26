@@ -2510,6 +2510,220 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       project(henchBubble, hs.s, hs.lat, hs.y + 2.3, true, 70);
     } else henchBubble.style.opacity = "0";
     if (two) for (const r of riders) project(tags[r.idx], r.s - 1, r.lat, 2.7, !r.gone && phase !== "over", 30);
+    watchNews(Math.min(dt, 0.1));
+  };
+
+
+  /* ------------------------------------------------------------ Gatch News
+     The chase is on national TV. Now and then a chopper shot opens in the
+     corner with a breaking-news lower third, and between broadcasts the truck
+     radio chips in. All of it is drawn into the WebGL canvas, so snapshots
+     and films catch it too. */
+  const NEWS_W = 640;
+  const NEWS_PIC = 360;
+  const NEWS_H = 430;
+  const newsCanvas = document.createElement("canvas");
+  newsCanvas.width = NEWS_W;
+  newsCanvas.height = NEWS_H;
+  const nc = newsCanvas.getContext("2d")!;
+  const newsTex = new THREE.CanvasTexture(newsCanvas);
+  newsTex.colorSpace = THREE.SRGBColorSpace;
+  const hudScene = new THREE.Scene();
+  const hudCam = new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1);
+  const newsPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: newsTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+  hudScene.add(newsPlane);
+  const newsCam = new THREE.PerspectiveCamera(36, 16 / 9, 0.5, 1200);
+  const news = { on: 0, cd: 6, headline: "", sub: "", radio: "", radioT: 0, radioCd: 9, tick: 0, drawT: 0, level: 1, lindaLevel: 1, wrecked: false, lindaWrecked: false, alert: "", linda: false, idle: 0 };
+  const RADIO = [
+    "Folks, if you're on Route 66 tonight... pull over.",
+    "Our chopper confirms: that is a REAL pirate cannon.",
+    "A caller says the man chasing them is named Mort. He sounds upset.",
+    "Gatch Traffic: heavy delays, cannonballs in the left lane.",
+    "Experts say: do not try this in your own pickup.",
+    "We go live to our reporter, who is hiding behind a cactus.",
+    "Mort's grandmother has asked everyone to please stop.",
+    "This just in: he is still very, very mad.",
+  ];
+  const RADIO_LINDA = ["A woman called in. She says she's his cousin and she's 'on her way, sugar.'", "Witnesses describe Linda as 'grinding her teeth like a garbage disposal.'"];
+  const RADIO_THANKS = ["Happy Thanksgiving from Gatch News, where the turkey is airborne.", "Reports of pumpkin pie on the windshield of a minivan."];
+  const IDLE_NEWS: [string, string][] = [
+    ["CANNON CHASE ENTERS ITS {MIN}TH MINUTE", "Nobody has pulled over"],
+    ["NATION GRIPPED BY ROUTE 66 CANNON CHASE", "Gatch News Chopper 7 is overhead"],
+    ["'THAT WAS MY GRANDPA'S,' SAYS FURIOUS DRIVER", "He has said it eleven times now"],
+  ];
+  const breaking = (headline: string, sub: string, dur = 7): void => {
+    if (news.on > 1.5 && news.headline === headline) return;
+    news.headline = headline;
+    news.sub = sub;
+    news.on = dur;
+    news.cd = 22 + Math.random() * 14;
+    news.idle = 0;
+  };
+  const watchNews = (dt: number): void => {
+    if (phase === "intro") return;
+    const L = rideAt(mort.en.level).name.replace(/^the /, "").toUpperCase();
+    if (mort.en.level !== news.level) {
+      news.level = mort.en.level;
+      if (rideAt(mort.en.level).kind === "train") breaking("HE IS DRIVING A TRAIN", "We cannot stress this enough: a TRAIN, on the highway");
+      else breaking(`MORT IS BACK, NOW IN A ${L}`, "Where does he keep finding these?");
+    }
+    const mw = mort.en.wreck > 0;
+    if (mw && !news.wrecked) breaking(`${L} WRECKED BY CANNON FIRE`, "Witnesses expect him back in something bigger");
+    news.wrecked = mw;
+    if (linda) {
+      if (!news.linda && phase === "play") { news.linda = true; }
+      const LL = rideAt(linda.en.level).name.replace(/^the /, "").toUpperCase();
+      if (linda.en.level !== news.lindaLevel) {
+        news.lindaLevel = linda.en.level;
+        breaking(rideAt(linda.en.level).kind === "train" ? "SHE IS ALSO DRIVING A TRAIN" : `COUSIN LINDA NOW IN A ${LL}`, "Family sources call her 'a lunatic, lovingly'");
+      }
+      const lw = linda.en.wreck > 0;
+      if (lw && !news.lindaWrecked) breaking(`LUNATIC LINDA'S ${LL} WRECKED`, "She is reportedly 'not done, honey'");
+      news.lindaWrecked = lw;
+    }
+    if (alert && alert !== news.alert && phase === "play") breaking("ACCOMPLICES IN RIDICULOUS HATS JOIN CHASE", "Police describe the hats as 'a lot'");
+    news.alert = alert;
+    if (phase === "takeback" && news.headline !== "IT'S OVER: MORT TAKES BACK HIS CANNON") breaking("IT'S OVER: MORT TAKES BACK HIS CANNON", "He is walking it back to his car. Slowly.", 9);
+    news.on = Math.max(0, news.on - dt);
+    news.cd -= dt;
+    if (news.cd <= 0 && phase === "play") {
+      const first = news.idle === 0 && news.headline === "";
+      if (first) breaking("BREAKING: STOLEN PIRATE CANNON ON ROUTE 66", linda ? "Owner 'Mad Mort' and cousin in pursuit" : "Owner 'Mad Mort' in pursuit in a station wagon", 8);
+      else {
+        const [h, sub] = IDLE_NEWS[Math.floor(Math.random() * IDLE_NEWS.length)];
+        breaking(h.replace("{MIN}", String(Math.max(2, Math.floor(time / 60)))), sub, 6);
+      }
+      news.idle++;
+    }
+    // the radio fills the gaps between broadcasts
+    news.radioT = Math.max(0, news.radioT - dt);
+    news.radioCd -= dt;
+    if (news.radioCd <= 0 && news.on <= 0 && phase === "play") {
+      const pool = [...RADIO, ...(linda ? RADIO_LINDA : []), ...(thanks ? RADIO_THANKS : [])];
+      news.radio = pool[Math.floor(Math.random() * pool.length)];
+      news.radioT = 6;
+      news.radioCd = 16 + Math.random() * 12;
+    }
+    news.tick += dt * 70;
+  };
+  const paintNews = (): void => {
+    nc.clearRect(0, 0, NEWS_W, NEWS_H);
+    const tv = news.on > 0;
+    if (tv) {
+      const k = Math.min(1, news.on * 3, (8 - Math.min(8, news.on)) * 4 + 0.2);
+      nc.globalAlpha = Math.min(1, k + 0.2);
+      // frame
+      nc.lineWidth = 6;
+      nc.strokeStyle = "#0b1230";
+      nc.strokeRect(3, 3, NEWS_W - 6, NEWS_PIC - 3);
+      // the bug
+      nc.fillStyle = "#c8101e";
+      nc.fillRect(14, 14, 176, 40);
+      nc.fillStyle = "#fff";
+      nc.font = "900 24px Inter, system-ui, sans-serif";
+      nc.fillText("GATCH NEWS", 24, 43);
+      nc.fillStyle = "rgba(0,0,0,0.6)";
+      nc.fillRect(196, 14, 84, 40);
+      nc.fillStyle = Math.floor(time * 2) % 2 ? "#ff3a3a" : "#7a1a1a";
+      nc.beginPath(); nc.arc(214, 34, 7, 0, Math.PI * 2); nc.fill();
+      nc.fillStyle = "#fff";
+      nc.font = "800 19px Inter, system-ui, sans-serif";
+      nc.fillText("LIVE", 228, 41);
+      nc.fillStyle = "rgba(0,0,0,0.5)";
+      nc.fillRect(NEWS_W - 150, 14, 136, 32);
+      nc.fillStyle = "#fff";
+      nc.font = "700 15px Inter, system-ui, sans-serif";
+      nc.fillText("CHOPPER 7", NEWS_W - 138, 36);
+      // lower third
+      nc.fillStyle = "#0b1a4a";
+      nc.fillRect(0, NEWS_PIC - 92, NEWS_W, 70);
+      nc.fillStyle = "#c8101e";
+      nc.fillRect(0, NEWS_PIC - 92, 132, 70);
+      nc.fillStyle = "#fff";
+      nc.font = "900 22px Inter, system-ui, sans-serif";
+      nc.fillText("BREAKING", 12, NEWS_PIC - 50);
+      let size = 26;
+      nc.font = `900 ${size}px Inter, system-ui, sans-serif`;
+      while (nc.measureText(news.headline).width > NEWS_W - 156 && size > 14) { size -= 1; nc.font = `900 ${size}px Inter, system-ui, sans-serif`; }
+      nc.fillText(news.headline, 144, NEWS_PIC - 58);
+      nc.fillStyle = "#c8d4ff";
+      nc.font = "600 17px Inter, system-ui, sans-serif";
+      nc.fillText(news.sub, 144, NEWS_PIC - 32);
+    }
+    // the ticker (with the picture) or the truck radio (between broadcasts)
+    const radio = !tv && news.radioT > 0;
+    if (tv || radio) {
+      nc.globalAlpha = radio ? Math.min(1, news.radioT * 2, (6 - news.radioT) * 3) : 1;
+      const y = NEWS_PIC + 8;
+      nc.fillStyle = radio ? "rgba(10,14,30,0.85)" : "#ffd23a";
+      nc.fillRect(0, y, NEWS_W, 52);
+      nc.save();
+      nc.beginPath(); nc.rect(0, y, NEWS_W, 52); nc.clip();
+      if (radio) {
+        nc.fillStyle = "#ffd23a";
+        nc.font = "900 17px Inter, system-ui, sans-serif";
+        nc.fillText("📻 GATCH RADIO", 12, y + 21);
+        nc.fillStyle = "#fff";
+        let size = 18;
+        nc.font = `600 ${size}px Inter, system-ui, sans-serif`;
+        while (nc.measureText(news.radio).width > NEWS_W - 24 && size > 11) { size -= 1; nc.font = `600 ${size}px Inter, system-ui, sans-serif`; }
+        nc.fillText(news.radio, 12, y + 43);
+      } else {
+        const line = [...RADIO.slice(0, 5), "HOLIDAY TRAFFIC: AVOID ROUTE 66", "MORE ON THE CANNON CHASE AT ELEVEN"].join("   •   ");
+        nc.fillStyle = "#0b1230";
+        nc.font = "800 19px Inter, system-ui, sans-serif";
+        const wLine = nc.measureText(line + "   •   ").width;
+        const x0 = -(news.tick % wLine);
+        nc.fillText(line, x0 + 12, y + 33);
+        nc.fillText(line, x0 + 12 + wLine, y + 33);
+      }
+      nc.restore();
+    }
+    nc.globalAlpha = 1;
+    newsTex.needsUpdate = true;
+  };
+  /** The main view, then the chopper shot and the news graphics on top. */
+  const renderAll = (): void => {
+    renderer.render(scene, camera);
+    const tv = news.on > 0;
+    const radio = !tv && news.radioT > 0;
+    if (!tv && !radio) return;
+    const W = canvas.clientWidth || mount.clientWidth;
+    const H = canvas.clientHeight || mount.clientHeight;
+    const phoneView = W < 640 || W / H < 0.9;
+    const pw = phoneView ? Math.round(W * 0.56) : Math.round(Math.min(430, W * 0.33));
+    const total = (pw * NEWS_H) / NEWS_W;
+    const picH = (pw * NEWS_PIC) / NEWS_W;
+    const x = W - pw - (phoneView ? 10 : 16);
+    // phones: above the stick and the fire button, clear of the cards up top and of the chaser
+    const top = phoneView ? H - total - 170 : H - total - 16;
+    if (tv) {
+      // the chopper: high and off to the side, circling slowly, looking down at the chase
+      const sMid = (me.s * 2 + en.s) / 3;
+      const latMid = (me.lat + en.lat) / 2;
+      toWorld(sMid, latMid, 1, tmp);
+      const a = time * 0.12;
+      newsCam.position.set(tmp.x + Math.cos(a) * 34, tmp.y + 24, tmp.z + Math.sin(a) * 34);
+      newsCam.lookAt(tmp);
+      newsCam.aspect = pw / picH;
+      newsCam.updateProjectionMatrix();
+      const yGL = H - top - picH;
+      renderer.setScissorTest(true);
+      renderer.setViewport(x, yGL, pw, picH);
+      renderer.setScissor(x, yGL, pw, picH);
+      renderer.render(scene, newsCam);
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, W, H);
+    }
+    news.drawT -= 1;
+    if (news.drawT <= 0) { paintNews(); news.drawT = 2; }
+    hudCam.left = 0; hudCam.right = W; hudCam.top = H; hudCam.bottom = 0;
+    hudCam.updateProjectionMatrix();
+    newsPlane.position.set(x + pw / 2, H - top - total / 2, 0);
+    newsPlane.scale.set(pw, total, 1);
+    renderer.autoClear = false;
+    renderer.render(hudScene, hudCam);
+    renderer.autoClear = true;
   };
 
   /* ------------------------------------------------------------ loop */
@@ -2548,7 +2762,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     tick(dt);
     audio.update(me.v, target().s - en.s, en.wreck === 0 && en.seated);
     draw(dt);
-    renderer.render(scene, camera);
+    renderAll();
     hudT -= dt;
     if (hudT <= 0) { hudT = 0.1; opts.onHud?.(hud()); }
   };
@@ -2673,7 +2887,10 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     },
     upgrade: (u: Partial<Upgrades>, i = mine) => { const r = riders[i]; Object.assign(r, u); r.autoGun.root.visible = r.auto > 0; },
     run: (n: number, dt = 1 / 60) => { for (let k = 0; k < n; k++) { tick(dt); draw(dt); } },
-    snapshot: () => { draw(1); renderer.render(scene, camera); return canvas.toDataURL("image/jpeg", 0.9); },
+    snapshot: () => { draw(1); renderAll(); return canvas.toDataURL("image/jpeg", 0.9); },
+    /** put a Gatch News bulletin on now */
+    news: (headline = "BREAKING: STOLEN PIRATE CANNON ON ROUTE 66", sub = "Owner 'Mad Mort' in pursuit") => breaking(headline, sub, 8),
+    radio: (line?: string) => { news.radio = line ?? RADIO[0]; news.radioT = 6; news.on = 0; },
   };
 
   draw(1);
