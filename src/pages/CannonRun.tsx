@@ -68,10 +68,10 @@ export default function CannonRun() {
   const [lobbyNote, setLobbyNote] = useState("");
   const [phone] = useState(() => typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches ?? false));
   const bare = params.has("shot");
-  // ?look=reel|news|wanted|comic previews a redesigned start screen; the plain one stays the default.
+  // The highlight reel is the start screen (Jack's pick, 2026-11-26). ?look=news|wanted|comic|classic still previews the others, with a switcher.
   const [look, setLook] = useState<Look | "classic" | null>(() => {
     const l = params.get("look");
-    return l === null ? null : (LOOKS as readonly string[]).includes(l) ? (l as Look) : "classic";
+    return l === null ? "reel" : (LOOKS as readonly string[]).includes(l) ? (l as Look) : "classic";
   });
   const pickLook = (l: Look | "classic"): void => {
     setLook(l);
@@ -381,7 +381,7 @@ export default function CannonRun() {
           onThanks={toggleThanks}
         />
       ) : null}
-      {screen === "splash" && look ? <LookSwitcher look={look} onPick={pickLook} /> : null}
+      {screen === "splash" && params.has("look") ? <LookSwitcher look={look} onPick={pickLook} /> : null}
 
       {screen === "splash" && (!look || look === "classic") ? (
         <Backdrop>

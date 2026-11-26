@@ -1,7 +1,6 @@
 /**
- * Alternative start screens for Cannon Chase, previewed with `?look=` on the
- * route (reel, news, wanted, comic). The live door is still the plain splash
- * in src/pages/CannonRun.tsx until Jack picks one.
+ * Start screens for Cannon Chase. The highlight reel is the real one (Jack's
+ * pick, 2026-11-26); news, wanted and comic stay previewable with `?look=`.
  *
  * Every look gets the same handlers, so the buttons are the real ones: light
  * the fuse, two on one screen, a friend's phone, the aurora and Thanksgiving
