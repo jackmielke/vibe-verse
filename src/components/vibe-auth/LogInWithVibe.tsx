@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Trash2, User2 } from "lucide-react";
+import { LogOut, Shirt, ShoppingBag, Trash2, User2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { characterFace } from "@/lib/characterFaces";
@@ -163,7 +163,13 @@ export default function LogInWithVibe({
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-white/10" />
         <DropdownMenuItem onClick={() => navigate("/profile")} className="cursor-pointer">
-          <User2 className="mr-2 h-4 w-4" /> Choose your character
+          <User2 className="mr-2 h-4 w-4" /> My Vibe: character, wardrobe, stickers
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate("/profile?tab=characters")} className="cursor-pointer">
+          <Shirt className="mr-2 h-4 w-4" /> Change character
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate("/arcade/characters")} className="cursor-pointer">
+          <ShoppingBag className="mr-2 h-4 w-4" /> Shop
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-white/10" />
         <DropdownMenuItem onClick={() => void deleteAccount(() => id.signOut())} className="cursor-pointer text-white/50 focus:text-rose-200">

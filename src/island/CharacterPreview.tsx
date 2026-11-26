@@ -8,6 +8,8 @@ import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/pr
 import { DEFAULT_POSE, poseById, type PoseId } from "./previewPose";
 import { HAT_CATALOG } from "@/components/city/cosmetics";
 import { measureRenderedBounds } from "@/lib/characterRig";
+import { applyStickers } from "@/components/city/stickerMesh";
+import type { Sticker } from "@/components/city/stickers";
 
 function findClip(clips: THREE.AnimationClip[], names: string[]): THREE.AnimationClip | null {
   for (const n of names) {
@@ -47,12 +49,14 @@ function PreviewModel({
   spinning,
   pose,
   hat,
+  stickers,
   onFit,
 }: {
   character: CharacterOption;
   spinning: boolean;
   pose: PoseId;
   hat?: string | null;
+  stickers?: Sticker[];
   onFit: (size: THREE.Vector3) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -192,6 +196,21 @@ function PreviewModel({
        blurb and the accent all changed — and the model underneath never did. */
   }, [character.id, character.url, character.scale, character.yOffset, hat, onFit]);
 
+  /* Body stickers, the same decals Vibe Island draws. Measured with the
+     turntable squared up, because the decal code sizes the body from its
+     world box and a body caught mid-turn reads as wider than it is. */
+  const stickerKey = JSON.stringify(stickers ?? []);
+  useEffect(() => {
+    const g = groupRef.current;
+    if (!scene || !g) return;
+    const rot = g.rotation.y;
+    g.rotation.y = 0;
+    g.updateMatrixWorld(true);
+    applyStickers(scene, stickers ?? []);
+    g.rotation.y = rot;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, stickerKey]);
+
   useFrame((_state, dt) => {
     const step = Math.min(dt, 0.05);
     if (mixerRef.current) mixerRef.current.update(step);
@@ -228,12 +247,15 @@ export function CharacterPreview({
   spinning = true,
   pose = DEFAULT_POSE,
   hat,
+  stickers,
 }: {
   character: CharacterOption;
   spinning?: boolean;
   pose?: PoseId;
   /** Hat id from `HAT_CATALOG`, or null/"none" for bare-headed. */
   hat?: string | null;
+  /** Body stickers to draw on the model, as Vibe Island does. */
+  stickers?: Sticker[];
 }) {
   const [size, setSize] = useState<THREE.Vector3 | null>(null);
   const onFit = useCallback((s: THREE.Vector3) => setSize(s.clone()), []);
@@ -285,6 +307,7 @@ export function CharacterPreview({
           spinning={spinning}
           pose={pose}
           hat={hat}
+          stickers={stickers}
           onFit={onFit}
         />
       </Suspense>

@@ -124,6 +124,11 @@ export default function ArcadeCharacters() {
      landed on Pixel. It is a URL parameter rather than component state
      because it also has to survive being shared, bookmarked and reloaded. */
   useEffect(() => {
+    /* `?tab=items` — the profile's "more in the shop" link lands on the hats. */
+    if (params.get("tab") === "items") {
+      setTab("items");
+      return;
+    }
     const want = params.get("c");
     if (!want) return;
     const i = entries.findIndex((e) => e.shop.id === want);
