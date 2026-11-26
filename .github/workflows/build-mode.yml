@@ -268,6 +268,14 @@ jobs:
           # of that belongs in the commit, and a dirty tree cannot rebase.
           git reset -q --hard HEAD
           git clean -fdq
+          # Replay on today's main before pushing anything. GitHub compares a
+          # new branch with main, and if main has a newer copy of this very
+          # workflow the push is refused (the token may not touch workflows).
+          git fetch -q origin main
+          if [ "$(git merge-base HEAD origin/main)" != "$(git rev-parse origin/main)" ]; then
+            git rebase origin/main || { git rebase --abort; echo "::error::Main moved and the change no longer applies on top of it."; exit 1; }
+            npm run typecheck
+          fi
           git push -q origin "HEAD:refs/heads/$BRANCH"
 
       - name: Ship to main
@@ -275,8 +283,8 @@ jobs:
         env:
           BRANCH: ${{ steps.fence.outputs.branch }}
         run: |
-          BASE="$(git merge-base HEAD origin/main)"
           git fetch -q origin main
+          BASE="$(git merge-base HEAD origin/main)"
           if [ "$(git rev-parse origin/main)" != "$BASE" ]; then
             # Somebody pushed while the agent worked. Replay on top and check again.
             git rebase origin/main || { git rebase --abort; echo "::error::Main moved and the change no longer applies. It is waiting on $BRANCH."; exit 1; }
