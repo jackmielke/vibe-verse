@@ -26,7 +26,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { HALF, LANE, LAT_MAX, G, MUZZLE, RELOAD, heading, V, toWorld, toRoad, clamp, lerp, hash } from "./road";
 import {
   canvasTex, roadTexture, sandTexture, glowTexture, puffTexture, box,
-  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, rideAt, THEME, buildHench, henchKit, buildAutoGun,
+  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, rideAt, THEME, FACE_STYLES, type FaceStyle, buildHench, henchKit, buildAutoGun,
   type Truck, type Foe, type Hench,
 } from "./models";
 import type { Transport, Upgrades, Wire, Snap, Input } from "./net";
@@ -187,6 +187,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const mode: Mode = opts.mode ?? "solo";
   const thanks = opts.thanksgiving ?? params.has("thanksgiving");
   THEME.thanksgiving = thanks;
+  // ?face=cartoon|muppet|clay tries one of the face styles on Mort and Linda
+  const faceWant = params.get("face") as FaceStyle | null;
+  THEME.face = faceWant && FACE_STYLES.includes(faceWant) ? faceWant : "classic";
   const TAUNT_LIST = thanks ? [...TAUNTS, ...T_TAUNTS, ...T_TAUNTS] : TAUNTS;
   const L_TAUNT_LIST = thanks ? [...L_TAUNTS, ...T_L_TAUNTS, ...T_L_TAUNTS] : L_TAUNTS;
   const net = mode === "host" || mode === "guest" ? opts.net ?? null : null;
