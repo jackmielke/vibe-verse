@@ -4135,6 +4135,63 @@ export type Database = {
         }
         Relationships: []
       }
+      vibe_builds: {
+        Row: {
+          branch: string
+          created_at: string
+          head_sha: string | null
+          id: string
+          mode: string
+          prompt: string
+          requested_by: string | null
+          requester_name: string | null
+          route: string | null
+          run_id: number | null
+          run_url: string | null
+          scope: string
+          ship: boolean
+          status: string
+          summary: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch: string
+          created_at?: string
+          head_sha?: string | null
+          id?: string
+          mode?: string
+          prompt: string
+          requested_by?: string | null
+          requester_name?: string | null
+          route?: string | null
+          run_id?: number | null
+          run_url?: string | null
+          scope?: string
+          ship?: boolean
+          status?: string
+          summary?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch?: string
+          created_at?: string
+          head_sha?: string | null
+          id?: string
+          mode?: string
+          prompt?: string
+          requested_by?: string | null
+          requester_name?: string | null
+          route?: string | null
+          run_id?: number | null
+          run_url?: string | null
+          scope?: string
+          ship?: boolean
+          status?: string
+          summary?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       vibe_dream_worlds: {
         Row: {
           caption: string | null

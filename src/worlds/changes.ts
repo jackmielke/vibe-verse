@@ -88,6 +88,14 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "bots": [
     { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
   ],
+  "cannon-run": [
+    { sha: "4fcd3f09", iso: "2026-11-26T07:18:22+00:00", subject: "Cannon Chase: Gatch News covers the chase live, truck radio between bulletins" },
+    { sha: "78583a05", iso: "2026-11-26T07:09:28+00:00", subject: "Cannon Chase: comic out of the game, Thanksgiving mode, Linda grinds her teeth" },
+    { sha: "771b53db", iso: "2026-11-26T06:53:05+00:00", subject: "Cannon Chase: Lunatic Linda joins two-player; junkyard henchmen" },
+    { sha: "68ed9c02", iso: "2026-11-26T06:43:53+00:00", subject: "Cannon Chase: train finale, 18-wheeler after the cement truck, aurora sky" },
+    { sha: "45b45535", iso: "2026-11-26T06:43:53+00:00", subject: "Cannon Run is now Cannon Chase" },
+    { sha: "fec5dbed", iso: "2026-11-26T06:17:21+00:00", subject: "Cannon Run: Mort only throws at civilians in his way" },
+  ],
   "characters": [
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
     { sha: "d9cd716c", iso: "2026-07-02T19:19:25+00:00", subject: "Vibe karts, cleaner clouds, VibeVerse marquee, saved character" },
@@ -98,12 +106,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
-    { sha: "be85b80f", iso: "2026-08-18T23:30:37+00:00", subject: "Vibe City: make The Deep a place you can actually see" },
-    { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
-    { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
-    { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
-    { sha: "5a0721d9", iso: "2026-08-17T16:54:36+00:00", subject: "The jetpack is on your back now, and the sea stops following you home" },
+    { sha: "1456de8e", iso: "2026-11-26T06:32:54+00:00", subject: "Vibe Island on phones: controls clear of the joystick; ride Pegasus by walking up and pressing F" },
+    { sha: "2015a8ac", iso: "2026-11-26T05:35:30+00:00", subject: "Vibe Island driving: crashes, damage, explosions, a monster truck and a rare Comet" },
+    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
+    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
+    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
+    { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -178,12 +186,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "a86765f9", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
   ],
   "fnaf": [
+    { sha: "11e5487b", iso: "2026-11-26T05:03:09+00:00", subject: "Five Nights: a real desk fan sound, and the band poster draws Bonnie and Chica as themselves" },
     { sha: "757ca68f", iso: "2026-08-02T05:26:54+00:00", subject: "Take the intercom back out" },
     { sha: "1554778b", iso: "2026-08-02T04:52:36+00:00", subject: "Vibey moves in, and Freddy stops owning one corridor" },
     { sha: "451190be", iso: "2026-08-02T03:47:44+00:00", subject: "Chica's beak was inside her head" },
     { sha: "001bc7af", iso: "2026-08-02T03:34:25+00:00", subject: "Faces that survive being looked at" },
     { sha: "b9912596", iso: "2026-08-02T00:05:06+00:00", subject: "Thirty seconds up, then the system falls over" },
-    { sha: "0a6ba9a0", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "fogcity": [
     { sha: "3b479f42", iso: "2026-11-22T04:29:14+00:00", subject: "Fog City: a new open-world San Francisco, built from scratch to run fast" },
@@ -253,12 +261,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ee1f96cf", iso: "2026-08-02T21:05:51+00:00", subject: "Nothing is spawned. It is drawn." },
   ],
   "island": [
+    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
+    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
+    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
+    { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
+    { sha: "2c812ab4", iso: "2026-11-25T18:18:18+00:00", subject: "Updated session expiry and auth" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
-    { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
-    { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
-    { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
-    { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
-    { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
   ],
   "island-2": [
     { sha: "0779cb94", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -303,12 +311,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "f4715e0e", iso: "2026-09-04T09:28:00+00:00", subject: "Mars College: ten weeks in the desert on one wheel, at /mars" },
   ],
   "moon": [
+    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
+    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
+    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
+    { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
+    { sha: "2c812ab4", iso: "2026-11-25T18:18:18+00:00", subject: "Updated session expiry and auth" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
-    { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
-    { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
-    { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
-    { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
-    { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
   ],
   "museum": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -373,12 +381,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "2dd0e1ee", iso: "2026-07-31T14:56:54+00:00", subject: "Add SEAFAIR 2117 — future Seattle FPS at /seafair" },
   ],
   "sf": [
+    { sha: "74e199a7", iso: "2026-11-22T04:33:32+00:00", subject: "Free Fall: draw the water and the weapon effects, skip the night shadow pass, open in daylight" },
     { sha: "7e6ae7b4", iso: "2026-11-22T03:27:43+00:00", subject: "San Francisco: fix the white roofs, relight for hard sun and a real sunset, /free-fall opens the game" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "c2dec86b", iso: "2026-09-02T15:47:54+00:00", subject: "Phones: a real layout for the royale HUD and San Francisco, not the desktop one squeezed" },
     { sha: "52d6e227", iso: "2026-08-29T07:01:41+00:00", subject: "The real weather, and a painted mountain on Twin Peaks" },
     { sha: "9fd6cfae", iso: "2026-08-28T08:23:33+00:00", subject: "The day passes now, and you can wave at people" },
-    { sha: "620ba8b3", iso: "2026-08-26T08:54:18+00:00", subject: "Other people are in San Francisco now" },
   ],
   "shop": [
     { sha: "64186e31", iso: "2026-08-10T06:39:09+00:00", subject: "Thirty more characters, and the shop finally sells characters" },
@@ -387,12 +395,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e8", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
+    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
+    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
+    { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
+    { sha: "2c812ab4", iso: "2026-11-25T18:18:18+00:00", subject: "Updated session expiry and auth" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
-    { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
-    { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
-    { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
-    { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
-    { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
   ],
   "space": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -430,6 +438,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9ba14608", iso: "2026-07-29T05:13:04+00:00", subject: "THE TERMINAL — the Vibeverse's front door, at /terminal" },
   ],
   "thalassa": [
+    { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
     { sha: "f6742350", iso: "2026-10-10T19:58:27+00:00", subject: "Thalassa: a Greek harbour town you can walk, swim and visit in VR" },
   ],
   "times": [
@@ -457,12 +466,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
   ],
   "vibestar": [
+    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
+    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
+    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
+    { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
+    { sha: "2c812ab4", iso: "2026-11-25T18:18:18+00:00", subject: "Updated session expiry and auth" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
-    { sha: "d919eee0", iso: "2026-08-18T22:58:02+00:00", subject: "THE BASEMENT: a room in the same world where the music is the point" },
-    { sha: "12441046", iso: "2026-08-18T21:25:35+00:00", subject: "Made the dancers people rather than four copies of one person" },
-    { sha: "52261cff", iso: "2026-08-17T16:24:27+00:00", subject: "A dance floor in the plaza, with regulars who join in" },
-    { sha: "ec4175d4", iso: "2026-08-17T07:39:19+00:00", subject: "Put the city on a beat, and made a crowd sound like one" },
-    { sha: "5dfcd2b7", iso: "2026-08-12T20:24:30+00:00", subject: "Hats that are actually on the head, and three more of them" },
   ],
   "vibeverse": [
     { sha: "fc206f2a", iso: "2026-09-30T20:54:00+00:00", subject: "Vibeverse: Venus reads as a pearl from orbit; number keys go to 6" },

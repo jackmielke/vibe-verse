@@ -82,6 +82,25 @@ And `vite build` strips types with esbuild without checking them. So a file
 referencing an undefined variable passes both, ships, and white-screens the
 route. That is not hypothetical; it went out that way once.
 
+## Build mode
+
+Admins standing on Vibe Island (`/city`) get a small **✦ Build** pill
+(Ctrl/Cmd+Shift+B). A prompt goes to `supabase/functions/vibe-build`, which
+checks `has_role` admin, files a `vibe_builds` row and dispatches
+`.github/workflows/build-mode.yml`. There Claude Code (Fast is Sonnet, Smart
+is Opus) edits a `build/<id>` branch; the diff must stay inside the scope's
+paths (for `island`: `src/pages/City.tsx`, `src/components/city/`,
+`src/city/`, `src/test/`) and pass typecheck and build, then it pushes to
+`main`, or waits for **Ship it** when "Ship to main" is off. Nothing writes
+back from the runner: `list` polls the GitHub API and updates rows.
+
+- Secrets: `BUILD_GITHUB_TOKEN` (Supabase function secret, fine-grained, this
+  repo, Actions + Contents read/write) and `CLAUDE_CODE_OAUTH_TOKEN` or
+  `ANTHROPIC_API_KEY` (GitHub Actions secret). Neither is ever in the bundle.
+- A new world is a new scope: one entry in `BUILD_SCOPES` (`src/build-mode/api.ts`),
+  one in `SCOPES` in the function, and one `case` in the workflow's fence step.
+- Edge function and migration changes are outside every fence on purpose.
+
 ## Dependencies
 
 **`three` is pinned at 0.160 and everything that draws has to agree with it.**

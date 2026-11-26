@@ -1,0 +1,231 @@
+# Build mode: a prompt typed inside a world, turned into a commit.
+#
+# Dispatched by the `vibe-build` edge function (admins only) with the prompt
+# as an input. A Claude Code agent makes the change on a fresh branch, the
+# change has to stay inside the world's own files, then typecheck and build
+# have to pass, and only then does it land on main (or wait on its branch
+# for a "Ship it" press, if that is what was asked for).
+#
+# The runner holds no Supabase credentials. The edge function reads this
+# run's status back from the GitHub API, so the only secret here is the one
+# the agent itself needs:
+#   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`, uses a Claude plan)
+#   or ANTHROPIC_API_KEY     (pay as you go)
+
+name: Build mode
+run-name: "build ${{ inputs.build_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "vibe_builds.id"
+        required: true
+      prompt:
+        description: "What to change"
+        required: true
+      scope:
+        description: "Which world the change is fenced into"
+        required: true
+        default: island
+      mode:
+        description: "fast or smart"
+        required: true
+        default: fast
+      ship:
+        description: "Push to main when checks pass"
+        required: true
+        default: "true"
+      route:
+        description: "Where the person was standing when they asked"
+        required: false
+        default: ""
+      requested_by:
+        description: "Display name, for the commit trailer"
+        required: false
+        default: ""
+
+# One build at a time. Each one lands on main before the next starts, so
+# the next one is built on top of it instead of racing it.
+concurrency:
+  group: build-mode
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BUILD_ID: ${{ inputs.build_id }}
+      BUILD_PROMPT: ${{ inputs.prompt }}
+      BUILD_SCOPE: ${{ inputs.scope }}
+      BUILD_MODE: ${{ inputs.mode }}
+      BUILD_SHIP: ${{ inputs.ship }}
+      BUILD_ROUTE: ${{ inputs.route }}
+      BUILD_BY: ${{ inputs.requested_by }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Pick the fence
+        id: fence
+        run: |
+          case "$BUILD_SCOPE" in
+            island)
+              echo 'name=Vibe Island (the floating island in Vibe City, /city?spawn=island)' >> "$GITHUB_OUTPUT"
+              echo 'paths=^(src/pages/City\.tsx|src/components/city/|src/city/|src/test/)' >> "$GITHUB_OUTPUT"
+              echo 'files=src/pages/City.tsx, src/components/city/, src/city/, and new or updated tests in src/test/' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unknown scope: $BUILD_SCOPE"; exit 1 ;;
+          esac
+          SHORT="${BUILD_ID:0:8}"
+          echo "branch=build/$SHORT" >> "$GITHUB_OUTPUT"
+          git checkout -b "build/$SHORT"
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Make the change
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FENCE_NAME: ${{ steps.fence.outputs.name }}
+          FENCE_FILES: ${{ steps.fence.outputs.files }}
+        run: |
+          # Only pass the credential that is actually set; an empty
+          # ANTHROPIC_API_KEY would otherwise shadow the OAuth token.
+          [ -z "$ANTHROPIC_API_KEY" ] && unset ANTHROPIC_API_KEY
+          [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && unset CLAUDE_CODE_OAUTH_TOKEN
+          if [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "::error::Build mode needs CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in the repo's Actions secrets."
+            exit 1
+          fi
+
+          if [ "$BUILD_MODE" = "smart" ]; then
+            MODEL=claude-opus-5-5; TURNS=120
+          else
+            MODEL=claude-sonnet-5-5; TURNS=45
+          fi
+
+          RULES="$RUNNER_TEMP/rules.txt"
+          {
+            echo "You are Build mode for the Vibe Verse, running unattended in GitHub Actions."
+            echo "Somebody standing in $FENCE_NAME typed a request. Make that change, well, and keep it small."
+            echo ""
+            echo "Hard rules for this run:"
+            echo "- Only edit files inside: $FENCE_FILES. Any change outside those paths fails the whole build."
+            echo "- Do not run git at all: no commit, no branch, no push. The workflow commits and ships for you."
+            echo "- Ignore the parts of CLAUDE.md about pushing to main, smoke tests and browsers; there is no browser here."
+            echo "- Before you finish, run npm run typecheck and fix every error you caused."
+            echo "- Never print, read or write secrets or .env files."
+            echo "- Your final message is the commit message: a first line under 70 characters saying what changed,"
+            echo "  a blank line, then two or three plain sentences. No em dashes."
+          } > "$RULES"
+
+          ASK="$RUNNER_TEMP/ask.txt"
+          {
+            echo "Request: $BUILD_PROMPT"
+            if [ -n "$BUILD_ROUTE" ]; then
+              echo ""
+              echo "They were on this page when they asked: $BUILD_ROUTE"
+            fi
+          } > "$ASK"
+
+          claude -p "$(cat "$ASK")" \
+            --model "$MODEL" \
+            --max-turns "$TURNS" \
+            --append-system-prompt "$(cat "$RULES")" \
+            --dangerously-skip-permissions \
+            --output-format json > "$RUNNER_TEMP/claude.json" || {
+              echo "::error::The agent stopped with an error."
+              cat "$RUNNER_TEMP/claude.json" | head -c 4000 || true
+              exit 1
+            }
+          jq -r '.result // ""' "$RUNNER_TEMP/claude.json" > "$RUNNER_TEMP/message.txt"
+          echo "--- agent summary ---"; cat "$RUNNER_TEMP/message.txt"
+
+      - name: Stay inside the fence
+        id: diff
+        env:
+          FENCE: ${{ steps.fence.outputs.paths }}
+        run: |
+          git add -A
+          CHANGED="$(git diff --cached --name-only)"
+          if [ -z "$CHANGED" ]; then
+            echo "The agent made no changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$CHANGED"
+          OUTSIDE="$(echo "$CHANGED" | grep -vE "$FENCE" || true)"
+          if [ -n "$OUTSIDE" ]; then
+            echo "::error::Changed files outside this world's fence:"
+            echo "$OUTSIDE"
+            exit 1
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Typecheck
+        if: steps.diff.outputs.changed == 'true'
+        run: npm run typecheck
+
+      - name: Build
+        if: steps.diff.outputs.changed == 'true'
+        run: npm run build
+
+      - name: Commit to the build branch
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.fence.outputs.branch }}
+        run: |
+          git config user.name "Vibe Build Mode"
+          git config user.email "build-mode@users.noreply.github.com"
+          MSG="$RUNNER_TEMP/commit.txt"
+          SUBJECT="$(head -n1 "$RUNNER_TEMP/message.txt" | sed 's/^[#* ]*//' | cut -c1-72)"
+          [ -z "$SUBJECT" ] && SUBJECT="Build mode: $(echo "$BUILD_PROMPT" | head -n1 | cut -c1-55)"
+          {
+            echo "$SUBJECT"
+            echo ""
+            tail -n +2 "$RUNNER_TEMP/message.txt" | sed '/./,$!d' | head -c 3000
+            echo ""
+            echo "Prompt: $(echo "$BUILD_PROMPT" | tr '\n' ' ' | cut -c1-600)"
+            echo ""
+            echo "Build-Mode: $BUILD_ID ($BUILD_MODE)"
+            if [ -n "$BUILD_BY" ]; then echo "Requested-By: $BUILD_BY"; fi
+          } > "$MSG"
+          git commit -q -F "$MSG"
+          # The build's prebuild step rewrites a couple of tracked files; none
+          # of that belongs in the commit, and a dirty tree cannot rebase.
+          git reset -q --hard HEAD
+          git clean -fdq
+          git push -q origin "HEAD:refs/heads/$BRANCH"
+
+      - name: Ship to main
+        if: steps.diff.outputs.changed == 'true' && inputs.ship == 'true'
+        env:
+          BRANCH: ${{ steps.fence.outputs.branch }}
+        run: |
+          BASE="$(git merge-base HEAD origin/main)"
+          git fetch -q origin main
+          if [ "$(git rev-parse origin/main)" != "$BASE" ]; then
+            # Somebody pushed while the agent worked. Replay on top and check again.
+            git rebase origin/main || { git rebase --abort; echo "::error::Main moved and the change no longer applies. It is waiting on $BRANCH."; exit 1; }
+            npm run typecheck
+            git push -q --force origin "HEAD:refs/heads/$BRANCH"
+          fi
+          git push origin HEAD:main
+          echo "Shipped $(git rev-parse --short HEAD) to main." >> "$GITHUB_STEP_SUMMARY"

@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import ExplorerStamp from "./components/ExplorerStamp.tsx";
 import PlayTracker from "./components/PlayTracker.tsx";
 import RatePrompt from "./components/RatePrompt.tsx";
+import BuildModeLauncher from "./build-mode/BuildModeLauncher.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import HomeButton from "./components/HomeButton.tsx";
 import VibeRadio from "./components/VibeRadio.tsx";
@@ -100,6 +101,7 @@ const VibeGolf = lazy(() => import("./pages/VibeGolf.tsx"));
 const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
 const Thalassa = lazy(() => import("./pages/Thalassa.tsx"));
 const FogCity = lazy(() => import("./pages/FogCity.tsx"));
+const CannonRun = lazy(() => import("./pages/CannonRun.tsx"));
 const Terminal = lazy(() => import("./pages/Terminal.tsx"));
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const GlassLake = lazy(() => import("./pages/GlassLake.tsx"));
@@ -241,6 +243,10 @@ const App = () => (
               See src/lib/worldStats.ts. */}
           <PlayTracker />
           <RatePrompt />
+          {/* Build mode: admins type a change to the world they are in, and a
+              coding agent ships it. Renders nothing for anybody else, and
+              nothing outside the worlds it covers. See src/build-mode. */}
+          <BuildModeLauncher />
           {/* iOS app only: terms gate, report/block, App Store edition routing. */}
           <SafetyLayer />
           {/* One Suspense for the whole router. There used to be fifteen of
@@ -429,6 +435,9 @@ const App = () => (
 
           {["/fogcity", "/fog-city"].map((path) => (
             <Route key={path} path={path} element={<FogCity />} />
+          ))}
+          {["/cannon-run", "/cannon-chase", "/cannonchase", "/cannonrun", "/car-chase", "/chase"].map((path) => (
+            <Route key={path} path={path} element={<CannonRun />} />
           ))}
           {["/thalassa", "/harbor", "/harbour", "/greek-harbor"].map((path) => (
             <Route key={path} path={path} element={<Thalassa />} />

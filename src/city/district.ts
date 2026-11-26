@@ -54,6 +54,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { WorldBox } from "@/components/city/cardboardIsland";
+import { createSmashables, type Smashables } from "./smash";
 import { buildTraffic, type Traffic } from "./traffic";
 
 export interface DistrictOpts {
@@ -88,6 +89,8 @@ export interface District {
   setDay(day: boolean): void;
   /** The cars, for anyone who wants to get into one. See `src/city/traffic.ts`. */
   traffic: Traffic;
+  /** Trees, lamp posts, stop signs and signals a car can knock over. See `src/city/smash.ts`. */
+  smash: Smashables;
   /**
    * Drive the traffic.
    *
@@ -947,6 +950,8 @@ export function buildDistrict(opts: DistrictOpts): District {
   // reason the buildings were inset further above.
   const trunks: THREE.Matrix4[] = [];
   const crowns: THREE.Matrix4[] = [];
+  /** x, z per tree, in the same order as `trunks` and `crowns`. */
+  const treeSpots: number[] = [];
   const EDGE = block / 2 - 1.1;
   for (let gx = 0; gx < grid; gx++) {
     for (let gz = 0; gz < grid; gz++) {
@@ -960,6 +965,7 @@ export function buildDistrict(opts: DistrictOpts): District {
           const x = side === 0 || side === 1 ? cx + along : cx + (side === 2 ? EDGE : -EDGE);
           const z = side === 0 ? cz + EDGE : side === 1 ? cz - EDGE : cz + along;
           const h = 3.4 + r() * 2.4;
+          treeSpots.push(x, z);
           cyl(trunks, x, KERB, z, h);
           const cr = 1.25 + r() * 0.75;
           M.makeRotationY(r() * Math.PI);
@@ -985,6 +991,8 @@ export function buildDistrict(opts: DistrictOpts): District {
   const lampHeads: THREE.Matrix4[] = [];
   const lampPools: THREE.Matrix4[] = [];
   const LAMP_H = 5.4;
+  /** x, z per lamp, in the same order as the three lamp lists. */
+  const lampSpots: number[] = [];
   for (let g = 1; g < grid; g++) {
     const laneCentre = (g - center - 0.5) * pitch;
     // Stepped along the BLOCKS rather than at a fixed interval down the street.
@@ -998,6 +1006,7 @@ export function buildDistrict(opts: DistrictOpts): District {
         for (const axis of [0, 1] as const) {
           const x = axis === 0 ? laneCentre + side : t;
           const z = axis === 0 ? t : laneCentre + side;
+          lampSpots.push(x, z);
           cyl(lampPosts, x, 0, z, LAMP_H);
           box(lampHeads, x, LAMP_H, z, 0.5, 0.22, 1.1);
           M.makeRotationX(-Math.PI / 2);
@@ -1066,27 +1075,28 @@ export function buildDistrict(opts: DistrictOpts): District {
   const leafMat = new THREE.MeshStandardMaterial({ color: "#1a3823", roughness: 0.9, flatShading: true });
 
   const instance = (geo: THREE.BufferGeometry, mat: THREE.Material, mats: THREE.Matrix4[]) => {
-    if (!mats.length) return;
+    if (!mats.length) return null;
     const im = new THREE.InstancedMesh(geo, mat, mats.length);
     mats.forEach((m, i) => im.setMatrixAt(i, m));
     im.instanceMatrix.needsUpdate = true;
     im.castShadow = true;
     im.receiveShadow = true;
     group.add(im);
+    return im;
   };
   instance(unitBox, concreteMat, concrete);
   instance(unitBox, plantMat, plant);
   instance(tankGeo, tankMat, tanks);
   instance(ventGeo, plantMat, vents);
-  instance(trunkGeo, trunkMat, trunks);
-  instance(crownGeo, leafMat, crowns);
+  const trunkMesh = instance(trunkGeo, trunkMat, trunks);
+  const crownMesh = instance(crownGeo, leafMat, crowns);
   opts.snow?.patch([leafMat, concreteMat, tankMat]);
 
   const lampPostGeo = new THREE.CylinderGeometry(0.09, 0.13, 1, 6);
   const poolGeo = new THREE.PlaneGeometry(1, 1);
   const beaconGeo = new THREE.SphereGeometry(0.42, 8, 6);
-  instance(lampPostGeo, lampPostMat, lampPosts);
-  instance(unitBox, lampHeadMat, lampHeads);
+  const lampPostMesh = instance(lampPostGeo, lampPostMat, lampPosts);
+  const lampHeadMesh = instance(unitBox, lampHeadMat, lampHeads);
   // Pools and beacons are unlit overlays — casting or receiving from them
   // would put a shadow under a light, which is exactly backwards.
   const flatInstance = (geo: THREE.BufferGeometry, mat: THREE.Material, mats: THREE.Matrix4[]) => {
@@ -1100,6 +1110,110 @@ export function buildDistrict(opts: DistrictOpts): District {
   const poolMesh = flatInstance(poolGeo, poolMat, lampPools);
   const beaconMeshes = beacons.map((list, i) => flatInstance(beaconGeo, beaconMats[i], list));
   trash.push(lampPostGeo, poolGeo, beaconGeo, lampPostMat, lampHeadMat, poolMat, poolTex, ...beaconMats);
+
+  // ---- Things a car can knock over --------------------------------------
+  // Trees and lamp posts were drawn above as plain instances; here they are
+  // registered as props so a car hitting one sends it over instead of passing
+  // through it like a ghost. See `src/city/smash.ts`.
+  const smash = createSmashables();
+  if (trunkMesh && crownMesh) {
+    for (let i = 0; i < treeSpots.length / 2; i++) {
+      smash.add("tree", treeSpots[i * 2], treeSpots[i * 2 + 1], KERB, 0.55, [
+        { mesh: trunkMesh, index: i },
+        { mesh: crownMesh, index: i },
+      ]);
+    }
+  }
+  if (lampPostMesh && lampHeadMesh) {
+    for (let i = 0; i < lampSpots.length / 2; i++) {
+      const parts: Parameters<Smashables["add"]>[5] = [
+        { mesh: lampPostMesh, index: i },
+        { mesh: lampHeadMesh, index: i },
+      ];
+      if (poolMesh) parts.push({ mesh: poolMesh, index: i, hideWhenDown: true });
+      smash.add("lamp", lampSpots[i * 2], lampSpots[i * 2 + 1], 0, 0.35, parts);
+    }
+  }
+
+  // ---- Stop signs ------------------------------------------------------
+  // Two per junction, on the corners the signal pole does not use. Real
+  // cities do not usually put both on one crossing; this one does because
+  // they are the thing everybody wants to drive through.
+  {
+    const SIGN_H = 2.5;
+    const signSpots: Array<{ x: number; z: number; yaw: number }> = [];
+    for (let i = 1; i < grid; i++) {
+      for (let j = 1; j < grid; j++) {
+        const jx = (i - center - 0.5) * pitch;
+        const jz = (j - center - 0.5) * pitch;
+        signSpots.push({ x: jx - street * 0.44, z: jz - street * 0.44, yaw: Math.PI });
+        signSpots.push({ x: jx - street * 0.44, z: jz + street * 0.44, yaw: -Math.PI / 2 });
+      }
+    }
+    const faceTex = (() => {
+      const { c, x } = canvasOf(128);
+      const oct = (rad: number) => {
+        x.beginPath();
+        for (let k = 0; k < 8; k++) {
+          const a = Math.PI / 8 + (k * Math.PI) / 4;
+          const px = 64 + Math.cos(a) * rad;
+          const py = 64 + Math.sin(a) * rad;
+          if (k === 0) x.moveTo(px, py);
+          else x.lineTo(px, py);
+        }
+        x.closePath();
+      };
+      x.fillStyle = "#f4f4f4";
+      oct(63);
+      x.fill();
+      x.fillStyle = "#c8202a";
+      oct(56);
+      x.fill();
+      x.fillStyle = "#ffffff";
+      x.font = "bold 38px Arial, Helvetica, sans-serif";
+      x.textAlign = "center";
+      x.textBaseline = "middle";
+      x.fillText("STOP", 64, 66);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    const postGeo = new THREE.CylinderGeometry(0.045, 0.045, SIGN_H, 6);
+    const faceGeo = new THREE.PlaneGeometry(0.86, 0.86);
+    const backGeo = new THREE.PlaneGeometry(0.8, 0.8);
+    backGeo.rotateY(Math.PI);
+    const postMat = new THREE.MeshStandardMaterial({ color: "#9aa1a8", roughness: 0.5, metalness: 0.6 });
+    const faceMat = new THREE.MeshStandardMaterial({ map: faceTex, alphaTest: 0.5, roughness: 0.55 });
+    const backMat = new THREE.MeshStandardMaterial({ color: "#8a9096", roughness: 0.6, metalness: 0.4 });
+    const posts = new THREE.InstancedMesh(postGeo, postMat, signSpots.length);
+    const faces = new THREE.InstancedMesh(faceGeo, faceMat, signSpots.length);
+    const backs = new THREE.InstancedMesh(backGeo, backMat, signSpots.length);
+    posts.castShadow = faces.castShadow = !lowDetail;
+    const Q = new THREE.Quaternion();
+    const P = new THREE.Vector3();
+    const ONE = new THREE.Vector3(1, 1, 1);
+    const UP = new THREE.Vector3(0, 1, 0);
+    signSpots.forEach((sp, n) => {
+      Q.setFromAxisAngle(UP, sp.yaw);
+      M.compose(P.set(sp.x, KERB + SIGN_H / 2, sp.z), Q, ONE);
+      posts.setMatrixAt(n, M);
+      const fx = Math.sin(sp.yaw) * 0.06;
+      const fz = Math.cos(sp.yaw) * 0.06;
+      M.compose(P.set(sp.x + fx, KERB + SIGN_H - 0.3, sp.z + fz), Q, ONE);
+      faces.setMatrixAt(n, M);
+      M.compose(P.set(sp.x + fx * 0.6, KERB + SIGN_H - 0.3, sp.z + fz * 0.6), Q, ONE);
+      backs.setMatrixAt(n, M);
+    });
+    group.add(posts, faces, backs);
+    signSpots.forEach((sp, n) =>
+      smash.add("sign", sp.x, sp.z, KERB, 0.3, [
+        { mesh: posts, index: n },
+        { mesh: faces, index: n },
+        { mesh: backs, index: n },
+      ]),
+    );
+    trash.push(postGeo, faceGeo, backGeo, postMat, faceMat, backMat, faceTex);
+  }
 
   if (marks.length) {
     const im = new THREE.InstancedMesh(markGeo, markMat, marks.length);
@@ -1121,7 +1235,7 @@ export function buildDistrict(opts: DistrictOpts): District {
   //
   // `src/city/traffic.ts` owns them now: Vibe Kart bodies, lanes, signals, and
   // collision boxes pushed into the array below so you can be stopped by one.
-  const traffic = buildTraffic({ seed, grid, block, street, boxes, lowDetail });
+  const traffic = buildTraffic({ seed, grid, block, street, boxes, lowDetail, smash });
   group.add(traffic.group);
 
   // ---- Day / night -----------------------------------------------------
@@ -1170,6 +1284,7 @@ export function buildDistrict(opts: DistrictOpts): District {
       beaconMats[i].opacity = phase < 0.22 ? 0.55 + Math.sin(phase / 0.22 * Math.PI) * 0.45 : 0.06;
     }
     traffic.update(dt, player);
+    smash.update(dt, player);
   };
 
   return {
@@ -1177,6 +1292,7 @@ export function buildDistrict(opts: DistrictOpts): District {
     boxes,
     pads,
     traffic,
+    smash,
     setDay,
     update,
     dispose() {

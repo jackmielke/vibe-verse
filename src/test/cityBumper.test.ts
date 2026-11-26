@@ -95,14 +95,16 @@ describe("hitting one", () => {
   it("asks what was hit before deciding what to do about it", () => {
     // The entire bug: `blockedAt` is true for a wall and for a car, and only
     // one of those should stop you.
-    expect(citySrc).toMatch(/const hitId = blockedAt\(knx, knz, nose\)\s*\n?\s*\? district\.traffic\.carAt/);
+    // Probed from the front bumper (`blockedV`), and asked with a pad wide
+    // enough to match the collision world's, so a car is never scored a wall.
+    expect(citySrc).toMatch(/const hitId = blockedV\(knx, knz\)\s*\n?\s*\? district\.traffic\.carAt\([^)]*, 1\.0\)/);
   });
 
   it("lets you through rather than stopping you", () => {
     // Being stopped dead by a hatchback is the boring outcome this replaces.
     const bump = citySrc.slice(
-      citySrc.indexOf("if (hitId >= 0) {"),
-      citySrc.indexOf("} else if (!blockedAt(knx, knz, nose)) {"),
+      citySrc.indexOf("} else if (hitId >= 0) {"),
+      citySrc.indexOf("} else if (!blockedV(knx, knz)) {"),
     );
     expect(bump.length).toBeGreaterThan(100);
     expect(bump).toContain("kart.x = knx;");
@@ -138,11 +140,13 @@ describe("getting in and out", () => {
     // Getting in used to be a small button that appears when you walk near a
     // car, and getting out was that button or Space — which is also the
     // jetpack, so leaving a kart and firing your jetpack were one keystroke.
-    expect(citySrc).toMatch(/if \(e\.code === "KeyF"\) \{/);
-    const f = citySrc.slice(citySrc.indexOf('if (e.code === "KeyF")'));
-    expect(f.slice(0, 400)).toContain("exitKartRef");
-    expect(f.slice(0, 400)).toContain("enterKartRef");
-    expect(f.slice(0, 400)).toContain("enterRideRef");
+    expect(citySrc).toMatch(/if \(e\.code === "KeyF"(?: && !e\.repeat)?\) \{/);
+    const f = citySrc.slice(citySrc.indexOf('if (e.code === "KeyF"')).slice(0, 800);
+    expect(f).toContain("exitKartRef");
+    expect(f).toContain("enterKartRef");
+    expect(f).toContain("enterRideRef");
+    // The same key gets you on and off Pegasus or the dragon.
+    expect(f).toContain("mountActionRef");
   });
 
   it("reads what is in reach from live values, not from React state", () => {

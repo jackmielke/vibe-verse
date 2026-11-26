@@ -46,6 +46,7 @@ import { buildKart, TYRE_BASE } from "@/kart/models/kart";
 import { mergeAll } from "@/kart/models/geometry";
 import type { CharacterKit, ModelQuality, RigMaterials } from "@/kart/models/materials";
 import type { KartStyle } from "@/kart/models/roster";
+import type { PropKind, Smashables } from "./smash";
 
 // ---------------------------------------------------------------------------
 // The fleet
@@ -317,6 +318,33 @@ interface Car {
   } | null;
   /** Seconds until this car can bowl the player over again. */
   hitCool: number;
+  /** 0 to 100. At 100 it goes up. See `explode`. */
+  dmg: number;
+  /**
+   * Seconds since it was wrecked (burnt out or crushed), 0 for a working car.
+   * A wreck stays where it stopped, solid and smoking, until nobody is
+   * watching, and then it is towed: it rejoins the fleet as a fresh car.
+   */
+  wreck: number;
+  /** Flattened by a monster truck. Squashes the pose and lowers the box. */
+  crushed: boolean;
+  /** Seconds until this car can trade another bump with a car. */
+  bumpCool: number;
+  /** Seconds left of a skid: a bot that lost it, sliding on low grip. */
+  skid: number;
+}
+
+/** Something hit something. For sound and effects; nothing here needs an answer. */
+export interface CrashEvent {
+  kind: "car" | "wall" | "prop" | "explode" | "crush" | "skid";
+  x: number;
+  y: number;
+  z: number;
+  /** Roughly the closing speed, m/s. */
+  strength: number;
+  /** The car involved, when there is one. */
+  id?: number;
+  prop?: PropKind;
 }
 
 /** A car you can get into, or are already in. */
@@ -362,7 +390,7 @@ export interface Traffic {
    * what — and a kart needs to know, because bouncing off a building and
    * bouncing off a Nissan should not be the same event.
    */
-  carAt(x: number, z: number, y: number): number;
+  carAt(x: number, z: number, y: number, pad?: number): number;
   /**
    * Knock a car out of its lane and into the air.
    *
@@ -396,6 +424,7 @@ export interface Traffic {
     id: number; x: number; y: number; z: number; hit: boolean; speed: number;
     /** 0 = travelling along Z, 1 = along X. With `dir`, this is a heading. */
     axis: 0 | 1; dir: 1 | -1;
+    dmg: number; wreck: boolean; crushed: boolean;
   }>;
   /**
    * Put the claimed car somewhere. The caller owns its pose until release.
@@ -408,6 +437,28 @@ export interface Traffic {
   ): void;
   /** Hand it back. It rejoins the lane nearest to where it was abandoned. */
   release(id: number): void;
+  /** Hurt a car. At 100 it explodes. */
+  damage(id: number, amount: number): void;
+  /**
+   * A car somebody was driving blows up under them. It leaves the driver,
+   * stays exactly where it is (no snap to a lane), and burns as a wreck.
+   * `yaw` is its heading in the fleet's own (−Z forward) convention.
+   */
+  detonate(id: number, yaw: number): void;
+  /** Flatten a car under a monster truck. It becomes a wreck you can drive over. */
+  crush(id: number): void;
+  /** Throw every car near a point outward and hurt it. Chains, on purpose. */
+  blast(x: number, z: number, r: number, force: number): void;
+  /** Crashes, explosions and skids, as they happen. */
+  onCrash(cb: (e: CrashEvent) => void): void;
+  /** Wrecks still burning, for smoke. The array is reused. */
+  burning(): ReadonlyArray<{ x: number; y: number; z: number; age: number }>;
+  /** Bots sliding on the tarmac right now, for tyre smoke. The array is reused. */
+  skidding(): ReadonlyArray<{ x: number; z: number; speed: number }>;
+  /** Send a bot nearby into a skid right now. For harnesses. Returns its id or -1. */
+  loseControl(near: { x: number; z: number } | null): number;
+  /** How much has gone wrong so far. For harnesses. */
+  stats(): { explosions: number; skids: number; wrecks: number; carCrashes: number; wallCrashes: number };
   dispose(): void;
 }
 
@@ -426,8 +477,10 @@ export function buildTraffic(opts: {
   boxes: WorldBox[];
   /** Fewer cars, lighter models, no shadows. */
   lowDetail?: boolean;
+  /** Street furniture a flying car knocks over. */
+  smash?: Smashables;
 }): Traffic {
-  const { grid, block, street, boxes, lowDetail = false } = opts;
+  const { grid, block, street, boxes, lowDetail = false, smash } = opts;
   const pitch = block + street;
   const centre = (grid - 1) / 2;
   const span = grid * pitch;
@@ -498,6 +551,11 @@ export function buildTraffic(opts: {
             driven: false,
             hit: null,
             hitCool: 0,
+            dmg: 0,
+            wreck: 0,
+            crushed: false,
+            bumpCool: 0,
+            skid: 0,
           });
         }
       }
@@ -615,6 +673,29 @@ export function buildTraffic(opts: {
       boxes.push(c.box);
     }),
   );
+  /** Our own boxes, so a flying car does not bounce off itself or the fleet. */
+  const carBoxes = new Set<WorldBox>(cars.map((c) => c.box));
+
+  /*
+   * Per-car tint, so one car can burn without the rest of its model doing so.
+   * The colour buffer has to exist before the first compile — three only
+   * switches a material to instance colours if it is there when it builds the
+   * program — so every slot starts white, which is the identity.
+   */
+  const WHITE = new THREE.Color(1, 1, 1);
+  const BURNT = new THREE.Color(0.16, 0.14, 0.13);
+  const CRUSHED = new THREE.Color(0.55, 0.53, 0.52);
+  for (const b of built) {
+    for (const part of b.parts) for (let i = 0; i < part.count; i++) part.setColorAt(i, WHITE);
+    for (const w of [b.tyres, b.rims]) for (let i = 0; i < w.count; i++) w.setColorAt(i, WHITE);
+  }
+  const tint = (car: Car, c: THREE.Color) => {
+    const b = built[car.model];
+    for (const part of b.parts) {
+      part.setColorAt(car.slot, c);
+      if (part.instanceColor) part.instanceColor.needsUpdate = true;
+    }
+  };
 
   // -- traffic signals -------------------------------------------------------
 
@@ -708,6 +789,7 @@ export function buildTraffic(opts: {
   const P = new THREE.Vector3();
   const Q = new THREE.Quaternion();
   const ONE = new THREE.Vector3(1, 1, 1);
+  const SQUASH = new THREE.Vector3(1.08, 0.42, 1.04);
   const WSCALE = new THREE.Vector3();
   const WQ = new THREE.Quaternion();
   const WE = new THREE.Euler();
@@ -752,6 +834,18 @@ export function buildTraffic(opts: {
       const d = wrap((other.t - car.t) * car.dir) - car.halfLong - other.halfLong;
       if (d > -0.5 && d < best) best = d;
     }
+    // Wrecks and cars in the air, where they really are. Without this a
+    // pile-up never ends: every car down the street drives into the wreck.
+    for (const other of flying) {
+      // A car in this list can have rejoined the road earlier this frame.
+      const h = other.hit;
+      if (other === car || !h) continue;
+      const along = car.axis === 0 ? h.z : h.x;
+      const across = car.axis === 0 ? h.x : h.z;
+      if (Math.abs(across - car.lane) > 2.6) continue;
+      const d = wrap((along - car.t) * car.dir) - car.halfLong - other.halfLong;
+      if (d > -0.5 && d < best) best = d;
+    }
     if (player) {
       const along = car.axis === 0 ? player.z : player.x;
       const across = car.axis === 0 ? player.x : player.z;
@@ -788,6 +882,139 @@ export function buildTraffic(opts: {
 
   /** Set by `onPlayerHit`. Null until somebody cares about being run over. */
   let onPlayerHit: ((dx: number, dz: number, speed: number) => void) | null = null;
+  let onCrash: ((e: CrashEvent) => void) | null = null;
+  const emit = (e: CrashEvent) => onCrash?.(e);
+  const counts = { explosions: 0, skids: 0, wrecks: 0, carCrashes: 0, wallCrashes: 0 };
+  /** Cars currently out of lane-space: knocked, skidding or wrecked. Rebuilt every frame. */
+  const flying: Car[] = [];
+  const burningOut: Array<{ x: number; y: number; z: number; age: number }> = [];
+  const skidOut: Array<{ x: number; z: number; speed: number }> = [];
+  /** Seconds until the next bot loses it. */
+  let nextSkid = 6 + rnd() * 6;
+
+  const headingYaw = (car: Car) =>
+    car.axis === 0 ? (car.dir > 0 ? Math.PI : 0) : car.dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+  const laneXZ = (car: Car) => ({
+    x: car.axis === 0 ? car.lane : car.t,
+    z: car.axis === 0 ? car.t : car.lane,
+  });
+
+  /** Into free physics with this velocity. Adds to a flight already under way. */
+  const launch = (
+    car: Car, vx: number, vy: number, vz: number,
+    spinY: number, spinP: number, spinR: number,
+  ) => {
+    if (car.hit) {
+      const h = car.hit;
+      h.vx += vx; h.vy += vy; h.vz += vz;
+      h.spinY += spinY; h.spinP += spinP; h.spinR += spinR;
+      return;
+    }
+    const { x, z } = laneXZ(car);
+    car.hit = { x, y: 0, z, vx, vy, vz, yaw: headingYaw(car), pitch: 0, roll: 0, spinY, spinP, spinR, t: 0 };
+    car.speed = 0;
+    car.t = THREE.MathUtils.clamp(car.axis === 0 ? z : x, -half, half);
+  };
+
+  const explode = (car: Car) => {
+    if (car.wreck > 0) return;
+    const id = cars.indexOf(car);
+    car.wreck = 1e-3;
+    car.dmg = 100;
+    counts.explosions++;
+    counts.wrecks++;
+    tint(car, BURNT);
+    // Up it goes, end over end.
+    launch(car, (rnd() - 0.5) * 3, 7.5, (rnd() - 0.5) * 3, (rnd() - 0.5) * 3, (rnd() - 0.5) * 4, (rnd() - 0.5) * 5);
+    const h = car.hit!;
+    emit({ kind: "explode", x: h.x, y: h.y + 0.8, z: h.z, strength: 30, id });
+    blastAt(h.x, h.z, 9, 16, car);
+    smash?.blast(h.x, h.z, 8, 14);
+  };
+
+  const hurt = (car: Car, amount: number) => {
+    if (car.driven || car.wreck > 0 || amount <= 0) return;
+    car.dmg += amount;
+    if (car.dmg >= 100) explode(car);
+  };
+
+  const blastAt = (x: number, z: number, r: number, force: number, except: Car | null) => {
+    for (const c of cars) {
+      if (c === except || c.driven) continue;
+      const p = c.hit ?? laneXZ(c);
+      const dx = p.x - x;
+      const dz = p.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > r) continue;
+      const k = 1 - d / r;
+      const nx = d > 0.01 ? dx / d : 1;
+      const nz = d > 0.01 ? dz / d : 0;
+      launch(c, nx * force * k, 3 + 6 * k, nz * force * k, (rnd() - 0.5) * 3 * k, (rnd() - 0.5) * 3 * k, (rnd() - 0.5) * 4 * k);
+      // Chains, but each link is weaker than the last: a car next to the blast
+      // takes 45, one at the edge barely anything.
+      hurt(c, 45 * k);
+    }
+  };
+
+  /**
+   * A flying car meets a building. Back out along whichever axis it came in
+   * on, bounce with most of the speed gone, and hurt.
+   */
+  const hitWalls = (car: Car, h: NonNullable<Car["hit"]>, px: number, pz: number) => {
+    const r = Math.min(car.halfWide, car.halfLong) + 0.25;
+    for (const b of boxes) {
+      if (carBoxes.has(b)) continue;
+      if (h.y >= b.height - 0.3 || h.y + car.height <= b.base) continue;
+      if (h.x < b.minX - r || h.x > b.maxX + r || h.z < b.minZ - r || h.z > b.maxZ + r) continue;
+      const wasInX = px >= b.minX - r && px <= b.maxX + r;
+      let impact: number;
+      if (!wasInX) {
+        impact = Math.abs(h.vx);
+        h.x = px;
+        h.vx = -h.vx * 0.3;
+      } else {
+        impact = Math.abs(h.vz);
+        h.z = pz;
+        h.vz = -h.vz * 0.3;
+      }
+      h.vx *= 0.7;
+      h.vz *= 0.7;
+      if (impact > 2.5) {
+        h.spinY += (rnd() - 0.5) * impact * 0.25;
+        h.spinR += (rnd() - 0.5) * impact * 0.12;
+        counts.wallCrashes++;
+        emit({ kind: "wall", x: h.x, y: h.y + 0.6, z: h.z, strength: impact, id: cars.indexOf(car) });
+        hurt(car, (impact - 2.5) * 9);
+      }
+      return;
+    }
+  };
+
+  /** A flying car meets another car. Momentum is shared and both get hurt. */
+  const hitCars = (car: Car, h: NonNullable<Car["hit"]>) => {
+    if (car.bumpCool > 0) return;
+    const sp = Math.hypot(h.vx, h.vz);
+    if (sp < 2.5) return;
+    const r = Math.min(car.halfWide, car.halfLong);
+    for (const o of cars) {
+      if (o === car || o.driven || o.bumpCool > 0) continue;
+      const b = o.box;
+      if (b.height < 0) continue;
+      if (h.y > b.height) continue;
+      if (h.x < b.minX - r || h.x > b.maxX + r || h.z < b.minZ - r || h.z > b.maxZ + r) continue;
+      launch(o, h.vx * 0.65, 1.5 + sp * 0.12, h.vz * 0.65, (rnd() - 0.5) * sp * 0.2, sp * 0.03, (rnd() - 0.5) * sp * 0.08);
+      h.vx *= 0.4;
+      h.vz *= 0.4;
+      h.spinY += (rnd() - 0.5) * sp * 0.2;
+      car.bumpCool = o.bumpCool = 0.45;
+      counts.carCrashes++;
+      const oh = o.hit!;
+      emit({ kind: "car", x: (h.x + oh.x) / 2, y: 0.8, z: (h.z + oh.z) / 2, strength: sp, id: cars.indexOf(o) });
+      hurt(o, sp * 4.5);
+      hurt(car, sp * 3);
+      return;
+    }
+  };
 
   const update = (dt: number, player: THREE.Vector3 | null) => {
     clock += dt;
@@ -809,6 +1036,30 @@ export function buildTraffic(opts: {
     });
     if (lamps.instanceColor) lamps.instanceColor.needsUpdate = true;
 
+    flying.length = 0;
+    burningOut.length = 0;
+    skidOut.length = 0;
+    for (const c of cars) {
+      if (c.hit && !c.driven) flying.push(c);
+      if (c.bumpCool > 0) c.bumpCool -= dt;
+    }
+
+    /*
+     * Somebody loses it.
+     *
+     * Every so often a bot near the player overcooks it: it slews sideways
+     * across the road on next to no grip and keeps going until something stops
+     * it. That is a building, a lamp post, a row of trees or the car in the
+     * next lane, which is how the city gets crashes you did not cause. Only
+     * near the player, because a pile-up three blocks away is a pile-up
+     * nobody sees.
+     */
+    nextSkid -= dt;
+    if (nextSkid <= 0) {
+      nextSkid = 7 + rnd() * 8;
+      if (player && player.y < 6 && player.y > -3) loseControl(player);
+    }
+
     for (const car of cars) {
       // A driven car is nobody's business but its driver's: `drive()` writes
       // its transform and its box stays collapsed.
@@ -826,9 +1077,31 @@ export function buildTraffic(opts: {
         const h = car.hit;
         h.t += dt;
         h.vy -= 22 * dt;
+        const px = h.x;
+        const pz = h.z;
         h.x += h.vx * dt;
         h.y += h.vy * dt;
         h.z += h.vz * dt;
+        if (car.skid > 0) car.skid -= dt;
+        if (car.wreck > 0) car.wreck += dt;
+        hitWalls(car, h, px, pz);
+        hitCars(car, h);
+        if (smash && h.y < 1.6) {
+          const sp = Math.hypot(h.vx, h.vz);
+          if (sp > 3) {
+            const fell = smash.hit(h.x, h.z, car.halfWide + 0.3, h.vx, h.vz, sp);
+            if (fell.length) {
+              h.vx *= 0.82;
+              h.vz *= 0.82;
+              hurt(car, 6 * fell.length);
+              emit({ kind: "prop", x: fell[0].x, y: 1, z: fell[0].z, strength: sp, prop: fell[0].kind });
+            }
+          }
+        }
+        if (car.skid > 0 && h.y < 0.3) skidOut.push({ x: h.x, z: h.z, speed: Math.hypot(h.vx, h.vz) });
+        if (car.wreck > 0 && car.wreck < 16 && !car.crushed) {
+          burningOut.push({ x: h.x, y: h.y, z: h.z, age: car.wreck });
+        }
         h.yaw += h.spinY * dt;
         h.pitch += h.spinP * dt;
         h.roll += h.spinR * dt;
@@ -836,7 +1109,8 @@ export function buildTraffic(opts: {
           // Down. Bounces once or twice, scrubbing hard — a car is not a ball.
           h.y = 0;
           h.vy = h.vy < -3 ? -h.vy * 0.28 : 0;
-          const grip = Math.pow(0.02, dt);
+          // A skid is the same flight on next to no grip: it slides.
+          const grip = Math.pow(car.skid > 0 ? 0.4 : 0.02, dt);
           h.vx *= grip;
           h.vz *= grip;
           // Rocks flat rather than stopping mid-roll, which would leave a car
@@ -853,11 +1127,27 @@ export function buildTraffic(opts: {
         // Held a moment after it settles so it does not snap back to a lane
         // the instant it stops rolling, which reads as a glitch rather than as
         // the driver restarting and pulling away.
+        /*
+         * A wreck waits to be towed: long enough to be looked at, and then
+         * only once you have driven away, with a deadline so parking next to
+         * one forever does not keep it there forever.
+         */
+        const far = !player || Math.hypot(player.x - h.x, player.z - h.z) > 40;
+        const towed = car.wreck === 0 || (car.wreck > 14 && (far || car.wreck > 60));
+        const ready = towed && car.skid <= 0;
         if (still && h.t > 2.2) {
-          car.lane = car.axis === 0 ? h.x : h.z;
-          car.t = car.axis === 0 ? h.z : h.x;
-          rejoin(car);
-          continue;
+          if (ready) {
+            car.lane = car.axis === 0 ? h.x : h.z;
+            car.t = car.axis === 0 ? h.z : h.x;
+            if (car.wreck > 0) {
+              car.wreck = 0;
+              car.crushed = false;
+              tint(car, WHITE);
+            }
+            car.dmg = 0;
+            rejoin(car);
+            continue;
+          }
         }
         pose(car, h.x, h.y, h.z, h.yaw, h.pitch, h.roll);
         const hx0 = car.axis === 0 ? car.halfWide : car.halfLong;
@@ -867,7 +1157,7 @@ export function buildTraffic(opts: {
         car.box.minZ = h.z - hz0;
         car.box.maxZ = h.z + hz0;
         car.box.base = 0;
-        car.box.height = car.height;
+        car.box.height = car.crushed ? car.height * 0.42 : car.height;
         continue;
       }
       /*
@@ -887,6 +1177,30 @@ export function buildTraffic(opts: {
       car.t += car.speed * car.dir * dt;
       if (car.t > half) car.t -= span;
       else if (car.t < -half) car.t += span;
+
+      // Too late to stop: something came down right in front of it.
+      if (car.speed > 4 && car.bumpCool <= 0 && flying.length) {
+        const cx = car.axis === 0 ? car.lane : car.t;
+        const cz = car.axis === 0 ? car.t : car.lane;
+        for (const o of flying) {
+          const b = o.box;
+          if (!o.hit || b.height < 0 || o.hit.y > b.height) continue;
+          const r = car.halfWide;
+          if (cx < b.minX - r || cx > b.maxX + r || cz < b.minZ - r || cz > b.maxZ + r) continue;
+          const sp = car.speed;
+          const hx = car.axis === 0 ? 0 : car.dir;
+          const hz = car.axis === 0 ? car.dir : 0;
+          launch(o, hx * sp * 0.6, 1.2, hz * sp * 0.6, (rnd() - 0.5) * 2, 0.3, (rnd() - 0.5) * 1);
+          launch(car, hx * sp * 0.3, 1.6, hz * sp * 0.3, (rnd() - 0.5) * 3, sp * 0.04, (rnd() - 0.5) * 1.5);
+          car.bumpCool = o.bumpCool = 0.45;
+          counts.carCrashes++;
+          emit({ kind: "car", x: cx, y: 0.8, z: cz, strength: sp, id: cars.indexOf(car) });
+          hurt(car, sp * 4);
+          hurt(o, sp * 3);
+          break;
+        }
+        if (car.hit) continue;
+      }
       // Rolling, not sliding: the tyre turns once per its own circumference.
       car.spin += (car.speed * dt) / 0.32;
 
@@ -1024,13 +1338,15 @@ export function buildTraffic(opts: {
     if (pitch === 0 && roll === 0) Q.setFromAxisAngle(UP, yaw);
     else Q.setFromEuler(PE.set(pitch, yaw, roll, "YXZ"));
     P.set(x, y, z);
-    M.compose(P, Q, ONE);
+    // Flattened: the roof comes down to the wheel tops.
+    const sq = car.crushed ? 0.42 : 1;
+    M.compose(P, Q, sq === 1 ? ONE : SQUASH);
     for (const part of b.parts) part.setMatrixAt(car.slot, M);
     for (let w = 0; w < b.wheels.length; w++) {
       const spec = b.wheels[w];
       WE.set(car.spin, 0, 0);
       WQ.setFromEuler(WE).premultiply(Q);
-      WP.set(spec.x, spec.y, spec.z).applyQuaternion(Q).add(P);
+      WP.set(spec.x * (sq === 1 ? 1 : 1.12), spec.y * sq, spec.z).applyQuaternion(Q).add(P);
       WSCALE.set(
         spec.width / TYRE_BASE.width,
         spec.radius / TYRE_BASE.radius,
@@ -1055,6 +1371,31 @@ export function buildTraffic(opts: {
     halfWide: car.halfWide,
     roofY: car.height,
   });
+
+  function loseControl(near: { x: number; z: number } | null): number {
+    const pick: Car[] = [];
+    for (const c of cars) {
+      if (c.driven || c.hit || c.speed < 6.5) continue;
+      if (near) {
+        const p = laneXZ(c);
+        const d = Math.hypot(p.x - near.x, p.z - near.z);
+        if (d < 18 || d > 95) continue;
+      }
+      pick.push(c);
+    }
+    if (!pick.length) return -1;
+    const car = pick[Math.floor(rnd() * pick.length)];
+    const hx = car.axis === 0 ? 0 : car.dir;
+    const hz = car.axis === 0 ? car.dir : 0;
+    const side = rnd() < 0.5 ? -1 : 1;
+    const sp = Math.max(car.speed, 10) * 1.3;
+    launch(car, hx * sp - hz * side * sp * 0.5, 0.3, hz * sp + hx * side * sp * 0.5, side * (1.4 + rnd() * 1.4), 0, side * 0.15);
+    car.skid = 2.6;
+    counts.skids++;
+    const h = car.hit!;
+    emit({ kind: "skid", x: h.x, y: 0, z: h.z, strength: sp, id: cars.indexOf(car) });
+    return cars.indexOf(car);
+  }
 
   const nearestRidable = (x: number, z: number, radius: number): TrafficRide | null => {
     let best: TrafficRide | null = null;
@@ -1130,6 +1471,65 @@ export function buildTraffic(opts: {
       onPlayerHit = cb;
     },
 
+    onCrash(cb) {
+      onCrash = cb;
+    },
+
+    damage(id, amount) {
+      const car = cars[id];
+      if (car) hurt(car, amount);
+    },
+
+    detonate(id, yaw) {
+      const car = cars[id];
+      if (!car || !car.driven) return;
+      const x = car.axis === 0 ? car.lane : car.t;
+      const z = car.axis === 0 ? car.t : car.lane;
+      car.driven = false;
+      car.hit = { x, y: 0, z, vx: 0, vy: 0, vz: 0, yaw, pitch: 0, roll: 0, spinY: 0, spinP: 0, spinR: 0, t: 0 };
+      car.speed = 0;
+      car.dmg = 0;
+      explode(car);
+    },
+
+    crush(id) {
+      const car = cars[id];
+      if (!car || car.driven || car.crushed) return;
+      if (!car.hit) launch(car, 0, 0, 0, 0, 0, 0);
+      const h = car.hit!;
+      // Pinned flat where it was. No bounce: something very heavy is on it.
+      h.vx = h.vz = 0;
+      h.vy = Math.min(h.vy, 0);
+      h.spinY = h.spinP = h.spinR = 0;
+      h.pitch = h.roll = 0;
+      car.crushed = true;
+      car.dmg = 100;
+      if (car.wreck === 0) {
+        car.wreck = 1e-3;
+        counts.wrecks++;
+      }
+      tint(car, CRUSHED);
+      emit({ kind: "crush", x: h.x, y: 0.5, z: h.z, strength: 20, id });
+    },
+
+    blast(x, z, r, force) {
+      blastAt(x, z, r, force, null);
+    },
+
+    burning() {
+      return burningOut;
+    },
+
+    skidding() {
+      return skidOut;
+    },
+
+    loseControl,
+
+    stats() {
+      return { ...counts };
+    },
+
     debugNear(x, z, r) {
       const out: ReturnType<Traffic["debugNear"]> = [];
       for (let i = 0; i < cars.length; i++) {
@@ -1140,18 +1540,19 @@ export function buildTraffic(opts: {
         out.push({
           id: i, x: cx, y: c.hit ? c.hit.y : 0, z: cz,
           hit: !!c.hit, speed: c.speed, axis: c.axis, dir: c.dir,
+          dmg: c.dmg, wreck: c.wreck > 0, crushed: c.crushed,
         });
       }
       return out;
     },
 
-    carAt(x, z, y) {
+    carAt(x, z, y, pad = 0.3) {
       for (let i = 0; i < cars.length; i++) {
         const c = cars[i];
         if (c.driven) continue;
         const b = c.box;
         if (y > b.height + 0.4) continue;
-        if (x >= b.minX - 0.3 && x <= b.maxX + 0.3 && z >= b.minZ - 0.3 && z <= b.maxZ + 0.3) {
+        if (x >= b.minX - pad && x <= b.maxX + pad && z >= b.minZ - pad && z <= b.maxZ + pad) {
           return i;
         }
       }
