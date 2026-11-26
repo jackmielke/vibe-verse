@@ -4379,6 +4379,7 @@ export default function City() {
         },
         act: () => landmarks.act(),
         shot: (s: { eye: number[]; look: number[]; fov?: number } | null) => landmarks.devShot(s),
+        ball: (k?: [number, number, number, number]) => landmarks.devBall(k),
       };
       (window as unknown as Record<string, unknown>).__cityWarp = (
         x: number,
@@ -6587,7 +6588,7 @@ export default function City() {
       const atSeaLevel =
         pos.y < Math.max(seaTop, 0) + 0.6 && (pos.y > -40 || inTrench);
       const wantSwim =
-        deepEnough && atSeaLevel && !undergroundNow && !riding && !swinging && drivingKartRef.current < 0;
+        deepEnough && atSeaLevel && !undergroundNow && !riding && !swinging && drivingKartRef.current < 0 && !landmarks.holding();
       if (wantSwim && !swimming) {
         // Hitting the water is worth a noise and a splash proportional to how
         // hard you arrived; stepping in off the sand should barely ripple.
@@ -7232,10 +7233,22 @@ export default function City() {
       // A rider is locked to the car rather than carried by physics; see
       // src/city/landmarks/index.ts.
       {
+        const tmL = touchMoveRef.current;
+        const tmLen = Math.hypot(tmL.x, tmL.y);
         const lock = landmarks.update(dt, now, {
           player: player.position,
           grounded: onGround,
           busy: drivingKartRef.current >= 0 || !!activeMountRef.current || swimming || ridingZeppelin,
+          swimming,
+          // The speedboat's helm: the same keys and stick as a kart.
+          throttle:
+            (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
+            (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) +
+            (tmLen > 0.12 ? -tmL.y : 0),
+          steer:
+            (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
+            (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) +
+            (tmLen > 0.12 ? tmL.x : 0),
         });
         if (lock) {
           player.position.copy(lock);
@@ -7243,6 +7256,14 @@ export default function City() {
           onGround = true;
           wallJumpUsed = false;
           peakY = lock.y;
+        }
+        // At the helm the camera swings in behind the bow, like a kart's.
+        const fy = landmarks.followYaw();
+        if (fy !== null) {
+          let dyaw = fy - camYaw;
+          while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+          while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+          camYaw += dyaw * Math.min(1, dt * 2.5);
         }
       }
 
