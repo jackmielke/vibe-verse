@@ -168,7 +168,7 @@ export default function CannonRun() {
   const over = hud?.phase === "over";
   const takeback = hud?.phase === "takeback";
   const guest = hud?.mode === "guest";
-  const inviteUrl = typeof window !== "undefined" ? `${window.location.origin}/cannon-run?room=${room}${netMode === "local" ? "&net=local" : ""}` : "";
+  const inviteUrl = typeof window !== "undefined" ? `${window.location.origin}/cannon-chase?room=${room}${netMode === "local" ? "&net=local" : ""}` : "";
 
   return (
     <div className="fixed inset-0 select-none overflow-hidden bg-[#0b0f1c] text-white" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -285,7 +285,7 @@ export default function CannonRun() {
       {screen === "splash" ? (
         <Backdrop>
           <div className="text-6xl">💣🛻</div>
-          <h1 className="mt-4 text-4xl font-bold tracking-tight">Cannon Run</h1>
+          <h1 className="mt-4 text-4xl font-bold tracking-tight">Cannon Chase</h1>
           <p className="mt-3 text-[15px] leading-relaxed text-white/70">
             Midnight, a desert highway, and an old ship's cannon bolted into the bed of your pickup. Mad Mort says it's his. His headlights are right behind you.
           </p>
