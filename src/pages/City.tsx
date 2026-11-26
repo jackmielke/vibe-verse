@@ -94,7 +94,6 @@ import { createWrecks } from "@/city/wrecks";
 import { createTrench } from "@/city/trench";
 import { createHeadMount } from "@/city/headMount";
 import { createBackMount } from "@/city/backMount";
-import { createRifle } from "@/city/rifle";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -3764,7 +3763,6 @@ export default function City() {
      */
     backMount.attach(null, null, modelHolder);
     backMount.group.add(jetpack);
-    const rifle = createRifle(modelHolder, scene);
     const jetLight = new THREE.PointLight(0x7dfce0, 0, 9, 2);
     jetLight.position.set(0, 0.4, -0.2);
     player.add(jetLight);
@@ -3881,7 +3879,7 @@ export default function City() {
     const handled = new Set([
       "KeyW", "KeyA", "KeyS", "KeyD",
       "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-      "Space", "ShiftLeft", "ShiftRight", "KeyC", "KeyR",
+      "Space", "ShiftLeft", "ShiftRight", "KeyC", "KeyR", "KeyQ",
     ]);
     // Don't steal keys while the player is typing in chat.
     const isTyping = (e: KeyboardEvent) => {
@@ -4364,9 +4362,6 @@ export default function City() {
     const onToggleView = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      // G raises / lowers the rifle, Q fires it.
-      if (e.code === "KeyG" && !e.repeat) rifle.toggle();
-      if (e.code === "KeyQ") rifle.fire();
       if (e.code === "KeyV") {
         vrFirstPerson = !vrFirstPerson;
       }
@@ -4586,7 +4581,7 @@ export default function City() {
       onPickup: (kind) => {
         soundsRef.current?.fanfare?.();
         toast(`${GUNS[kind].emoji} You found the ${GUNS[kind].label}`, {
-          description: "Hold R to fire (it aims for you), G to switch guns. Shooting in town brings the police.",
+          description: "Hold R (or Q) to fire, it aims for you, G to switch guns. Shooting in town brings the police.",
         });
       },
       boom: (x, z) => soundsRef.current?.boom?.(1, earshot(x, z, 160)),
@@ -5875,7 +5870,6 @@ export default function City() {
       const now = performance.now();
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
-      rifle.update(dt);
 
       // VR input: read the strongest thumbstick from any connected
       // controller and feed it through the same touch refs that the
@@ -7158,7 +7152,7 @@ export default function City() {
             driving: dk ? { x: dk.x, y: dk.y, z: dk.z, yaw: dk.yaw, speed: dk.speed } : null,
             inCity,
             heist: heistChase.isActive() ? heistChase.pos() : null,
-            firing: enteredRef.current && (keys.has("KeyR") || touchFireRef.current),
+            firing: enteredRef.current && (keys.has("KeyR") || keys.has("KeyQ") || touchFireRef.current),
           });
         }
         const mowing = drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].kind === "mower";
@@ -8253,7 +8247,6 @@ export default function City() {
       trench.dispose();
       headMount.dispose();
       backMount.dispose();
-      rifle.dispose();
 
       delete devWindow.__cityDebug;
       delete (window as unknown as Record<string, unknown>).__cityCam;
@@ -9920,7 +9913,7 @@ export default function City() {
           {mayhemHud.gun && (
             <span className="text-foreground/90">
               {GUNS[mayhemHud.gun].emoji} {GUNS[mayhemHud.gun].label}
-              <span className="text-muted-foreground"> · {isTouch ? "hold FIRE" : "R fire · G switch"}</span>
+              <span className="text-muted-foreground"> · {isTouch ? "hold FIRE" : "R or Q fire · G switch"}</span>
             </span>
           )}
         </div>
