@@ -23,7 +23,7 @@ export interface Hello { t: "hi"; up: Upgrades }
 /** Host to guest: the chase is on. */
 export interface Go { t: "go" }
 /** Guest to host: where my truck is and what my cannon is doing. */
-export interface Input { t: "in"; g: number; s: number; lat: number; v: number; vl: number; boost: number; yaw: number; pitch: number; fire: number }
+export interface Input { t: "in"; g: number; s: number; lat: number; v: number; vl: number; boost: number; yaw: number; pitch: number; fire: number; /** on foot at the diner: s, lat and yaw are the hero, fire its pies */ fin?: number }
 /** Host to guest: everything else. Arrays, to keep packets small. */
 export interface Snap {
   t: "st";
@@ -39,6 +39,9 @@ export interface Snap {
   /** Linda, when there are two of you */
   e2?: number[] | null;
   tk2?: string;
+  /** the diner showdown (finale.ts) */
+  fn?: import("./finale").FinaleSnap;
+  won?: number;
   /** balls: s, lat, y, vs, vl, vy, small */
   b: number[][];
   /** thrown: s, lat, y, vs, vl, vy, kind, targetLat, passed, rider */

@@ -15,6 +15,7 @@ import { Joystick } from "@/magician/ui/Joystick";
 import { QrCode } from "@/oni/ui/QrCode";
 import { Comic } from "@/cannonrun/Comic";
 import type { CannonRun as Game, ChaseHud, Mode, RiderHud } from "@/cannonrun/engine";
+import type { FinaleHud as FinaleHudT } from "@/cannonrun/finale";
 import { openTransport, readBank, roomCode, writeBank, UPGRADES, UPGRADE_COST, type NetMode, type Transport, type Upgrades, type Wire } from "@/cannonrun/net";
 
 type Screen = "comic" | "splash" | "garage" | "host" | "join" | "loading" | "playing" | "failed";
@@ -33,7 +34,7 @@ export default function CannonRun() {
   const guestUpRef = useRef<Upgrades | undefined>(undefined);
   const [mode, setMode] = useState<Mode>(() => (params.has("duo") ? "duo" : "solo"));
   const [screen, setScreen] = useState<Screen>(() =>
-    joinCode ? "join" : hostCode ? "host" : params.has("comic") ? "comic" : params.has("go") || params.has("duo") ? "loading" : "splash",
+    joinCode ? "join" : hostCode ? "host" : params.has("comic") ? "comic" : params.has("go") || params.has("duo") || params.has("finale") ? "loading" : "splash",
   );
   const [hud, setHud] = useState<ChaseHud | null>(null);
   const [aurora, setAurora] = useState<boolean>(() => {
@@ -188,6 +189,8 @@ export default function CannonRun() {
   const card = "rounded-xl bg-black/55 ring-1 ring-white/10 backdrop-blur-sm";
   const over = hud?.phase === "over";
   const takeback = hud?.phase === "takeback";
+  // the diner showdown after the train: its own HUD, and the words are drawn in the canvas
+  const fz = hud?.finale && !over ? hud.finale : null;
   const guest = hud?.mode === "guest";
   const inviteUrl = typeof window !== "undefined" ? `${window.location.origin}/cannon-chase?room=${room}${netMode === "local" ? "&net=local" : ""}` : "";
 
@@ -197,8 +200,10 @@ export default function CannonRun() {
 
       {screen === "playing" && hud && !bare ? (
         <>
+          {fz ? <FinaleHud f={fz} phone={phone} mode={hud.mode} card={card} onStick={onStick} game={gameRef} /> : null}
+
           {/* Top left: the score, then one card per truck. */}
-          <div className="pointer-events-none absolute flex flex-col gap-2" style={{ left: "max(env(safe-area-inset-left), 12px)", top: "max(env(safe-area-inset-top), 60px)", width: phone ? 150 : 168 }}>
+          {!fz ? <div className="pointer-events-none absolute flex flex-col gap-2" style={{ left: "max(env(safe-area-inset-left), 12px)", top: "max(env(safe-area-inset-top), 60px)", width: phone ? 150 : 168 }}>
             <div className={`${card} px-3 py-2`}>
               <div className="flex items-baseline justify-between gap-2">
                 <div className="text-[22px] font-semibold leading-none tracking-tight text-[#ffd36a]" style={{ fontFamily: MONO }}>{hud.score.toLocaleString()}</div>
@@ -209,10 +214,10 @@ export default function CannonRun() {
               </div>
             </div>
             {hud.riders.map((r, i) => <RiderCard key={i} r={r} many={hud.riders.length > 1} card={card} />)}
-          </div>
+          </div> : null}
 
           {/* Top centre: him. */}
-          <div
+          {!fz ? <div
             className={`pointer-events-none absolute flex flex-col gap-2 ${phone ? "right-3 items-end" : "inset-x-0 items-center px-3"}`}
             style={{ top: "max(env(safe-area-inset-top), 14px)" }}
           >
@@ -249,9 +254,9 @@ export default function CannonRun() {
             {hud.toast ? <div style={phone ? { position: "fixed", left: 12, right: 12, top: hud.riders.length > 1 ? 330 : 262 } : undefined} className="rounded-full bg-white px-4 py-1.5 text-center text-[13px] font-semibold text-black shadow-lg">{hud.toast}</div> : null}
             {hud.alert && !over ? <div className="animate-pulse rounded-lg bg-[#d8262a] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide shadow-lg ring-2 ring-white/70">{hud.alert}</div> : null}
             {hud.link === "lost" && !over ? <div className="rounded-full bg-[#ff5a4a] px-4 py-1.5 text-[12px] font-semibold">{guest ? "Lost the host. Waiting…" : "Your friend has gone quiet…"}</div> : null}
-          </div>
+          </div> : null}
 
-          {!phone && !over && !takeback ? (
+          {!phone && !over && !takeback && !fz ? (
             <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${card} px-4 py-2 text-center text-[11px] text-white/70`} style={{ bottom: "max(env(safe-area-inset-bottom), 16px)" }}>
               {hud.mode === "duo" ? (
                 <>
@@ -271,7 +276,7 @@ export default function CannonRun() {
             </button>
           </div>
 
-          {phone && !over && !takeback ? (
+          {phone && !over && !takeback && !fz ? (
             <>
               {/* Tap anywhere above the stick to aim there and fire. */}
               <div
@@ -297,7 +302,14 @@ export default function CannonRun() {
           {over ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/45 px-6">
               <div className="w-full max-w-sm rounded-2xl bg-[#121728]/95 p-6 text-center ring-1 ring-white/10">
-                <div className="text-[12px] font-bold tracking-[0.22em] text-[#ff7a5a]">HE TOOK HIS CANNON BACK</div>
+                {hud.won ? (
+                  <>
+                    <div className="text-[12px] font-bold tracking-[0.22em] text-[#ffd36a]">THE CANNON IS YOURS. FOR GOOD.</div>
+                    <div className="mt-1 text-[12px] text-white/55">Mort gave up at Dot's Diner. The end?</div>
+                  </>
+                ) : (
+                  <div className="text-[12px] font-bold tracking-[0.22em] text-[#ff7a5a]">{hud.finale ? "MORT GOT HIS CANNON BACK AT THE DINER" : "HE TOOK HIS CANNON BACK"}</div>
+                )}
                 <div className="mt-2 text-4xl font-semibold" style={{ fontFamily: MONO }}>{hud.score.toLocaleString()}</div>
                 <div className="mt-2 text-[13px] text-white/60">
                   {(hud.meters / 1000).toFixed(2)} km · {hud.hits} hits · {hud.wrecks} {hud.wrecks === 1 ? "ride" : "rides"} wrecked
@@ -443,6 +455,69 @@ export default function CannonRun() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** On foot at Dot's Diner: pies in hand, who is still standing, and how far Mort has the cannon out. */
+function FinaleHud({ f, phone, mode, card, onStick, game }: { f: FinaleHudT; phone: boolean; mode: Mode; card: string; onStick: (x: number, y: number) => void; game: React.MutableRefObject<Game | null> }) {
+  if (f.stage !== "fight") return null;
+  const colors = ["#5ab4ff", "#ff7a4a"];
+  return (
+    <>
+      <div className="pointer-events-none absolute flex flex-col gap-2" style={{ left: "max(env(safe-area-inset-left), 12px)", top: "max(env(safe-area-inset-top), 60px)", width: phone ? 140 : 168 }}>
+        {f.pies.map((n, i) => (
+          <div key={i} className={`${card} px-3 py-2`} style={f.pies.length > 1 ? { boxShadow: `inset 3px 0 0 ${colors[i]}` } : undefined}>
+            <div className="text-[10px] font-bold tracking-[0.18em]" style={{ color: f.pies.length > 1 ? colors[i] : "rgba(255,255,255,0.55)" }}>{f.pies.length > 1 ? `P${i + 1} PIES` : "PIES"}</div>
+            <div className="mt-0.5 text-[20px] leading-none">{n > 0 ? "🥧".repeat(n) : <span className="text-[12px] font-semibold text-[#ffd36a]">Get more at Dot's counter!</span>}</div>
+          </div>
+        ))}
+      </div>
+      <div className={`pointer-events-none absolute flex flex-col gap-2 ${phone ? "right-3 items-end" : "inset-x-0 items-center px-3"}`} style={{ top: "max(env(safe-area-inset-top), 14px)" }}>
+        <div className={`flex gap-2 ${phone ? "flex-col items-end" : ""}`}>
+          {f.foes.map((x) => (
+            <div key={x.name} className={`${card} px-3 py-1.5 text-center`} style={{ opacity: x.beaten ? 0.5 : 1 }}>
+              <div className="text-[11px] font-bold tracking-[0.18em]" style={{ color: x.name.includes("LINDA") ? "#e08aff" : "#ff7a5a" }}>{x.name}</div>
+              <div className="mt-1 flex justify-center gap-1">
+                {Array.from({ length: x.max }, (_, i) => <span key={i} className="h-2 w-3.5 rounded-sm" style={{ background: i < x.hp ? "#fff2d8" : "rgba(255,255,255,0.14)" }} />)}
+              </div>
+              <div className="mt-1 text-[10px] text-white/45">{x.beaten ? "covered in pie" : "on foot"}</div>
+            </div>
+          ))}
+        </div>
+        <div className={`${card} w-[220px] px-3 py-1.5`}>
+          <div className="text-[10px] font-bold tracking-[0.18em]" style={{ color: f.grab > 0.6 ? "#ff5a4a" : "rgba(255,255,255,0.6)" }}>{f.grab > 0.02 ? "MORT IS TAKING THE CANNON!" : "THE CANNON IS SAFE"}</div>
+          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full" style={{ width: `${f.grab * 100}%`, background: f.grab > 0.6 ? "#ff5a4a" : "#ffd36a" }} />
+          </div>
+        </div>
+      </div>
+      {!phone ? (
+        <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${card} px-4 py-2 text-center text-[11px] text-white/70`} style={{ bottom: "max(env(safe-area-inset-bottom), 16px)" }}>
+          {mode === "duo" ? (
+            <>
+              <span style={{ color: "#5ab4ff" }}>P1</span> W A S D to run · Space to throw a pie
+              <span className="mx-2 text-white/30">|</span>
+              <span style={{ color: "#ff7a4a" }}>P2</span> arrows to run · Enter to throw
+            </>
+          ) : (
+            "W A S D or the arrows to run · Space or click to throw a pie · more pies at Dot's counter"
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="absolute" style={{ left: "max(env(safe-area-inset-left), 22px)", bottom: "max(env(safe-area-inset-bottom), 26px)" }}>
+            <Joystick onMove={onStick} size={124} />
+          </div>
+          <button
+            className="absolute flex h-20 w-20 items-center justify-center rounded-full bg-[#ffd36a]/30 text-[13px] font-bold ring-2 ring-[#ffd36a]/70"
+            style={{ right: "max(env(safe-area-inset-right), 22px)", bottom: "max(env(safe-area-inset-bottom), 30px)", touchAction: "none" }}
+            onPointerDown={(e) => { e.stopPropagation(); game.current?.aimAt(e.clientX, e.clientY, true); }}
+          >
+            🥧 PIE
+          </button>
+        </>
+      )}
+    </>
   );
 }
 

@@ -30,9 +30,10 @@ import {
   type Truck, type Foe, type Hench,
 } from "./models";
 import type { Transport, Upgrades, Wire, Snap, Input } from "./net";
+import { createFinale, type Finale, type FinaleHud, type FinaleInput, type FinaleStage } from "./finale";
 
 export type Mode = "solo" | "duo" | "host" | "guest";
-type Phase = "intro" | "play" | "takeback" | "over";
+type Phase = "intro" | "play" | "takeback" | "finale" | "over";
 
 export interface RiderHud {
   hull: number;
@@ -72,6 +73,10 @@ export interface ChaseHud {
   /** a big red warning, when Mort's backup is on the way */
   alert: string;
   henchmen: number;
+  /** the diner showdown after the train, while it is on */
+  finale: FinaleHud | null;
+  /** the run ended with the cannon yours for good */
+  won: boolean;
 }
 
 export interface CannonRun {
@@ -711,6 +716,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let alertT = 0;
   let ended = false;
   let muted = false;
+  let fin: Finale | null = null;
+  let won = false;
   const keys = new Set<string>();
   const stick = { x: 0, y: 0 };
   const held = { boost: false };
@@ -1257,7 +1264,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       cash += 250 * en.level;
       for (const r of riders) if (alive(r)) r.hull = Math.min(r.max, r.hull + 15);
       emit("wreck", en.s, en.lat, 1);
-      say(`WRECKED ${cur.linda ? "LINDA'S " : ""}${RIDES[Math.min(en.level - 1, RIDES.length - 1)].name.replace(/^the /, cur.linda ? "" : "the ").toUpperCase()}! +$${250 * en.level}`, 2.6);
+      if (!cur.linda && rideAt(en.level).kind === "train" && FINALE_ON) say("THE TRAIN IS DOWN! Everybody's pulling over...", 4);
+      else say(`WRECKED ${cur.linda ? "LINDA'S " : ""}${RIDES[Math.min(en.level - 1, RIDES.length - 1)].name.replace(/^the /, cur.linda ? "" : "the ").toUpperCase()}! +$${250 * en.level}`, 2.6);
       const back = cur.linda ? L_COMEBACK : COMEBACK;
       shout(back[Math.floor(Math.random() * back.length)], 2.6);
       respawnT = 5.5;
@@ -1483,6 +1491,69 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       if (tb.t > 5) endRun();
     }
   };
+  /* ------------------------------------------------------------ the finale: Dot's Diner (finale.ts)
+     Wreck the train and the chase is over: everybody pulls over at a diner and
+     it is settled on foot, with pies. The highway stays where it is; the finale
+     is its own scene, drawn instead of it. */
+  const FINALE_ON = true;
+  const FIN_SOUND: Record<string, string> = { throw: "whoosh", splat: "pop", shove: "whack", pies: "clank", horn: "horn", door: "door", win: "horn" };
+  const finSound = (k: string): void => { const kind = FIN_SOUND[k]; if (kind) emit(kind, me.s, me.lat, 1.2, mine); };
+  const ensureFinale = (): Finale => {
+    if (fin) return fin;
+    fin = createFinale({
+      two, colors: riders.map((r) => RIDER_LOOK[r.idx].color), plates: riders.map((r) => RIDER_LOOK[r.idx].plate),
+      lindaLevel: linda?.en.level ?? 1, thanks, sound: finSound,
+    });
+    // the highway's floating labels would hang over the diner
+    for (const el of [bubble, lindaBubble, henchBubble, ...tags]) el.style.display = "none";
+    news.on = 0;
+    news.radioT = 0;
+    return fin;
+  };
+  const startFinale = (stage: FinaleStage = "arrive"): void => {
+    if (isGuest) return;
+    phase = "finale";
+    toast = ""; talk = ""; alert = "";
+    for (const r of riders) { r.v = 0; r.wantFire = false; }
+    henchmen.forEach((h) => { h.state = -1; h.body.root.visible = false; });
+    const f = ensureFinale();
+    if (stage !== "arrive") f.skip(stage);
+  };
+  const finInputs = (): FinaleInput[] => {
+    const inp = (r: Rider): FinaleInput => {
+      let mx = 0, mz = 0;
+      // a friend on another device moves its own hero (fin.remote)
+      if (!local.includes(r)) return { mx, mz, throw: false };
+      if (mode === "duo" && r.idx === 1) {
+        if (keys.has("ArrowLeft")) mx -= 1; if (keys.has("ArrowRight")) mx += 1;
+        if (keys.has("ArrowUp")) mz -= 1; if (keys.has("ArrowDown")) mz += 1;
+      } else if (mode === "duo") {
+        if (keys.has("a")) mx -= 1; if (keys.has("d")) mx += 1;
+        if (keys.has("w")) mz -= 1; if (keys.has("s")) mz += 1;
+      } else {
+        if (keys.has("a") || keys.has("ArrowLeft")) mx -= 1; if (keys.has("d") || keys.has("ArrowRight")) mx += 1;
+        if (keys.has("w") || keys.has("ArrowUp")) mz -= 1; if (keys.has("s") || keys.has("ArrowDown")) mz += 1;
+      }
+      // the phone stick: up on the stick is away from the camera
+      if (r === me && Math.hypot(stick.x, stick.y) > 0.12) { mx = stick.x; mz = -stick.y; }
+      const t = r.wantFire;
+      r.wantFire = false;
+      return { mx, mz, throw: t };
+    };
+    return riders.map(inp);
+  };
+  const stepFinale = (dt: number): void => {
+    if (!fin) return;
+    fin.step(dt, finInputs(), "auth");
+    const d = fin.done();
+    if (d && phase === "finale") {
+      won = d === "won";
+      if (won) { score += 5000; cash += 1500; }
+      phase = "over";
+      finish();
+    }
+  };
+
   const endRun = (): void => {
     if (phase === "over") return;
     phase = "over";
@@ -1507,6 +1578,12 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     use(mort);
     flash.intensity *= Math.pow(0.0005, dt);
     boomLight.intensity *= Math.pow(0.02, dt);
+    if (phase === "finale" || (phase === "over" && fin)) {
+      if (phase === "finale") stepFinale(dt);
+      else fin?.step(dt, [], "auth");
+      sendNet(dt);
+      return;
+    }
 
     if (phase === "intro") {
       introT += dt;
@@ -1564,7 +1641,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       en.roll += en.rollV * dt;
       en.s += en.v * dt;
       respawnT -= dt;
-      if (respawnT <= 0 && phase === "play") {
+      if (respawnT <= 0 && phase === "play" && !cur.linda && rideAt(en.level).kind === "train" && FINALE_ON) startFinale();
+      else if (respawnT <= 0 && phase === "play") {
         spawnFoe(en.level + 1, 220);
         emit(rideAt(en.level).kind === "train" ? "whistle" : "horn", en.s, en.lat, 1);
         if (cur.linda) {
@@ -1949,8 +2027,15 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         hm: henchmen.map((h) => (h.state < 0 ? [0, 0, 0, -1, 0, 0, 0, 0] : [r2(h.s), r2(h.lat), r2(h.y), h.state, r2(h.v), r2(h.rx), r2(h.walk), r2(h.yaw)])),
         al: alert,
         ev: outbox.splice(0),
+        fn: fin ? fin.encode() : undefined,
+        won: won ? 1 : 0,
       };
       net.send(snap);
+    } else if (fin && phase === "finale") {
+      // on foot: where my hero stands, and how many pies it has thrown
+      const h = fin.encode().n;
+      const at = 3 + mine * 7;
+      net.send({ t: "in", g: gen, s: h[at], lat: h[at + 1], v: 0, vl: 0, boost: 0, yaw: h[at + 2], pitch: 0, fire: fin.throws, fin: 1 });
     } else {
       net.send({ t: "in", g: gen, s: r2(me.s), lat: r2(me.lat), v: r2(me.v), vl: r2(me.vl), boost: r2(me.boost), yaw: r2(me.aim.yaw), pitch: r2(me.aim.pitch), fire: me.fired });
     }
@@ -1966,6 +2051,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     if (mode === "host" && msg.t === "in") {
       const m = msg as Input;
       if (m.g !== gen) return;
+      if (m.fin) { if (fin && phase === "finale") fin.remote(1, m.s, m.lat, m.yaw, m.fire); riders[1].net = riders[1].net ? { ...riders[1].net, at: time } : riders[1].net; return; }
       const r = riders[1];
       const prev = r.net?.fire ?? m.fire;
       r.net = { s: m.s, lat: m.lat, v: m.v, vl: m.vl, at: time, fire: m.fire };
@@ -1994,6 +2080,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     snapAt = time;
     const prevPhase = phase;
     phase = sn.ph as Phase;
+    if (sn.fn) { ensureFinale().apply(sn.fn, mine); won = sn.won === 1; }
     if (phase === "over" && prevPhase !== "over") finish();
     score = sn.sc;
     cash = sn.cash;
@@ -2077,6 +2164,13 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   /** The guest's world step: drive my own truck, ease everything else toward the host. */
   const guestStep = (dt: number): void => {
     time += dt;
+    if (fin) {
+      if (toastT > 0) { toastT -= dt; if (toastT <= 0) toast = ""; }
+      const inp = finInputs()[mine];
+      fin.step(dt, [inp], "view", mine);
+      sendNet(dt);
+      return;
+    }
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) toast = ""; }
     flash.intensity *= Math.pow(0.0005, dt);
     boomLight.intensity *= Math.pow(0.02, dt);
@@ -2172,6 +2266,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   };
 
   const draw = (dt: number): void => {
+    if (fin) return;
     const ease = (rate: number): number => 1 - Math.exp(-dt * rate);
     // trucks
     for (const r of riders) {
@@ -2684,6 +2779,14 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   };
   /** The main view, then the chopper shot and the news graphics on top. */
   const renderAll = (): void => {
+    if (fin) {
+      const W = canvas.clientWidth || mount.clientWidth || 1;
+      const H = canvas.clientHeight || mount.clientHeight || 1;
+      fin.aspect(W / H);
+      renderer.render(fin.scene, fin.camera);
+      fin.overlay(renderer, W, H);
+      return;
+    }
     renderer.render(scene, camera);
     const tv = news.on > 0;
     const radio = !tv && news.radioT > 0;
@@ -2751,6 +2854,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       gap: Math.round(t.s - en.s), hits, wrecks, toast, fps: Math.round(fps),
       link: !net ? "" : time - lastHeard > 6 ? "lost" : "ok",
       alert, henchmen: henchmen.filter((h) => h.state >= 0 && h.state <= 2).length,
+      finale: fin ? fin.hud() : null,
+      won,
     };
   };
   const frame = (now: number): void => {
@@ -2760,7 +2865,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     last = now;
     fps = lerp(fps, 1 / Math.max(dt, 0.001), 0.05);
     tick(dt);
-    audio.update(me.v, target().s - en.s, en.wreck === 0 && en.seated);
+    audio.update(fin ? 0 : me.v, target().s - en.s, !fin && en.wreck === 0 && en.seated);
     draw(dt);
     renderAll();
     hudT -= dt;
@@ -2789,6 +2894,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       window.removeEventListener("resize", resize);
       canvas.removeEventListener("pointerdown", onDown);
       audio.stop();
+      fin?.dispose();
       scene.traverse((x) => {
         const mm = x as THREE.Mesh;
         mm.geometry?.dispose();
@@ -2817,6 +2923,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     restart() {
       if (isGuest) return;
       gen += 1;
+      if (fin) { fin.dispose(); fin = null; for (const el of [bubble, lindaBubble, henchBubble, ...tags]) el.style.display = ""; }
+      won = false;
       riders.forEach((r) => { resetRider(r); if (r.idx === 1 && mode === "host") r.net = null; });
       score = 0; cash = 0; kmPaid = 0; hits = 0; wrecks = 0; introT = 0; phase = "intro"; toast = ""; talk = ""; ended = false;
       traffic.length = 0;
@@ -2891,7 +2999,18 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     /** put a Gatch News bulletin on now */
     news: (headline = "BREAKING: STOLEN PIRATE CANNON ON ROUTE 66", sub = "Owner 'Mad Mort' in pursuit") => breaking(headline, sub, 8),
     radio: (line?: string) => { news.radio = line ?? RADIO[0]; news.radioT = 6; news.on = 0; },
+    /** go straight to the diner: "arrive" (the whole thing), "fight", "won" (the ending) or "lost" */
+    finale: (stage: FinaleStage = "arrive") => startFinale(stage),
+    finaleHud: () => fin?.hud() ?? null,
+    finalePeek: () => fin?.peek() ?? null,
+    /** wreck whatever Mort is driving, now (with level(6) first, that is the train) */
+    wreck: () => hitFoe({ s: en.s, lat: en.lat, y: 1 }, "test", 999),
   };
+  // ?finale opens a run at the diner; ?finale=fight|won|lost skips ahead (for filming)
+  if (params.has("finale") && !isGuest) {
+    const want = params.get("finale") as FinaleStage;
+    startFinale(["fight", "won", "lost", "standoff"].includes(want) ? want : "arrive");
+  }
 
   draw(1);
   raf = requestAnimationFrame(frame);
