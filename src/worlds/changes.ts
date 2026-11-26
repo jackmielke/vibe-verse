@@ -89,12 +89,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
   ],
   "cannon-run": [
+    { sha: "79d312f8", iso: "2026-11-26T21:10:46+00:00", subject: "Cannon Chase: one-tap shareable Gatch News clips" },
+    { sha: "70a89924", iso: "2026-11-26T19:00:40+00:00", subject: "Cannon Chase: the highlight reel is now the start screen" },
+    { sha: "8b08c5a1", iso: "2026-11-26T18:46:28+00:00", subject: "Cannon Chase start-screen looks: add Read the story, drop the copy that promised an ending" },
     { sha: "f11f9fbd", iso: "2026-11-26T18:42:00+00:00", subject: "Cannon Chase: endless chase, Gatch News replay, read-the-story book" },
     { sha: "3206e3c6", iso: "2026-11-26T16:45:22+00:00", subject: "Cannon Chase: three new face styles for Mort and Linda, behind ?face=" },
     { sha: "872d5baf", iso: "2026-11-26T16:25:31+00:00", subject: "Cannon Chase: four start-screen designs to preview with ?look=" },
-    { sha: "4e459f08", iso: "2026-11-26T07:49:55+00:00", subject: "Cannon Chase: the finale, a pie showdown at Dot's Diner" },
-    { sha: "4fcd3f09", iso: "2026-11-26T07:18:22+00:00", subject: "Cannon Chase: Gatch News covers the chase live, truck radio between bulletins" },
-    { sha: "78583a05", iso: "2026-11-26T07:09:28+00:00", subject: "Cannon Chase: comic out of the game, Thanksgiving mode, Linda grinds her teeth" },
   ],
   "characters": [
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
@@ -106,12 +106,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "a25c5003", iso: "2026-11-26T17:56:50+00:00", subject: "Vibe City: fold the build-mode rifle into GTA Junior's" },
-    { sha: "c88f06f5", iso: "2026-11-26T17:53:47+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
-    { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
-    { sha: "005bc47c", iso: "2026-11-26T17:41:50+00:00", subject: "Add a rifle to Vibe City: G to raise it, Q to fire" },
-    { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
-    { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
+    { sha: "fb6925db", iso: "2026-11-26T21:51:42+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "042af9dc", iso: "2026-11-26T21:49:25+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
+    { sha: "9cae94da", iso: "2026-11-26T21:23:45+00:00", subject: "City: Vibe Arms, a weapons shop with a Super Soaker, Glock 19, Nova Blaster and sticky pineapple bombs" },
+    { sha: "6c5049ad", iso: "2026-11-26T21:08:30+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "cb183e5c", iso: "2026-11-26T21:08:30+00:00", subject: "Add What's New: a dated changelog of every update" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -237,12 +237,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9aa36c8d", iso: "2026-07-30T19:43:20+00:00", subject: "Vibe Golf: art direction, grading, audio, and portrait framing" },
   ],
   "home-alone": [
+    { sha: "de534cee", iso: "2026-11-26T22:17:00+00:00", subject: "House Rules: the trap game, rebuilt around laying traps" },
     { sha: "04452764", iso: "2026-08-02T18:22:49+00:00", subject: "Home Alone: infinite bricks" },
     { sha: "0ab21791", iso: "2026-08-02T14:42:55+00:00", subject: "Home Alone: nobody is made of boxes any more" },
     { sha: "d6c8aeea", iso: "2026-08-02T14:17:18+00:00", subject: "Home Alone: the controls were lying about which way is forward" },
     { sha: "e65cc93f", iso: "2026-08-02T09:25:58+00:00", subject: "Home Alone: the stairs no longer eat the camera" },
     { sha: "eef0d16d", iso: "2026-08-02T09:14:33+00:00", subject: "Home Alone: put the lights up, and let them talk" },
-    { sha: "502f02a5", iso: "2026-08-02T09:14:33+00:00", subject: "Home Alone: a house you can walk, and two men who want it" },
   ],
   "horizon": [
     { sha: "3b7e9af8", iso: "2026-10-09T09:22:41-07:00", subject: "Horizon Garden: retire Ten Sports a Year, 22 frontiers" },
@@ -261,12 +261,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ee1f96cf", iso: "2026-08-02T21:05:51+00:00", subject: "Nothing is spawned. It is drawn." },
   ],
   "island": [
+    { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
+    { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
     { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
     { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
-    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
-    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
   ],
   "island-2": [
     { sha: "0779cb94", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -297,12 +297,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fd40c52a", iso: "2026-06-24T21:05:53+00:00", subject: "Changes" },
   ],
   "magician": [
+    { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "f59aaba5", iso: "2026-09-28T06:12:27+00:00", subject: "Magician: phones cast spells onto a projector; Vibey remembers you" },
     { sha: "85b66e42", iso: "2026-09-26T19:20:57+00:00", subject: "Magician: film real footage frame by frame; 'stop the rain' stops it" },
     { sha: "5860ef00", iso: "2026-09-26T18:09:58+00:00", subject: "Magician: Zombie Tag in the play menu and by voice; Vibey in front of you" },
     { sha: "ff4ffb4b", iso: "2026-09-25T17:15:09+00:00", subject: "Oni is Zombie Tag now: green zombies, not horned oni" },
-    { sha: "30cb1d49", iso: "2026-09-25T03:27:57+00:00", subject: "Magician: pick a character, see everyone as theirs, and play tag in the valley" },
   ],
   "manifesto": [
     { sha: "56590fb9", iso: "2026-08-10T02:02:03+00:00", subject: "The shop window shows the characters instead of naming them" },
@@ -311,12 +311,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "f4715e0e", iso: "2026-09-04T09:28:00+00:00", subject: "Mars College: ten weeks in the desert on one wheel, at /mars" },
   ],
   "moon": [
+    { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
+    { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
     { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
     { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
-    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
-    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
   ],
   "museum": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -395,12 +395,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e8", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
+    { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
     { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
     { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
-    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
-    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
   ],
   "space": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
@@ -466,12 +466,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
   ],
   "vibestar": [
+    { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
+    { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
     { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
     { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
-    { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
-    { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
   ],
   "vibeverse": [
     { sha: "fc206f2a", iso: "2026-09-30T20:54:00+00:00", subject: "Vibeverse: Venus reads as a pearl from orbit; number keys go to 6" },
