@@ -583,7 +583,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let tauntT = 3;
   let trafficT = 6;
   let respawnT = 0;
-  let backupT = 30 + Math.random() * 41;
+  let backupT = 16 + Math.random() * 30;
   let alert = "";
   let alertT = 0;
   let ended = false;
@@ -977,7 +977,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     // backup every half a minute to a minute and eleven, whatever he is driving
     if (phase === "play" && en.wreck === 0) {
       backupT -= dt;
-      if (backupT <= 0 && target().s - en.s < 70) { backupT = 30 + Math.random() * 41; spawnBackup(); }
+      if (backupT <= 0 && target().s - en.s < 70) { backupT = 16 + Math.random() * 30; spawnBackup(); }
     }
     for (const h of henchmen) {
       if (h.state < 0) continue;
@@ -1503,7 +1503,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
             const T = 1.25 + gap / 90;
             const s0 = en.s + foe.len / 2 - 0.6;
             const y0 = foe.tall + 0.3;
-            const tl = clamp(tgt.lat + tgt.vl * T * 0.4, -LAT_MAX, LAT_MAX);
+            // the throws that are not at civilians never hit you: he lobs them into the road beside you
+            const tl = clamp(tgt.lat + (tgt.lat > 0 ? -2.9 : 2.9), -LAT_MAX, LAT_MAX);
             Object.assign(it, {
               s: s0, lat: en.lat + foe.wid / 2, y: y0,
               vs: (tgt.s + tgt.v * T - 1.2 - s0) / T,
@@ -1602,11 +1603,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       const r = riders[it.rider];
       if (!it.passed && it.s >= r.s - 2.4) {
         it.passed = true;
-        if (alive(r) && Math.abs(it.lat - r.lat) < 1.35 && it.y < 2.4 && phase === "play") {
-          it.live = false;
-          emit("smack", r.s - 2.4, r.lat, 1.2, r.idx);
-          hurt(r, 10 + en.level * 2, "TAKE THAT TO THE TAILGATE!");
-        } else if (phase === "play") score += 20;
+        if (phase === "play") score += 20;
       }
       if (it.y < 0.3 && it.vy < 0) { it.vy = Math.abs(it.vy) * 0.35; it.vs *= 0.7; }
       if (it.age > 3.2) it.live = false;
@@ -2152,13 +2149,21 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     const quiet = phase === "takeback" || phase === "over";
     const fury = quiet ? 0.25 : 0.5 + en.rage * 0.4;
     // a fist out at you, shaking, and the other hand on the wheel
-    m.armL.rotation.x = quiet ? -1.1 : -1.55 - Math.abs(Math.sin(time * (8 + en.rage * 6))) * 0.35;
-    m.armL.rotation.z = quiet ? 0 : 0.25 + Math.sin(time * 11) * 0.15;
-    m.armR.rotation.x = -1.1;
-    m.head.rotation.y = quiet ? 0 : Math.sin(time * 1.3) * 0.15;
-    m.brows[0].rotation.z = fury;
-    m.brows[1].rotation.z = -fury;
-    m.mouth.scale.y = talk && !quiet ? 1.6 + Math.abs(Math.sin(time * 18)) * 1.6 : 1;
+    // Right hand on the wheel; the left arm out of the window, shaking a fist at you and never stopping.
+    const flail = time * (9 + en.rage * 5);
+    m.armL.rotation.z = quiet ? -0.25 : 2.35 + Math.sin(flail) * 0.3;
+    m.armL.rotation.x = quiet ? -1.1 : Math.sin(flail * 1.45) * 0.35 - 0.15;
+    m.armL.rotation.y = 0;
+    m.armR.rotation.x = -1.15 + Math.sin(time * 2.1) * 0.04;
+    m.armR.rotation.z = 0.3;
+    m.head.rotation.y = quiet ? 0 : Math.sin(time * 1.3) * 0.12;
+    m.head.rotation.x = quiet ? 0.1 : -0.05 + Math.sin(flail) * 0.03;
+    // brows down at the middle: furious, not frightened
+    m.brows[0].rotation.z = -fury;
+    m.brows[1].rotation.z = fury;
+    m.brows[0].position.y = m.brows[1].position.y = 0.105;
+    m.mouth.scale.x = quiet ? 0.9 : 1.35;
+    m.mouth.scale.y = talk && !quiet ? 1.2 + Math.abs(Math.sin(time * 18)) * 0.7 : 0.8;
     foe.paint.emissive.setRGB(en.rage * 0.35, 0, 0);
     const lit = en.wreck === 0;
     foe.root.updateMatrixWorld(true);
@@ -2187,8 +2192,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       if (tb.carrying) { walker.armL.rotation.x = -1.25; walker.armR.rotation.x = -1.25; walker.armL.rotation.z = -0.25; walker.armR.rotation.z = 0.25; }
       else { walker.armL.rotation.x = -sw * 0.8; walker.armR.rotation.x = sw * 0.8; walker.armL.rotation.z = 0; walker.armR.rotation.z = 0; }
       walker.root.position.y += Math.abs(Math.cos(tb.walk)) * 0.04;
-      walker.brows[0].rotation.z = 0.25;
-      walker.brows[1].rotation.z = -0.25;
+      walker.brows[0].rotation.z = -0.4;
+      walker.brows[1].rotation.z = 0.4;
     }
 
     // his backup
@@ -2383,7 +2388,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       balls.forEach((b) => { b.live = false; });
       thrown.forEach((t) => { t.live = false; });
       henchmen.forEach((h) => { h.state = -1; });
-      backupT = 30 + Math.random() * 41;
+      backupT = 16 + Math.random() * 30;
       alert = "";
       puffs.forEach((p) => { p.live = false; p.sprite.visible = false; });
       Object.assign(tb, { phase: 0, t: 0, carrying: false });

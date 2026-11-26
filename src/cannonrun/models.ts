@@ -556,6 +556,11 @@ export function buildFoe(level: number): Foe {
   mort.root.position.set(wid * 0.22, seatY - 0.86 * sc, cabZ + cabLen / 2 - 0.55);
   mort.legL.visible = false;
   mort.legR.visible = false;
+  // a steering wheel under his right hand
+  const steer = new THREE.Mesh(new THREE.TorusGeometry(0.17 * sc, 0.025 * sc, 8, 20), dark);
+  steer.position.set(wid * 0.22 - 0.28 * sc, seatY + 0.5 * sc, cabZ + cabLen / 2 - 0.55 + 0.5 * sc);
+  steer.rotation.x = -0.5;
+  body.add(steer);
   body.add(mort.root);
   const door = new THREE.Vector3(wid / 2 + 0.6, 0, cabZ);
   const hatch = new THREE.Vector3(-wid / 2 - 0.4, 0, cabZ);
