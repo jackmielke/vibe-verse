@@ -101,12 +101,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "2015a8ac", iso: "2026-11-26T05:35:30+00:00", subject: "Vibe Island driving: crashes, damage, explosions, a monster truck and a rare Comet" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
     { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
     { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
     { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
     { sha: "2c812ab4", iso: "2026-11-25T18:18:18+00:00", subject: "Updated session expiry and auth" },
-    { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -181,12 +181,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "a86765f9", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
   ],
   "fnaf": [
+    { sha: "11e5487b", iso: "2026-11-26T05:03:09+00:00", subject: "Five Nights: a real desk fan sound, and the band poster draws Bonnie and Chica as themselves" },
     { sha: "757ca68f", iso: "2026-08-02T05:26:54+00:00", subject: "Take the intercom back out" },
     { sha: "1554778b", iso: "2026-08-02T04:52:36+00:00", subject: "Vibey moves in, and Freddy stops owning one corridor" },
     { sha: "451190be", iso: "2026-08-02T03:47:44+00:00", subject: "Chica's beak was inside her head" },
     { sha: "001bc7af", iso: "2026-08-02T03:34:25+00:00", subject: "Faces that survive being looked at" },
     { sha: "b9912596", iso: "2026-08-02T00:05:06+00:00", subject: "Thirty seconds up, then the system falls over" },
-    { sha: "0a6ba9a0", iso: "2026-08-01T22:59:20+00:00", subject: "Six seconds before you can look again" },
   ],
   "fogcity": [
     { sha: "3b479f42", iso: "2026-11-22T04:29:14+00:00", subject: "Fog City: a new open-world San Francisco, built from scratch to run fast" },
