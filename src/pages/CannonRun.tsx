@@ -19,6 +19,7 @@ import { LOOKS, LookSwitcher, SplashLook, type Look } from "@/cannonrun/ui/Splas
 import type { CannonRun as Game, ChaseHud, Mode, RiderHud } from "@/cannonrun/engine";
 import type { FinaleHud as FinaleHudT } from "@/cannonrun/finale";
 import type { ReplayClip } from "@/cannonrun/replay";
+import { shareClip } from "@/cannonrun/share";
 import { openTransport, readBank, roomCode, writeBank, UPGRADES, UPGRADE_COST, type NetMode, type Transport, type Upgrades, type Wire } from "@/cannonrun/net";
 
 type Screen = "story" | "comic" | "splash" | "garage" | "host" | "join" | "loading" | "playing" | "failed";
@@ -578,6 +579,17 @@ function GatchReplay({ load, onClose }: { load: () => ReplayClip[]; onClose: () 
   const [i, setI] = useState(0);
   // the last clip is still being cut when the run ends, so keep checking the tape
   const [clips, setClips] = useState<ReplayClip[]>(load);
+  const [sharing, setSharing] = useState(false);
+  const [said, setSaid] = useState<{ text: string; link?: string } | null>(null);
+  const doShare = async (clip: ReplayClip): Promise<void> => {
+    setSharing(true); setSaid(null);
+    try {
+      const { link, how } = await shareClip(clip);
+      setSaid({ text: how === "copied" ? "Link copied. Paste it anywhere." : how === "shared" ? "Sent!" : "Here's the link:", link });
+    } catch (e) {
+      setSaid({ text: `Couldn't send it: ${(e as Error).message}` });
+    } finally { setSharing(false); }
+  };
   useEffect(() => {
     const id = window.setInterval(() => setClips((was) => { const now = load(); return now.length === was.length ? was : now; }), 700);
     return () => window.clearInterval(id);
@@ -606,8 +618,15 @@ function GatchReplay({ load, onClose }: { load: () => ReplayClip[]; onClose: () 
             <div className="flex gap-2 px-3 py-2">
               <button className="rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold disabled:opacity-30" disabled={i === 0} onClick={() => setI(i - 1)}>◀ Back</button>
               <button className="rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold disabled:opacity-30" disabled={i + 1 >= clips.length} onClick={() => setI(i + 1)}>Next ▶</button>
-              <a className="ml-auto rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold" href={c.url} download={`gatch-news-${i + 1}.${c.type.includes("mp4") ? "mp4" : "webm"}`}>Save clip</a>
+              <button className="ml-auto rounded-full bg-[#d8202a] px-4 py-1.5 text-[13px] font-black disabled:opacity-50" disabled={sharing} onClick={() => void doShare(c)}>{sharing ? "Sending..." : "Share"}</button>
+              <a className="rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold" href={c.url} download={`gatch-news-${i + 1}.${c.type.includes("mp4") ? "mp4" : "webm"}`}>Save clip</a>
             </div>
+            {said ? (
+              <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-[12px] text-white/80">
+                <span>{said.text}</span>
+                {said.link ? <a className="truncate font-semibold text-[#ffd36a] underline" href={said.link} target="_blank" rel="noreferrer">{said.link}</a> : null}
+              </div>
+            ) : null}
             <div className="max-h-44 overflow-y-auto border-t border-white/10 px-3 py-2">
               <div className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/40">TONIGHT'S TOP STORIES</div>
               {clips.map((x, k) => (
