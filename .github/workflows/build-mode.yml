@@ -110,6 +110,16 @@ jobs:
           # ANTHROPIC_API_KEY would otherwise shadow the OAuth token.
           [ -z "$ANTHROPIC_API_KEY" ] && unset ANTHROPIC_API_KEY
           [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && unset CLAUDE_CODE_OAUTH_TOKEN
+          # A token copied out of a terminal often carries the line wrap with
+          # it, and a header with a newline in it is refused outright.
+          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            CLAUDE_CODE_OAUTH_TOKEN="$(printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')"
+            export CLAUDE_CODE_OAUTH_TOKEN
+          fi
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            ANTHROPIC_API_KEY="$(printf '%s' "$ANTHROPIC_API_KEY" | tr -d '[:space:]')"
+            export ANTHROPIC_API_KEY
+          fi
           if [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
             echo "::error::Build mode needs CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in the repo's Actions secrets."
             exit 1
