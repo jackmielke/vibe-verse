@@ -3,8 +3,9 @@
  *
  * Same till as the hats (`buyCosmetic("weapon", id)`), same inventory, so a
  * Glock bought on /shop is in your hand in Vibe City, and one bought at the
- * Vibe Arms stall in town shows up as owned here. Nothing to equip: once you
- * own one, G cycles to it in the city, and it never runs out.
+ * Vibe Arms stall in town shows up as owned here. Nothing to equip: a gun you
+ * buy goes straight into your hand in the city, sits on the weapon bar, and
+ * never runs out.
  */
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -29,7 +30,9 @@ export default function WeaponShelf({ inCity = false }: { inCity?: boolean }) {
       await buyCosmetic("weapon", item.id);
       toast.success(`${item.emoji} ${item.name} is yours`, {
         description: `−${item.price} ${VIBECOIN_GLYPH} · ${
-          item.id === "pineapple" ? "press X in Vibe City to throw one" : "press G in Vibe City to draw it"
+          item.id === "pineapple"
+            ? "tap 🍍 or press X in Vibe City to throw one"
+            : "it is in your hand in Vibe City, and on the weapon bar at the side"
         }. It never runs out.`,
       });
     } catch (e) {
@@ -58,7 +61,7 @@ export default function WeaponShelf({ inCity = false }: { inCity?: boolean }) {
         </h2>
         <p className="text-[11.5px] text-muted-foreground">
           {inCity
-            ? "Buy once, never run out. G switches guns, R fires, X throws a pineapple."
+            ? "Buy once, never run out. Tap a gun on the weapon bar (or 1 to 4) to draw it, R fires, X throws a pineapple."
             : "For Vibe City. Buy once, never run out of ammo."}
         </p>
       </div>
