@@ -30,6 +30,7 @@ import {
   type Truck, type Foe, type Hench,
 } from "./models";
 import type { Transport, Upgrades, Wire, Snap, Input } from "./net";
+import { Replay, type ReplayClip } from "./replay";
 import { createFinale, type Finale, type FinaleHud, type FinaleInput, type FinaleStage } from "./finale";
 
 export type Mode = "solo" | "duo" | "host" | "guest";
@@ -88,6 +89,8 @@ export interface CannonRun {
   hold(action: "boost", down: boolean): void;
   restart(): void;
   setMuted(m: boolean): void;
+  /** the Gatch News reel of this run so far: a clip per bulletin */
+  replay(): ReplayClip[];
 }
 
 export interface Opts {
@@ -1498,7 +1501,10 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
      Wreck the train and the chase is over: everybody pulls over at a diner and
      it is settled on foot, with pies. The highway stays where it is; the finale
      is its own scene, drawn instead of it. */
-  const FINALE_ON = true;
+  // The game is endless (Jack, Nov 2026): past the train they just keep coming, forever, and
+  // there is no way to win. The diner finale is for the film and the storybook; ?finale opens
+  // it directly and ?ending lets the train hand off to it.
+  const FINALE_ON = params.has("ending");
   const FIN_SOUND: Record<string, string> = { throw: "whoosh", splat: "pop", shove: "whack", pies: "clank", horn: "horn", door: "door", win: "horn" };
   const finSound = (k: string): void => { const kind = FIN_SOUND[k]; if (kind) emit(kind, me.s, me.lat, 1.2, mine); };
   const ensureFinale = (): Finale => {
@@ -1548,6 +1554,18 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const stepFinale = (dt: number): void => {
     if (!fin) return;
     fin.step(dt, finInputs(), "auth");
+    const fs = fin.hud().stage;
+    if (fs !== finStage) {
+      finStage = fs;
+      const tape: Record<string, [string, string]> = {
+        arrive: ["CHASE ENDS AT DOT'S DINER", "Both sides have pulled over on Route 66"],
+        fight: ["PIE FIGHT IN DINER PARKING LOT", "Owner Dot: 'They're on the house'"],
+        won: ["MORT GIVES UP. THE CANNON STAYS", "'Take care of it,' he was heard saying"],
+        lost: ["MORT TAKES THE CANNON BACK AT DINER", "He is walking it to the road. Slowly."],
+      };
+      const t = tape[fs];
+      if (t) replay?.mark(time, t[0], t[1], fs === "won" ? 14 : 7);
+    }
     const d = fin.done();
     if (d && phase === "finale") {
       won = d === "won";
@@ -2631,6 +2649,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const newsPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: newsTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
   hudScene.add(newsPlane);
   const newsCam = new THREE.PerspectiveCamera(36, 16 / 9, 0.5, 1200);
+  // the tape: every bulletin is also recorded, for the replay after the run (replay.ts)
+  const replay: Replay | null = params.has("shot") ? null : new Replay(canvas);
+  let finStage = "";
   const news = { on: 0, cd: 6, headline: "", sub: "", radio: "", radioT: 0, radioCd: 9, tick: 0, drawT: 0, level: 1, lindaLevel: 1, wrecked: false, lindaWrecked: false, alert: "", linda: false, idle: 0 };
   const RADIO = [
     "Folks, if you're on Route 66 tonight... pull over.",
@@ -2655,6 +2676,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     news.sub = sub;
     news.on = dur;
     news.cd = 22 + Math.random() * 14;
+    replay?.mark(time, headline, sub, Math.max(5, dur * 0.85));
     news.idle = 0;
   };
   const watchNews = (dt: number): void => {
@@ -2868,6 +2890,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     last = now;
     fps = lerp(fps, 1 / Math.max(dt, 0.001), 0.05);
     tick(dt);
+    replay?.tick(time);
     audio.update(fin ? 0 : me.v, target().s - en.s, !fin && en.wreck === 0 && en.seated);
     draw(dt);
     renderAll();
@@ -2898,6 +2921,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       canvas.removeEventListener("pointerdown", onDown);
       audio.stop();
       fin?.dispose();
+      replay?.dispose();
       scene.traverse((x) => {
         const mm = x as THREE.Mesh;
         mm.geometry?.dispose();
@@ -2926,6 +2950,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     restart() {
       if (isGuest) return;
       gen += 1;
+      replay?.clear();
+      finStage = "";
       if (fin) { fin.dispose(); fin = null; for (const el of [bubble, lindaBubble, henchBubble, ...tags]) el.style.display = ""; }
       won = false;
       riders.forEach((r) => { resetRider(r); if (r.idx === 1 && mode === "host") r.net = null; });
@@ -2943,6 +2969,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       camReady = false;
     },
     setMuted(m) { muted = m; audio.mute(m); },
+    replay: () => (replay ? [...replay.clips] : []),
   };
 
   if (mode === "host") riders[1].net = null;

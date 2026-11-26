@@ -14,12 +14,14 @@ import { Link } from "react-router-dom";
 import { Joystick } from "@/magician/ui/Joystick";
 import { QrCode } from "@/oni/ui/QrCode";
 import { Comic } from "@/cannonrun/Comic";
+import { StoryBook } from "@/cannonrun/ui/StoryBook";
 import { LOOKS, LookSwitcher, SplashLook, type Look } from "@/cannonrun/ui/Splash";
 import type { CannonRun as Game, ChaseHud, Mode, RiderHud } from "@/cannonrun/engine";
 import type { FinaleHud as FinaleHudT } from "@/cannonrun/finale";
+import type { ReplayClip } from "@/cannonrun/replay";
 import { openTransport, readBank, roomCode, writeBank, UPGRADES, UPGRADE_COST, type NetMode, type Transport, type Upgrades, type Wire } from "@/cannonrun/net";
 
-type Screen = "comic" | "splash" | "garage" | "host" | "join" | "loading" | "playing" | "failed";
+type Screen = "story" | "comic" | "splash" | "garage" | "host" | "join" | "loading" | "playing" | "failed";
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -35,9 +37,12 @@ export default function CannonRun() {
   const guestUpRef = useRef<Upgrades | undefined>(undefined);
   const [mode, setMode] = useState<Mode>(() => (params.has("duo") ? "duo" : "solo"));
   const [screen, setScreen] = useState<Screen>(() =>
-    joinCode ? "join" : hostCode ? "host" : params.has("comic") ? "comic" : params.has("go") || params.has("duo") || params.has("finale") ? "loading" : "splash",
+    joinCode ? "join" : hostCode ? "host" : params.has("comic") ? "comic" : params.has("story") ? "story" : params.has("go") || params.has("duo") || params.has("finale") ? "loading" : "splash",
   );
   const [hud, setHud] = useState<ChaseHud | null>(null);
+  // the Gatch News reel, open over the end card
+  const [reel, setReel] = useState(false);
+  const loadReel = useCallback((): ReplayClip[] => gameRef.current?.replay() ?? [], []);
   const [aurora, setAurora] = useState<boolean>(() => {
     if (new URLSearchParams(window.location.search).has("aurora")) return true;
     try { return localStorage.getItem("cannonrun.sky") === "aurora"; } catch { return false; }
@@ -54,6 +59,7 @@ export default function CannonRun() {
     return d.getMonth() === 10 && d.getDate() >= 20;
   });
   const thanksRef = useRef(thanks);
+
   thanksRef.current = thanks;
   const [muted, setMuted] = useState(false);
   const [bank, setBank] = useState(() => readBank());
@@ -189,7 +195,7 @@ export default function CannonRun() {
   const onStick = useCallback((x: number, y: number) => gameRef.current?.setStick(x, y), []);
   // The comic is not part of the game (Jack wants it all 3D); it lives at ?comic (solo) and ?comic=duo, for the trailer.
   const start = (m: Mode): void => { setMode(m); setEarned(null); setScreen("loading"); };
-  const again = (): void => { setEarned(null); gameRef.current?.restart(); };
+  const again = (): void => { setEarned(null); setReel(false); gameRef.current?.restart(); };
   const buy = (key: keyof Upgrades): void => {
     const b = readBank();
     const lvl = b.up[key];
@@ -332,7 +338,13 @@ export default function CannonRun() {
                 <div className="mt-3 text-[15px] font-semibold text-[#4de0a8]">+${(earned ?? hud.cash).toLocaleString()} for the garage</div>
                 <div className="mt-0.5 text-[11px] text-white/40">bank ${bank.bank.toLocaleString()}</div>
                 {hud.score >= hud.best && hud.score > 0 ? <div className="mt-2 text-[13px] font-semibold text-[#ffd36a]">New best!</div> : <div className="mt-2 text-[12px] text-white/40">Best {hud.best.toLocaleString()}</div>}
-                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                <button
+                  className="mt-4 w-full rounded-xl bg-[#c8202a] px-4 py-2.5 text-[14px] font-bold tracking-wide shadow-lg ring-1 ring-white/20"
+                  onClick={() => setReel(true)}
+                >
+                  📺 Watch the Gatch News replay
+                </button>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
                   {guest ? (
                     <div className="rounded-full bg-white/10 px-5 py-2 text-[13px] text-white/70">Waiting for the host to go again…</div>
                   ) : (
@@ -346,6 +358,10 @@ export default function CannonRun() {
           ) : null}
         </>
       ) : null}
+
+      {reel ? <GatchReplay load={loadReel} onClose={() => setReel(false)} /> : null}
+
+      {screen === "story" ? <StoryBook phone={phone} two={params.get("story") === "duo"} onDone={() => setScreen("splash")} onPlay={(two) => start(two ? "duo" : "solo")} /> : null}
 
       {screen === "comic" ? <Comic phone={phone} two={params.get("comic") === "duo"} onDone={() => setScreen("splash")} /> : null}
 
@@ -399,6 +415,9 @@ export default function CannonRun() {
               onClick={toggleThanks}
             >
               {thanks ? "🦃 Thanksgiving: on" : "🦃 Thanksgiving: off"}
+            </button>
+            <button className="w-64 rounded-full bg-white/10 px-6 py-2 text-[13px] font-semibold ring-1 ring-white/15" onClick={() => setScreen("story")}>
+              📖 Read the story
             </button>
             <div className="mt-1 flex gap-2">
               <button className="rounded-full bg-white/10 px-5 py-2 text-[13px] font-semibold" onClick={() => setScreen("garage")}>
@@ -550,6 +569,59 @@ function FinaleHud({ f, phone, mode, card, onStick, game }: { f: FinaleHudT; pho
         </>
       )}
     </>
+  );
+}
+
+/** The reel: every bulletin of the run, back to back, on a TV with the headline under it. */
+function GatchReplay({ load, onClose }: { load: () => ReplayClip[]; onClose: () => void }) {
+  const [i, setI] = useState(0);
+  // the last clip is still being cut when the run ends, so keep checking the tape
+  const [clips, setClips] = useState<ReplayClip[]>(load);
+  useEffect(() => {
+    const id = window.setInterval(() => setClips((was) => { const now = load(); return now.length === was.length ? was : now; }), 700);
+    return () => window.clearInterval(id);
+  }, [load]);
+  const c = clips[i];
+  const mm = (t: number): string => { t = Math.max(0, t); return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`; };
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 px-3 py-4" onClick={onClose}>
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-[#0d1020] ring-1 ring-white/15" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 bg-[#14182c] px-3 py-2">
+          <span className="rounded bg-[#d8202a] px-2 py-0.5 text-[12px] font-black tracking-wide">GATCH NEWS</span>
+          <span className="text-[12px] font-bold text-white/70">REPLAY</span>
+          <span className="ml-auto text-[11px] text-white/40">{clips.length ? `${i + 1} of ${clips.length}` : ""}</span>
+          <button className="ml-2 rounded-full bg-white/10 px-3 py-1 text-[12px] font-semibold" onClick={onClose}>Close</button>
+        </div>
+        {c ? (
+          <>
+            <div className="relative bg-black">
+              <video key={c.url} src={c.url} className="block aspect-video w-full bg-black" autoPlay muted playsInline controls onEnded={() => setI((n) => (n + 1 < clips.length ? n + 1 : n))} />
+              <div className="pointer-events-none absolute inset-x-0 bottom-12 flex flex-col items-start px-3">
+                <div className="bg-[#d8202a] px-2 py-0.5 text-[11px] font-black tracking-wider">BREAKING</div>
+                <div className="bg-[#0a1230]/90 px-2 py-1 text-[15px] font-extrabold">{c.headlines[0]?.headline}</div>
+                <div className="bg-[#0a1230]/80 px-2 py-0.5 text-[11px] text-white/75">{c.headlines[0]?.sub}</div>
+              </div>
+            </div>
+            <div className="flex gap-2 px-3 py-2">
+              <button className="rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold disabled:opacity-30" disabled={i === 0} onClick={() => setI(i - 1)}>◀ Back</button>
+              <button className="rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold disabled:opacity-30" disabled={i + 1 >= clips.length} onClick={() => setI(i + 1)}>Next ▶</button>
+              <a className="ml-auto rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold" href={c.url} download={`gatch-news-${i + 1}.${c.type.includes("mp4") ? "mp4" : "webm"}`}>Save clip</a>
+            </div>
+            <div className="max-h-44 overflow-y-auto border-t border-white/10 px-3 py-2">
+              <div className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/40">TONIGHT'S TOP STORIES</div>
+              {clips.map((x, k) => (
+                <button key={x.url} className={`flex w-full gap-2 rounded px-2 py-1 text-left text-[12px] ${k === i ? "bg-white/10" : "hover:bg-white/5"}`} onClick={() => setI(k)}>
+                  <span className="text-white/40" style={{ fontFamily: MONO }}>{mm(x.at)}</span>
+                  <span className="font-semibold">{x.headlines.map((h) => h.headline).join(" · ")}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="px-6 py-10 text-center text-[14px] text-white/60">No tape tonight. Gatch News records each bulletin as it airs, so keep the chase going a little longer next time.</div>
+        )}
+      </div>
+    </div>
   );
 }
 
