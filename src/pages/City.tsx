@@ -94,6 +94,7 @@ import { createWrecks } from "@/city/wrecks";
 import { createTrench } from "@/city/trench";
 import { createHeadMount } from "@/city/headMount";
 import { createBackMount } from "@/city/backMount";
+import { createRifle } from "@/city/rifle";
 import { VibeEconomy } from "@/lib/vibeEconomy";
 
 import { createAgentResidents, type AgentResidents } from "@/components/city/agentResidents";
@@ -3763,6 +3764,7 @@ export default function City() {
      */
     backMount.attach(null, null, modelHolder);
     backMount.group.add(jetpack);
+    const rifle = createRifle(modelHolder, scene);
     const jetLight = new THREE.PointLight(0x7dfce0, 0, 9, 2);
     jetLight.position.set(0, 0.4, -0.2);
     player.add(jetLight);
@@ -4362,6 +4364,9 @@ export default function City() {
     const onToggleView = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      // G raises / lowers the rifle, Q fires it.
+      if (e.code === "KeyG" && !e.repeat) rifle.toggle();
+      if (e.code === "KeyQ") rifle.fire();
       if (e.code === "KeyV") {
         vrFirstPerson = !vrFirstPerson;
       }
@@ -5870,6 +5875,7 @@ export default function City() {
       const now = performance.now();
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
+      rifle.update(dt);
 
       // VR input: read the strongest thumbstick from any connected
       // controller and feed it through the same touch refs that the
@@ -8247,6 +8253,7 @@ export default function City() {
       trench.dispose();
       headMount.dispose();
       backMount.dispose();
+      rifle.dispose();
 
       delete devWindow.__cityDebug;
       delete (window as unknown as Record<string, unknown>).__cityCam;
