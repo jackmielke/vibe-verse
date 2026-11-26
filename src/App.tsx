@@ -5,6 +5,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ExplorerStamp from "./components/ExplorerStamp.tsx";
+import PlayTracker from "./components/PlayTracker.tsx";
+import RatePrompt from "./components/RatePrompt.tsx";
 import GlobalNav from "./components/GlobalNav.tsx";
 import HomeButton from "./components/HomeButton.tsx";
 import VibeRadio from "./components/VibeRadio.tsx";
@@ -39,6 +41,7 @@ import NotFound from "./pages/NotFound.tsx";
  * The two exceptions above are deliberate and should stay at two.
  */
 const Index = lazy(() => import("./pages/Index.tsx"));
+const Scores = lazy(() => import("./pages/Scores.tsx"));
 const Magician = lazy(() => import("./pages/Magician.tsx"));
 const Oni = lazy(() => import("./pages/Oni.tsx"));
 const Unit7Playground = lazy(() => import("./pages/Unit7Playground.tsx"));
@@ -233,6 +236,11 @@ const App = () => (
               takes no pointer events and sits above everything, so it can play
               over a crosshair without becoming part of the game. */}
           <ExplorerStamp />
+          {/* Anonymous playtime and frame rate for whichever world is on
+              screen, and the lore / fun / smooth card once you are back out.
+              See src/lib/worldStats.ts. */}
+          <PlayTracker />
+          <RatePrompt />
           {/* iOS app only: terms gate, report/block, App Store edition routing. */}
           <SafetyLayer />
           {/* One Suspense for the whole router. There used to be fifteen of
@@ -312,6 +320,9 @@ const App = () => (
           <Route path="/submit-game" element={<SubmitGame />} />
           <Route path="/submit-a-game" element={<SubmitGame />} />
           <Route path="/admin/games" element={<AdminGames />} />
+          {/* Lore, fun, smooth and hours played for every world. */}
+          <Route path="/scores" element={<Scores />} />
+          <Route path="/scoreboard" element={<Scores />} />
           {/* THE VIBE SHOP — the other half of the arcade. Coins won there buy
               something here that is recorded against your wallet rather than
               your browser, so it survives a cleared history and a new device. */}
