@@ -51,6 +51,8 @@ export interface FnafSnapshot {
 
 /** Seconds of real time per in-game hour. Six of these is a night. */
 const HOUR_SECONDS = 50;
+/** The desk fan's bearing from the chair, in radians right of dead ahead. */
+const FAN_BEARING = Math.atan2(1.28, 1.5 - 0.95);
 
 /**
  * How long the monitor takes to come back after you drop it.
@@ -156,6 +158,7 @@ export class FnafEngine {
   /* --- view state ------------------------------------------------------- */
   private yawTarget = 0;
   private yaw = 0;
+  private fanSpeed = 1;
   private pointerX = 0.5;
   private shake = 0;
   /** Gait phase of each character last frame, so we know when a foot lands. */
@@ -294,6 +297,7 @@ export class FnafEngine {
     this.lastSpend = null;
     this.foxyRunning = false;
     this.yaw = this.yawTarget = 0;
+    this.fanSpeed = 1;
 
     for (const a of Object.values(this.cast)) {
       a.scare = 0;
@@ -791,7 +795,13 @@ export class FnafEngine {
     }
 
     // The fan, and the office bulb's slow instability.
-    this.world.fan.rotation.z -= dt * 22;
+    // It winds down with the power, the same way it sounds like it does.
+    this.fanSpeed += ((this.blackout ? 0 : 1) - this.fanSpeed) * Math.min(1, dt * 0.9);
+    this.world.fan.rotation.z -= dt * 22 * this.fanSpeed;
+    // Pan the fan's sound to where it sits. It is on the desk, front right of
+    // the chair, about 67 degrees off dead ahead; swivelling left (positive
+    // yaw) carries it further right, and looking at it centres it.
+    this.audio.setFanPan(Math.sin(FAN_BEARING + this.yaw));
     if (!this.blackout) {
       this.world.officeLight.intensity = 12 * (0.94 + Math.sin(t * 9.3) * 0.03 + Math.random() * 0.03);
       const s = this.world.screens[0];

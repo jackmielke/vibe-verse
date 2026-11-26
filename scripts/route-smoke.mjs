@@ -113,7 +113,8 @@ if (server && !(await up(BASE, 180000))) {
   process.exit(1);
 }
 
-const exe = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+// The sandbox browser has moved before; take the first one that exists.
+const exe = [process.env.SF_CHROME, "/opt/pw-browsers/chromium", "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].filter(Boolean).find((p) => existsSync(p)) ?? "";
 const launch = () =>
   chromium.launch({
     ...(existsSync(exe) ? { executablePath: exe } : {}),

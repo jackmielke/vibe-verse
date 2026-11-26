@@ -36,6 +36,7 @@ import skiArt from "@/assets/worlds/ski.jpg";
 import spaceArt from "@/assets/worlds/space.jpg";
 import thalassaArt from "@/assets/worlds/thalassa.jpg";
 import fogCityArt from "@/assets/worlds/fogcity.jpg";
+import cannonRunArt from "@/assets/worlds/cannon-run.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
 import vibeArt from "@/assets/worlds/vibe.jpg";
 import vibeIsland2Art from "@/assets/worlds/vibe-island-2.jpg";
@@ -131,6 +132,7 @@ export const WORLD_ART: Record<string, string> = {
   "island-explorer": islandArt,
   thalassa: thalassaArt,
   fogcity: fogCityArt,
+  "cannon-run": cannonRunArt,
   lobby: lobbyArt,
   moon: moonArt,
   museum: museumArt,
