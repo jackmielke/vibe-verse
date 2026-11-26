@@ -493,6 +493,19 @@ export function buildCityCar(paint: { body: number; accent: number; trim: number
   glassMat.opacity = 0.72;
   glassMat.color.set(0x1e2a33);
   asm.group.add(new THREE.Mesh(cabin.shell, kit.paint), new THREE.Mesh(cabin.glass, glassMat));
+  // The fleet draws its wheels as instances, so the assembly hands them back
+  // as specs rather than meshes. One of each per corner here.
+  for (const spec of asm.wheels) {
+    const scale = new THREE.Vector3(
+      spec.width / TYRE_BASE.width, spec.radius / TYRE_BASE.radius, spec.radius / TYRE_BASE.radius,
+    );
+    for (const [geo, mat] of [[asm.tyres.geometry, kit.rubber], [asm.rims.geometry, kit.rim]] as const) {
+      const w = new THREE.Mesh(geo, mat);
+      w.position.set(spec.x, spec.y, spec.z);
+      w.scale.copy(scale);
+      asm.group.add(w);
+    }
+  }
   asm.group.rotation.y = Math.PI;
   asm.group.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) o.castShadow = true;

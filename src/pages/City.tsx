@@ -88,6 +88,7 @@ import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
 import { createCrashFx } from "@/city/crashFx";
 import { createMayhem, GUNS, type Mayhem, type MayhemHud } from "@/city/mayhem";
+import { buildHideouts } from "@/city/hideouts";
 import {
   VEHICLES, MAX_HEALTH, impactDamage, distress, cometSpot,
   buildMonsterTruck, buildComet, buildMower, buildBeacon, scorch,
@@ -465,7 +466,16 @@ export default function City() {
     nearSwing: false,
     swinging: false,
     nearCow: false,
+    /** Standing on the bad guys' hideout pad. */
+    badPad: false,
+    /** Next to a bad guy's car, close enough to hop on the roof. */
+    nearBad: false,
+    /** On a bad guy's roof right now. */
+    ridingBad: false,
   });
+  /** E on the hideout pad, F next to a bad guy: what the buttons do. */
+  const badSummonRef = useRef<(() => void) | null>(null);
+  const badRideRef = useRef<(() => void) | null>(null);
   // Persistent ✦ Vibecoin balance — source of truth. Loaded from
   // `users.vibecoin_balance` for signed-in users, or localStorage for guests.
   // Incremented when collecting coins, decremented at the shop, debounced-synced.
@@ -581,7 +591,7 @@ export default function City() {
   /** The on-screen fire button, held. */
   const touchFireRef = useRef(false);
   /** GTA Junior: stars, cops and the gun in your hand. */
-  const [mayhemHud, setMayhemHud] = useState<MayhemHud>({ stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [] });
+  const [mayhemHud, setMayhemHud] = useState<MayhemHud>({ stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bads: 0 });
   const mayhemCycleRef = useRef<(() => void) | null>(null);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
   const [respawnFx, setRespawnFx] = useState(0);
@@ -1580,7 +1590,9 @@ export default function City() {
       padMinHeight: PAD_MIN_HEIGHT,
       snow: snowCover,
       lowDetail: smallScreen,
-      reserve: LANDMARK_RESERVE,
+      // Landmarks, plus the warehouse (6,4) and police station (2,4) from
+      // `src/city/hideouts.ts`.
+      reserve: [...LANDMARK_RESERVE, { gx: 6, gz: 4, ground: "pave", trees: true }, { gx: 2, gz: 4, ground: "pave", trees: true }],
     });
     scene.add(district.group);
     // The Space Needle, the Empire State and the Eiffel Tower, on the blocks
@@ -1598,6 +1610,9 @@ export default function City() {
       }
       if (ev.title) toast(ev.title, { description: ev.description });
     });
+    const hideouts = buildHideouts();
+    scene.add(hideouts.group);
+    district.boxes.push(...hideouts.boxes);
     // Held live by reference — every world that loads after this pushes its
     // own collision into the same array. See CollisionWorld's constructor.
     const boxes = district.boxes;
@@ -3931,6 +3946,10 @@ export default function City() {
         mayhemCycleRef.current?.();
         return;
       }
+      if (e.code === "KeyE" && !e.repeat && atHideout) {
+        badSummonRef.current?.();
+        return;
+      }
       if (e.code === "KeyT") {
         e.preventDefault();
         arrivalStart = 0;
@@ -4433,6 +4452,7 @@ export default function City() {
       }
       if (e.code === "KeyF" && !e.repeat) {
         if (activeMountRef.current) { mountActionRef.current?.(null); return; }
+        if (ridingBad !== null || nearBadNow !== null) { badRideRef.current?.(); return; }
         const p = player.position;
         const nearest = nearestMount(p);
         if (nearest) { mountActionRef.current?.(nearest); return; }
@@ -4628,6 +4648,14 @@ export default function City() {
         }
       },
       onBust: () => heistChase.bust(),
+      hideout: hideouts.hideout,
+      garage: hideouts.garage,
+      parked: hideouts.parked,
+      onBadDown: (left) => {
+        toast("💥 A bad guy blew up", {
+          description: left > 0 ? `${left} still on the loose.` : "That was the last one. Summon another from the hideout roof.",
+        });
+      },
       onHud: (h) => setMayhemHud(h),
       onPickup: (kind) => {
         soundsRef.current?.fanfare?.();
@@ -5042,7 +5070,7 @@ export default function City() {
       // Not while you are in something. Being launched out of a car you are
       // driving because that car got rear-ended is a different feature and a
       // much more annoying one.
-      if (drivingKartRef.current >= 0 || riding || swinging) return;
+      if (drivingKartRef.current >= 0 || riding || swinging || ridingBad !== null) return;
       bowlOver(dx, dz, speed);
     });
     /** Sent flying: by a car, or by your own car exploding under you. */
@@ -5270,6 +5298,44 @@ export default function City() {
     let riding = false; // on the zipline
     let zipAngle = 0;
     let swinging = false; // on the swing
+    /** The bad guy whose roof you are on, by id. See `mayhem.ts`. */
+    let ridingBad: number | null = null;
+    let nearBadNow: number | null = null;
+    let atHideout = false;
+    badSummonRef.current = () => {
+      const r = mayhem.summon();
+      if (r === "ok") {
+        soundsRef.current?.thud?.(0.6);
+        toast("🦹 A bad guy is on the loose", {
+          description: "He jumped off the roof into a car, and the police are already after him. Catch up and press F to ride on his roof.",
+        });
+      } else if (r === "full") {
+        toast("🦹 Three bad guys are already out there", { description: "Wait for one of them to blow up." });
+      } else {
+        toast("No cars nearby to steal", { description: "Try again in a moment." });
+      }
+    };
+    badRideRef.current = () => {
+      if (ridingBad !== null) {
+        const s = mayhem.seat(ridingBad);
+        ridingBad = null;
+        // Off the side, carrying the car's speed.
+        if (s) {
+          const rx = Math.cos(s.yaw);
+          const rz = -Math.sin(s.yaw);
+          player.position.set(s.x + rx * 2.2, s.y + 0.4, s.z + rz * 2.2);
+          vel.set(Math.sin(s.yaw) * s.speed * 0.5 + rx * 3, 4, Math.cos(s.yaw) * s.speed * 0.5 + rz * 3);
+        }
+        onGround = false;
+        return;
+      }
+      if (nearBadNow === null || drivingKartRef.current >= 0 || activeMountRef.current) return;
+      ridingBad = nearBadNow;
+      mayhem.crime(1);
+      toast("🦹 You're riding with a bad guy", {
+        description: "Hold R or Q to shoot from the roof. F or Space hops off. If his car blows up, so do you.",
+      });
+    };
     let rainbowOn = false; // secret star found
     let discoUntil = 0; // "vibe" typed → plaza disco
     applyRemoteBump = (x, y, z, dirX, dirZ, speed) => {
@@ -5341,6 +5407,9 @@ export default function City() {
         nearSwing: player.position.distanceTo(island.swingMount) < 4.5,
         swinging,
         nearCow: false,
+        badPad: atHideout,
+        nearBad: nearBadNow !== null,
+        ridingBad: ridingBad !== null,
 
       });
       // Sky-island mini games: start prompt + live status line.
@@ -6216,6 +6285,19 @@ export default function City() {
         let turn=mountFlight.yaw+Math.PI-camYaw;
         turn=Math.atan2(Math.sin(turn),Math.cos(turn));
         camYaw+=turn*(1-Math.exp(-4*dt));
+      } else if (ridingBad !== null) {
+        // On a bad guy's roof. His car owns your position; Space hops off.
+        const s = mayhem.seat(ridingBad);
+        if (!s) {
+          ridingBad = null;
+        } else {
+          pos.set(s.x, s.y, s.z);
+          vel.set(0, 0, 0);
+          onGround = false;
+          peakY = pos.y;
+          modelYaw = s.yaw;
+          if (jetInput) badRideRef.current?.();
+        }
       } else if (swinging) {
         // The swing seat owns your position. Jetpack (Space) hops you off.
         const seatWorld = new THREE.Vector3();
@@ -7073,7 +7155,7 @@ export default function City() {
       heli.update(dt, now);
       if (turkey.group.visible) turkey.update(dt, now);
       thanks.update(dt, now, camera);
-      if (!activeMountRef.current && enteredRef.current && vel.y <= 0 && drivingKartRef.current < 0 && !riding && !swinging) {
+      if (!activeMountRef.current && enteredRef.current && vel.y <= 0 && drivingKartRef.current < 0 && !riding && !swinging && ridingBad === null) {
         for (const [kind, creature] of mountsInReach()) {
           const bp=creature.body.position;
           if (Math.hypot(pos.x-bp.x,pos.z-bp.z)<2.4 && pos.y>=bp.y+MOUNT_SEAT-0.7 && pos.y<=bp.y+MOUNT_SEAT+1.5) {
@@ -7243,7 +7325,31 @@ export default function City() {
             heist: heistChase.isActive() ? heistChase.pos() : null,
             firing: enteredRef.current && (keys.has("KeyR") || keys.has("KeyQ") || touchFireRef.current),
             grounded: onGround && knockdown <= 0 && !activeMountRef.current,
+            riding: ridingBad,
           });
+          if (ridingBad !== null) {
+            const s = mayhem.seat(ridingBad);
+            if (s) player.position.set(s.x, s.y, s.z);
+            else {
+              // His car went up with you on it.
+              ridingBad = null;
+              vel.set((Math.random() - 0.5) * 8, 9, (Math.random() - 0.5) * 8);
+              onGround = false;
+            }
+          }
+          const hq = mayhem.hideout();
+          const pp = player.position;
+          atHideout = !!hq && drivingKartRef.current < 0 && ridingBad === null &&
+            Math.hypot(pp.x - hq[0], pp.z - hq[2]) < 3.2 && Math.abs(pp.y - hq[1]) < 2.5;
+          nearBadNow = null;
+          if (ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current) {
+            for (const b of mayhem.bads()) {
+              if (!b.boarding && Math.hypot(pp.x - b.x, pp.z - b.z) < 4.5 && Math.abs(pp.y - b.y) < 4) {
+                nearBadNow = b.id;
+                break;
+              }
+            }
+          }
         }
         const mowing = drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].kind === "mower";
         const chaseEv = heistChase.update(dt, now, player.position, mowing);
@@ -8345,6 +8451,8 @@ export default function City() {
       district.dispose();
       landmarks.dispose();
       landmarksRef.current = null;
+      mayhem.dispose();
+      hideouts.dispose();
       ocean.dispose();
       underwater.dispose();
       splash.dispose();
@@ -10202,6 +10310,28 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-amber-300"
             >
               {hud.riding ? "🪂 Let go" : "🧗 Grab the zipline"}
+            </button>
+          )}
+          {hud.badPad && (
+            <button
+              onClick={(e) => {
+                badSummonRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-rose-300 font-semibold"
+            >
+              🦹 Summon a bad guy{isTouch ? "" : " (E)"} · {mayhemHud.bads}/3 out
+            </button>
+          )}
+          {(hud.nearBad || hud.ridingBad) && (
+            <button
+              onClick={(e) => {
+                badRideRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-rose-300 font-semibold"
+            >
+              {hud.ridingBad ? `🤸 Hop off${isTouch ? "" : " (F or Space)"}` : `🦹 Ride with the bad guy${isTouch ? "" : " (F)"}`}
             </button>
           )}
           {(hud.nearSwing || hud.swinging) && (
