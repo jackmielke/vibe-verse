@@ -18,6 +18,8 @@ export class FnafAudio {
   private noiseBuf: AudioBuffer | null = null;
   private loops = new Map<string, { stop: () => void }>();
   private disposed = false;
+  private fanPan: StereoPannerNode | null = null;
+  private fanBuf: AudioBuffer | null = null;
 
   /** Browsers won't start audio before a gesture; the title screen is ours. */
   async resume() {
@@ -339,25 +341,179 @@ export class FnafAudio {
     this.loops.set(key, { stop });
   }
 
-  /** The office fan. On all night, and you stop hearing it in ninety seconds. */
+  /**
+   * The office fan. On all night, and you stop hearing it in ninety seconds.
+   *
+   * It used to be one band of filtered noise with a tremolo on it, which reads
+   * as tape hiss, not as a fan. A desk fan is four things at once, and each
+   * layer below is one of them:
+   *
+   *  - the motor: a low electrical hum at twice mains (120 Hz) with a little
+   *    of its own harmonic, felt more than heard;
+   *  - the air: soft, low "whoosh" noise, which is most of the loudness;
+   *  - the blades: three of them at 3.5 turns a second (the model's spin, 22
+   *    rad/s), so the air pulses at 10.5 Hz. That chop is what makes the
+   *    brain say "fan";
+   *  - the cage: a faint tick once a revolution, the guard that never quite
+   *    stopped rattling.
+   *
+   * On top of that the air slowly drifts in tone, the way a room's air does,
+   * and the whole thing is panned to where the fan sits on the desk (see
+   * `setFanPan`). It spins up when the night starts and winds down when it is
+   * stopped, so a blackout is heard as the fan dying, not as a cut.
+   */
   startFan() {
     if (!this.ctx || this.loops.has("fan")) return;
-    const { src, g } = this.noise(0.055, 620);
-    const lfo = this.ctx.createOscillator();
-    const lfoGain = this.ctx.createGain();
-    lfo.frequency.value = 21; // blade-pass frequency
-    lfoGain.gain.value = 0.02;
-    lfo.connect(lfoGain).connect(g.gain);
-    src.start();
-    lfo.start();
+    const ctx = this.ctx;
+    const t = this.now();
+    const BLADE_HZ = 10.5;
+    const REV_HZ = BLADE_HZ / 3;
+
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.exponentialRampToValueAtTime(1.3, t + 1.6);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) {
+      pan.pan.value = 0.6;
+      out.connect(pan).connect(this.master!);
+    } else {
+      out.connect(this.master!);
+    }
+    this.fanPan = pan;
+
+    const nodes: AudioScheduledSourceNode[] = [];
+    const startAll = () => nodes.forEach((n) => n.start(t));
+
+    // Motor hum.
+    for (const [f, g] of [[120, 0.008], [240, 0.003], [360, 0.001]] as const) {
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f * 0.6, t);
+      o.frequency.exponentialRampToValueAtTime(f, t + 1.4);
+      const og = ctx.createGain();
+      og.gain.value = g;
+      o.connect(og).connect(out);
+      nodes.push(o);
+    }
+
+    // Air: one shared noise source, shaped into a soft low body and a thin
+    // breathy top, both chopped by the blades.
+    const air = ctx.createBufferSource();
+    air.buffer = this.fanNoise();
+    air.loop = true;
+    nodes.push(air);
+
+    const body = ctx.createBiquadFilter();
+    body.type = "lowpass";
+    body.frequency.value = 520;
+    body.Q.value = 0.5;
+    const top = ctx.createBiquadFilter();
+    top.type = "bandpass";
+    top.frequency.value = 1500;
+    top.Q.value = 0.8;
+
+    // Blade chop: the gain sits at 0.75 and the LFO swings it by 0.25, so the
+    // air never drops out, it pulses.
+    const chop = ctx.createGain();
+    chop.gain.value = 0.75;
+    const blade = ctx.createOscillator();
+    blade.type = "sine";
+    blade.frequency.setValueAtTime(BLADE_HZ * 0.4, t);
+    blade.frequency.exponentialRampToValueAtTime(BLADE_HZ, t + 1.6);
+    const bladeDepth = ctx.createGain();
+    bladeDepth.gain.value = 0.25;
+    blade.connect(bladeDepth).connect(chop.gain);
+    nodes.push(blade);
+
+    const bodyG = ctx.createGain();
+    bodyG.gain.value = 0.16;
+    const topG = ctx.createGain();
+    topG.gain.value = 0.03;
+    air.connect(body).connect(bodyG).connect(chop);
+    air.connect(top).connect(topG).connect(chop);
+    chop.connect(out);
+
+    // The slow drift in the air's tone, about once every eight seconds.
+    const drift = ctx.createOscillator();
+    drift.frequency.value = 0.12;
+    const driftDepth = ctx.createGain();
+    driftDepth.gain.value = 70;
+    drift.connect(driftDepth).connect(body.frequency);
+    nodes.push(drift);
+
+    // The cage tick: a narrow, bright band of the same noise, opened for a
+    // sliver of each revolution: a sawtooth, of which only the peak passes.
+    const tick = ctx.createBiquadFilter();
+    tick.type = "bandpass";
+    tick.frequency.value = 3200;
+    tick.Q.value = 6;
+    const tickGate = ctx.createGain();
+    tickGate.gain.value = 0;
+    const rev = ctx.createOscillator();
+    rev.type = "sawtooth";
+    rev.frequency.setValueAtTime(REV_HZ * 0.4, t);
+    rev.frequency.exponentialRampToValueAtTime(REV_HZ, t + 1.6);
+    const revShape = ctx.createWaveShaper();
+    // Only the very top of the wave gets through: a short click per turn.
+    const curve = new Float32Array(256);
+    for (let i = 0; i < curve.length; i++) curve[i] = i > 250 ? 0.15 : 0;
+    revShape.curve = curve;
+    rev.connect(revShape).connect(tickGate.gain);
+    air.connect(tick).connect(tickGate).connect(out);
+    nodes.push(rev);
+
+    startAll();
+
     this.register("fan", () => {
-      try {
-        src.stop();
-        lfo.stop();
-      } catch {
-        /* already stopped */
+      if (!this.ctx) return;
+      // Wind down: the pitch and the chop slow while the level falls.
+      const s = this.now();
+      const SPIN_DOWN = 2.8;
+      out.gain.cancelScheduledValues(s);
+      out.gain.setValueAtTime(Math.max(0.0001, out.gain.value), s);
+      out.gain.setTargetAtTime(0, s, SPIN_DOWN / 4);
+      for (const n of nodes) {
+        if (n instanceof OscillatorNode && n !== drift) {
+          n.frequency.cancelScheduledValues(s);
+          n.frequency.setValueAtTime(n.frequency.value, s);
+          n.frequency.exponentialRampToValueAtTime(Math.max(1, n.frequency.value * 0.3), s + SPIN_DOWN);
+        }
       }
+      body.frequency.setTargetAtTime(220, s, 0.6);
+      for (const n of nodes) {
+        try {
+          n.stop(s + SPIN_DOWN + 0.05);
+        } catch {
+          /* already stopped */
+        }
+      }
+      if (this.fanPan === pan) this.fanPan = null;
     });
+  }
+
+  /**
+   * The fan gets its own seven seconds of noise rather than the shared two.
+   * A steady sound is exactly the one where a two-second loop starts to be
+   * heard as a pattern, half an hour into a night.
+   */
+  private fanNoise() {
+    const ctx = this.ctx!;
+    if (this.fanBuf) return this.fanBuf;
+    const len = Math.floor(ctx.sampleRate * 7);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.fanBuf = buf;
+    return buf;
+  }
+
+  /**
+   * Where the fan is, left to right, as the chair swivels. -1 is hard left,
+   * +1 hard right. The engine calls this every frame with the fan's bearing.
+   */
+  setFanPan(p: number) {
+    if (!this.ctx || !this.fanPan) return;
+    this.fanPan.pan.setTargetAtTime(Math.max(-0.85, Math.min(0.85, p)), this.now(), 0.08);
   }
 
   /** Room tone: the building itself, breathing. */
