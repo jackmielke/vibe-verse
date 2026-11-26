@@ -70,6 +70,12 @@ export interface Smashables {
   blast(x: number, z: number, r: number, force: number): SmashHit[];
   /** Animate falling props; stand them back up when the viewer is far enough away. */
   update(dt: number, viewer: THREE.Vector3 | null): void;
+  /**
+   * Props still standing within `r` of (x, z), optionally of one kind. For
+   * things that happen to a prop without knocking it over: a tree catching
+   * fire. The array is reused.
+   */
+  standing(x: number, z: number, r: number, kind?: PropKind): ReadonlyArray<SmashHit>;
   /** How many are currently down, for harnesses. */
   downCount(): number;
   count(): number;
@@ -149,6 +155,7 @@ export function createSmashables(): Smashables {
     return out;
   };
   const scratch: Prop[] = [];
+  const standingOut: SmashHit[] = [];
 
   return {
     add(kind, x, z, baseY, radius, parts) {
@@ -236,6 +243,16 @@ export function createSmashables(): Smashables {
       }
       for (const m of dirty) m.instanceMatrix.needsUpdate = true;
       dirty.clear();
+    },
+
+    standing(x, z, r, kind) {
+      standingOut.length = 0;
+      for (const p of near(x, z, r, scratch)) {
+        if (p.down > 0 || (kind && p.kind !== kind)) continue;
+        if ((p.x - x) ** 2 + (p.z - z) ** 2 > r * r) continue;
+        standingOut.push({ kind: p.kind, x: p.x, z: p.z });
+      }
+      return standingOut;
     },
 
     downCount() {

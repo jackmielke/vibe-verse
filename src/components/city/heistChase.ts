@@ -40,11 +40,13 @@ export interface HeistChase {
   group: THREE.Group;
   start(now: number): void;
   /** Advance the sim. Returns "caught" / "escaped" on the frame the run ends. */
-  update(dt: number, now: number, playerPos: THREE.Vector3, shredder?: boolean): "caught" | "escaped" | null;
+  update(dt: number, now: number, playerPos: THREE.Vector3, shredder?: boolean): "caught" | "escaped" | "busted" | null;
   /** True while a lawnmower is chewing the kart up; the page throws debris. */
   shredding(): boolean;
   isActive(): boolean;
   pos(): THREE.Vector3;
+  /** The police got there first. Ends the run; `update` reports "busted". */
+  bust(): void;
 }
 
 function lootTagTexture(): THREE.CanvasTexture {
@@ -183,6 +185,7 @@ export function buildHeistChase(): HeistChase {
   let wpIdx = 1;
   let startedAt = 0;
   let shredT = -1;
+  let busted = false;
   const SHRED_SECONDS = 1.1;
 
   const api: HeistChase = {
@@ -200,8 +203,19 @@ export function buildHeistChase(): HeistChase {
       group.visible = true;
       for (const t of trail) t.bornAt = -Infinity;
     },
+    bust() {
+      if (active) busted = true;
+    },
     update(dt, now, playerPos, shredder = false) {
       if (!active) return null;
+      if (busted) {
+        busted = false;
+        shredT = -1;
+        kart.scale.setScalar(1);
+        active = false;
+        group.visible = false;
+        return "busted";
+      }
 
       // Under a lawnmower: stops dead, judders and is ground down to nothing.
       if (shredT < 0 && shredder && playerPos.distanceTo(kart.position) < CATCH_RADIUS + 1) shredT = 0;

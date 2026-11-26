@@ -1,0 +1,1086 @@
+/**
+ * mayhem — GTA Junior: guns, fire, buildings that go up, and the police.
+ *
+ * Vibe City already had the bones of a crime game: cars you can steal, bots
+ * that crash, things that explode, a getaway kart. What it did not have was a
+ * consequence. You could plough a monster truck down Main Street all
+ * afternoon and nobody minded. This module is the part that minds.
+ *
+ * ## Heat
+ *
+ * One number, 0 to 5, shown as stars. Crashing into things, blowing things up
+ * and shooting all add to it; it cools off once you stop. At one star a
+ * police car comes looking for you, and each star past that adds another, up
+ * to five. Police do not arrest, they ram: a cruiser drives straight at
+ * whatever you are standing in and keeps doing it. Police also go after the
+ * getaway kart on their own whenever the heist is running, heat or no heat,
+ * and if they reach it first the loot is theirs.
+ *
+ * ## Fire
+ *
+ * Trees burn. Any explosion within reach sets the trees around it alight, a
+ * rifle round can too, and a burning tree spreads to its neighbours before it
+ * falls over. Buildings do not burn down, but hit one hard enough and the
+ * facade goes up in a fireball and keeps burning for a while. About a third
+ * of the buildings (`volatile`) go up at a much lower speed than the rest,
+ * so finding which ones is part of the game.
+ *
+ * ## Guns
+ *
+ * A rifle, hidden on a rooftop, and a Glock 19, lying on the plaza. Pick one
+ * up by walking over it; R fires, G switches. Aim is assisted: the shot goes
+ * to the best target inside a cone in front of you, because aiming a mouse at
+ * a moving car while the camera follows your back is no fun at all. Both work
+ * from behind the wheel too.
+ *
+ * Everything here is pure position maths plus instanced-free little meshes;
+ * the city passes in the collision query and the callbacks, so this file
+ * never needs to know about karts, avatars or React.
+ */
+import * as THREE from "three";
+import type { WorldBox } from "@/components/city/cardboardIsland";
+import type { CrashFx } from "@/city/crashFx";
+import type { Smashables } from "@/city/smash";
+import type { Traffic } from "@/city/traffic";
+
+export type GunKind = "rifle" | "glock";
+
+export interface GunSpec {
+  label: string;
+  emoji: string;
+  /** Seconds between shots while the trigger is held. */
+  interval: number;
+  damage: number;
+  range: number;
+  /** Chance a round that hits a tree sets it alight. */
+  ignite: number;
+}
+
+export const GUNS: Record<GunKind, GunSpec> = {
+  rifle: { label: "Rifle", emoji: "🎯", interval: 0.11, damage: 24, range: 95, ignite: 0.3 },
+  glock: { label: "Glock 19", emoji: "🔫", interval: 0.24, damage: 17, range: 50, ignite: 0.06 },
+};
+
+export interface MayhemHud {
+  stars: number;
+  cops: number;
+  gun: GunKind | null;
+  owned: GunKind[];
+}
+
+export interface MayhemCtx {
+  /** The avatar's feet. */
+  player: THREE.Vector3;
+  /** Which way the avatar faces: forward is (sin yaw, cos yaw). */
+  yaw: number;
+  /** The vehicle being driven, if any. */
+  driving: { x: number; y: number; z: number; yaw: number; speed: number } | null;
+  /** Down on the city streets, where the police work. */
+  inCity: boolean;
+  /** The getaway kart, while the heist is running. */
+  heist: THREE.Vector3 | null;
+  /** Trigger held. */
+  firing: boolean;
+}
+
+export interface MayhemOpts {
+  scene: THREE.Scene;
+  crashFx: CrashFx;
+  smash: Smashables;
+  traffic: Traffic;
+  /** The city's buildings, for finding which one was hit. */
+  boxes: WorldBox[];
+  /** The city's collision query. Read lazily: it is built after this. */
+  blocked: () => ((x: number, z: number, y: number) => boolean) | null;
+  /** Street pitch (block + street) and the city's half span. */
+  pitch: number;
+  half: number;
+  /** Where the avatar's hands are, to hold a gun. */
+  hand: THREE.Object3D;
+  /** Candidate spots for the Glock, first clear one wins. */
+  glockSpots: Array<[number, number, number]>;
+  /** Something rammed you. `byCop` false means you rammed a cop. */
+  onContact(dx: number, dz: number, speed: number, byCop: boolean): void;
+  /** An explosion went off here; hurt the player if they are close. */
+  onBlast(x: number, z: number, r: number): void;
+  /** Police reached the getaway kart. */
+  onBust(): void;
+  onHud(h: MayhemHud): void;
+  onPickup(kind: GunKind): void;
+  /** Gunshot / siren / boom hooks into the city's own sound, optional. */
+  boom?(x: number, z: number): void;
+}
+
+export interface Mayhem {
+  group: THREE.Group;
+  /** Something illegal happened. `amount` is in stars. */
+  crime(amount: number): void;
+  /**
+   * A vehicle hit a building at (x, z) going `impact` m/s, heading (fx, fz).
+   * Returns true if the building went up.
+   */
+  wall(x: number, y: number, z: number, impact: number, fx: number, fz: number): boolean;
+  /** Set the trees within `r` alight. */
+  ignite(x: number, z: number, r: number): void;
+  /** G: holster, rifle, Glock, round again (owned ones only). */
+  cycle(): void;
+  update(dt: number, ctx: MayhemCtx): void;
+  /** For harnesses. */
+  debug(): {
+    heat: number;
+    cops: Array<{ x: number; z: number; hp: number; target: string; speed: number }>;
+    fires: number;
+    gun: GunKind | null;
+    owned: GunKind[];
+    spots: Record<GunKind, [number, number, number] | null>;
+    shots: number;
+    hits: number;
+  };
+  setHeat(h: number): void;
+  give(kind: GunKind): void;
+  dispose(): void;
+}
+
+const OWNED_KEY = "vibe.city.guns";
+const MAX_STARS = 5;
+const MAX_COPS = 5;
+const MAX_FIRES = 18;
+const COP_HP = 100;
+const COP_TOP = 27;
+const COP_ACCEL = 15;
+
+// ---- Little models -------------------------------------------------------
+
+function buildRifle(): THREE.Group {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.45, metalness: 0.7 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x3b3f2a, roughness: 0.8 });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  };
+  add(new THREE.BoxGeometry(0.07, 0.1, 0.5), metal, 0, 0, 0.05); // receiver
+  add(new THREE.CylinderGeometry(0.018, 0.018, 0.42, 8).rotateX(Math.PI / 2), metal, 0, 0.02, 0.5); // barrel
+  add(new THREE.BoxGeometry(0.06, 0.12, 0.3), wood, 0, -0.02, -0.33); // stock
+  add(new THREE.BoxGeometry(0.05, 0.18, 0.08), metal, 0, -0.12, 0.1).rotation.x = 0.25; // magazine
+  add(new THREE.BoxGeometry(0.04, 0.12, 0.05), wood, 0, -0.09, -0.08).rotation.x = -0.3; // grip
+  add(new THREE.BoxGeometry(0.03, 0.05, 0.16), metal, 0, 0.08, 0.06); // sight rail
+  return g;
+}
+
+function buildGlock(): THREE.Group {
+  const g = new THREE.Group();
+  const slide = new THREE.MeshStandardMaterial({ color: 0x1c1e22, roughness: 0.4, metalness: 0.6 });
+  const frame = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.85 });
+  const s = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.2), slide);
+  s.position.set(0, 0.03, 0.05);
+  g.add(s);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.13, 0.06), frame);
+  grip.position.set(0, -0.05, -0.02);
+  grip.rotation.x = -0.25;
+  g.add(grip);
+  return g;
+}
+
+interface CopMesh {
+  group: THREE.Group;
+  wheels: THREE.Mesh[];
+  red: THREE.MeshBasicMaterial;
+  blue: THREE.MeshBasicMaterial;
+  body: THREE.MeshStandardMaterial;
+}
+
+function buildCruiser(): CopMesh {
+  const group = new THREE.Group();
+  const body = new THREE.MeshStandardMaterial({ color: 0xf4f5f7, roughness: 0.45, metalness: 0.2 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.6 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x1d2a38, roughness: 0.15, metalness: 0.5 });
+  const red = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+  const blue = new THREE.MeshBasicMaterial({ color: 0x2a6bff });
+  const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    group.add(m);
+    return m;
+  };
+  mesh(new THREE.BoxGeometry(1.9, 0.5, 4.3), black, 0, 0.55, 0); // lower body, black
+  mesh(new THREE.BoxGeometry(1.92, 0.28, 2.0), body, 0, 0.92, 0.15); // white doors band
+  mesh(new THREE.BoxGeometry(1.86, 0.3, 1.1), body, 0, 0.82, 1.6); // bonnet
+  mesh(new THREE.BoxGeometry(1.86, 0.3, 0.9), body, 0, 0.82, -1.7); // boot
+  mesh(new THREE.BoxGeometry(1.7, 0.55, 2.1), glass, 0, 1.32, -0.15); // cabin
+  mesh(new THREE.BoxGeometry(1.72, 0.08, 1.9), body, 0, 1.63, -0.15); // roof
+  mesh(new THREE.BoxGeometry(0.62, 0.14, 0.32), red, -0.34, 1.74, -0.1); // light bar
+  mesh(new THREE.BoxGeometry(0.62, 0.14, 0.32), blue, 0.34, 1.74, -0.1);
+  mesh(new THREE.BoxGeometry(1.95, 0.22, 0.12), black, 0, 0.5, 2.18); // push bar
+  const lamp = new THREE.MeshBasicMaterial({ color: 0xfff6d8 });
+  mesh(new THREE.BoxGeometry(0.36, 0.14, 0.05), lamp, -0.62, 0.78, 2.16);
+  mesh(new THREE.BoxGeometry(0.36, 0.14, 0.05), lamp, 0.62, 0.78, 2.16);
+  const wheels: THREE.Mesh[] = [];
+  const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 14).rotateZ(Math.PI / 2);
+  for (const [x, z] of [[-0.95, 1.35], [0.95, 1.35], [-0.95, -1.35], [0.95, -1.35]] as const) {
+    wheels.push(mesh(wheelGeo, black, x, 0.4, z));
+  }
+  return { group, wheels, red, blue, body };
+}
+
+function glintSprite(color: string): THREE.Sprite {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const x = c.getContext("2d")!;
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.25, color);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c);
+  const s = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  s.scale.setScalar(1.6);
+  return s;
+}
+
+// ---- Pure helpers (tested) ----------------------------------------------
+
+/** Stars shown for a heat value: nothing until there is some, then rounded up. */
+export function starsFor(heat: number): number {
+  return heat < 0.05 ? 0 : Math.min(MAX_STARS, Math.ceil(heat - 0.001));
+}
+
+/** How many cruisers a heat level puts on the street. */
+export function copsFor(heat: number, heistLoose: boolean): number {
+  const byHeat = heat < 1 ? 0 : Math.min(MAX_COPS, Math.floor(heat) + (heat >= 3 ? 1 : 0));
+  return Math.max(byHeat, heistLoose ? 2 : 0);
+}
+
+/** Whether a building is one of the ones that goes up easily. Stable per box. */
+export function isVolatile(b: { minX: number; minZ: number }): boolean {
+  const h = Math.imul(Math.round(b.minX * 10) | 0, 73856093) ^ Math.imul(Math.round(b.minZ * 10) | 0, 19349663);
+  return ((h >>> 0) % 3) === 0;
+}
+
+/** The impact speed, m/s, that sets a building off. */
+export function blastThreshold(volatile: boolean): number {
+  return volatile ? 9 : 19;
+}
+
+/**
+ * Pick what an assisted shot hits: the candidate with the smallest angle off
+ * the aim line, inside `cone` radians and `range` metres, nearer ones winning
+ * ties. Returns the index or -1.
+ */
+export function pickTarget(
+  ox: number, oz: number, yaw: number, range: number, cone: number,
+  cands: ReadonlyArray<{ x: number; z: number; weight?: number }>,
+): number {
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  let best = -1;
+  let bestScore = Infinity;
+  for (let i = 0; i < cands.length; i++) {
+    const dx = cands[i].x - ox;
+    const dz = cands[i].z - oz;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.5 || d > range) continue;
+    const cos = (dx * fx + dz * fz) / d;
+    const ang = Math.acos(THREE.MathUtils.clamp(cos, -1, 1));
+    if (ang > cone) continue;
+    const score = ang + (d / range) * 0.25 - (cands[i].weight ?? 0);
+    if (score < bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return best;
+}
+
+// ---- The module ----------------------------------------------------------
+
+interface Cop {
+  mesh: CopMesh;
+  x: number;
+  z: number;
+  yaw: number;
+  speed: number;
+  hp: number;
+  /** 0 while running; seconds since it was wrecked. */
+  dead: number;
+  wpX: number;
+  wpZ: number;
+  repath: number;
+  ramCool: number;
+  stuck: number;
+  reverse: number;
+  target: "player" | "heist" | "leave";
+  /** Seconds since it last had any reason to be here. */
+  idle: number;
+}
+
+interface Fire {
+  x: number;
+  y: number;
+  z: number;
+  t: number;
+  life: number;
+  tree: boolean;
+  fallen: boolean;
+  nextSpread: number;
+}
+
+interface Tracer {
+  mesh: THREE.Mesh;
+  t: number;
+}
+
+export function createMayhem(opts: MayhemOpts): Mayhem {
+  const { crashFx, smash, traffic } = opts;
+  const group = new THREE.Group();
+  group.name = "mayhem";
+  opts.scene.add(group);
+
+  let heat = 0;
+  let quiet = 0;
+  let shots = 0;
+  let hits = 0;
+  const cops: Cop[] = [];
+  const fires: Fire[] = [];
+  let spawnCool = 0;
+  let wallCool = 0;
+  let fireCool = 0;
+
+  // ---- Guns ----------------------------------------------------------
+  const owned = new Set<GunKind>();
+  try {
+    const raw = JSON.parse(localStorage.getItem(OWNED_KEY) || "[]");
+    if (Array.isArray(raw)) for (const k of raw) if (k === "rifle" || k === "glock") owned.add(k);
+  } catch {
+    /* fresh start */
+  }
+  const saveOwned = () => {
+    try {
+      localStorage.setItem(OWNED_KEY, JSON.stringify([...owned]));
+    } catch {
+      /* private window */
+    }
+  };
+  let gun: GunKind | null = owned.has("rifle") ? "rifle" : owned.has("glock") ? "glock" : null;
+
+  const inHand: Record<GunKind, THREE.Group> = { rifle: buildRifle(), glock: buildGlock() };
+  inHand.rifle.position.set(-0.28, 1.05, 0.3);
+  inHand.glock.position.set(-0.3, 1.05, 0.38);
+  for (const k of ["rifle", "glock"] as const) {
+    inHand[k].visible = false;
+    opts.hand.add(inHand[k]);
+  }
+
+  // The pickups. Where they lie is decided once the collision exists, on
+  // the first update, because a spot inside a wall is no spot at all.
+  const spots: Record<GunKind, [number, number, number] | null> = { rifle: null, glock: null };
+  const pickups: Record<GunKind, THREE.Group> = { rifle: new THREE.Group(), glock: new THREE.Group() };
+  {
+    const r = buildRifle();
+    r.scale.setScalar(2.2);
+    pickups.rifle.add(r);
+    const gl = buildGlock();
+    gl.scale.setScalar(3.4);
+    pickups.glock.add(gl);
+    pickups.rifle.add(glintSprite("rgba(255,200,90,0.9)"));
+    pickups.glock.add(glintSprite("rgba(120,220,255,0.9)"));
+    for (const k of ["rifle", "glock"] as const) {
+      pickups[k].visible = false;
+      group.add(pickups[k]);
+    }
+  }
+  let placed = false;
+  const place = (blocked: (x: number, z: number, y: number) => boolean) => {
+    placed = true;
+    // The rifle: on the roof of a mid-height building near the middle of
+    // town. You can see the glint from the street, and you need the jetpack.
+    let best: WorldBox | null = null;
+    let bestD = Infinity;
+    for (const b of opts.boxes) {
+      const w = b.maxX - b.minX;
+      const d = b.maxZ - b.minZ;
+      if (b.base !== 0 || b.height < 14 || b.height > 30 || w < 8 || d < 8) continue;
+      if (Math.abs(b.minX) > opts.half || Math.abs(b.minZ) > opts.half) continue;
+      const cx = (b.minX + b.maxX) / 2;
+      const cz = (b.minZ + b.maxZ) / 2;
+      const dist = Math.hypot(cx - 46, cz + 38);
+      if (dist < bestD) {
+        bestD = dist;
+        best = b;
+      }
+    }
+    if (best) {
+      spots.rifle = [(best.minX + best.maxX) / 2, best.base + best.height + 1.1, (best.minZ + best.maxZ) / 2];
+    }
+    for (const s of opts.glockSpots) {
+      if (!blocked(s[0], s[2], s[1] + 0.8)) {
+        spots.glock = [s[0], s[1] + 0.9, s[2]];
+        break;
+      }
+    }
+    for (const k of ["rifle", "glock"] as const) {
+      const s = spots[k];
+      if (!s) continue;
+      pickups[k].position.set(s[0], s[1], s[2]);
+      pickups[k].visible = !owned.has(k);
+    }
+  };
+
+  // Tracers and the muzzle flash.
+  const tracerMat = new THREE.MeshBasicMaterial({
+    color: 0xffe29a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const tracerGeo = new THREE.BoxGeometry(0.05, 0.05, 1).translate(0, 0, 0.5);
+  const tracers: Tracer[] = [];
+  for (let i = 0; i < 10; i++) {
+    const m = new THREE.Mesh(tracerGeo, tracerMat);
+    m.visible = false;
+    group.add(m);
+    tracers.push({ mesh: m, t: 1 });
+  }
+  let tracerNext = 0;
+  const flash = glintSprite("rgba(255,180,60,1)");
+  flash.scale.setScalar(0.9);
+  flash.visible = false;
+  group.add(flash);
+  let flashT = 1;
+
+  // ---- Sound: its own tiny graph, started by the first keypress ----------
+  let actx: AudioContext | null = null;
+  let noise: AudioBuffer | null = null;
+  let siren: { osc: OscillatorNode; gain: GainNode } | null = null;
+  const audio = () => {
+    if (actx) return actx;
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      actx = new AC();
+      noise = actx.createBuffer(1, actx.sampleRate * 0.3, actx.sampleRate);
+      const d = noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+    } catch {
+      actx = null;
+    }
+    return actx;
+  };
+  const bang = (kind: GunKind) => {
+    const a = audio();
+    if (!a || !noise) return;
+    const src = a.createBufferSource();
+    src.buffer = noise;
+    const f = a.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = kind === "rifle" ? 2600 : 1800;
+    const g = a.createGain();
+    g.gain.value = kind === "rifle" ? 0.32 : 0.26;
+    src.connect(f).connect(g).connect(a.destination);
+    src.start();
+    src.stop(a.currentTime + 0.3);
+  };
+  const sirenTo = (level: number, t: number) => {
+    if (level <= 0.01 && !siren) return;
+    const a = audio();
+    if (!a) return;
+    if (!siren) {
+      const osc = a.createOscillator();
+      osc.type = "triangle";
+      const gain = a.createGain();
+      gain.gain.value = 0;
+      osc.connect(gain).connect(a.destination);
+      osc.start();
+      siren = { osc, gain };
+    }
+    siren.osc.frequency.setTargetAtTime(Math.sin(t * Math.PI * 1.6) > 0 ? 960 : 700, a.currentTime, 0.03);
+    siren.gain.gain.setTargetAtTime(level * 0.06, a.currentTime, 0.1);
+  };
+
+  // ---- HUD -------------------------------------------------------------
+  let lastHud = "";
+  const hud = () => {
+    const h: MayhemHud = {
+      stars: starsFor(heat),
+      cops: cops.filter((c) => c.dead === 0).length,
+      gun,
+      owned: (["rifle", "glock"] as const).filter((k) => owned.has(k)),
+    };
+    const key = JSON.stringify(h);
+    if (key !== lastHud) {
+      lastHud = key;
+      opts.onHud(h);
+    }
+  };
+
+  const crime = (amount: number) => {
+    heat = Math.min(MAX_STARS, heat + amount);
+    quiet = 0;
+  };
+
+  // ---- Fire ------------------------------------------------------------
+  const burningAt = (x: number, z: number) =>
+    fires.some((f) => f.tree && Math.abs(f.x - x) < 0.3 && Math.abs(f.z - z) < 0.3);
+  const ignite = (x: number, z: number, r: number) => {
+    for (const t of smash.standing(x, z, r, "tree")) {
+      if (fires.length >= MAX_FIRES) break;
+      if (burningAt(t.x, t.z)) continue;
+      fires.push({ x: t.x, y: 3, z: t.z, t: Math.random() * 0.6, life: 15 + Math.random() * 5, tree: true, fallen: false, nextSpread: 3 });
+    }
+  };
+  const boom = (x: number, y: number, z: number, power: number) => {
+    crashFx.explode(x, y, z, power, 0xff8a3d);
+    crashFx.kick(0.5);
+    traffic.blast(x, z, 12, 18);
+    smash.blast(x, z, 9, 16);
+    ignite(x, z, 15);
+    opts.onBlast(x, z, 10);
+    opts.boom?.(x, z);
+    for (const c of cops) {
+      if (c.dead > 0) continue;
+      const d = Math.hypot(c.x - x, c.z - z);
+      if (d < 11) hurtCop(c, 90 * (1 - d / 11));
+    }
+  };
+
+  // ---- Cops --------------------------------------------------------------
+  const hurtCop = (c: Cop, dmg: number) => {
+    if (c.dead > 0) return;
+    c.hp -= dmg;
+    if (c.hp > 0) return;
+    c.dead = 1e-3;
+    c.speed *= 0.3;
+    c.mesh.body.color.set(0x2b2b2b);
+    c.mesh.red.color.set(0x220000);
+    c.mesh.blue.color.set(0x000822);
+    crime(0.8);
+    boom(c.x, 0.9, c.z, 1.3);
+  };
+
+  const streets = () => {
+    const out: number[] = [];
+    for (let v = -opts.half; v <= opts.half + 0.01; v += opts.pitch) out.push(v);
+    return out;
+  };
+  const LINES = streets();
+
+  const clear = (blocked: (x: number, z: number, y: number) => boolean, ax: number, az: number, bx: number, bz: number) => {
+    const d = Math.hypot(bx - ax, bz - az);
+    const n = Math.ceil(d / 2.5);
+    for (let i = 1; i < n; i++) {
+      const k = i / n;
+      if (blocked(ax + (bx - ax) * k, az + (bz - az) * k, 0.9)) return false;
+    }
+    return true;
+  };
+
+  const spawnCop = (px: number, pz: number) => {
+    // A junction 70 to 120 m away, picked at random among the ones that fit.
+    const choices: Array<[number, number]> = [];
+    for (const x of LINES) {
+      for (const z of LINES) {
+        const d = Math.hypot(x - px, z - pz);
+        if (d > 70 && d < 125) choices.push([x, z]);
+      }
+    }
+    if (!choices.length) return;
+    const [x, z] = choices[Math.floor(Math.random() * choices.length)];
+    const mesh = buildCruiser();
+    group.add(mesh.group);
+    cops.push({
+      mesh, x, z, yaw: Math.atan2(px - x, pz - z), speed: 6, hp: COP_HP, dead: 0,
+      wpX: px, wpZ: pz, repath: 0, ramCool: 1, stuck: 0, reverse: 0, target: "player", idle: 0,
+    });
+  };
+
+  const removeCop = (i: number) => {
+    const c = cops[i];
+    group.remove(c.mesh.group);
+    c.mesh.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.geometry.dispose();
+    });
+    c.mesh.body.dispose();
+    c.mesh.red.dispose();
+    c.mesh.blue.dispose();
+    cops.splice(i, 1);
+  };
+
+  const route = (
+    blocked: (x: number, z: number, y: number) => boolean, c: Cop, tx: number, tz: number,
+  ) => {
+    if (clear(blocked, c.x, c.z, tx, tz)) {
+      c.wpX = tx;
+      c.wpZ = tz;
+      return;
+    }
+    // Junctions within reach, scored by how close they get us to the target,
+    // with a big bonus for one that can see it.
+    let bx = c.wpX;
+    let bz = c.wpZ;
+    let best = Infinity;
+    for (const x of LINES) {
+      if (Math.abs(x - c.x) > opts.pitch * 1.2) continue;
+      for (const z of LINES) {
+        if (Math.abs(z - c.z) > opts.pitch * 1.2) continue;
+        const dHere = Math.hypot(x - c.x, z - c.z);
+        if (dHere < 5) continue;
+        if (!clear(blocked, c.x, c.z, x, z)) continue;
+        let s = Math.hypot(tx - x, tz - z) + dHere * 0.2;
+        if (clear(blocked, x, z, tx, tz)) s -= 25;
+        if (s < best) {
+          best = s;
+          bx = x;
+          bz = z;
+        }
+      }
+    }
+    c.wpX = bx;
+    c.wpZ = bz;
+  };
+
+  const driveCop = (
+    blocked: (x: number, z: number, y: number) => boolean, c: Cop, dt: number,
+    tx: number, tz: number,
+  ) => {
+    c.repath -= dt;
+    if (c.repath <= 0) {
+      c.repath = 0.35;
+      if (c.target === "leave") {
+        c.wpX = c.x + Math.sin(c.yaw) * 40;
+        c.wpZ = c.z + Math.cos(c.yaw) * 40;
+        route(blocked, c, c.wpX, c.wpZ);
+      } else {
+        route(blocked, c, tx, tz);
+      }
+    }
+    const dx = c.wpX - c.x;
+    const dz = c.wpZ - c.z;
+    const dist = Math.hypot(dx, dz);
+    let dyaw = Math.atan2(dx, dz) - c.yaw;
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    if (c.reverse > 0) {
+      c.reverse -= dt;
+      c.speed = Math.max(c.speed - COP_ACCEL * dt, -8);
+      c.yaw -= Math.sign(dyaw || 1) * 1.6 * dt;
+    } else {
+      const turn = 2.8 * THREE.MathUtils.clamp(Math.abs(c.speed) / 8, 0.3, 1);
+      c.yaw += THREE.MathUtils.clamp(dyaw, -turn * dt, turn * dt);
+      const want = (dist < 6 && c.target === "player" ? COP_TOP : COP_TOP) * Math.max(0.3, Math.cos(dyaw));
+      c.speed += THREE.MathUtils.clamp(want - c.speed, -COP_ACCEL * 1.5 * dt, COP_ACCEL * dt);
+    }
+    const fx = Math.sin(c.yaw);
+    const fz = Math.cos(c.yaw);
+    const sign = Math.sign(c.speed || 1);
+    const nx = c.x + fx * c.speed * dt;
+    const nz = c.z + fz * c.speed * dt;
+    const probe = (x: number, z: number) => blocked(x + fx * 2.1 * sign, z + fz * 2.1 * sign, 0.9);
+    if (!probe(nx, nz)) {
+      c.x = nx;
+      c.z = nz;
+      c.stuck = Math.max(0, c.stuck - dt);
+    } else {
+      // A bot car in the way gets barged, like the player does it.
+      const id = traffic.carAt(nx + fx * 2.1 * sign, nz + fz * 2.1 * sign, 0.9, 1);
+      if (id >= 0) {
+        traffic.shove(id, fx * sign, fz * sign, 4 + Math.abs(c.speed) * 0.7);
+        traffic.damage(id, Math.abs(c.speed) * 1.5);
+        crashFx.sparks(nx, 0.7, nz, fx, fz, 8);
+        c.x = nx;
+        c.z = nz;
+        c.speed *= 0.7;
+      } else if (!probe(nx, c.z)) {
+        c.x = nx;
+        c.speed *= 0.9;
+      } else if (!probe(c.x, nz)) {
+        c.z = nz;
+        c.speed *= 0.9;
+      } else {
+        if (Math.abs(c.speed) > 10) crashFx.sparks(c.x + fx * 2, 0.7, c.z + fz * 2, -fx, -fz, 6);
+        c.speed *= -0.2;
+        c.stuck += dt * 2;
+      }
+    }
+    if (c.stuck > 1 && c.reverse <= 0) {
+      c.reverse = 0.9;
+      c.stuck = 0;
+    }
+    // Trees and lamp posts in the way go over, as they do for anybody.
+    if (Math.abs(c.speed) > 4) smash.hit(c.x + fx * 1.8, c.z + fz * 1.8, 1, fx, fz, Math.abs(c.speed));
+    // Never leave the city.
+    const lim = opts.half + 6;
+    c.x = THREE.MathUtils.clamp(c.x, -lim, lim);
+    c.z = THREE.MathUtils.clamp(c.z, -lim, lim);
+  };
+
+  // ---- Shooting ----------------------------------------------------------
+  let shotCool = 0;
+  const cands: Array<{ x: number; z: number; weight: number; kind: "cop" | "car" | "tree"; ref: number }> = [];
+  const shoot = (
+    blocked: (x: number, z: number, y: number) => boolean, kind: GunKind,
+    ox: number, oy: number, oz: number, yaw: number,
+  ) => {
+    const spec = GUNS[kind];
+    shots++;
+    cands.length = 0;
+    cops.forEach((c, i) => {
+      if (c.dead === 0) cands.push({ x: c.x, z: c.z, weight: 0.35, kind: "cop", ref: i });
+    });
+    for (const car of traffic.debugNear(ox, oz, spec.range)) {
+      if (!car.wreck) cands.push({ x: car.x, z: car.z, weight: 0.1, kind: "car", ref: car.id });
+    }
+    for (const t of smash.standing(ox, oz, Math.min(spec.range, 40), "tree")) {
+      cands.push({ x: t.x, z: t.z, weight: 0, kind: "tree", ref: -1 });
+    }
+    const pick = pickTarget(ox, oz, yaw, spec.range, 0.32, cands);
+    let ax = Math.sin(yaw);
+    let az = Math.cos(yaw);
+    let len = spec.range;
+    let ty = oy;
+    if (pick >= 0) {
+      const t = cands[pick];
+      len = Math.hypot(t.x - ox, t.z - oz);
+      ax = (t.x - ox) / len;
+      az = (t.z - oz) / len;
+      ty = t.kind === "tree" ? 2.6 : 0.9;
+    }
+    // Walk the line; the first wall stops the round.
+    let end = len;
+    let wall = false;
+    for (let s = 1.5; s < len; s += 1.2) {
+      const y = oy + (ty - oy) * (s / len);
+      if (blocked(ox + ax * s, oz + az * s, y)) {
+        const id = traffic.carAt(ox + ax * s, oz + az * s, y, 0.6);
+        if (id >= 0) {
+          traffic.damage(id, spec.damage);
+          traffic.shove(id, ax, az, 1.5);
+          crime(0.12);
+          hits++;
+          crashFx.sparks(ox + ax * s, y, oz + az * s, -ax, -az, 6);
+          end = s;
+          wall = false;
+          len = -1;
+        } else {
+          end = s;
+          wall = true;
+        }
+        break;
+      }
+    }
+    const ex = ox + ax * end;
+    const ez = oz + az * end;
+    const ey = oy + (ty - oy) * Math.min(1, end / Math.max(1, Math.abs(len)));
+    if (len >= 0 && !wall && pick >= 0) {
+      const t = cands[pick];
+      hits++;
+      if (t.kind === "cop") {
+        hurtCop(cops[t.ref], spec.damage);
+        crime(0.3);
+        crashFx.sparks(ex, 1, ez, -ax, -az, 8);
+      } else if (t.kind === "car") {
+        traffic.damage(t.ref, spec.damage);
+        traffic.shove(t.ref, ax, az, 1.5);
+        crime(0.12);
+        crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
+      } else {
+        crashFx.leaves(t.x, 3, t.z, 6);
+        if (Math.random() < spec.ignite) ignite(t.x, t.z, 0.6);
+      }
+    } else if (wall) {
+      crashFx.sparks(ex, ey, ez, -ax, -az, 5);
+      crashFx.debris(ex, ey, ez, 1, 0x9aa2ab, 2);
+    }
+    // Shooting in town is noticed.
+    if (cands.some((c) => c.kind !== "tree")) crime(0.03);
+    const tr = tracers[tracerNext];
+    tracerNext = (tracerNext + 1) % tracers.length;
+    tr.t = 0;
+    tr.mesh.visible = true;
+    tr.mesh.position.set(ox, oy, oz);
+    tr.mesh.scale.set(1, 1, Math.max(0.5, Math.hypot(ex - ox, ey - oy, ez - oz)));
+    tr.mesh.lookAt(ex, ey, ez);
+    flash.position.set(ox, oy, oz);
+    flash.visible = true;
+    flashT = 0;
+    bang(kind);
+  };
+
+  let clock = 0;
+
+  const api: Mayhem = {
+    group,
+    crime,
+    ignite,
+    wall(x, y, z, impact, fx, fz) {
+      if (wallCool > 0 || impact < 6) {
+        if (impact > 4) crime(0.08);
+        return false;
+      }
+      let hit: WorldBox | null = null;
+      for (const b of opts.boxes) {
+        if (x < b.minX - 2 || x > b.maxX + 2 || z < b.minZ - 2 || z > b.maxZ + 2) continue;
+        if (y < b.base - 1 || y > b.base + b.height) continue;
+        hit = b;
+        break;
+      }
+      const volatile = hit ? isVolatile(hit) : false;
+      crime(impact > 12 ? 0.4 : 0.2);
+      if (!hit || impact < blastThreshold(volatile)) return false;
+      wallCool = 1.2;
+      const bx = x - fx * 0.6;
+      const bz = z - fz * 0.6;
+      boom(bx, y + 1.4, bz, volatile ? 1.8 : 1.5);
+      crashFx.debris(bx, y + 3, bz, 14, 0x8a8f98, 9);
+      crime(1.1);
+      // The facade keeps burning: one fire at the hole and one up the wall.
+      for (const h of [1.2, 4.5]) {
+        if (fires.length < MAX_FIRES + 4) {
+          fires.push({ x: bx, y: y + h, z: bz, t: 0, life: 22, tree: false, fallen: true, nextSpread: 99 });
+        }
+      }
+      return true;
+    },
+    cycle() {
+      const order: Array<GunKind | null> = [null, "rifle", "glock"];
+      for (let i = 1; i <= order.length; i++) {
+        const next = order[(order.indexOf(gun) + i) % order.length];
+        if (next === null || owned.has(next)) {
+          gun = next;
+          break;
+        }
+      }
+      hud();
+    },
+    update(dt, ctx) {
+      clock += dt;
+      const blocked = opts.blocked();
+      if (!blocked) return;
+      if (!placed) place(blocked);
+      wallCool = Math.max(0, wallCool - dt);
+
+      // Pickups spin, bob, and get collected.
+      for (const k of ["rifle", "glock"] as const) {
+        const p = pickups[k];
+        const s = spots[k];
+        if (!p.visible || !s) continue;
+        p.rotation.y += dt * 1.6;
+        p.position.y = s[1] + Math.sin(clock * 2.2) * 0.15;
+        const sprite = p.children[p.children.length - 1] as THREE.Sprite;
+        sprite.scale.setScalar(1.4 + Math.sin(clock * 4) * 0.4);
+        const dy = Math.abs(ctx.player.y + 0.9 - s[1]);
+        if (!ctx.driving && dy < 2.2 && Math.hypot(ctx.player.x - s[0], ctx.player.z - s[2]) < 2.2) {
+          owned.add(k);
+          saveOwned();
+          p.visible = false;
+          gun = k;
+          opts.onPickup(k);
+        }
+      }
+
+      // The gun in your hand, and the trigger.
+      inHand.rifle.visible = gun === "rifle" && !ctx.driving;
+      inHand.glock.visible = gun === "glock" && !ctx.driving;
+      shotCool = Math.max(0, shotCool - dt);
+      if (gun && ctx.firing && shotCool <= 0) {
+        shotCool = GUNS[gun].interval;
+        if (ctx.driving) {
+          const d = ctx.driving;
+          shoot(blocked, gun, d.x + Math.sin(d.yaw) * 2.4, d.y + 1.1, d.z + Math.cos(d.yaw) * 2.4, d.yaw);
+        } else {
+          const p = ctx.player;
+          shoot(blocked, gun, p.x + Math.sin(ctx.yaw) * 0.8, p.y + 1.15, p.z + Math.cos(ctx.yaw) * 0.8, ctx.yaw);
+        }
+      }
+      for (const t of tracers) {
+        if (!t.mesh.visible) continue;
+        t.t += dt;
+        if (t.t > 0.06) t.mesh.visible = false;
+      }
+      flashT += dt;
+      flash.visible = flashT < 0.05;
+
+      // Heat cools once you stop.
+      quiet += dt;
+      const watching = cops.some((c) => c.dead === 0 && Math.hypot(c.x - ctx.player.x, c.z - ctx.player.z) < 55);
+      if (quiet > 14) heat = Math.max(0, heat - dt * (watching ? 0.025 : 0.08));
+      if (!ctx.inCity) heat = Math.max(0, heat - dt * 0.5);
+
+      // Who should be out there.
+      const me = ctx.driving ?? ctx.player;
+      const heistLoose = !!ctx.heist && ctx.inCity;
+      const want = ctx.inCity ? copsFor(heat, heistLoose) : 0;
+      const alive = cops.filter((c) => c.dead === 0 && c.target !== "leave").length;
+      spawnCool -= dt;
+      if (alive < want && spawnCool <= 0 && cops.length < MAX_COPS + 3) {
+        spawnCool = 2.2;
+        spawnCop(me.x, me.z);
+      }
+
+      let nearest = Infinity;
+      for (let i = cops.length - 1; i >= 0; i--) {
+        const c = cops[i];
+        if (c.dead > 0) {
+          c.dead += dt;
+          c.speed *= Math.max(0, 1 - dt * 2);
+          c.x += Math.sin(c.yaw) * c.speed * dt;
+          c.z += Math.cos(c.yaw) * c.speed * dt;
+          crashFx.smoulder(dt, c.x, 1.2, c.z, 1, c.dead < 8 ? 1 : 0.2);
+          c.mesh.group.position.set(c.x, 0, c.z);
+          if (c.dead > 16) removeCop(i);
+          continue;
+        }
+        // Pick a target: the getaway kart when it is loose and either nobody
+        // is wanted or it is the closer of the two.
+        const dMe = Math.hypot(me.x - c.x, me.z - c.z);
+        const dHeist = heistLoose ? Math.hypot(ctx.heist!.x - c.x, ctx.heist!.z - c.z) : Infinity;
+        const aliveRank = cops.filter((o) => o.dead === 0).indexOf(c);
+        if (heistLoose && (heat < 1 || dHeist < dMe || aliveRank >= copsFor(heat, false))) c.target = "heist";
+        else if (heat >= 0.5 && ctx.inCity && aliveRank < Math.max(1, copsFor(heat, false))) c.target = "player";
+        else c.target = "leave";
+        const tx = c.target === "heist" ? ctx.heist!.x : me.x;
+        const tz = c.target === "heist" ? ctx.heist!.z : me.z;
+        driveCop(blocked, c, dt, tx, tz);
+        c.ramCool = Math.max(0, c.ramCool - dt);
+        if (c.target === "leave") {
+          c.idle += dt;
+          if (c.idle > 25 || dMe > 140) {
+            removeCop(i);
+            continue;
+          }
+        } else {
+          c.idle = 0;
+        }
+        nearest = Math.min(nearest, dMe);
+
+        // Contact.
+        if (c.target === "heist" && dHeist < 2.8) {
+          opts.onBust();
+          c.speed *= 0.2;
+        } else if (dMe < (ctx.driving ? 2.9 : 2.4) && c.ramCool <= 0) {
+          const nx = (me.x - c.x) / (dMe || 1);
+          const nz = (me.z - c.z) / (dMe || 1);
+          const copInto = Math.max(0, c.speed * (Math.sin(c.yaw) * nx + Math.cos(c.yaw) * nz));
+          const meInto = ctx.driving
+            ? Math.max(0, ctx.driving.speed * -(Math.sin(ctx.driving.yaw) * nx + Math.cos(ctx.driving.yaw) * nz))
+            : 0;
+          if (meInto > copInto + 2) {
+            // You rammed it.
+            hurtCop(c, meInto * 2.6);
+            c.speed = -meInto * 0.4;
+            opts.onContact(-nx, -nz, meInto, false);
+            crime(0.3);
+          } else if (copInto > 3 && c.target === "player") {
+            opts.onContact(nx, nz, copInto + 4, true);
+            c.speed *= 0.3;
+          }
+          crashFx.sparks((me.x + c.x) / 2, 0.8, (me.z + c.z) / 2, nx, nz, 10);
+          c.ramCool = 1.1;
+          // Never stay inside each other.
+          const push = (ctx.driving ? 2.9 : 2.4) - dMe;
+          c.x -= nx * push;
+          c.z -= nz * push;
+        }
+      }
+      // Keep the cruisers out of each other.
+      for (let i = 0; i < cops.length; i++) {
+        for (let j = i + 1; j < cops.length; j++) {
+          const a = cops[i];
+          const b = cops[j];
+          const dx = b.x - a.x;
+          const dz = b.z - a.z;
+          const d = Math.hypot(dx, dz);
+          if (d > 0.01 && d < 3.2) {
+            const k = (3.2 - d) / 2 / d;
+            a.x -= dx * k;
+            a.z -= dz * k;
+            b.x += dx * k;
+            b.z += dz * k;
+          }
+        }
+      }
+      // Pose and strobe.
+      const strobe = Math.sin(clock * 18) > 0;
+      for (const c of cops) {
+        c.mesh.group.position.set(c.x, 0, c.z);
+        c.mesh.group.rotation.y = c.yaw;
+        for (const w of c.mesh.wheels) w.rotation.x += c.speed * dt / 0.4;
+        if (c.dead === 0) {
+          c.mesh.red.color.set(strobe ? 0xff2a2a : 0x3a0606);
+          c.mesh.blue.color.set(strobe ? 0x071533 : 0x2a6bff);
+        }
+      }
+      sirenTo(nearest < 120 ? (1 - nearest / 120) : 0, clock);
+
+      // Fire.
+      fireCool -= dt;
+      for (let i = fires.length - 1; i >= 0; i--) {
+        const f = fires[i];
+        f.t += dt;
+        const k = Math.min(1, f.t / 1.5) * Math.min(1, (f.life - f.t) / 3);
+        if (f.t >= f.life) {
+          fires.splice(i, 1);
+          continue;
+        }
+        const j = f.tree && !f.fallen ? 1.4 : 0.6;
+        crashFx.smoulder(dt, f.x + (Math.random() - 0.5) * j, f.y, f.z + (Math.random() - 0.5) * j, 0.8, Math.max(0, k));
+        if (f.tree && !f.fallen && f.t > f.nextSpread) {
+          f.nextSpread = f.t + 1.2;
+          for (const t of smash.standing(f.x, f.z, 7, "tree")) {
+            if (fires.length >= MAX_FIRES) break;
+            if (!burningAt(t.x, t.z) && Math.random() < 0.3) {
+              fires.push({ x: t.x, y: 3, z: t.z, t: 0, life: 15 + Math.random() * 5, tree: true, fallen: false, nextSpread: 3 });
+            }
+          }
+        }
+        if (f.tree && !f.fallen && f.t > 10) {
+          // Burnt through: over it goes, still burning on the ground.
+          f.fallen = true;
+          const a = Math.random() * Math.PI * 2;
+          smash.hit(f.x, f.z, 0.6, Math.cos(a), Math.sin(a), 6);
+          crashFx.leaves(f.x, 2.5, f.z, 10);
+          f.y = 0.7;
+        }
+      }
+      hud();
+    },
+    debug() {
+      return {
+        heat,
+        cops: cops.map((c) => ({ x: c.x, z: c.z, hp: c.hp, target: c.dead > 0 ? "wreck" : c.target, speed: c.speed })),
+        fires: fires.length,
+        gun,
+        owned: [...owned],
+        spots,
+        shots,
+        hits,
+      };
+    },
+    setHeat(h) {
+      heat = THREE.MathUtils.clamp(h, 0, MAX_STARS);
+      quiet = 0;
+    },
+    give(kind) {
+      owned.add(kind);
+      saveOwned();
+      pickups[kind].visible = false;
+      gun = kind;
+      hud();
+    },
+    dispose() {
+      while (cops.length) removeCop(cops.length - 1);
+      opts.scene.remove(group);
+      for (const k of ["rifle", "glock"] as const) opts.hand.remove(inHand[k]);
+      tracerGeo.dispose();
+      tracerMat.dispose();
+      try {
+        siren?.osc.stop();
+        void actx?.close();
+      } catch {
+        /* already gone */
+      }
+    },
+  };
+  return api;
+}

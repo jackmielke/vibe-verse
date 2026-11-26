@@ -84,6 +84,7 @@ import { createSnowCover } from "@/city/snowCover";
 import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
 import { createCrashFx } from "@/city/crashFx";
+import { createMayhem, GUNS, type Mayhem, type MayhemHud } from "@/city/mayhem";
 import {
   VEHICLES, MAX_HEALTH, impactDamage, distress, cometSpot,
   buildMonsterTruck, buildComet, buildMower, buildBeacon, scorch,
@@ -574,6 +575,11 @@ export default function City() {
   // Touch controls write straight into these; the tick reads them.
   const touchMoveRef = useRef<TouchMove>({ x: 0, y: 0 });
   const touchJetRef = useRef(false);
+  /** The on-screen fire button, held. */
+  const touchFireRef = useRef(false);
+  /** GTA Junior: stars, cops and the gun in your hand. */
+  const [mayhemHud, setMayhemHud] = useState<MayhemHud>({ stars: 0, cops: 0, gun: null, owned: [] });
+  const mayhemCycleRef = useRef<(() => void) | null>(null);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
   const [respawnFx, setRespawnFx] = useState(0);
   // Transcendence Portal — fires whenever the player falls through the
@@ -2317,6 +2323,18 @@ export default function City() {
     }
     const cometBeacon = buildBeacon();
     scene.add(cometBeacon);
+    // A green beam over the lawnmower until you have ridden it once, because
+    // nobody could find it: it is on Vibe Island, beside the go-karts.
+    const mowerBeacon = buildBeacon(0x6dff8a);
+    mowerBeacon.scale.set(0.6, 0.25, 0.6);
+    scene.add(mowerBeacon);
+    let mowerRidden = (() => {
+      try {
+        return localStorage.getItem("vibe.city.mowerRidden") === "1";
+      } catch {
+        return false;
+      }
+    })();
     // The lawnmower, on the island lawn beside the go-karts.
     vehicle("mower", ISLAND_X + SITE.karts.x + 4, ISLAND_TOP, ISLAND_Z + SITE.karts.z, 2.4, buildMower());
     vehicle("car", 0, 0, 0, 0, null);
@@ -3861,7 +3879,7 @@ export default function City() {
     const handled = new Set([
       "KeyW", "KeyA", "KeyS", "KeyD",
       "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-      "Space", "ShiftLeft", "ShiftRight", "KeyC",
+      "Space", "ShiftLeft", "ShiftRight", "KeyC", "KeyR",
     ]);
     // Don't steal keys while the player is typing in chat.
     const isTyping = (e: KeyboardEvent) => {
@@ -3873,6 +3891,10 @@ export default function City() {
       // T is the dance key: it picks a move at random, and pressing it again
       // picks a different one. One key, no menu — the point is that dancing
       // costs less thought than walking does.
+      if (e.code === "KeyG" && !e.repeat) {
+        mayhemCycleRef.current?.();
+        return;
+      }
       if (e.code === "KeyT") {
         e.preventDefault();
         arrivalStart = 0;
@@ -4512,6 +4534,61 @@ export default function City() {
     const blockedAt = (x: number, z: number, y: number): boolean =>
       collision.isBlocked(x, z, y);
 
+    // ---- GTA Junior: guns, fire, police ---------------------------------
+    // See `src/city/mayhem.ts`. The callbacks reach back into the vehicle
+    // and avatar code further down this effect; they only run once the tick
+    // has started, by which time all of it exists.
+    const mayhem: Mayhem = createMayhem({
+      scene,
+      crashFx,
+      smash: district.smash,
+      traffic: district.traffic,
+      boxes: district.boxes,
+      blocked: () => blockedAt,
+      pitch: BLOCK + STREET,
+      half: (GRID * (BLOCK + STREET)) / 2,
+      hand: modelHolder,
+      glockSpots: [[6, 0, -6], [-6, 0, -6], [6, 0, 6], [0, 0, -9], [9, 0, 0]],
+      onContact: (dx, dz, speed, byCop) => {
+        const i = drivingKartRef.current;
+        if (i >= 0) {
+          const k = kartStates[i];
+          hurtVehicle(i, "car", speed);
+          if (byCop) {
+            k.x += dx * 0.5;
+            k.z += dz * 0.5;
+            k.speed *= 0.55;
+          } else {
+            k.speed *= 0.7;
+          }
+          crashFx.kick(Math.min(0.6, speed / 35));
+          soundsRef.current?.thud?.(Math.min(1, 0.4 + speed / 30));
+        } else if (byCop) {
+          bowlOver(dx, dz, speed);
+        }
+      },
+      onBlast: (x, z, r) => {
+        const d = Math.hypot(player.position.x - x, player.position.z - z);
+        if (d > r) return;
+        if (drivingKartRef.current >= 0) {
+          hurtVehicle(drivingKartRef.current, "blast", 35 * (1 - d / r), true);
+        } else if (Math.abs(player.position.y - 1) < 5) {
+          bowlOver((player.position.x - x) / (d || 1), (player.position.z - z) / (d || 1), 14 * (1 - d / r) + 4);
+        }
+      },
+      onBust: () => heistChase.bust(),
+      onHud: (h) => setMayhemHud(h),
+      onPickup: (kind) => {
+        soundsRef.current?.fanfare?.();
+        toast(`${GUNS[kind].emoji} You found the ${GUNS[kind].label}`, {
+          description: "Hold R to fire (it aims for you), G to switch guns. Shooting in town brings the police.",
+        });
+      },
+      boom: (x, z) => soundsRef.current?.boom?.(1, earshot(x, z, 160)),
+    });
+    mayhemCycleRef.current = () => mayhem.cycle();
+    (window as unknown as Record<string, unknown>).__cityMayhem = mayhem;
+
     // ---- Driving into the sea ------------------------------------------
     /**
      * Deep enough to drown a car. Below this you are fording a puddle at the
@@ -4821,6 +4898,14 @@ export default function City() {
         }
         return;
       }
+      {
+        const fx = Math.sin(k.yaw) * Math.sign(k.speed || 1);
+        const fz = Math.cos(k.yaw) * Math.sign(k.speed || 1);
+        const reach = VEHICLES[k.kind].reach + 0.6;
+        if (mayhem.wall(k.x + fx * reach, k.y, k.z + fz * reach, impact, fx, fz)) {
+          hurtVehicle(kartStates.indexOf(k), "blast", 18, true);
+        }
+      }
       if (impact > 5) {
         const fx = Math.sin(k.yaw);
         const fz = Math.cos(k.yaw);
@@ -4847,6 +4932,8 @@ export default function City() {
       soundsRef.current?.boom?.(1, earshot(x, z, 160));
       district.traffic.blast(x, z, 11, 18);
       district.smash.blast(x, z, 9, 16);
+      mayhem.ignite(x, z, 14);
+      if (drivingKartRef.current === i) mayhem.crime(1);
       if (drivingKartRef.current === i) {
         drivingKartRef.current = -1;
         setDrivingKart(-1);
@@ -4937,6 +5024,7 @@ export default function City() {
       switch (e.kind) {
         case "explode": {
           crashFx.explode(e.x, e.y, e.z, 1.1, 0x9aa2ab);
+          mayhem.ignite(e.x, e.z, 12);
           soundsRef.current?.boom?.(0.9, earshot(e.x, e.z, 160));
           crashFx.kick(0.7 * earshot(e.x, e.z, 60));
           // Standing next to one is a bad idea.
@@ -6158,6 +6246,7 @@ export default function City() {
             fwdX, fwdZ, Math.abs(kart.speed),
           );
           for (const f of fell) {
+            mayhem.crime(0.1);
             hurtVehicle(drivingKartRef.current, f.kind as ImpactSurface, Math.abs(kart.speed), true);
             if (kart.kind === "mower") shredFx(f.x, kart.y, f.z, fwdX, fwdZ);
             if (f.kind === "tree") crashFx.leaves(f.x, 3.5, f.z, 22);
@@ -6189,6 +6278,7 @@ export default function City() {
            * the truck lurches up onto it.
            */
           district.traffic.crush(hitId);
+          mayhem.crime(0.5);
           kart.x = knx;
           kart.z = knz;
           kart.vy = Math.max(kart.vy, 3.5);
@@ -6219,6 +6309,7 @@ export default function City() {
           // Both of you pay. Hard enough and the other car goes up.
           // A mower does not bounce off a car, it eats it.
           district.traffic.damage(hitId, kart.kind === "mower" ? 1000 : impactSpeed * 3.4);
+          mayhem.crime(impactSpeed > 10 ? 0.45 : 0.2);
           if (kart.kind === "mower") {
             shredFx(knx + rx, kart.y, knz + rz, Math.sin(kart.yaw), Math.cos(kart.yaw));
             kart.speed = Math.max(kart.speed * 1.5, Math.min(8, spec.max));
@@ -7052,6 +7143,18 @@ export default function City() {
           chaseAnnounced = true;
         }
         weather.update(dt, player.position);
+        {
+          const di = drivingKartRef.current;
+          const dk = di >= 0 ? kartStates[di] : null;
+          mayhem.update(dt, {
+            player: player.position,
+            yaw: modelYaw,
+            driving: dk ? { x: dk.x, y: dk.y, z: dk.z, yaw: dk.yaw, speed: dk.speed } : null,
+            inCity,
+            heist: heistChase.isActive() ? heistChase.pos() : null,
+            firing: enteredRef.current && (keys.has("KeyR") || touchFireRef.current),
+          });
+        }
         const mowing = drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].kind === "mower";
         const chaseEv = heistChase.update(dt, now, player.position, mowing);
         if (heistChase.shredding()) {
@@ -7071,6 +7174,13 @@ export default function City() {
             toast.success(`💰 Heist foiled! +${CHASE_REWARD} ✦`, {
               description: "You rammed the getaway kart and recovered the loot. The gremlin respects it.",
             });
+          } else if (chaseEv === "busted") {
+            crashFx.explode(heistChase.pos().x, 0.8, heistChase.pos().z, 0.9, 0x31161f);
+            if (enteredRef.current) {
+              toast("🚓 The police got the getaway kart", {
+                description: "They rammed it off the road before you did. Beat them to it next time.",
+              });
+            }
           } else if (enteredRef.current) {
             toast("🚁 The getaway kart escaped…", {
               description: "The gremlin vanished into an alley with the loot. It'll be back.",
@@ -7261,6 +7371,18 @@ export default function City() {
         if (k.kind === "comet") {
           cometBeacon.position.set(k.x, k.y, k.z);
           cometBeacon.visible = k.wreck === 0 && drivingKartRef.current !== i;
+        }
+        if (k.kind === "mower") {
+          if (drivingKartRef.current === i && !mowerRidden) {
+            mowerRidden = true;
+            try {
+              localStorage.setItem("vibe.city.mowerRidden", "1");
+            } catch {
+              /* private window */
+            }
+          }
+          mowerBeacon.position.set(k.x, k.y, k.z);
+          mowerBeacon.visible = !mowerRidden && k.wreck === 0 && drivingKartRef.current !== i;
         }
       }
 
@@ -9770,6 +9892,48 @@ export default function City() {
             ✕
           </button>
         </div>
+      )}
+
+      {/* GTA Junior: wanted stars, the gun in hand, and a fire button on touch. */}
+      {entered && !gameHud && !rebelHud?.active && (mayhemHud.stars > 0 || mayhemHud.gun) && (
+        <div className="fixed top-40 right-4 z-30 glass-panel rounded-2xl px-3 py-2 text-xs flex flex-col items-end gap-1 pointer-events-none select-none">
+          {mayhemHud.stars > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[15px] tracking-tight">
+                <span className="text-amber-300 drop-shadow-[0_0_6px_rgba(252,211,77,0.8)]">{"★".repeat(mayhemHud.stars)}</span>
+                <span className="text-muted-foreground/30">{"★".repeat(5 - mayhemHud.stars)}</span>
+              </span>
+            </div>
+          )}
+          {mayhemHud.stars > 0 && (
+            <span className="text-rose-300 font-heading font-semibold">
+              {mayhemHud.cops > 0 ? `🚓 ${mayhemHud.cops} on your tail` : "🚨 Police on the way"}
+            </span>
+          )}
+          {mayhemHud.gun && (
+            <span className="text-foreground/90">
+              {GUNS[mayhemHud.gun].emoji} {GUNS[mayhemHud.gun].label}
+              <span className="text-muted-foreground"> · {isTouch ? "hold FIRE" : "R fire · G switch"}</span>
+            </span>
+          )}
+        </div>
+      )}
+      {entered && isTouch && mayhemHud.gun && !rebelHud?.active && (
+        <button
+          onPointerDown={(e) => {
+            touchFireRef.current = true;
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+          }}
+          onPointerUp={() => {
+            touchFireRef.current = false;
+          }}
+          onPointerCancel={() => {
+            touchFireRef.current = false;
+          }}
+          className="fixed bottom-48 right-5 z-30 w-16 h-16 rounded-full bg-amber-500/90 text-white font-heading font-bold text-xs shadow-[0_0_24px_rgba(245,158,11,0.5)] active:scale-90 transition-transform select-none touch-none"
+        >
+          FIRE
+        </button>
       )}
 
       {/* Rebel Defense battle HUD + FIRE button + hit vignette. */}
