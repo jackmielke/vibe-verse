@@ -532,7 +532,13 @@ export default function City() {
   const [mountKind, setMountKind] = useState<MountKind | null>(null);
   const activeMountRef = useRef<MountKind | null>(null);
   const mountActionRef = useRef<((kind: MountKind | null) => void) | null>(null);
-  const [nearMounts, setNearMounts] = useState(() => new URLSearchParams(window.location.search).get("spawn") === "island");
+  /**
+   * The mount you are standing next to (or on), if any. Riding one works like
+   * getting into a car: walk up, press F or tap the one prompt. It used to be
+   * a pair of "Ride" buttons shown anywhere within 100 m of the island, which
+   * on a phone sat on top of the joystick.
+   */
+  const [nearMount, setNearMount] = useState<"pegasus" | "dragon" | null>(null);
   const [skyTagOn, setSkyTagOn] = useState(false);
   const skyTagRef = useRef(false);
   const diveMountRef = useRef(false);
@@ -2129,6 +2135,12 @@ export default function City() {
     scene.add(pegasus.group);
     const dragon = buildPegasus(new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), "dragon");
     dragon.pose = { x: ISLAND_X + 12, y: ISLAND_TOP + 2.5, z: ISLAND_Z + 8, yaw: Math.PI, bank: 0, flap: false };
+    // Pegasus waits on the ground too, across from the dragon. It used to
+    // circle 28 m overhead, which is pretty and means the only way on was a
+    // "Ride Pegasus" button that sat on screen all the time. On the ground
+    // you walk up to it and press F (or tap the prompt), like a car.
+    const PEGASUS_REST = { x: ISLAND_X - 12, y: ISLAND_TOP + 2.5, z: ISLAND_Z + 8, yaw: Math.PI, bank: 0, flap: false };
+    pegasus.pose = { ...PEGASUS_REST };
     scene.add(dragon.group);
     let mountFlight: FlightState | null = null;
 
@@ -4236,6 +4248,12 @@ export default function City() {
        * the beach through it meant a 120 m drop, and a 120 m drop is fall
        * damage, a respawn, and a screenshot of the plaza.
        */
+      // Where the rideable animals are, so a script can walk up to one and
+      // press F the way a player does, instead of calling the mount directly.
+      (window as unknown as Record<string, unknown>).__cityMounts = () => ({
+        pegasus: pegasus.body.position.toArray(),
+        dragon: dragon.body.position.toArray(),
+      });
       (window as unknown as Record<string, unknown>).__cityWarp = (
         x: number,
         y: number,
@@ -4924,7 +4942,7 @@ export default function City() {
       if (kind === null) {
         activeMountRef.current = null; setMountKind(null);
         mountFlight = null; skyTagRef.current = false; setSkyTagOn(false);
-        pegasus.pose = null;
+        pegasus.pose = { ...PEGASUS_REST };
         dragon.pose = { x: ISLAND_X+12, y: ISLAND_TOP+2.5, z: ISLAND_Z+8, yaw: Math.PI, bank: 0, flap: false };
         vel.set(0, 0, 0);
         player.position.set(ISLAND_X+8, ISLAND_TOP+0.1, ISLAND_Z+6);
@@ -5179,7 +5197,13 @@ export default function City() {
       setMarsGame((g) => (g.onMars === onMarsNow ? g : { ...g, onMars: onMarsNow }));
 
 
-      setNearMounts(Math.hypot(player.position.x-ISLAND_X,player.position.z-ISLAND_Z)<100 && player.position.y>ISLAND_TOP-10);
+      // Same reach as the F key, so the prompt and the key always agree.
+      setNearMount(
+        activeMountRef.current || drivingKartRef.current >= 0 ? null
+          : player.position.distanceTo(pegasus.body.position) < 7 ? "pegasus"
+          : player.position.distanceTo(dragon.body.position) < 7 ? "dragon"
+          : null,
+      );
       if (skyTagRef.current) {
         const sky=mp.skyState();
         setSkyStatus(!sky.online ? "Connecting…" : sky.players<2 ? "Waiting for another rider" : sky.self ? "You're IT — chase the other rider!" : `${sky.name ?? "Your friend"} is IT — fly away!`);
@@ -9276,7 +9300,7 @@ export default function City() {
       )}
 
       {nearNews && !duelTarget && !chatTarget && !isLive && (
-        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2">
+        <div className={`absolute ${isTouch ? "bottom-[15.5rem] landscape:bottom-6" : "bottom-24"} left-1/2 z-30 -translate-x-1/2`}>
           <a
             href="/times"
             className="glass-panel block rounded-full px-4 py-2 text-sm text-primary whitespace-nowrap shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
@@ -9288,7 +9312,7 @@ export default function City() {
       )}
 
       {nearStudio && !duelTarget && !chatTarget && !isLive && (
-        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2">
+        <div className={`absolute ${isTouch ? "bottom-[15.5rem] landscape:bottom-6" : "bottom-24"} left-1/2 z-30 -translate-x-1/2`}>
           <a
             href="https://vibe-ventures-studio.lovable.app/?from=vibeverse"
             target="_blank"
@@ -9302,7 +9326,7 @@ export default function City() {
       )}
 
       {nearGraffiti && !duelTarget && !chatTarget && !isLive && !IOS_APP && (
-        <div className="absolute bottom-24 left-1/2 z-30 w-[min(92vw,26rem)] -translate-x-1/2">
+        <div className={`absolute ${isTouch ? "bottom-[15.5rem] landscape:bottom-6" : "bottom-24"} left-1/2 z-30 w-[min(92vw,26rem)] -translate-x-1/2`}>
           <form
             className="glass-panel flex items-center gap-2 rounded-full px-3 py-2"
             onSubmit={(e) => {
@@ -9697,25 +9721,44 @@ export default function City() {
       {/* Bottom-center action stack: context buttons appear as you
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
-          {(mountKind || nearMounts) && drivingKart < 0 && (
-            <div className="glass-panel rounded-lg px-3 py-2 flex flex-wrap justify-center items-center gap-2 w-[min(36rem,calc(100vw-2rem))]">
-              {!mountKind ? <>
-                <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={(e) => { mountActionRef.current?.("pegasus");e.currentTarget.blur(); }}>🦄 Ride Pegasus</Button>
-                <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={(e) => { mountActionRef.current?.("dragon");e.currentTarget.blur(); }}>🐉 Ride dragon</Button>
-              </> : <>
+        /*
+         * On a touchscreen the joystick (bottom-left) and the jump button
+         * (bottom-right) live at this same height, and a full-width panel of
+         * ride buttons sat squarely on top of the stick, so you could not
+         * steer a mount at all. Portrait: lift the whole stack above them.
+         * Landscape: keep it low but only as wide as the gap between them.
+         */
+        <div
+          data-testid="action-stack"
+          className={`absolute left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 ${
+            isTouch ? "bottom-[15.5rem] landscape:bottom-6 landscape:max-w-[calc(100vw-22rem)]" : "bottom-24"
+          }`}
+        >
+          {!mountKind && nearMount && drivingKart < 0 && (
+            <button
+              onClick={(e) => { mountActionRef.current?.(nearMount); e.currentTarget.blur(); }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
+            >
+              {nearMount === "dragon" ? "🐉 Ride the dragon" : "🦄 Ride Pegasus"}{isTouch ? "" : " (F)"}
+            </button>
+          )}
+          {mountKind && drivingKart < 0 && (
+            <div className={`glass-panel rounded-lg px-3 py-2 flex flex-wrap justify-center items-center gap-2 ${
+              isTouch ? "gap-1 px-2 w-[min(36rem,calc(100vw-2rem))] landscape:w-[calc(100vw-22rem)]" : "w-[min(36rem,calc(100vw-2rem))]"
+            }`}>
+              <>
                 <span className="text-xs text-primary">{mountKind === "dragon" ? "🐉 Dragon" : "🦄 Pegasus"}</span>
-                <Button size="sm" variant="ghost" className="text-primary touch-none" aria-label="Flap wings" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);touchJetRef.current=true;}} onPointerUp={()=>{touchJetRef.current=false;}} onPointerCancel={()=>{touchJetRef.current=false;}}>Flap{isTouch ? "" : " · Space"}</Button>
+                {!isTouch && <Button size="sm" variant="ghost" className="text-primary touch-none" aria-label="Flap wings" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);touchJetRef.current=true;}} onPointerUp={()=>{touchJetRef.current=false;}} onPointerCancel={()=>{touchJetRef.current=false;}}>Flap{isTouch ? "" : " · Space"}</Button>}
                 <Button size="sm" variant="ghost" className="text-primary touch-none" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);diveMountRef.current=true;}} onPointerUp={()=>{diveMountRef.current=false;}} onPointerCancel={()=>{diveMountRef.current=false;}}>Dive{isTouch ? "" : " · C"}</Button>
                 <Button size="sm" variant={skyTagOn ? "default" : "ghost"} onClick={(e)=>{skyTagRef.current=!skyTagRef.current;setSkyTagOn(skyTagRef.current);e.currentTarget.blur();}}>{skyTagOn ? "Stop sky tag" : "Play sky tag"}</Button>
                 <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={async()=>{const url=new URL(window.location.href);url.searchParams.set("spawn","island");url.searchParams.delete("net");try {await navigator.clipboard.writeText(url.toString());toast("Riding link copied");} catch {toast("Share this page's address with your friend");}}}>Invite</Button>
                 <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={(e)=>{mountActionRef.current?.(null);e.currentTarget.blur();}}>Land & hop off</Button>
                 {skyTagOn && <span className="basis-full text-center text-xs text-primary">{skyStatus}</span>}
-              </>}
+              </>
             </div>
           )}
           {drivingKart >= 0 && (
-            <div className="flex items-center gap-2 animate-fade-in">
+            <div className="flex flex-wrap justify-center items-center gap-2 animate-fade-in">
               <span
                 className="glass-panel rounded-full px-3 py-2 text-xs flex items-center gap-2"
                 title="Vehicle health. At zero it explodes."
@@ -9733,9 +9776,9 @@ export default function City() {
                 </span>
                 <span className="tabular-nums text-muted-foreground w-7 text-right">{Math.max(0, driveHp)}</span>
               </span>
-              <span className="glass-panel rounded-full px-4 py-2 text-xs text-muted-foreground">
-                {isTouch ? "joystick = drive + steer" : VEHICLE_SLOTS[drivingKart] === "comet" ? "W/S drive · A/D steer · Shift afterburner" : "W/S drive · A/D steer · Shift boost"}
-              </span>
+              {!isTouch && <span className="glass-panel rounded-full px-4 py-2 text-xs text-muted-foreground">
+                {VEHICLE_SLOTS[drivingKart] === "comet" ? "W/S drive · A/D steer · Shift afterburner" : "W/S drive · A/D steer · Shift boost"}
+              </span>}
               <button
                 onClick={(e) => {
                   exitKartRef.current?.();
@@ -10375,7 +10418,9 @@ export default function City() {
       )}
 
       {/* Controls hint, fades in once you enter. */}
-      {entered && !isLive && (
+      {/* Keyboard hints mean nothing on a touchscreen, and a landscape phone is
+          wide enough for `sm:` to show them right under the ride buttons. */}
+      {entered && !isLive && !isTouch && (
         <div className="absolute bottom-4 right-4 glass-panel rounded-2xl px-4 py-3 text-[11px] text-muted-foreground pointer-events-none hidden sm:block">
           WASD move · Shift run · <span className="text-primary">Space hold = jetpack</span> ·{" "}
           <span className="text-primary">T dance</span> · drag look · pinch / scroll zoom

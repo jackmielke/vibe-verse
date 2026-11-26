@@ -140,11 +140,13 @@ describe("getting in and out", () => {
     // Getting in used to be a small button that appears when you walk near a
     // car, and getting out was that button or Space — which is also the
     // jetpack, so leaving a kart and firing your jetpack were one keystroke.
-    expect(citySrc).toMatch(/if \(e\.code === "KeyF"\) \{/);
-    const f = citySrc.slice(citySrc.indexOf('if (e.code === "KeyF")'));
-    expect(f.slice(0, 400)).toContain("exitKartRef");
-    expect(f.slice(0, 400)).toContain("enterKartRef");
-    expect(f.slice(0, 400)).toContain("enterRideRef");
+    expect(citySrc).toMatch(/if \(e\.code === "KeyF"(?: && !e\.repeat)?\) \{/);
+    const f = citySrc.slice(citySrc.indexOf('if (e.code === "KeyF"')).slice(0, 800);
+    expect(f).toContain("exitKartRef");
+    expect(f).toContain("enterKartRef");
+    expect(f).toContain("enterRideRef");
+    // The same key gets you on and off Pegasus or the dragon.
+    expect(f).toContain("mountActionRef");
   });
 
   it("reads what is in reach from live values, not from React state", () => {
