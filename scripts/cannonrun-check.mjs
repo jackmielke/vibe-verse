@@ -133,8 +133,8 @@ if (which === "backup") {
   await a.shot("04-civilian");
   await a.c("level", 5, 18);
   await a.c("run", 40);
-  await a.shot("05-cement");
-  console.log("cement", (await a.st()).ride);
+  await a.shot("05-train");
+  console.log("train", (await a.st()).ride);
 }
 
 if (which === "duo") {
@@ -176,7 +176,8 @@ if (which === "net") {
   const both = async (n) => { for (let k = 0; k < n; k++) { await H.c("run", 4); await Gu.c("run", 4); await host.waitForTimeout(20); } };
   await both(50);
   console.log("host", brief(await H.st()));
-  console.log("guest", brief(await Gu.st()));
+  console.log("guest", brief(await Gu.st()), "linda on guest", JSON.stringify((await Gu.st()).linda), "on host", JSON.stringify((await H.st()).linda));
+  if (!(await Gu.st()).linda) problems.push("the guest has no Linda");
   await Gu.c("key", "d", true); await both(15); await Gu.c("key", "d", false);
   const hs = await H.st();
   const gs = await Gu.st();

@@ -256,11 +256,11 @@ export interface Mort {
  * overalls over a vest, a belly that has seen a lot of diners, a red face,
  * a stubble beard and a green trucker cap. About 1.95 m tall.
  */
-export function buildMort(): Mort {
+export function buildMort(linda = false): Mort {
   const root = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color: 0xe07a5a, roughness: 0.7, emissive: 0x5a1a08 });
-  const denim = new THREE.MeshStandardMaterial({ color: 0x35507a, roughness: 0.8 });
-  const vest = new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.85 });
+  const skin = new THREE.MeshStandardMaterial({ color: linda ? 0xe89a78 : 0xe07a5a, roughness: 0.7, emissive: 0x5a1a08 });
+  const denim = new THREE.MeshStandardMaterial({ color: linda ? 0xc23a8a : 0x35507a, roughness: 0.8 });
+  const vest = new THREE.MeshStandardMaterial({ color: linda ? 0x8a3ad8 : 0xe8e2d4, roughness: 0.85 });
   const boot = new THREE.MeshStandardMaterial({ color: 0x3a2418, roughness: 0.8 });
   const cap = new THREE.MeshStandardMaterial({ color: 0x2b5a2a, roughness: 0.8 });
   const stubble = new THREE.MeshStandardMaterial({ color: 0x5a3a2a, roughness: 1 });
@@ -303,9 +303,23 @@ export function buildMort(): Mort {
   head.position.set(0, 1.8, 0);
   root.add(head);
   head.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 18, 14), skin));
+  if (linda) {
+    // Lunatic Linda: wild orange hair going every way, a pink headband, red lips
+    const hair = new THREE.MeshStandardMaterial({ color: 0xe0601e, roughness: 0.9 });
+    const puffs: [number, number, number, number][] = [[0, 0.16, -0.04, 0.2], [0.17, 0.1, -0.04, 0.15], [-0.17, 0.1, -0.04, 0.15], [0.22, -0.06, -0.06, 0.13], [-0.22, -0.06, -0.06, 0.13], [0, 0.02, -0.18, 0.2], [0.12, 0.24, 0.02, 0.11], [-0.13, 0.25, 0.0, 0.12], [0.26, 0.16, -0.12, 0.1], [-0.27, 0.15, -0.12, 0.1]];
+    for (const [x, y, z, rr] of puffs) {
+      const h = new THREE.Mesh(new THREE.SphereGeometry(rr, 10, 8), hair);
+      h.position.set(x, y, z);
+      head.add(h);
+    }
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.025, 6, 20), new THREE.MeshStandardMaterial({ color: 0xff4fb0, roughness: 0.6 }));
+    band.rotation.x = Math.PI / 2 - 0.35;
+    band.position.set(0, 0.1, 0.01);
+    head.add(band);
+  }
   const beard = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), stubble);
   beard.position.set(0, -0.02, 0.02);
-  head.add(beard);
+  if (!linda) head.add(beard);
   const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), skin);
   nose.position.set(0, -0.01, 0.2);
   head.add(nose);
@@ -322,12 +336,14 @@ export function buildMort(): Mort {
     head.add(brow);
     brows.push(brow);
   }
-  const mouth = box(0.12, 0.035, 0.04, 0, -0.085, 0.18, black);
+  const mouth = box(0.12, 0.035, 0.04, 0, -0.085, 0.18, linda ? new THREE.MeshBasicMaterial({ color: 0xc0102a }) : black);
   head.add(mouth);
-  head.add(box(0.42, 0.05, 0.46, 0, 0.17, 0.08, cap)); // brim
-  const crown = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), cap);
-  crown.position.y = 0.12;
-  head.add(crown);
+  if (!linda) {
+    head.add(box(0.42, 0.05, 0.46, 0, 0.17, 0.08, cap)); // brim
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), cap);
+    crown.position.y = 0.12;
+    head.add(crown);
+  }
   const hands = new THREE.Group();
   hands.position.set(0, 1.12, 0.42);
   root.add(hands);
@@ -437,7 +453,7 @@ export interface Foe {
   root: THREE.Group;
   body: THREE.Group;
   mort: Mort;
-  wheels: THREE.Mesh[];
+  wheels: THREE.Object3D[];
   paint: THREE.MeshStandardMaterial;
   len: number;
   wid: number;
@@ -445,29 +461,38 @@ export interface Foe {
   lamps: THREE.Vector3[];
   /** his driver's door, in the vehicle's own frame */
   door: THREE.Vector3;
-  /** the cement truck's mixing drum, which turns */
-  drum: THREE.Group | null;
+  /** moving parts beyond the wheels (the train's side rods), given the wheel angle */
+  anim: ((wheelAngle: number) => void) | null;
+  /** the top of a smokestack, if this ride has one, in the vehicle's own frame */
+  stack: THREE.Vector3 | null;
   /** where henchmen climb out, in the vehicle's own frame */
   hatch: THREE.Vector3;
 }
 
 export const RIDES = [
-  { name: "the station wagon", color: 0x8a5a2b, len: 4.8, wid: 1.9, tall: 1.75, hp: 4 },
-  { name: "the tow truck", color: 0xd6a42a, len: 5.6, wid: 2.1, tall: 2.0, hp: 6 },
-  { name: "the monster pickup", color: 0xb52a22, len: 5.4, wid: 2.5, tall: 2.6, hp: 8 },
-  { name: "the big rig", color: 0x3c4552, len: 7.0, wid: 2.5, tall: 3.2, hp: 11 },
-  { name: "the cement truck", color: 0xd8d6cf, len: 8.0, wid: 2.5, tall: 3.3, hp: 14 },
-];
+  { kind: "wagon", name: "the station wagon", color: 0x8a5a2b, len: 4.8, wid: 1.9, tall: 1.75, hp: 4 },
+  { kind: "tow", name: "the tow truck", color: 0xd6a42a, len: 5.6, wid: 2.1, tall: 2.0, hp: 6 },
+  { kind: "monster", name: "the monster pickup", color: 0xb52a22, len: 5.4, wid: 2.5, tall: 2.6, hp: 8 },
+  { kind: "cement", name: "the cement truck", color: 0xd8d6cf, len: 8.0, wid: 2.5, tall: 3.3, hp: 11 },
+  { kind: "rig", name: "the 18-wheeler", color: 0x3c4552, len: 12.0, wid: 2.5, tall: 3.2, hp: 14 },
+  { kind: "train", name: "the locomotive", color: 0x1c1d20, len: 10.0, wid: 2.6, tall: 3.6, hp: 18 },
+] as const;
+export type RideKind = (typeof RIDES)[number]["kind"];
+export const rideAt = (level: number) => RIDES[Math.min(level - 1, RIDES.length - 1)];
+
 
 /** Mort and whatever he is driving tonight. Built facing +z, so his grille faces you. */
-export function buildFoe(level: number): Foe {
-  const spec = RIDES[Math.min(level - 1, RIDES.length - 1)];
+export function buildFoe(level: number, linda = false): Foe {
+  const spec = rideAt(level);
+  const kind: RideKind = spec.kind;
   const { len, wid, tall } = spec;
-  const lift = level === 3 ? 0.7 : 0;
+  const lift = kind === "monster" ? 0.7 : 0;
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const paint = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.55, metalness: 0.3 });
+  // Linda drives the same rides in her own colours
+  const LINDA = [0x6a3d8f, 0x2f8f6a, 0xd2449a, 0x8fd4e0, 0x7a2fa8, 0x3a1f4a];
+  const paint = new THREE.MeshStandardMaterial({ color: linda ? LINDA[RIDES.indexOf(spec)] : spec.color, roughness: 0.55, metalness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.85 });
   const chrome = new THREE.MeshStandardMaterial({ color: 0xbfc3c8, roughness: 0.3, metalness: 0.9 });
   const glass = new THREE.MeshStandardMaterial({ color: 0x1a2630, roughness: 0.15, metalness: 0.4, transparent: true, opacity: 0.45 });
@@ -477,8 +502,8 @@ export function buildFoe(level: number): Foe {
   const lower = tall * 0.45;
   const base = 0.35 + lift;
   body.add(box(wid, lower, len, 0, base + lower / 2, 0, paint));
-  const cabLen = level === 1 ? len * 0.62 : Math.min(2.2, len * 0.38);
-  const cabZ = level === 1 ? -0.1 : len / 2 - cabLen / 2 - 0.9;
+  const cabLen = kind === "wagon" ? len * 0.62 : Math.min(2.2, len * 0.38);
+  const cabZ = kind === "wagon" ? -0.1 : len / 2 - cabLen / 2 - 0.9;
   const cabH = tall * 0.5;
   const cabY = base + lower + cabH / 2;
   const cw = wid * 0.92;
@@ -490,35 +515,47 @@ export function buildFoe(level: number): Foe {
   }
   body.add(box(cw * 0.95, 0.2, 0.5, 0, cabY - cabH / 2 + 0.25, cabZ + cabLen / 2 - 0.3, dark));
   body.add(box(wid * 0.84, cabH * 0.78, 0.05, 0, cabY + 0.02, cabZ + cabLen / 2 + 0.01, glass));
-  body.add(box(wid * 0.9, 0.5, 0.08, 0, base + lower * 0.55, len / 2 + 0.02, chrome));
-  for (const sx of [-0.35, 0.35]) body.add(box(0.09, lower * 1.05, 0.09, sx * wid, base + lower * 0.5, len / 2 + 0.32, chrome));
-  body.add(box(wid * 0.85, 0.1, 0.1, 0, base + lower * 0.95, len / 2 + 0.32, chrome));
-  body.add(box(wid * 0.85, 0.1, 0.1, 0, base + lower * 0.3, len / 2 + 0.32, chrome));
-  if (level === 2) {
+  const train = kind === "train";
+  if (!train) {
+    body.add(box(wid * 0.9, 0.5, 0.08, 0, base + lower * 0.55, len / 2 + 0.02, chrome));
+    for (const sx of [-0.35, 0.35]) body.add(box(0.09, lower * 1.05, 0.09, sx * wid, base + lower * 0.5, len / 2 + 0.32, chrome));
+    body.add(box(wid * 0.85, 0.1, 0.1, 0, base + lower * 0.95, len / 2 + 0.32, chrome));
+    body.add(box(wid * 0.85, 0.1, 0.1, 0, base + lower * 0.3, len / 2 + 0.32, chrome));
+  }
+  if (kind === "tow") {
     const boom = box(0.25, 0.25, 2.4, 0, base + lower + 0.9, -len / 2 + 1.1, dark);
     boom.rotation.x = 0.35;
     body.add(boom);
     body.add(box(wid * 0.6, 0.18, 0.4, 0, base + lower + 0.1 + cabH, cabZ, new THREE.MeshBasicMaterial({ color: 0xff9a1a })));
   }
-  if (level === 4) {
+  if (kind === "rig") {
+    // the trailer: a long box van, taller than the cab, behind a gap
+    const tLen = len - cabLen - 2.2;
+    body.add(box(wid, tall + 0.6 - base, tLen, 0, base + (tall + 0.6 - base) / 2 + 0.25, -len / 2 + tLen / 2, new THREE.MeshStandardMaterial({ color: linda ? 0xe8d8f0 : 0xe6e6e2, roughness: 0.7 })));
+    for (const sx of [-1, 1]) body.add(box(0.03, 0.35, tLen - 0.4, sx * (wid / 2 + 0.01), base + 1.4, -len / 2 + tLen / 2, paint));
+  }
+  if (kind === "rig") {
     for (const sx of [-1, 1]) {
       const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.2, 10), chrome);
       stack.position.set(sx * (wid / 2 + 0.05), base + lower + 1.0, cabZ - cabLen / 2 - 0.1);
       body.add(stack);
     }
   }
-  let drum: THREE.Group | null = null;
-  if (level >= 5) {
-    // a striped mixing drum on its cradle, tipped up toward the cab
+  let anim: Foe["anim"] = null;
+  let stack: THREE.Vector3 | null = null;
+  const red = new THREE.MeshStandardMaterial({ color: 0xc0281e, roughness: 0.5, metalness: 0.3, emissive: 0x4a0a06 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xc8963a, roughness: 0.35, metalness: 0.85 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x8d939a, roughness: 0.35, metalness: 0.9 });
+  if (kind === "cement") {
     const rear = len - cabLen - 1.2;
-    drum = new THREE.Group();
+    const drum = new THREE.Group();
     drum.position.set(0, base + lower + 0.95, -len / 2 + rear / 2 + 0.2);
     drum.rotation.x = -0.12;
     body.add(drum);
     const geo = new THREE.CylinderGeometry(0.75, 1.15, rear, 20, 1);
     geo.rotateX(Math.PI / 2);
     const stripes = canvasTex(64, 256, (c) => {
-      for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? "#e8e4da" : "#d8622a"; c.fillRect(0, i * 32, 64, 32); }
+      for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? "#e8e4da" : linda ? "#8a3ad8" : "#d8622a"; c.fillRect(0, i * 32, 64, 32); }
     });
     stripes.wrapS = THREE.RepeatWrapping;
     drum.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.6, metalness: 0.2 })));
@@ -528,6 +565,73 @@ export function buildFoe(level: number): Foe {
     drum.add(cap);
     for (const sx of [-1, 1]) body.add(box(0.15, 0.9, 0.3, sx * 0.8, base + lower + 0.35, -len / 2 + 0.8, dark));
     body.add(box(0.5, 0.4, 0.9, 0, base + lower + 0.3, -len / 2 - 0.1, dark)); // the chute
+    anim = (a) => { drum.rotation.z = a * 0.25; };
+  }
+  if (train) {
+    // A steam locomotive driven cab first (the old cab-forward kind), so Mort is
+    // still at the front glaring at you, with the boiler running back behind him.
+    const boilR = 0.95;
+    const boilFront = cabZ - cabLen / 2;
+    const boilBack = -len / 2 + 0.4;
+    const boilLen = boilFront - boilBack;
+    const boilY = base + lower + boilR * 0.9;
+    const bg = new THREE.CylinderGeometry(boilR, boilR, boilLen, 22);
+    bg.rotateX(Math.PI / 2);
+    const boiler = new THREE.Mesh(bg, paint);
+    boiler.position.set(0, boilY, boilBack + boilLen / 2);
+    body.add(boiler);
+    for (let i = 0; i < 4; i++) {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(boilR + 0.02, 0.04, 6, 24), brass);
+      band.position.set(0, boilY, boilBack + 0.3 + (i * (boilLen - 0.6)) / 3);
+      body.add(band);
+    }
+    const smoke = new THREE.Mesh(new THREE.CylinderGeometry(boilR + 0.05, boilR + 0.05, 0.3, 22), dark);
+    smoke.rotation.x = Math.PI / 2;
+    smoke.position.set(0, boilY, boilBack);
+    body.add(smoke);
+    // the stack right behind the cab, tall enough to stand over its roof, flared at the top
+    const stZ = boilFront - 0.9;
+    const stY = boilY + boilR;
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.24, 1.5, 16), dark);
+    st.position.set(0, stY + 0.75, stZ);
+    body.add(st);
+    const flare = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.32, 0.45, 16), dark);
+    flare.position.set(0, stY + 1.7, stZ);
+    body.add(flare);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.05, 6, 20), brass);
+    lip.rotation.x = Math.PI / 2;
+    lip.position.set(0, stY + 1.92, stZ);
+    body.add(lip);
+    stack = new THREE.Vector3(0, stY + 2.0, stZ);
+    // steam dome and bell
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), brass);
+    dome.position.set(0, stY - 0.05, boilBack + boilLen * 0.45);
+    body.add(dome);
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.26, 0.4, 14, 1, true), brass);
+    bell.position.set(0, stY + 0.2, boilBack + boilLen * 0.2);
+    body.add(bell);
+    // a big round headlamp on the cab roof
+    const hl = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.55, 18), dark);
+    hl.rotation.x = Math.PI / 2;
+    hl.position.set(0, cabY + cabH / 2 + 0.35, cabZ + cabLen / 2 - 0.25);
+    body.add(hl);
+    const hlFace = new THREE.Mesh(new THREE.CircleGeometry(0.28, 20), lamp);
+    hlFace.position.set(0, cabY + cabH / 2 + 0.35, cabZ + cabLen / 2 + 0.03);
+    body.add(hlFace);
+    // a red stripe down each side, and a red buffer beam across the front
+    for (const sx of [-1, 1]) body.add(box(0.04, 0.22, len - 0.4, sx * (wid / 2 + 0.02), base + lower * 0.7, 0, red));
+    body.add(box(wid, 0.4, 0.25, 0, base + 0.15, len / 2 + 0.05, red));
+    // the cowcatcher: slats raked forward to a point at road level
+    for (let i = 0; i < 9; i++) {
+      const x = (i / 8 - 0.5) * (wid - 0.2);
+      const reach = (1 - Math.abs(x) / (wid / 2)) * 1.0 + 0.2;
+      const slat = box(0.08, 0.06, Math.hypot(reach, 0.75), x, 0, 0, red);
+      slat.position.set(x, base - 0.05, len / 2 + 0.15 + reach / 2);
+      slat.rotation.x = Math.atan2(0.75, reach);
+      body.add(slat);
+    }
+    body.add(box(wid - 0.1, 0.08, 0.1, 0, base + 0.3, len / 2 + 0.2, red));
+    
   }
   const lamps: THREE.Vector3[] = [];
   for (const sx of [-1, 1]) {
@@ -537,18 +641,77 @@ export function buildFoe(level: number): Foe {
     body.add(l);
     lamps.push(p);
   }
-  const wheels: THREE.Mesh[] = [];
-  const r = level === 3 ? 0.95 : 0.42 + tall * 0.06;
-  for (const sx of [-1, 1]) for (const sz of [len * 0.32, -len * 0.32]) {
-    const w = wheel(r, level === 3 ? 0.6 : 0.3, tyreM);
-    w.position.set(sx * (wid / 2 - (level === 3 ? -0.1 : 0.05)), r, sz);
+  const wheels: THREE.Object3D[] = [];
+  if (train) {
+    // Real driving wheels: red, spoked, three a side, coupled by side rods. On the road.
+    const R0 = 1.0;
+    const crank = 0.36;
+    const zs = [len * 0.24, len * 0.06, -len * 0.12];
+    const rods: THREE.Mesh[] = [];
+    const rodRest: THREE.Vector3[] = [];
+    for (const sx of [-1, 1]) {
+      const x = sx * (wid / 2 + 0.12);
+      for (const z of zs) {
+        const w = new THREE.Group();
+        w.position.set(x, R0, z);
+        const tyre = new THREE.Mesh(new THREE.TorusGeometry(R0 - 0.06, 0.08, 8, 28), steel);
+        tyre.rotation.y = Math.PI / 2;
+        w.add(tyre);
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(R0 - 0.16, 0.05, 6, 24), red);
+        rim.rotation.y = Math.PI / 2;
+        w.add(rim);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.24, 12), red);
+        hub.rotation.z = Math.PI / 2;
+        w.add(hub);
+        for (let k = 0; k < 10; k++) {
+          const sp = box(0.06, R0 * 1.62, 0.07, 0, 0, 0, red);
+          sp.rotation.x = (k / 10) * Math.PI;
+          w.add(sp);
+        }
+        // a counterweight opposite the crank, as real ones have
+        const cw = box(0.1, 0.22, 0.5, 0, -R0 * 0.5, 0, red);
+        w.add(cw);
+        const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.2, 8), steel);
+        pin.rotation.z = Math.PI / 2;
+        pin.position.set(sx * 0.12, crank, 0);
+        w.add(pin);
+        root.add(w);
+        wheels.push(w);
+      }
+      const span = zs[0] - zs[2];
+      const rod = box(0.07, 0.14, span + 0.35, 0, 0, 0, steel);
+      const rest = new THREE.Vector3(x + sx * 0.2, R0, (zs[0] + zs[2]) / 2);
+      rod.position.copy(rest);
+      root.add(rod);
+      rods.push(rod);
+      rodRest.push(rest);
+    }
+    // a little leading wheel each side, under the cowcatcher end
+    for (const sx of [-1, 1]) {
+      const w = wheel(0.42, 0.22, tyreM);
+      w.position.set(sx * (wid / 2 - 0.3), 0.42, len * 0.36);
+      root.add(w);
+      wheels.push(w);
+    }
+    anim = (a) => {
+      for (let i = 0; i < rods.length; i++) {
+        rods[i].position.set(rodRest[i].x, rodRest[i].y + crank * Math.cos(a), rodRest[i].z + crank * Math.sin(a));
+      }
+    };
+  }
+  const r = kind === "monster" ? 0.95 : 0.42 + tall * 0.06;
+  // eighteen for the 18-wheeler: a steer axle, then four axles of duals
+  const axles = kind === "rig" ? [len / 2 - 1.3, len / 2 - 3.2, len / 2 - 4.4, -len / 2 + 2.4, -len / 2 + 1.2] : [len * 0.32, -len * 0.32];
+  if (!train) for (const sx of [-1, 1]) for (const [ai, sz] of axles.entries()) for (const dual of kind === "rig" && ai > 0 ? [0, 1] : [0]) {
+    const w = wheel(r, kind === "monster" ? 0.6 : 0.3, tyreM);
+    w.position.set(sx * (wid / 2 - (kind === "monster" ? -0.1 : 0.05) - dual * 0.34), r, sz);
     root.add(w);
     wheels.push(w);
   }
 
   // Mort, sitting on the driver's side (+x when facing +z): hips on the seat,
   // legs folded out of sight under the dash, upper body scaled to the cab.
-  const mort = buildMort();
+  const mort = buildMort(linda);
   const seatY = base + lower - 0.2;
   const room = cabY + cabH / 2 - 0.1 - seatY;
   const sc = clampN(room / 1.15, 0.7, 1.35);
@@ -564,7 +727,7 @@ export function buildFoe(level: number): Foe {
   body.add(mort.root);
   const door = new THREE.Vector3(wid / 2 + 0.6, 0, cabZ);
   const hatch = new THREE.Vector3(-wid / 2 - 0.4, 0, cabZ);
-  return { root, body, mort, wheels, paint, len, wid, tall: tall + lift, lamps, door, drum, hatch };
+  return { root, body, mort, wheels, paint, len, wid, tall: tall + lift, lamps, door, anim, stack, hatch };
 }
 
 const clampN = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
