@@ -24,6 +24,7 @@ import {
   type BuildMode,
   type BuildScope,
 } from "./api";
+import { dictationSupported, say, useDictation } from "./voice";
 
 const STATUS_LABEL: Record<Build["status"], string> = {
   queued: "Queued",
@@ -95,6 +96,11 @@ export default function BuildModePanel({
   const [shippedSinceOpen, setShippedSinceOpen] = useState(false);
   const seenShipped = useRef<Set<string> | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  /** Seconds left before a spoken request sends itself; null when idle. */
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const spoken = useRef<string | null>(null);
+  const usedVoice = useRef(false);
+  const canListen = dictationSupported();
 
   const refresh = useCallback(async () => {
     try {
@@ -102,7 +108,11 @@ export default function BuildModePanel({
       setBuilds(builds);
       const shipped = new Set(builds.filter((b) => b.status === "shipped").map((b) => b.id));
       if (seenShipped.current === null) seenShipped.current = shipped;
-      else if ([...shipped].some((id) => !seenShipped.current!.has(id))) setShippedSinceOpen(true);
+      else if ([...shipped].some((id) => !seenShipped.current!.has(id))) {
+        setShippedSinceOpen(true);
+        if (usedVoice.current) say("Your change is live. Reload to see it.");
+      }
+      seenShipped.current = new Set([...(seenShipped.current ?? []), ...shipped]);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -122,8 +132,8 @@ export default function BuildModePanel({
     return () => window.clearInterval(t);
   }, [anyLive, refresh]);
 
-  const send = async () => {
-    const text = prompt.trim();
+  const send = async (override?: string) => {
+    const text = (override ?? prompt).trim();
     if (text.length < 3 || sending) return;
     setSending(true);
     setError(null);
@@ -142,6 +152,40 @@ export default function BuildModePanel({
     } finally {
       setSending(false);
     }
+  };
+
+  const dictation = useDictation((text) => {
+    usedVoice.current = true;
+    spoken.current = text;
+    setPrompt(text);
+    say(`Got it. ${text}. Building it now.`);
+    setCountdown(4);
+  });
+
+  // While you talk, the box shows what it has heard so far.
+  useEffect(() => {
+    if (dictation.listening && dictation.interim) setPrompt(dictation.interim);
+  }, [dictation.listening, dictation.interim]);
+
+  // A spoken request sends itself after a short beat, so you can still say no.
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      setCountdown(null);
+      const text = spoken.current;
+      spoken.current = null;
+      if (text) void send(text);
+      return;
+    }
+    const t = window.setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown]);
+
+  const cancelSpoken = () => {
+    setCountdown(null);
+    spoken.current = null;
+    say("Okay, not building that.");
   };
 
   const act = async (b: Build, what: "ship" | "discard") => {
@@ -192,6 +236,7 @@ export default function BuildModePanel({
             Not switched on yet: the GitHub token for build mode has not been added.
           </div>
         )}
+        <div className="relative">
         <textarea
           ref={textRef}
           value={prompt}
@@ -207,8 +252,32 @@ export default function BuildModePanel({
           rows={4}
           maxLength={4000}
           placeholder="Make the zipline twice as fast, and put a lighthouse on the east edge."
-          className="w-full resize-none rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-white/40 focus:outline-none"
+          className="w-full resize-none rounded-md border border-white/15 bg-black/40 px-3 py-2 pr-11 text-sm text-white placeholder:text-white/30 focus:border-white/40 focus:outline-none"
         />
+        {canListen && (
+          <button
+            type="button"
+            onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
+            aria-label={dictation.listening ? "Stop listening" : "Say what to build"}
+            title={dictation.listening ? "Stop listening" : "Say what to build"}
+            className={`absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full text-sm ${
+              dictation.listening ? "animate-pulse bg-rose-500 text-white" : "bg-white/10 text-white/80 hover:bg-white/20"
+            }`}
+          >
+            🎙️
+          </button>
+        )}
+        </div>
+        {dictation.listening && <div className="text-[11px] text-rose-200">Listening. Say what you want on the island.</div>}
+        {dictation.error && <div className="text-[11px] text-amber-200">{dictation.error}</div>}
+        {countdown !== null && (
+          <div className="flex items-center justify-between rounded-md bg-white/10 px-3 py-2 text-xs">
+            <span>Building this in {countdown}…</span>
+            <button type="button" onClick={cancelSpoken} className="font-semibold underline">
+              Cancel
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex rounded-md border border-white/15 p-0.5 text-xs" role="radiogroup" aria-label="Speed">
@@ -255,7 +324,7 @@ export default function BuildModePanel({
           {ship
             ? "Lands on main once typecheck and build pass, then the site redeploys."
             : "Waits on its own branch until you press Ship it."}{" "}
-          Ctrl/Cmd+Enter sends.
+          {canListen ? "Tap the mic and just say it, or Ctrl/Cmd+Enter to send." : "Ctrl/Cmd+Enter sends."}
         </p>
         {error && <div className="rounded-md bg-rose-500/15 px-3 py-2 text-xs text-rose-100">{error}</div>}
         {shippedSinceOpen && (
