@@ -62,7 +62,7 @@ export const ENTRIES: WhatsNewEntry[] = [
     date: "2026-11-26",
     emoji: "🔫",
     title: "Vibe Arms: buy weapons with Vibey Coins",
-    body: "A new stall on the Vibe City plaza, and the Vibe Shop on the island, sell a Super Soaker that slows cops and cars to a crawl, the Glock 19, a Nova Blaster that fires like crazy, and packs of pineapple bombs that stick to whatever they hit. Buy once, never run out. G switches guns, X throws a pineapple.",
+    body: "A new stall on the Vibe City plaza, and the Vibe Shop on the island, sell a Super Soaker that slows cops and cars to a crawl, the Glock 19, a Nova Blaster that fires like crazy, and packs of pineapple bombs that stick to whatever they hit. Buy once, never run out. Every gun you own sits on a weapon bar at the side of the screen: tap one to draw it (or press 1 to 4), tap FIRE or hold R to shoot, and X or the 🍍 button throws a pineapple.",
     tag: "new",
     route: "/city",
     world: "Vibe City",

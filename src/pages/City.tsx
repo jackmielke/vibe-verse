@@ -88,7 +88,10 @@ import { createSnowCover } from "@/city/snowCover";
 import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
 import { createCrashFx } from "@/city/crashFx";
-import { createMayhem, GUNS, type Mayhem, type MayhemHud } from "@/city/mayhem";
+import { createMayhem, GUNS, type GunKind, type Mayhem, type MayhemHud } from "@/city/mayhem";
+
+/** The weapon bar's order, and what the 1 to 4 keys count along. */
+const GUN_SLOTS: readonly GunKind[] = ["glock", "water", "blaster", "rifle"];
 import { buildHideouts } from "@/city/hideouts";
 import { createBodyguards, squadEnabled, type Bodyguards } from "@/city/bodyguards";
 import { SquadPanel } from "@/components/city/SquadPanel";
@@ -608,6 +611,8 @@ export default function City() {
     stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bads: 0, bombs: null, atStall: false,
   });
   const mayhemCycleRef = useRef<(() => void) | null>(null);
+  /** What the number keys see: the guns you own and the one in hand. */
+  const mayhemSlotsRef = useRef<{ owned: GunKind[]; gun: GunKind | null }>({ owned: [], gun: null });
   const mayhemRef = useRef<Mayhem | null>(null);
   const touchThrowRef = useRef(false);
   /** Opened from the Vibe Arms stall in town: the shop opens on its weapons. */
@@ -3993,6 +3998,14 @@ export default function City() {
         mayhemCycleRef.current?.();
         return;
       }
+      if (/^Digit[1-4]$/.test(e.code) && !e.repeat) {
+        const { owned, gun } = mayhemSlotsRef.current;
+        const pick = GUN_SLOTS.filter((k) => owned.includes(k))[Number(e.code.slice(5)) - 1];
+        if (pick) {
+          mayhemRef.current?.select(pick === gun ? null : pick);
+          return;
+        }
+      }
       if (e.code === "KeyE" && !e.repeat && atHideout) {
         badSummonRef.current?.();
         return;
@@ -4707,7 +4720,10 @@ export default function City() {
           description: left > 0 ? `${left} still on the loose.` : "That was the last one. Summon another from the hideout roof.",
         });
       },
-      onHud: (h) => setMayhemHud(h),
+      onHud: (h) => {
+        mayhemSlotsRef.current = { owned: h.owned, gun: h.gun };
+        setMayhemHud(h);
+      },
       onPickup: (kind) => {
         soundsRef.current?.fanfare?.();
         toast(`${GUNS[kind].emoji} You found the ${GUNS[kind].label}`, {
@@ -10111,7 +10127,7 @@ export default function City() {
           {mayhemHud.gun && (
             <span className="text-foreground/90">
               {GUNS[mayhemHud.gun].emoji} {GUNS[mayhemHud.gun].label}
-              <span className="text-muted-foreground"> · {isTouch ? "hold FIRE" : "R or Q fire · G switch"}</span>
+              <span className="text-muted-foreground"> · {isTouch ? "hold FIRE · tap a gun to switch" : "R or Q fire · 1 to 4 or G switch"}</span>
             </span>
           )}
           {mayhemHud.bombs !== null && (
@@ -10121,6 +10137,41 @@ export default function City() {
               <span className="text-muted-foreground"> · {isTouch ? "tap 🍍" : "X throw"}</span>
             </span>
           )}
+        </div>
+      )}
+      {/* The weapon bar: one button per gun you own, so a gun you just bought
+          is one tap away on a phone (there is no G key there). Tapping the gun
+          in your hand puts it away. On a keyboard 1 to 4 do the same. */}
+      {entered && !gameHud && !rebelHud?.active && mayhemHud.owned.length > 0 && (
+        <div
+          className={`fixed z-30 flex gap-1.5 select-none ${
+            isTouch ? "bottom-48 right-[5.75rem] flex-row" : "right-4 top-1/2 -translate-y-1/2 flex-col"
+          }`}
+          role="toolbar"
+          aria-label="Weapons"
+        >
+          {GUN_SLOTS.filter((k) => mayhemHud.owned.includes(k)).map((k, i) => {
+            const active = mayhemHud.gun === k;
+            return (
+              <button
+                key={k}
+                onClick={() => mayhemRef.current?.select(active ? null : k)}
+                aria-pressed={active}
+                aria-label={active ? `Put away the ${GUNS[k].label}` : `Draw the ${GUNS[k].label}`}
+                title={GUNS[k].label}
+                className={`relative grid h-12 w-12 place-items-center rounded-xl text-2xl transition-transform active:scale-90 touch-manipulation ${
+                  active
+                    ? "bg-amber-400/90 shadow-[0_0_18px_rgba(251,191,36,0.6)] ring-2 ring-white/80"
+                    : "glass-panel opacity-80 hover:opacity-100"
+                }`}
+              >
+                <span className="leading-none">{GUNS[k].emoji}</span>
+                {!isTouch && (
+                  <span className="absolute bottom-0.5 right-1 font-heading text-[9px] font-bold text-white/80">{i + 1}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
       {entered && isTouch && mayhemHud.gun && !rebelHud?.active && (

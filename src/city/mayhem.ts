@@ -199,6 +199,11 @@ export interface Mayhem {
   /** G: holster, then each owned gun, round again. */
   cycle(): void;
   /**
+   * Put this gun in your hand (null holsters). Ignored for a gun you do not
+   * own. This is what the weapon bar's buttons and the 1 to 4 keys call.
+   */
+  select(kind: GunKind | null): void;
+  /**
    * What the wardrobe says you have bought: `weapon:<id>` ids without the
    * prefix. Called whenever the inventory changes. A gun that is no longer
    * owned (a refund, a different account) is taken out of your hand.
@@ -763,6 +768,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   };
   let gun: GunKind | null = owned.has("rifle") ? "rifle" : null;
   let hasBombs = false;
+  /** False until the first setBought, so what you already own at load is not "new". */
+  let boughtSeen = false;
   let bombsInHand = BOMB_PACK;
   let regrow = 0;
   let throwCool = 0;
@@ -2106,11 +2113,24 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       gun = kind;
       hud();
     },
+    select(kind) {
+      if (kind !== null && !owned.has(kind)) return;
+      gun = kind;
+      hud();
+    },
     setBought(ids) {
+      // A gun that turns up here for the first time after the start (you just
+      // bought it) goes straight into your hand: a purchase you then have to
+      // find a key for reads as a purchase that did not work.
+      let fresh: GunKind | null = null;
       for (const k of BOUGHT_GUNS) {
-        if (ids.includes(k)) owned.add(k);
-        else owned.delete(k);
+        if (ids.includes(k)) {
+          if (!owned.has(k) && boughtSeen) fresh = k;
+          owned.add(k);
+        } else owned.delete(k);
       }
+      boughtSeen = true;
+      if (fresh) gun = fresh;
       if (gun && !owned.has(gun)) gun = null;
       const had = hasBombs;
       hasBombs = ids.includes("pineapple");
