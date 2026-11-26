@@ -10,7 +10,7 @@
 # run's status back from the GitHub API, so the only secret here is the one
 # the agent itself needs:
 #   CLAUDE_CODE_OAUTH_TOKEN  (from `claude setup-token`, uses a Claude plan)
-#   or ANTHROPIC_API_KEY     (pay as you go)
+#   or ANTHROPIC_API_KEY     (pay as you go; wins when both are set)
 
 name: Build mode
 run-name: "build ${{ inputs.build_id }}"
@@ -120,6 +120,9 @@ jobs:
             ANTHROPIC_API_KEY="$(printf '%s' "$ANTHROPIC_API_KEY" | tr -d '[:space:]')"
             export ANTHROPIC_API_KEY
           fi
+          # An API key, when there is one, is what pays: it bills the console's
+          # prepaid credits instead of the Claude plan's usage limits.
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then unset CLAUDE_CODE_OAUTH_TOKEN; fi
           if [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
             echo "::error::Build mode needs CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in the repo's Actions secrets."
             exit 1
@@ -142,8 +145,9 @@ jobs:
             echo "- Ignore the parts of CLAUDE.md about pushing to main, smoke tests and browsers; there is no browser here."
             echo "- Before you finish, run npm run typecheck and fix every error you caused."
             echo "- Never print, read or write secrets or .env files."
-            echo "- Your final message is the commit message: a first line under 70 characters saying what changed,"
-            echo "  a blank line, then two or three plain sentences. No em dashes."
+            echo "- Last of all, write the commit message to the file $RUNNER_TEMP/commit-message.txt (outside the repo):"
+            echo "  a first line under 70 characters saying what changed, a blank line, then two or three plain"
+            echo "  sentences a player would understand. No markdown, no em dashes."
           } > "$RULES"
 
           ASK="$RUNNER_TEMP/ask.txt"
@@ -165,7 +169,11 @@ jobs:
               cat "$RUNNER_TEMP/claude.json" | head -c 4000 || true
               exit 1
             }
-          jq -r '.result // ""' "$RUNNER_TEMP/claude.json" > "$RUNNER_TEMP/message.txt"
+          if [ -s "$RUNNER_TEMP/commit-message.txt" ]; then
+            cp "$RUNNER_TEMP/commit-message.txt" "$RUNNER_TEMP/message.txt"
+          else
+            jq -r '.result // ""' "$RUNNER_TEMP/claude.json" > "$RUNNER_TEMP/message.txt"
+          fi
           echo "--- agent summary ---"; cat "$RUNNER_TEMP/message.txt"
 
       - name: Stay inside the fence
