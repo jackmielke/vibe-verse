@@ -10,7 +10,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { WorldBox } from "@/components/city/cardboardIsland";
 
-export type LandmarkKey = "needle" | "empire" | "eiffel";
+export type LandmarkKey = "needle" | "empire" | "eiffel" | "park" | "marina";
 
 /** Something the player can walk up to and press E at. */
 export interface Station {
@@ -26,6 +26,8 @@ export interface Station {
   height?: number;
   /** Return false to hide the prompt right now (a car that is away). */
   available?: () => boolean;
+  /** Reachable while swimming (the boat, from the water). */
+  swim?: boolean;
   act(): void;
 }
 

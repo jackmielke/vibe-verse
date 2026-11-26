@@ -24,6 +24,10 @@
  *    eyepiece, zoomed, and dragging looks around. Each set is pointed at one
  *    of the other landmarks.
  *  - stand on the Loupe at the top of the Needle, which turns.
+ *  - kick the ball about on the soccer pitch at Vibe Commons, the park on
+ *    the west side (`park.ts`).
+ *  - take the speedboat out from Vibe Marina, off the west beach
+ *    (`marina.ts`): E at the boat, W/S throttle, A/D steer, E to step off.
  *
  * ## How the player is moved
  *
@@ -38,6 +42,8 @@ import type { Elevator, LandmarkKey, Station, Viewer } from "./common";
 import { buildEmpireState } from "./empireState";
 import { buildSpaceNeedle } from "./spaceNeedle";
 import { buildEiffel } from "./eiffel";
+import { buildPark } from "./park";
+import { buildMarina } from "./marina";
 
 export type { LandmarkKey } from "./common";
 
@@ -49,12 +55,17 @@ export const LANDMARK_RESERVE: Array<{ gx: number; gz: number; ground: "park" | 
   { gx: 5, gz: 6, ground: "park", trees: true },
   { gx: 4, gz: 7, ground: "park", trees: true },
   { gx: 5, gz: 7, ground: "park", trees: true },
+  { gx: 1, gz: 6, ground: "park", trees: false }, // Vibe Commons: soccer pitch
+  { gx: 2, gz: 6, ground: "park", trees: false }, // Vibe Commons: gardens
 ];
+
+/** Where the marina's pier meets the west coast road. */
+const MARINA_Z = 60;
 
 export interface LandmarkUi {
   prompt: { emoji: string; label: string } | null;
   /** Up an elevator: which landmark, and how high you are. */
-  ride: { name: string; altitude: number; up: boolean } | null;
+  ride: { name: string; altitude: number; up: boolean; readout?: string } | null;
   /** The Empire State's express elevator, which the HUD draws. */
   express: { up: boolean; progress: number } | null;
   viewing: boolean;
@@ -83,7 +94,15 @@ export interface Landmarks {
    * Advance everything. Returns where the player's feet must be this frame,
    * or null to leave them to physics.
    */
-  update(dt: number, now: number, ctx: { player: THREE.Vector3; grounded: boolean; busy: boolean }): THREE.Vector3 | null;
+  update(
+    dt: number,
+    now: number,
+    ctx: { player: THREE.Vector3; grounded: boolean; busy: boolean; swimming?: boolean; throttle?: number; steer?: number },
+  ): THREE.Vector3 | null;
+  /** At the helm: the chase-camera yaw to ease toward, so the view follows the bow. */
+  followYaw(): number | null;
+  /** Locked to a ride of some kind (an elevator, the boat, the binoculars). */
+  holding(): boolean;
   /** E pressed. Returns true if it did something. */
   act(): boolean;
   ui(): LandmarkUi;
@@ -99,13 +118,16 @@ export interface Landmarks {
   devSites(): unknown[];
   /** Dev: hold the camera on a scripted shot (null to release). */
   devShot(shot: { eye: number[]; look: number[]; fov?: number } | null): void;
+  /** Dev: the soccer ball. */
+  devBall(kick?: [number, number, number, number]): { ball: number[]; score: [number, number] };
   dispose(): void;
 }
 
 type Ride =
   | { kind: "lift"; e: Elevator; key: LandmarkKey; name: string; up: boolean }
   | { kind: "express"; up: boolean; t: number; dur: number; hold: THREE.Vector3; exit: THREE.Vector3 }
-  | { kind: "view"; v: Viewer; hold: THREE.Vector3; yaw0: number | null; pitch0: number };
+  | { kind: "view"; v: Viewer; hold: THREE.Vector3; yaw0: number | null; pitch0: number }
+  | { kind: "boat" };
 
 export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDetail: boolean }): Landmarks {
   const { boxes, pitch } = opts;
@@ -136,7 +158,9 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
     lowDetail: opts.lowDetail,
     lookAt: [ang(EF, ES), ang(EF, SN), Math.PI / 2],
   });
-  group.add(empire.group, needle.group, eiffel.group);
+  const park = buildPark({ boxes, pitchAt: { x: cell(1), z: cell(6) }, gardenAt: { x: cell(2), z: cell(6) }, lowDetail: opts.lowDetail });
+  const marina = buildMarina({ boxes, z: MARINA_Z, lowDetail: opts.lowDetail });
+  group.add(empire.group, needle.group, eiffel.group, park.group, marina.group);
 
   const listeners: Array<(e: LandmarkEvent) => void> = [];
   const emit = (e: LandmarkEvent) => listeners.forEach((l) => l(e));
@@ -147,6 +171,9 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
   let devShot: { eye: THREE.Vector3; look: THREE.Vector3; fov: number } | null = null;
   const player = new THREE.Vector3();
   let busy = false;
+  let swimming = false;
+  let throttle = 0;
+  let steer = 0;
 
   // ---- Elevators -----------------------------------------------------------
   type Lift = { e: Elevator; key: LandmarkKey; name: string; up: string; down: string; arriveTop?: () => LandmarkEvent; arriveBottom?: () => LandmarkEvent };
@@ -275,11 +302,35 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
     stations.push(v.station);
   }
 
+  // The speedboat: board it from a pier or out of the water.
+  const boat = marina.boat;
+  const boatSpot = new THREE.Vector3();
+  stations.push({
+    id: "marina-boat",
+    label: "Take the speedboat out",
+    emoji: "🚤",
+    pos: boatSpot,
+    radius: 3.4,
+    height: 2.6,
+    swim: true,
+    available: () => !ride,
+    act() {
+      ride = { kind: "boat" };
+      emit({
+        type: "depart",
+        key: "marina",
+        title: "🚤 Vibe Runner",
+        description: "W and S for the throttle, A and D to steer. Press E beside a pier to tie up and step off.",
+      });
+    },
+  });
+  const boatLanding = () => marina.landing(boat.x, boat.z, 4.5);
+
   const nearest = (): Station | null => {
-    if (busy) return null;
     let best: Station | null = null;
     let bestD = Infinity;
     for (const s of stations) {
+      if (busy && !(swimming && s.swim)) continue;
       const dy = player.y - s.pos.y;
       if (dy < -0.8 || dy > (s.height ?? 2.5)) continue;
       const d = Math.hypot(player.x - s.pos.x, player.z - s.pos.z);
@@ -331,11 +382,35 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
         deck: eiffel.central.exits[1].clone(),
         aliases: ["eiffel", "eiffel tower", "tour eiffel", "paris"],
       },
+      {
+        key: "park",
+        name: "Vibe Commons",
+        entrance: park.pitch.clone(),
+        deck: park.garden.clone(),
+        aliases: ["park", "vibe commons", "soccer", "soccer field", "football", "garden", "fountain"],
+      },
+      {
+        key: "marina",
+        name: "Vibe Marina",
+        entrance: marina.entrance.clone(),
+        deck: new THREE.Vector3(-236, 1.5, MARINA_Z + 4),
+        aliases: ["marina", "boat", "speedboat", "pier", "harbour", "harbor", "docks"],
+      },
     ],
     update(dt, now, ctx) {
       player.copy(ctx.player);
       busy = ctx.busy;
+      swimming = !!ctx.swimming;
+      throttle = ctx.throttle ?? 0;
+      steer = ctx.steer ?? 0;
       for (const l of lifts) l.e.update(dt);
+      marina.update(dt, now, ride?.kind === "boat" ? { throttle, steer } : null);
+      boatSpot.set(boat.x, boat.seat.y - 0.9, boat.z);
+      const kick = park.update(dt, now, ctx.player, busy || !!ride);
+      if (kick.goal) {
+        const [h, a] = park.score();
+        emit({ type: "arrive", key: "park", title: "⚽ GOAL!", description: `Vibe Commons FC: Home ${h}, Away ${a}` });
+      }
       empire.update(dt, now, player);
       eiffel.update(dt, now);
       // The Loupe turns whoever is on it, unless they are locked to something.
@@ -348,6 +423,7 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
       }
       if (!ride) return null;
       if (ride.kind === "lift") return ride.e.floor;
+      if (ride.kind === "boat") return boat.seat;
       if (ride.kind === "express") {
         ride.t += dt;
         if (ride.t >= ride.dur) {
@@ -375,6 +451,21 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
         exitView();
         return true;
       }
+      if (ride?.kind === "boat") {
+        const land = boatLanding();
+        if (land) {
+          release = land;
+          boat.speed = 0;
+        } else {
+          // Over the side, into the water next to the boat.
+          const sx = Math.cos(boat.yaw) * 2.2;
+          const sz = -Math.sin(boat.yaw) * 2.2;
+          release = new THREE.Vector3(boat.x + sx, boat.seat.y - 0.6, boat.z + sz);
+        }
+        ride = null;
+        emit({ type: "arrive", key: "marina" });
+        return true;
+      }
       if (ride) return false;
       const s = nearest();
       if (!s) return false;
@@ -384,11 +475,31 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
     ui() {
       const s = ride ? null : nearest();
       return {
-        prompt: ride?.kind === "view" ? { emoji: "👣", label: "Step back" } : s ? { emoji: s.emoji, label: s.label } : null,
-        ride: ride?.kind === "lift" ? { name: ride.name, altitude: altitude(), up: ride.up } : null,
+        prompt:
+          ride?.kind === "view"
+            ? { emoji: "👣", label: "Step back" }
+            : ride?.kind === "boat"
+              ? boatLanding()
+                ? { emoji: "⚓", label: "Tie up and step onto the pier" }
+                : { emoji: "🌊", label: "Jump overboard" }
+              : s
+                ? { emoji: s.emoji, label: s.label }
+                : null,
+        ride:
+          ride?.kind === "lift"
+            ? { name: ride.name, altitude: altitude(), up: ride.up }
+            : ride?.kind === "boat"
+              ? { name: "Vibe Runner", altitude: 0, up: boat.speed >= 0, readout: `${Math.round(Math.abs(boat.speed) * 1.94)} kn` }
+              : null,
         express: ride?.kind === "express" ? { up: ride.up, progress: Math.min(1, ride.t / ride.dur) } : null,
         viewing: ride?.kind === "view",
       };
+    },
+    followYaw() {
+      return ride?.kind === "boat" ? boat.yaw + Math.PI : null;
+    },
+    holding() {
+      return !!ride;
     },
     indoors(p) {
       return empire.indoors(p) || eiffel.indoors(p);
@@ -411,11 +522,12 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
       empire.setNight(!day);
       needle.setNight(!day);
       eiffel.setNight(!day);
+      marina.setNight(!day);
     },
     onEvent(cb) {
       listeners.push(cb);
     },
-    snowMaterials: [...empire.roofs, ...needle.roofs, ...eiffel.roofs],
+    snowMaterials: [...empire.roofs, ...needle.roofs, ...eiffel.roofs, ...marina.roofs],
     devSites() {
       const v = (p: THREE.Vector3) => [p.x, p.y, p.z];
       return [
@@ -445,7 +557,27 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
           eye: [EF.x - 105, 18, EF.z - 115],
           look: [EF.x, 55, EF.z],
         },
+        {
+          key: "park",
+          pitch: v(park.pitch),
+          garden: v(park.garden),
+          ball: park.ball(),
+          eye: [cell(1) + 22, 62, cell(6) + 48],
+          look: [cell(1) + 20, 0, cell(6) + 2],
+        },
+        {
+          key: "marina",
+          entrance: v(marina.entrance),
+          boat: [boat.x, boat.seat.y, boat.z],
+          finger: [-235.9, 1.6, MARINA_Z + 6],
+          eye: [-200, 22, MARINA_Z + 45],
+          look: [-238, 0, MARINA_Z],
+        },
       ];
+    },
+    devBall(k) {
+      if (k) park.kick(...k);
+      return { ball: park.ball(), score: park.score() };
     },
     devShot(shot) {
       devShot = shot
@@ -456,6 +588,8 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
       empire.dispose();
       needle.dispose();
       eiffel.dispose();
+      park.dispose();
+      marina.dispose();
       listeners.length = 0;
     },
   };
