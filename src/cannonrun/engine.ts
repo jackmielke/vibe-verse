@@ -26,7 +26,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { HALF, LANE, LAT_MAX, G, MUZZLE, RELOAD, heading, V, toWorld, toRoad, clamp, lerp, hash } from "./road";
 import {
   canvasTex, roadTexture, sandTexture, glowTexture, puffTexture, box,
-  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, rideAt, buildHench, henchKit, buildAutoGun,
+  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, rideAt, THEME, buildHench, henchKit, buildAutoGun,
   type Truck, type Foe, type Hench,
 } from "./models";
 import type { Transport, Upgrades, Wire, Snap, Input } from "./net";
@@ -97,6 +97,8 @@ export interface Opts {
   onEnd?: (cash: number, score: number) => void;
   /** northern lights over the desert instead of a plain moonlit sky */
   aurora?: boolean;
+  /** pumpkins for cannonballs, pies and drumsticks, pilgrim hats, a harvest moon */
+  thanksgiving?: boolean;
 }
 
 const NO_UPGRADES: Upgrades = { armor: 0, loader: 0, nitro: 0, auto: 0, punch: 0, engine: 0 };
@@ -158,12 +160,17 @@ const L_TAUNTS = [
 ];
 const L_OUCH = ["My HAIR!", "RUDE!", "That's my good bumper!", "Oh, you did NOT!", "Mort, they shot me!"];
 const L_COMEBACK = ["Linda's getting a bigger one!", "Mort, help!", "I'll be back, sugar!"];
+const T_TAUNTS = [
+  "That cannon was for carving the TURKEY!", "Grandma's gravy is getting COLD!", "You're STUFFED, pal!",
+  "Happy Thanksgiving, THIEF!", "I'm not thankful for YOU!", "Pass the cannon, not the potatoes!",
+];
+const T_L_TAUNTS = ["Gobble gobble, sweetie!", "Linda brought PIE, honey!", "I'll baste you like a turkey!", "Save me a drumstick, darling!"];
 const COMMENTS: Record<number, string> = {
   2: "He's back. In a tow truck.",
   3: "Oh no. Monster pickup.",
   4: "A cement truck. Of course it's a cement truck.",
   5: "Now it's an 18-wheeler.",
-  6: "He's lost it. He's driving a TRAIN.",
+  6: "He's driving a train!",
 };
 const BURNT = new THREE.Color(0x1c1714);
 
@@ -173,6 +180,10 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const params = new URLSearchParams(window.location.search);
   const automated = navigator.webdriver || params.has("shot");
   const mode: Mode = opts.mode ?? "solo";
+  const thanks = opts.thanksgiving ?? params.has("thanksgiving");
+  THEME.thanksgiving = thanks;
+  const TAUNT_LIST = thanks ? [...TAUNTS, ...T_TAUNTS, ...T_TAUNTS] : TAUNTS;
+  const L_TAUNT_LIST = thanks ? [...L_TAUNTS, ...T_L_TAUNTS, ...T_L_TAUNTS] : L_TAUNTS;
   const net = mode === "host" || mode === "guest" ? opts.net ?? null : null;
   const isGuest = mode === "guest";
   const two = mode !== "solo";
@@ -254,6 +265,13 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   scene.add(moon);
   const moonDisc = new THREE.Mesh(new THREE.CircleGeometry(14, 32), new THREE.MeshBasicMaterial({ color: 0xf4f1e4, fog: false }));
   scene.add(moonDisc);
+  if (thanks) {
+    // a big orange harvest moon
+    (moonDisc.material as THREE.MeshBasicMaterial).color.set(0xffa64a);
+    moonDisc.scale.setScalar(1.8);
+    moon.material.color.set(0xffb070);
+    moon.scale.setScalar(190);
+  }
 
   /* ------------------------------------------------------------ aurora */
   // Three curtains of light right round the sky, each a ring of tall strips.
@@ -577,21 +595,48 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
 
   /* ------------------------------------------------------------ projectiles and puffs */
   const ballGeo = new THREE.SphereGeometry(0.19, 14, 10);
-  const ballMat = new THREE.MeshStandardMaterial({ color: 0x18191b, roughness: 0.35, metalness: 0.8 });
+  if (thanks) {
+    // a little pumpkin: squashed, ribbed
+    const p = ballGeo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const rib = 1 + 0.08 * Math.cos(Math.atan2(z, x) * 8);
+      p.setXYZ(i, x * rib * 1.15, y * 0.8, z * rib * 1.15);
+    }
+    ballGeo.computeVertexNormals();
+  }
+  const ballMat = thanks ? new THREE.MeshStandardMaterial({ color: 0xf07a1a, roughness: 0.6, emissive: 0x3a1400 }) : new THREE.MeshStandardMaterial({ color: 0x18191b, roughness: 0.35, metalness: 0.8 });
+  const stemGeo = new THREE.CylinderGeometry(0.025, 0.035, 0.09, 6);
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x4a6a1a, roughness: 0.8 });
   const balls: Ball[] = [];
   for (let k = 0; k < 14; k++) {
     const mesh = new THREE.Mesh(ballGeo, ballMat);
+    if (thanks) { const st = new THREE.Mesh(stemGeo, stemMat); st.position.y = 0.17; mesh.add(st); }
     mesh.visible = false;
     scene.add(mesh);
     balls.push({ s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, bounces: 0, mesh, live: false, trail: 0, rider: 0, dmg: 1 });
   }
-  const tyreGeo = new THREE.TorusGeometry(0.42, 0.18, 10, 20);
-  const canGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12);
-  const thrownMatA = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
-  const thrownMatB = new THREE.MeshStandardMaterial({ color: 0xb8392e, roughness: 0.5, metalness: 0.4 });
+  // tyres and cans, or on Thanksgiving a giant drumstick and a pumpkin pie
+  const tyreGeo = thanks ? new THREE.SphereGeometry(0.42, 14, 10).scale(1, 0.85, 1.5) : new THREE.TorusGeometry(0.42, 0.18, 10, 20);
+  const canGeo = thanks ? new THREE.CylinderGeometry(0.55, 0.45, 0.22, 20) : new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12);
+  const thrownMatA = thanks ? new THREE.MeshStandardMaterial({ color: 0xa8521e, roughness: 0.5 }) : new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+  const thrownMatB = thanks ? new THREE.MeshStandardMaterial({ color: 0xd8a060, roughness: 0.8 }) : new THREE.MeshStandardMaterial({ color: 0xb8392e, roughness: 0.5, metalness: 0.4 });
   const thrown: Thrown[] = [];
   for (let k = 0; k < 6; k++) {
     const mesh = new THREE.Mesh(k % 2 ? canGeo : tyreGeo, k % 2 ? thrownMatB : thrownMatA);
+    if (thanks && k % 2 === 0) {
+      const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.6, 8), new THREE.MeshStandardMaterial({ color: 0xf4ecd8, roughness: 0.6 }));
+      bone.rotation.x = Math.PI / 2;
+      bone.position.z = 0.8;
+      mesh.add(bone);
+    } else if (thanks) {
+      const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.47, 0.05, 20), new THREE.MeshStandardMaterial({ color: 0xd86a1a, roughness: 0.6 }));
+      fill.position.y = 0.1;
+      mesh.add(fill);
+      const cream = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), new THREE.MeshStandardMaterial({ color: 0xfffaf0, roughness: 0.7 }));
+      cream.position.y = 0.16;
+      mesh.add(cream);
+    }
     mesh.visible = false;
     scene.add(mesh);
     thrown.push({ s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, spin: 0, mesh, live: false, targetLat: 0, passed: false, kind: k % 2, rider: 0, car: null });
@@ -1523,11 +1568,11 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         spawnFoe(en.level + 1, 220);
         emit(rideAt(en.level).kind === "train" ? "whistle" : "horn", en.s, en.lat, 1);
         if (cur.linda) {
-          say(rideAt(en.level).kind === "train" ? "LINDA'S GOT A TRAIN TOO!" : `Linda's back. In ${rideAt(en.level).name.replace(/^the /, "a ")}.`, 2.8);
-          shout(L_TAUNTS[Math.floor(Math.random() * L_TAUNTS.length)], 2.5);
+          say(rideAt(en.level).kind === "train" ? "She's driving a train!" : `Linda's back. In ${rideAt(en.level).name.replace(/^the /, "a ")}.`, 2.8);
+          shout(L_TAUNT_LIST[Math.floor(Math.random() * L_TAUNT_LIST.length)], 2.5);
         } else {
           say(COMMENTS[en.level] ?? `Level ${en.level}. He just keeps coming.`, 2.8);
-          shout(TAUNTS[Math.floor(Math.random() * TAUNTS.length)], 2.5);
+          shout(TAUNT_LIST[Math.floor(Math.random() * TAUNT_LIST.length)], 2.5);
         }
       }
     } else {
@@ -1645,7 +1690,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         }
       }
       tauntT -= dt;
-      if (tauntT <= 0 && talkT <= 0) { const tl = cur.linda ? L_TAUNTS : TAUNTS; tauntT = 4 + Math.random() * 4; shout(tl[Math.floor(Math.random() * tl.length)]); }
+      if (tauntT <= 0 && talkT <= 0) { const tl = cur.linda ? L_TAUNT_LIST : TAUNT_LIST; tauntT = 4 + Math.random() * 4; shout(tl[Math.floor(Math.random() * tl.length)]); }
     }
     };
     for (const c of chasers) { use(c); stepChaser(); }
@@ -2324,6 +2369,11 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     m.brows[0].position.y = m.brows[1].position.y = 0.105;
     m.mouth.scale.x = quiet ? 0.9 : 1.35;
     m.mouth.scale.y = talk && !quiet ? 1.2 + Math.abs(Math.sin(time * 18)) * 0.7 : 0.8;
+    if (cur.linda) {
+      // she never opens it: she grinds, jaw sliding side to side
+      m.mouth.scale.set(1.25, 1.6, 1);
+      m.mouth.position.x = quiet ? 0 : Math.sin(time * 34) * 0.012;
+    }
     foe.paint.emissive.setRGB(en.rage * 0.35, 0, 0);
     const lit = en.wreck === 0;
     if (cur.linda) return; // the two big headlight beams are his
@@ -2608,6 +2658,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     },
     /** call his backup now */
     backup: () => { backupT = 0; },
+    /** put Linda this far behind the truck she is after, optionally in a given ride */
+    lindaAt: (g: number, level = 0) => { if (!linda) return; use(linda); if (level) spawnFoe(level, g); en.s = target().s - g; use(mort); },
     hench: () => henchmen.filter((h) => h.state >= 0).map((h) => ({ state: h.state, ds: +(h.s - riders[h.rider].s).toFixed(1), lat: +h.lat.toFixed(1) })),
     /** put a civilian just ahead of Mort and have him throw at it */
     throwAtCar: () => {

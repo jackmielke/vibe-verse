@@ -42,6 +42,17 @@ export default function CannonRun() {
   });
   const auroraRef = useRef(aurora);
   auroraRef.current = aurora;
+  // Thanksgiving dress-up: on by itself in Thanksgiving week, unless switched off
+  const [thanks, setThanks] = useState<boolean>(() => {
+    if (new URLSearchParams(window.location.search).has("thanksgiving")) return true;
+    let saved: string | null = null;
+    try { saved = localStorage.getItem("cannonrun.thanks"); } catch { /* private window */ }
+    if (saved) return saved === "on";
+    const d = new Date();
+    return d.getMonth() === 10 && d.getDate() >= 20;
+  });
+  const thanksRef = useRef(thanks);
+  thanksRef.current = thanks;
   const [muted, setMuted] = useState(false);
   const [bank, setBank] = useState(() => readBank());
   const [earned, setEarned] = useState<number | null>(null);
@@ -131,6 +142,7 @@ export default function CannonRun() {
             upgrades: readBank().up,
             guestUpgrades: guestUpRef.current,
             aurora: auroraRef.current,
+            thanksgiving: thanksRef.current,
             onHud: setHud,
             onReady: () => setScreen("playing"),
             onEnd: (cash) => {
@@ -162,8 +174,8 @@ export default function CannonRun() {
   }, []);
 
   const onStick = useCallback((x: number, y: number) => gameRef.current?.setStick(x, y), []);
-  // Every run from the menu opens with the comic (skippable); a guest or a host whose friend just joined goes straight in.
-  const start = (m: Mode): void => { setMode(m); setEarned(null); setScreen("comic"); };
+  // The comic is not part of the game (Jack wants it all 3D); it lives at ?comic (solo) and ?comic=duo, for the trailer.
+  const start = (m: Mode): void => { setMode(m); setEarned(null); setScreen("loading"); };
   const again = (): void => { setEarned(null); gameRef.current?.restart(); };
   const buy = (key: keyof Upgrades): void => {
     const b = readBank();
@@ -308,7 +320,7 @@ export default function CannonRun() {
         </>
       ) : null}
 
-      {screen === "comic" ? <Comic phone={phone} onDone={() => setScreen("loading")} /> : null}
+      {screen === "comic" ? <Comic phone={phone} two={params.get("comic") === "duo"} onDone={() => setScreen("splash")} /> : null}
 
       {screen === "splash" ? (
         <Backdrop>
@@ -337,6 +349,12 @@ export default function CannonRun() {
               onClick={() => { const v = !aurora; setAurora(v); try { localStorage.setItem("cannonrun.sky", v ? "aurora" : "moon"); } catch { /* private window */ } }}
             >
               {aurora ? "✦ Aurora sky: on" : "✦ Aurora sky: off"}
+            </button>
+            <button
+              className={`w-64 rounded-full px-6 py-2 text-[13px] font-semibold ring-1 ${thanks ? "bg-[#8a3a12] ring-[#ffa64a]/60 text-[#ffe2c0]" : "bg-white/5 ring-white/15 text-white/70"}`}
+              onClick={() => { const v = !thanks; setThanks(v); try { localStorage.setItem("cannonrun.thanks", v ? "on" : "off"); } catch { /* private window */ } }}
+            >
+              {thanks ? "🦃 Thanksgiving: on" : "🦃 Thanksgiving: off"}
             </button>
             <div className="mt-1 flex gap-2">
               <button className="rounded-full bg-white/10 px-5 py-2 text-[13px] font-semibold" onClick={() => setScreen("garage")}>

@@ -8,6 +8,9 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 
 /* ---------------------------------------------------------------- textures */
 
+/** Thanksgiving dress-up: pilgrim hats, turkeys on heads, feathers for Linda. */
+export const THEME = { thanksgiving: false };
+
 export function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = w;
@@ -316,6 +319,17 @@ export function buildMort(linda = false): Mort {
     band.rotation.x = Math.PI / 2 - 0.35;
     band.position.set(0, 0.1, 0.01);
     head.add(band);
+    if (THEME.thanksgiving) {
+      // a fan of turkey feathers stuck in the headband
+      const cols = [0x8a3a1a, 0xd8862a, 0xb8241a, 0xe0b040, 0x6a2a12];
+      for (let i = 0; i < 7; i++) {
+        const f = box(0.06, 0.34, 0.015, 0, 0, 0, new THREE.MeshStandardMaterial({ color: cols[i % cols.length], roughness: 0.8 }));
+        f.geometry.translate(0, 0.17, 0);
+        f.position.set(0, 0.22, -0.12);
+        f.rotation.z = (i - 3) * 0.32;
+        head.add(f);
+      }
+    }
   }
   const beard = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), stubble);
   beard.position.set(0, -0.02, 0.02);
@@ -336,13 +350,29 @@ export function buildMort(linda = false): Mort {
     head.add(brow);
     brows.push(brow);
   }
-  const mouth = box(0.12, 0.035, 0.04, 0, -0.085, 0.18, linda ? new THREE.MeshBasicMaterial({ color: 0xc0102a }) : black);
+  const mouth = box(0.12, 0.035, 0.04, 0, -0.085, 0.18, linda ? white : black);
+  if (linda) {
+    // Linda grinds her teeth: a clenched white row between red lips
+    mouth.scale.set(1.25, 1.6, 1);
+    for (let i = -2; i <= 2; i++) mouth.add(box(0.006, 0.04, 0.005, i * 0.022, 0, 0.021, black));
+    mouth.add(box(0.12, 0.004, 0.005, 0, 0, 0.021, black));
+    const lips = box(0.17, 0.085, 0.03, 0, -0.085, 0.172, new THREE.MeshBasicMaterial({ color: 0xc0102a }));
+    head.add(lips);
+  }
   head.add(mouth);
   if (!linda) {
-    head.add(box(0.42, 0.05, 0.46, 0, 0.17, 0.08, cap)); // brim
-    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), cap);
-    crown.position.y = 0.12;
-    head.add(crown);
+    if (THEME.thanksgiving) {
+      // a pilgrim hat instead of the cap
+      const blk = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.8 });
+      head.add(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.03, 18), blk).translateY(0.15));
+      head.add(new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.36, 16), blk).translateY(0.33));
+      head.add(box(0.16, 0.1, 0.02, 0, 0.22, 0.2, new THREE.MeshStandardMaterial({ color: 0xffc83a, roughness: 0.3, metalness: 0.8 })));
+    } else head.add(box(0.42, 0.05, 0.46, 0, 0.17, 0.08, cap)); // brim
+    if (!THEME.thanksgiving) {
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), cap);
+      crown.position.y = 0.12;
+      head.add(crown);
+    }
   }
   const hands = new THREE.Group();
   hands.position.set(0, 1.12, 0.42);
@@ -490,7 +520,7 @@ export function buildHench(m: ReturnType<typeof henchKit>, n = 0): Hench {
   const hat = new THREE.Group();
   hat.position.y = 0.1;
   head.add(hat);
-  const style = n % 8;
+  const style = THEME.thanksgiving ? (n % 2 ? 8 : 9) : n % 8;
   if (style === 0) {
     // ten-gallon cowboy hat, far too big
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 18), mat(0xc8964a));
@@ -555,6 +585,30 @@ export function buildHench(m: ReturnType<typeof henchKit>, n = 0): Hench {
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3a1a }));
     beacon.position.y = 0.2;
     hat.add(beacon);
+  } else if (style === 8) {
+    // a whole roast turkey, worn as a hat, legs in the air
+    const roast = mat(0xb8642a, 0.5);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), roast);
+    body.scale.set(1.1, 0.75, 1.25);
+    body.position.y = 0.1;
+    hat.add(body);
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.2, 8), roast);
+      leg.position.set(sx * 0.1, 0.26, 0.14);
+      leg.rotation.x = -0.6;
+      hat.add(leg);
+      const frill = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), mat(0xffffff));
+      frill.position.set(sx * 0.1, 0.35, 0.2);
+      hat.add(frill);
+    }
+  } else if (style === 9) {
+    // a tall pilgrim hat with a gold buckle
+    const blk = mat(0x141414);
+    hat.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.03, 16), blk));
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, 0.42, 14), blk);
+    t.position.y = 0.21;
+    hat.add(t);
+    hat.add(box(0.14, 0.09, 0.02, 0, 0.08, 0.17, new THREE.MeshStandardMaterial({ color: 0xffc83a, roughness: 0.3, metalness: 0.8 })));
   } else {
     // a crown off a burger box, gold and slightly bent
     const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.12, 14, 1, true), new THREE.MeshStandardMaterial({ color: 0xffc020, roughness: 0.3, metalness: 0.7, side: THREE.DoubleSide }));
