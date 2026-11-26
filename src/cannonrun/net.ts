@@ -36,6 +36,9 @@ export interface Snap {
   r: number[][];
   /** Mort: s, lat, y, roll, level, hp, max, wreck, rage, lunge, v, vl, seated, rollV, vy */
   e: number[];
+  /** Linda, when there are two of you */
+  e2?: number[] | null;
+  tk2?: string;
   /** balls: s, lat, y, vs, vl, vy, small */
   b: number[][];
   /** thrown: s, lat, y, vs, vl, vy, kind, targetLat, passed, rider */

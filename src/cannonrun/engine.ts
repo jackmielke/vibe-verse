@@ -26,7 +26,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { HALF, LANE, LAT_MAX, G, MUZZLE, RELOAD, heading, V, toWorld, toRoad, clamp, lerp, hash } from "./road";
 import {
   canvasTex, roadTexture, sandTexture, glowTexture, puffTexture, box,
-  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, buildHench, henchKit, buildAutoGun,
+  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, rideAt, buildHench, henchKit, buildAutoGun,
   type Truck, type Foe, type Hench,
 } from "./models";
 import type { Transport, Upgrades, Wire, Snap, Input } from "./net";
@@ -60,6 +60,8 @@ export interface ChaseHud {
   foeHp: number;
   foeMax: number;
   foeWrecked: boolean;
+  /** his cousin Linda, two-player only */
+  linda: { hp: number; max: number; ride: string; wrecked: boolean } | null;
   gap: number;
   hits: number;
   wrecks: number;
@@ -93,6 +95,8 @@ export interface Opts {
   onReady?: () => void;
   /** once per run, when it is over: cash earned and the final score */
   onEnd?: (cash: number, score: number) => void;
+  /** northern lights over the desert instead of a plain moonlit sky */
+  aurora?: boolean;
 }
 
 const NO_UPGRADES: Upgrades = { armor: 0, loader: 0, nitro: 0, auto: 0, punch: 0, engine: 0 };
@@ -148,11 +152,18 @@ const TAUNTS = [
 ];
 const OUCH = ["OW!", "MY BUMPER!", "Lucky shot!", "That's coming out of your pocket!", "You'll pay for that!", "My radiator!"];
 const COMEBACK = ["This isn't over!", "I've got a bigger truck!", "I'll be back with my cousin's rig!"];
+const L_TAUNTS = [
+  "Hi sweetie! Pull OVER!", "Linda's here, honey!", "That's my cousin's cannon!", "You made Mort CRY!",
+  "Wheeee! Nobody outruns Linda!", "I'm not crazy, YOU'RE crazy!", "Mama's coming, babies!", "Linda the Lunatic, darling!",
+];
+const L_OUCH = ["My HAIR!", "RUDE!", "That's my good bumper!", "Oh, you did NOT!", "Mort, they shot me!"];
+const L_COMEBACK = ["Linda's getting a bigger one!", "Mort, help!", "I'll be back, sugar!"];
 const COMMENTS: Record<number, string> = {
   2: "He's back. In a tow truck.",
   3: "Oh no. Monster pickup.",
-  4: "He found a big rig somewhere.",
-  5: "A cement truck. Of course it's a cement truck.",
+  4: "A cement truck. Of course it's a cement truck.",
+  5: "Now it's an 18-wheeler.",
+  6: "He's lost it. He's driving a TRAIN.",
 };
 const BURNT = new THREE.Color(0x1c1714);
 
@@ -180,6 +191,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   bubble.style.cssText =
     "position:absolute;left:0;top:0;pointer-events:none;padding:6px 11px;border-radius:14px;background:#fff;color:#111;font:700 13px Inter,system-ui,sans-serif;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4);opacity:0;transition:opacity .18s;transform:translate(-50%,-100%)";
   mount.appendChild(bubble);
+  const lindaBubble = document.createElement("div");
+  lindaBubble.style.cssText = bubble.style.cssText + ";background:#f3d2ff;color:#3a0a52";
+  mount.appendChild(lindaBubble);
 
   const scene = new THREE.Scene();
   const FOG = new THREE.Color(0x141a2e);
@@ -241,8 +255,70 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const moonDisc = new THREE.Mesh(new THREE.CircleGeometry(14, 32), new THREE.MeshBasicMaterial({ color: 0xf4f1e4, fog: false }));
   scene.add(moonDisc);
 
+  /* ------------------------------------------------------------ aurora */
+  // Three curtains of light right round the sky, each a ring of tall strips.
+  // The shader draws the rays: bright at the hem, fading up, flickering along.
+  const aurora = opts.aurora ?? params.has("aurora");
+  const auroraMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    vertexShader: "varying vec2 vUv; varying float vSeed; attribute float seed; void main(){ vUv = uv; vSeed = seed; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: [
+      "uniform float uTime; varying vec2 vUv; varying float vSeed;",
+      "float h(float n){ return fract(sin(n) * 43758.5453); }",
+      "float n1(float x){ float i = floor(x); float f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(h(i), h(i + 1.0), f); }",
+      "void main(){",
+      "  float x = vUv.x * 90.0 + vSeed * 13.0;",
+      "  float rays = n1(x * 3.1 + uTime * 0.7) * 0.6 + n1(x * 9.7 - uTime * 1.3) * 0.4;",
+      "  float band = 0.55 + 0.45 * n1(vUv.x * 7.0 + uTime * 0.12 + vSeed * 5.0);",
+      "  float y = vUv.y;",
+      "  float hem = smoothstep(0.0, 0.08, y) * (1.0 - smoothstep(0.15, 1.0, y));",
+      "  vec3 green = vec3(0.15, 1.0, 0.55);",
+      "  vec3 top = mix(vec3(0.55, 0.2, 0.95), vec3(1.0, 0.3, 0.55), vSeed);",
+      "  vec3 col = mix(green, top, smoothstep(0.25, 0.85, y));",
+      "  float a = hem * (0.35 + 0.65 * rays) * band;",
+      "  gl_FragColor = vec4(col * a * 0.9, a);",
+      "}",
+    ].join("\n"),
+  });
+  const auroraGroup = new THREE.Group();
+  if (aurora) {
+    for (let k = 0; k < 3; k++) {
+      const N = 160;
+      const pos: number[] = [];
+      const uv: number[] = [];
+      const seed: number[] = [];
+      const idx: number[] = [];
+      const R0 = 620 + k * 90;
+      const base = 70 + k * 35;
+      const tall = 230 - k * 30;
+      for (let i = 0; i <= N; i++) {
+        const u = i / N;
+        const a = u * Math.PI * 2;
+        const r = R0 * (1 + 0.12 * Math.sin(a * 3 + k * 2.1) + 0.06 * Math.sin(a * 7 + k));
+        const yb = base + 40 * Math.sin(a * 2 + k * 1.3);
+        pos.push(Math.cos(a) * r, yb, Math.sin(a) * r, Math.cos(a) * r * 1.04, yb + tall, Math.sin(a) * r * 1.04);
+        uv.push(u, 0, u, 1);
+        seed.push(k / 2, k / 2);
+        if (i < N) { const j = i * 2; idx.push(j, j + 1, j + 2, j + 1, j + 3, j + 2); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+      g.setAttribute("seed", new THREE.Float32BufferAttribute(seed, 1));
+      g.setIndex(idx);
+      const m = new THREE.Mesh(g, auroraMat);
+      m.renderOrder = -8;
+      m.frustumCulled = false;
+      auroraGroup.add(m);
+    }
+    scene.add(auroraGroup);
+    // the whole desert picks up a little green
+    sky.material.color.setRGB(0.85, 1.05, 1.0);
+  }
+
   /* ------------------------------------------------------------ light */
-  scene.add(new THREE.HemisphereLight(0x5a6ea8, 0x2a2018, 0.9));
+  scene.add(new THREE.HemisphereLight(aurora ? 0x4a9a8a : 0x5a6ea8, 0x2a2018, 0.9));
   const moonLight = new THREE.DirectionalLight(0xaab8ff, 0.55);
   scene.add(moonLight);
   scene.add(moonLight.target);
@@ -567,7 +643,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let best = 0;
   try { best = Number(localStorage.getItem("cannonrun.best") ?? 0) || 0; } catch { /* private window */ }
 
-  const en = { ramCd: 0, s: -140, lat: 0, vl: 0, v: 40, hp: 4, max: 4, level: 1, hitSlow: 0, lunge: 0, lungeT: 5, throwT: 4, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, dodge: 0, rage: 0, seated: true };
+  let en = { ramCd: 0, s: -140, lat: 0, vl: 0, v: 40, hp: 4, max: 4, level: 1, hitSlow: 0, lunge: 0, lungeT: 5, throwT: 4, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, dodge: 0, rage: 0, seated: true };
   const tb = { phase: 0, t: 0, rider: 0, s: 0, lat: 0, y: 0, yaw: 0, carrying: false, walk: 0 };
   let phase: Phase = "intro";
   let gen = 0;
@@ -599,6 +675,30 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const say = (t: string, d = 2.2): void => { toast = t; toastT = d; };
   // Once he has you, Mort stops talking.
   const shout = (t: string, d = 2.2): void => { if (phase === "takeback" || phase === "over") return; talk = t; talkT = d; };
+  /* Mort, and in two-player his cousin Lunatic Linda. Every bit of chaser code
+     reads en, foe and a few timers; use(c) points them at one chaser. */
+  interface Chaser { en: typeof en; foe: Foe; respawnT: number; backupT: number; tauntT: number; talk: string; talkT: number; linda: boolean; net: { s: number; lat: number }; bubble: HTMLDivElement }
+  const mort: Chaser = { en, foe, respawnT, backupT, tauntT, talk, talkT, linda: false, net: { s: en.s, lat: en.lat }, bubble };
+  const chasers: Chaser[] = [mort];
+  let cur = mort;
+  const sync = (): void => { Object.assign(cur, { foe, respawnT, backupT, tauntT, talk, talkT }); };
+  const use = (c: Chaser): void => {
+    if (c === cur) return;
+    sync();
+    cur = c;
+    ({ en, foe, respawnT, backupT, tauntT, talk, talkT } = c);
+  };
+  let linda: Chaser | null = null;
+  // Lunatic Linda, Mort's cousin, is built but parked until Jack's two-player
+  // update (Nov 2026: "don't actually add the crazy lady yet"). Flip this then.
+  const LINDA_ON = false;
+  if (two && LINDA_ON) {
+    const lf = buildFoe(1, true);
+    scene.add(lf.root);
+    const le = { ...en };
+    linda = { en: le, foe: lf, respawnT: 0, backupT: 10 + Math.random() * 30, tauntT: 5, talk: "", talkT: 0, linda: true, net: { s: le.s, lat: le.lat }, bubble: lindaBubble };
+    chasers.push(linda);
+  }
   const nameOf = (r: Rider): string => (mode === "duo" ? `P${r.idx + 1}` : r.idx === mine ? "You" : "Your friend");
 
   /* ------------------------------------------------------------ input */
@@ -749,6 +849,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         tone("triangle", 60, 30, 1.6, 0.3 * k, 0.1);
       },
       scrape(s: number): void { const k = near(s); burst(0.8, 1800, 0.25 * k, "bandpass"); },
+      whistle(): void { tone("sine", 620, 600, 1.4, 0.14); tone("sine", 780, 760, 1.4, 0.11); tone("sine", 930, 905, 1.4, 0.07); burst(1.3, 3200, 0.12, "bandpass"); },
       horn(): void { tone("square", 330, 328, 0.55, 0.12); tone("square", 415, 412, 0.55, 0.1); },
       whoosh(): void { burst(0.5, 1200, 0.25, "highpass"); },
       whack(s: number): void { const k = near(s); burst(0.08, 1500, 0.45 * k, "bandpass"); tone("triangle", 220, 140, 0.08, 0.2 * k); },
@@ -827,6 +928,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         audio.blast(s);
         break;
       case "horn": audio.horn(); break;
+      case "whistle": audio.whistle(); break;
       case "whoosh": audio.whoosh(); break;
       case "door": audio.door(); break;
       case "clank": audio.clang(s); break;
@@ -865,7 +967,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   /** Mort goes for the rearmost truck still fighting. */
   const target = (): Rider => {
     let t: Rider | null = null;
-    for (const r of riders) if (alive(r) && (!t || r.s < t.s)) t = r;
+    // Mort goes for the truck at the back; Linda for the one in front
+    for (const r of riders) if (alive(r) && (!t || (cur.linda ? r.s > t.s : r.s < t.s))) t = r;
     return t ?? riders[tb.rider] ?? me;
   };
   const leadS = (): number => riders.reduce((m, r) => (r.gone ? m : Math.max(m, r.s)), -Infinity);
@@ -873,12 +976,12 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const spawnFoe = (level: number, gap: number): void => {
     scene.remove(foe.root);
     disposeTree(foe.root);
-    foe = buildFoe(level);
+    foe = buildFoe(level, cur.linda);
     scene.add(foe.root);
     const spec = RIDES[Math.min(level - 1, RIDES.length - 1)];
-    const max = spec.hp + Math.max(0, level - RIDES.length) * 3 + (two ? 3 : 0);
+    const max = spec.hp + Math.max(0, level - RIDES.length) * 3 + (two ? 5 : 0);
     const t = target();
-    Object.assign(en, { ramCd: 0, s: t.s - gap, lat: -t.lat, vl: 0, v: t.v + 14, hp: max, max, level, hitSlow: 0, lunge: 0, lungeT: 6, throwT: 3.5, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, rage: 0, seated: true });
+    Object.assign(en, { ramCd: 0, s: t.s - gap - (cur.linda ? 30 : 0), lat: cur.linda ? t.lat : -t.lat, vl: 0, v: t.v + 14, hp: max, max, level, hitSlow: 0, lunge: 0, lungeT: 6, throwT: 3.5, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, rage: 0, seated: true });
   };
 
   const muzzle = (r: Rider): { s: number; lat: number; y: number; cp: number } => {
@@ -977,9 +1080,14 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   };
   const stepHenchmen = (dt: number): void => {
     // backup every half a minute to a minute and eleven, whatever he is driving
-    if (phase === "play" && en.wreck === 0) {
-      backupT -= dt;
-      if (backupT <= 0 && target().s - en.s < 70) { backupT = 16 + Math.random() * 30; spawnBackup(); }
+    if (phase === "play") {
+      for (const c of chasers) {
+        use(c);
+        if (en.wreck > 0) continue;
+        backupT -= dt;
+        if (backupT <= 0 && target().s - en.s < 70) { backupT = 16 + Math.random() * 30; spawnBackup(); }
+      }
+      use(mort);
     }
     for (const h of henchmen) {
       if (h.state < 0) continue;
@@ -1105,12 +1213,14 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       cash += 250 * en.level;
       for (const r of riders) if (alive(r)) r.hull = Math.min(r.max, r.hull + 15);
       emit("wreck", en.s, en.lat, 1);
-      say(`WRECKED ${RIDES[Math.min(en.level - 1, RIDES.length - 1)].name.toUpperCase()}! +$${250 * en.level}`, 2.6);
-      shout(COMEBACK[Math.floor(Math.random() * COMEBACK.length)], 2.6);
+      say(`WRECKED ${cur.linda ? "LINDA'S " : ""}${RIDES[Math.min(en.level - 1, RIDES.length - 1)].name.replace(/^the /, cur.linda ? "" : "the ").toUpperCase()}! +$${250 * en.level}`, 2.6);
+      const back = cur.linda ? L_COMEBACK : COMEBACK;
+      shout(back[Math.floor(Math.random() * back.length)], 2.6);
       respawnT = 5.5;
     } else {
       say(`${label} +$${pay}`, 1.1);
-      shout(OUCH[Math.floor(Math.random() * OUCH.length)], 1.6);
+      const ow = cur.linda ? L_OUCH : OUCH;
+      shout(ow[Math.floor(Math.random() * ow.length)], 1.6);
     }
   };
 
@@ -1349,7 +1459,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const step = (dt: number): void => {
     time += dt;
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) toast = ""; }
-    if (talkT > 0) { talkT -= dt; if (talkT <= 0) talk = ""; }
+    for (const c of chasers) { use(c); if (talkT > 0) { talkT -= dt; if (talkT <= 0) talk = ""; } }
+    use(mort);
     flash.intensity *= Math.pow(0.0005, dt);
     boomLight.intensity *= Math.pow(0.02, dt);
 
@@ -1395,10 +1506,11 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
     stepTraffic(dt, true);
 
-    // --- Mort
+    // --- Mort, and Linda
+    const stepChaser = (): void => {
     const tgt = target();
     const gap = tgt.s - en.s;
-    if (phase === "takeback") stepTakeback(dt);
+    if (phase === "takeback" && !cur.linda) stepTakeback(dt);
     else if (en.wreck > 0) {
       en.wreck += dt;
       en.v = Math.max(0, en.v - dt * 22);
@@ -1410,9 +1522,14 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       respawnT -= dt;
       if (respawnT <= 0 && phase === "play") {
         spawnFoe(en.level + 1, 220);
-        emit("horn", en.s, en.lat, 1);
-        say(COMMENTS[en.level] ?? `Level ${en.level}. He just keeps coming.`, 2.8);
-        shout(TAUNTS[Math.floor(Math.random() * TAUNTS.length)], 2.5);
+        emit(rideAt(en.level).kind === "train" ? "whistle" : "horn", en.s, en.lat, 1);
+        if (cur.linda) {
+          say(rideAt(en.level).kind === "train" ? "LINDA'S GOT A TRAIN TOO!" : `Linda's back. In ${rideAt(en.level).name.replace(/^the /, "a ")}.`, 2.8);
+          shout(L_TAUNTS[Math.floor(Math.random() * L_TAUNTS.length)], 2.5);
+        } else {
+          say(COMMENTS[en.level] ?? `Level ${en.level}. He just keeps coming.`, 2.8);
+          shout(TAUNTS[Math.floor(Math.random() * TAUNTS.length)], 2.5);
+        }
       }
     } else {
       en.hitSlow = Math.max(0, en.hitSlow - dt * 5);
@@ -1420,7 +1537,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       const close = Math.max(1.5, 4 + en.level * 1.3 + Math.min(4, tgt.s / 2000) - tgt.engine * 1.1);
       let want = tgt.v + (gap > 30 ? close + (gap - 30) * 0.25 : close * 0.6);
       if (phase === "intro") want = tgt.v + 10;
-      if (phase === "over") want = tgt.v - 5;
+      if (phase === "over" || phase === "takeback") want = tgt.v - (cur.linda ? 8 : 5);
       en.lungeT -= dt;
       if (en.lungeT <= 0 && gap < 26 && phase === "play") { en.lunge = 1.3; en.lungeT = 7 - Math.min(4, en.level); emit("horn", en.s, en.lat, 1); }
       if (en.lunge > 0) { en.lunge -= dt; want += 11; }
@@ -1448,6 +1565,15 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       const wantVl = clamp(aimLat - en.lat, -1.4, 1.4) * (3.2 + en.level * 0.5);
       en.vl = lerp(en.vl, wantVl, Math.min(1, dt * 3.2));
       en.lat = clamp(en.lat + en.vl * dt, -LAT_MAX, LAT_MAX);
+      for (const o of chasers) {
+        if (o === cur || o.en.wreck > 0) continue;
+        if (Math.abs(o.en.s - en.s) < (foe.len + o.foe.len) / 2 + 0.5 && Math.abs(o.en.lat - en.lat) < (foe.wid + o.foe.wid) / 2 + 0.2) {
+          const side = Math.sign(en.lat - o.en.lat) || (cur.linda ? 1 : -1);
+          en.lat = clamp(en.lat + side * dt * 6, -LAT_MAX, LAT_MAX);
+          en.vl = side * Math.max(Math.abs(en.vl), 2);
+          if (en.s < o.en.s) en.hitSlow = Math.max(en.hitSlow, 3);
+        }
+      }
       // the ram
       const reach = foe.len / 2 + 2.6;
       en.ramCd = Math.max(0, en.ramCd - dt);
@@ -1460,7 +1586,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
           en.lunge = 0;
           r.bump = 3;
           emit("ram", r.s - 2.6, r.lat, 0.8, r.idx);
-          hurt(r, 14 + en.level * 4, "RAMMED!");
+          hurt(r, Math.round((14 + en.level * 4) * (two ? 1.2 : 1)), cur.linda ? "LINDA RAMMED YOU!" : "RAMMED!");
           shout("BOOP!", 1);
         }
       }
@@ -1482,7 +1608,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       if (en.level >= 2 && phase === "play" && gap < 60 && gap > 10) {
         en.throwT -= dt;
         if (en.throwT <= 0) {
-          en.throwT = Math.max(1.6, 4.2 - en.level * 0.55) + Math.random() * 1.5;
+          en.throwT = (Math.max(1.6, 4.2 - en.level * 0.55) + Math.random() * 1.5) * (two ? 0.8 : 1);
           const it = thrown.find((x) => !x.live);
           // only ever at civilians in his way, to clear the road; never at you
           const civ = traffic.filter((t) => t.mode === 0 && t.swerve <= 0 && t.s - en.s > 6 && t.s - en.s < 55).sort((a, b) => a.s - b.s)[0];
@@ -1520,8 +1646,11 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         }
       }
       tauntT -= dt;
-      if (tauntT <= 0 && talkT <= 0) { tauntT = 4 + Math.random() * 4; shout(TAUNTS[Math.floor(Math.random() * TAUNTS.length)]); }
+      if (tauntT <= 0 && talkT <= 0) { const tl = cur.linda ? L_TAUNTS : TAUNTS; tauntT = 4 + Math.random() * 4; shout(tl[Math.floor(Math.random() * tl.length)]); }
     }
+    };
+    for (const c of chasers) { use(c); stepChaser(); }
+    use(mort);
 
     // --- cannons
     for (const r of riders) {
@@ -1543,11 +1672,16 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         b.bounces += 1;
         emit("dust", b.s, b.lat, 0.3);
       }
-      if (en.wreck === 0 && phase !== "takeback" && Math.abs(b.s - en.s) < foe.len / 2 + 0.35 && Math.abs(b.lat - en.lat) < foe.wid / 2 + 0.3 && b.y < foe.tall + 0.3) {
-        b.live = false;
-        hitFoe(b, b.dmg < 1 ? "AUTO CANNON!" : b.bounces > 0 ? "BOUNCE SHOT!" : b.y > foe.tall * 0.6 ? "RIGHT IN THE CAB!" : "DIRECT HIT!", b.dmg);
-        continue;
+      for (const c of chasers) {
+        use(c);
+        if (en.wreck === 0 && phase !== "takeback" && Math.abs(b.s - en.s) < foe.len / 2 + 0.35 && Math.abs(b.lat - en.lat) < foe.wid / 2 + 0.3 && b.y < foe.tall + 0.3) {
+          b.live = false;
+          hitFoe(b, (c.linda ? "LINDA: " : "") + (b.dmg < 1 ? "AUTO CANNON!" : b.bounces > 0 ? "BOUNCE SHOT!" : b.y > foe.tall * 0.6 ? "RIGHT IN THE CAB!" : "DIRECT HIT!"), b.dmg);
+          break;
+        }
       }
+      use(mort);
+      if (!b.live) continue;
       for (const h of henchmen) {
         if (b.live && (h.state === 1 || h.state === 0) && Math.abs(b.s - h.s) < 1.1 && Math.abs(b.lat - h.lat) < 0.9 && b.y < 2.2) {
           b.live = false;
@@ -1620,7 +1754,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
 
   /** Cars: driving, tipping, flying, landing, and going up when they land hard. */
   const stepTraffic = (dt: number, authority: boolean): void => {
-    const back = Math.min(...riders.filter((r) => !r.gone).map((r) => r.s), en.s);
+    const back = Math.min(...riders.filter((r) => !r.gone).map((r) => r.s), ...chasers.map((c) => c.en.s));
     for (const t of traffic) {
       if (!t.live) continue;
       t.hitCd = Math.max(0, t.hitCd - dt);
@@ -1709,9 +1843,15 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       // dust off the rear wheels on the shoulder
       if (Math.abs(r.lat) > HALF - 2.2 && r.v > 5 && chance(24)) puff("dust", r.s - 3, r.lat + Math.sign(r.lat) * 0.8, 0.3, r.v * 0.7, 0, 0.6, 0.6, 0.8);
     }
+    for (const c of chasers) {
+    use(c);
     if (en.wreck === 0) {
       if (en.v > 1 && chance(9)) puff("smoke", en.s - foe.len / 2, en.lat + foe.wid * 0.3, 0.4, en.v * 0.75, 0, 0.5, 0.4, 0.8);
-      if (en.level >= 4 && chance(8)) puff("black", en.s + foe.len / 2 - 2.6, en.lat + (Math.random() > 0.5 ? 1 : -1) * foe.wid / 2, foe.tall + 1.5, en.v - 1, 0, 2.2, 0.7, 1.2);
+      if (foe.stack) {
+        // the stack never stops: thick black puffs, faster the faster he goes
+        if (chance(3)) puff(Math.random() < 0.6 ? "smoke" : "black", en.s + foe.stack.z, en.lat - foe.stack.x + (Math.random() - 0.5) * 0.3, foe.stack.y, en.v - 3, (Math.random() - 0.5) * 0.6, 3 + Math.random() * 2, 1.3, 2.2);
+        if (chance(10)) puff("smoke", en.s + foe.len / 2 - 1.5, en.lat + (Math.random() > 0.5 ? 1 : -1) * (foe.wid / 2 + 0.3), 0.5, en.v * 0.6, (Math.random() - 0.5) * 2, 0.6, 0.9, 0.9);
+      } else if (en.level >= 4 && chance(8)) puff("black", en.s + foe.len / 2 - 2.6, en.lat + (Math.random() > 0.5 ? 1 : -1) * foe.wid / 2, foe.tall + 1.5, en.v - 1, 0, 2.2, 0.7, 1.2);
       const f = en.hp / en.max;
       if (f <= 0.5 && chance(4 + (1 - f) * 10)) puff(f <= 0.25 ? "black" : "smoke", en.s + foe.len / 2 - 0.8, en.lat, foe.tall * 0.6, en.v - 2, 0, 1.5, 1.2, 1.6);
       if (f <= 0.25 && chance(7)) puff("fire", en.s + foe.len / 2 - 0.7, en.lat + (Math.random() - 0.5), foe.tall * 0.55, en.v - 1, 0, 1.4, 0.7, 0.3);
@@ -1719,6 +1859,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       if (chance(14)) puff("fire", en.s, en.lat, 0.8 + Math.random(), en.v, (Math.random() - 0.5), 2 + Math.random() * 2, 1.4, 0.5);
       if (chance(10)) puff("black", en.s, en.lat, 1.6, en.v, 0, 3, 2.2, 2.4);
     }
+    }
+    use(mort);
     for (const t of traffic) {
       if (t.mode === 3) {
         if (chance(12)) puff("fire", t.s, t.lat + (Math.random() - 0.5) * 1.2, 0.9 + Math.random() * 0.6, t.v, 0, 1.8, 1.1, 0.4);
@@ -1736,6 +1878,10 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let lastSnap: Snap | null = null;
   let snapAt = 0;
   const r2 = (n: number): number => Math.round(n * 100) / 100;
+  const encE = (c: Chaser): number[] => {
+    const e = c.en;
+    return [r2(e.s), r2(e.lat), r2(e.y), r2(e.roll), e.level, e.hp, e.max, r2(e.wreck), r2(e.rage), r2(e.lunge), r2(e.v), r2(e.vl), e.seated ? 1 : 0, r2(e.rollV), r2(e.vy)];
+  };
   const sendNet = (dt: number): void => {
     if (!net) return;
     netT -= dt;
@@ -1743,10 +1889,14 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     netT = 1 / NET_HZ;
     if (mode === "host") {
       const walking = phase === "takeback" && tb.phase >= 1 && tb.phase <= 3;
+      use(mort);
+      sync();
       const snap: Snap = {
         t: "st", k: r2(time), g: gen, ph: phase,
         r: riders.map((r) => [r2(r.s), r2(r.lat), r2(r.v), r2(r.vl), Math.round(r.hull), r.max, r2(r.boost), r2(r.reload), r2(r.aim.yaw), r2(r.aim.pitch), r.out ? 1 : 0, r2(r.respawn), r.disarmed ? 1 : 0, r.gone ? 1 : 0, r2(r.autoYaw)]),
-        e: [r2(en.s), r2(en.lat), r2(en.y), r2(en.roll), en.level, en.hp, en.max, r2(en.wreck), r2(en.rage), r2(en.lunge), r2(en.v), r2(en.vl), en.seated ? 1 : 0, r2(en.rollV), r2(en.vy)],
+        e: encE(mort),
+        e2: linda ? encE(linda) : null,
+        tk2: linda?.talk ?? "",
         b: balls.filter((b) => b.live).map((b) => [r2(b.s), r2(b.lat), r2(b.y), r2(b.vs), r2(b.vl), r2(b.vy), b.dmg < 1 ? 1 : 0]),
         th: thrown.filter((x) => x.live).map((x) => [r2(x.s), r2(x.lat), r2(x.y), r2(x.vs), r2(x.vl), r2(x.vy), x.kind, r2(x.targetLat), x.passed ? 1 : 0, x.rider]),
         tr: traffic.map((t) => [r2(t.s), r2(t.lat), r2(t.y), r2(t.v), r2(t.vl), r2(t.vy), r2(t.rx), r2(t.ry), r2(t.rz), r2(t.wx), r2(t.wy), r2(t.wz), t.color.getHex(), t.mode]),
@@ -1805,6 +1955,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     cash = sn.cash;
     hits = sn.hits;
     wrecks = sn.wrecks;
+    use(mort);
     talk = sn.talk;
     if (sn.toast !== toast && sn.toast) say(sn.toast, 1.8);
     for (let i = 0; i < riders.length; i++) {
@@ -1826,18 +1977,22 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       r.aim.pitch = a[9];
       r.autoYaw = a[14] ?? 0;
     }
-    const e = sn.e;
-    if (e[4] !== en.level) {
-      scene.remove(foe.root);
-      disposeTree(foe.root);
-      foe = buildFoe(e[4]);
-      scene.add(foe.root);
-      en.s = e[0];
-      en.lat = e[1];
-    }
-    Object.assign(en, { y: e[2], roll: e[3], level: e[4], hp: e[5], max: e[6], wreck: e[7], rage: e[8], lunge: e[9], v: e[10], vl: e[11], seated: e[12] === 1, rollV: e[13], vy: e[14] });
-    enNet.s = e[0];
-    enNet.lat = e[1];
+    const applyE = (e: number[]): void => {
+      if (e[4] !== en.level) {
+        scene.remove(foe.root);
+        disposeTree(foe.root);
+        foe = buildFoe(e[4], cur.linda);
+        scene.add(foe.root);
+        en.s = e[0];
+        en.lat = e[1];
+      }
+      Object.assign(en, { y: e[2], roll: e[3], level: e[4], hp: e[5], max: e[6], wreck: e[7], rage: e[8], lunge: e[9], v: e[10], vl: e[11], seated: e[12] === 1, rollV: e[13], vy: e[14] });
+      cur.net.s = e[0];
+      cur.net.lat = e[1];
+    };
+    applyE(sn.e);
+    if (linda && sn.e2) { use(linda); talk = sn.tk2 ?? ""; applyE(sn.e2); }
+    use(mort);
     for (let i = 0; i < balls.length; i++) {
       const b = balls[i];
       const a = sn.b[i];
@@ -1874,7 +2029,6 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
   };
   const used = new Set<number[]>();
-  const enNet = { s: en.s, lat: en.lat };
 
   /** The guest's world step: drive my own truck, ease everything else toward the host. */
   const guestStep = (dt: number): void => {
@@ -1907,11 +2061,14 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       r.lat += (r.net.lat + r.net.vl * age - r.lat) * k;
       r.recoil = Math.max(0, r.recoil - dt * 3.2);
     }
-    en.s += en.v * dt;
-    en.lat += en.vl * dt;
-    en.s += (enNet.s + en.v * age - en.s) * k;
-    en.lat += (enNet.lat + en.vl * age - en.lat) * k;
-    if (en.wreck > 0) { en.roll += en.rollV * dt; en.vy -= G * dt; en.y = Math.max(0, en.y + en.vy * dt); }
+    for (const c of chasers) {
+      const e = c.en;
+      e.s += e.v * dt;
+      e.lat += e.vl * dt;
+      e.s += (c.net.s + e.v * age - e.s) * k;
+      e.lat += (c.net.lat + e.vl * age - e.lat) * k;
+      if (e.wreck > 0) { e.roll += e.rollV * dt; e.vy -= G * dt; e.y = Math.max(0, e.y + e.vy * dt); }
+    }
     for (const b of balls) {
       if (!b.live) continue;
       b.vy -= G * dt;
@@ -2043,6 +2200,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = lerp(camera.fov, fov, ease(3)); camera.updateProjectionMatrix(); }
     sky.position.copy(camera.position);
     stars.position.copy(camera.position);
+    if (aurora) { auroraGroup.position.copy(camera.position); auroraMat.uniforms.uTime.value = time; }
     const h = heading(camS);
     tmp.set(-Math.sin(h) * 700 - 180 * Math.cos(h), 240, -Math.cos(h) * 700 + 180 * Math.sin(h));
     moon.position.copy(camera.position).add(tmp);
@@ -2137,18 +2295,19 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     trafficMesh.instanceMatrix.needsUpdate = true;
     if (trafficMesh.instanceColor) trafficMesh.instanceColor.needsUpdate = true;
 
-    // Mort, and what he drives
+    // Mort, and what he drives (and Linda, and hers)
+    const quiet = phase === "takeback" || phase === "over";
+    const drawChaser = (): void => {
     const lean = en.wreck > 0 ? 0 : clamp(-en.vl * 0.012, -0.07, 0.07);
     const steerYaw = en.wreck > 0 ? 0 : -Math.atan2(en.vl, Math.max(en.v, 8)) * 0.8;
     place(foe.root, en.s, en.lat, en.y, steerYaw);
     foe.root.rotation.z = en.roll + lean;
     foe.root.rotation.x = en.wreck > 0 ? en.roll * 0.3 : en.lunge > 0 ? -0.04 : 0;
     for (const w of foe.wheels) w.rotation.x += en.v * 0.016 * (dt * 60);
-    if (foe.drum) foe.drum.rotation.z += dt * 1.6;
+    foe.anim?.(foe.wheels[0]?.rotation.x ?? 0);
     foe.body.position.y = en.v > 1 ? Math.sin(en.s * 0.8) * 0.02 + (en.lunge > 0 ? 0.04 : 0) : 0;
     const m = foe.mort;
     m.root.visible = en.seated;
-    const quiet = phase === "takeback" || phase === "over";
     const fury = quiet ? 0.25 : 0.5 + en.rage * 0.4;
     // a fist out at you, shaking, and the other hand on the wheel
     // Right hand on the wheel; the left arm out of the window, shaking a fist at you and never stopping.
@@ -2168,6 +2327,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     m.mouth.scale.y = talk && !quiet ? 1.2 + Math.abs(Math.sin(time * 18)) * 0.7 : 0.8;
     foe.paint.emissive.setRGB(en.rage * 0.35, 0, 0);
     const lit = en.wreck === 0;
+    if (cur.linda) return; // the two big headlight beams are his
     foe.root.updateMatrixWorld(true);
     for (let i = 0; i < 2; i++) {
       tmp.copy(foe.lamps[i]);
@@ -2181,6 +2341,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
     halo.position.copy(glares[0].position).lerp(glares[1].position, 0.5);
     halo.scale.setScalar(lit ? Math.min(16, 10 + 160 / Math.max(8, halo.position.distanceTo(camera.position))) : 0.001);
+    };
+    for (const c of chasers) { use(c); drawChaser(); }
+    use(mort);
 
     // Mort on foot
     const walking = phase === "takeback" && tb.phase >= 1 && tb.phase <= 3;
@@ -2284,10 +2447,14 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
 
     // words over heads
-    if (talk && en.wreck < 2 && !quiet) {
-      bubble.textContent = talk;
-      project(bubble, en.s + foe.len / 2 - 1, en.lat, foe.tall + 1.2, true, 80);
-    } else bubble.style.opacity = "0";
+    for (const c of chasers) {
+      use(c);
+      if (talk && en.wreck < 2 && !quiet) {
+        c.bubble.textContent = talk;
+        project(c.bubble, en.s + foe.len / 2 - 1, en.lat, foe.tall + 1.2, true, 80);
+      } else c.bubble.style.opacity = "0";
+    }
+    use(mort);
     const hs = henchmen[henchSay.i];
     if (hs && henchSay.t > 0 && hs.state >= 0 && hs.state <= 2) {
       henchBubble.textContent = "Go get 'em, guys!";
@@ -2316,7 +2483,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       score: Math.max(0, Math.round(score)), best: Math.round(Math.max(best, score)), cash: Math.round(cash),
       meters: Math.round(Math.max(0, leadS())), level: en.level,
       ride: RIDES[Math.min(en.level - 1, RIDES.length - 1)].name, foeHp: Math.max(0, Math.ceil(en.hp - 0.001)), foeMax: en.max,
-      foeWrecked: en.wreck > 0, gap: Math.round(t.s - en.s), hits, wrecks, toast, fps: Math.round(fps),
+      foeWrecked: en.wreck > 0,
+      linda: linda ? { hp: Math.max(0, Math.ceil(linda.en.hp - 0.001)), max: linda.en.max, ride: rideAt(linda.en.level).name, wrecked: linda.en.wreck > 0 } : null,
+      gap: Math.round(t.s - en.s), hits, wrecks, toast, fps: Math.round(fps),
       link: !net ? "" : time - lastHeard > 6 ? "lost" : "ok",
       alert, henchmen: henchmen.filter((h) => h.state >= 0 && h.state <= 2).length,
     };
@@ -2368,6 +2537,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       renderer.forceContextLoss();
       canvas.remove();
       bubble.remove();
+      lindaBubble.remove();
       tags.forEach((t) => t.remove());
       henchBubble.remove();
       delete (window as unknown as { __chase?: unknown }).__chase;
@@ -2394,16 +2564,16 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       alert = "";
       puffs.forEach((p) => { p.live = false; p.sprite.visible = false; });
       Object.assign(tb, { phase: 0, t: 0, carrying: false });
-      spawnFoe(1, 140);
-      en.v = 40;
+      for (const c of chasers) { use(c); spawnFoe(1, 140); en.v = 40; talk = ""; backupT = (c.linda ? 10 : 16) + Math.random() * 30; }
+      use(mort);
       camReady = false;
     },
     setMuted(m) { muted = m; audio.mute(m); },
   };
 
   if (mode === "host") riders[1].net = null;
-  spawnFoe(1, 140);
-  en.v = 40;
+  for (const c of chasers) { use(c); spawnFoe(1, 140); en.v = 40; }
+  use(mort);
 
   // For scripts that play it without a person: scripts/cannonrun-check.mjs.
   (window as unknown as { __chase?: unknown }).__chase = {

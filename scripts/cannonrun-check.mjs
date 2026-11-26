@@ -133,8 +133,8 @@ if (which === "backup") {
   await a.shot("04-civilian");
   await a.c("level", 5, 18);
   await a.c("run", 40);
-  await a.shot("05-cement");
-  console.log("cement", (await a.st()).ride);
+  await a.shot("05-train");
+  console.log("train", (await a.st()).ride);
 }
 
 if (which === "duo") {

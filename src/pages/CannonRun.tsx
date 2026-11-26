@@ -35,6 +35,12 @@ export default function CannonRun() {
     joinCode ? "join" : hostCode ? "host" : params.has("go") || params.has("duo") ? "loading" : "splash",
   );
   const [hud, setHud] = useState<ChaseHud | null>(null);
+  const [aurora, setAurora] = useState<boolean>(() => {
+    if (new URLSearchParams(window.location.search).has("aurora")) return true;
+    try { return localStorage.getItem("cannonrun.sky") === "aurora"; } catch { return false; }
+  });
+  const auroraRef = useRef(aurora);
+  auroraRef.current = aurora;
   const [muted, setMuted] = useState(false);
   const [bank, setBank] = useState(() => readBank());
   const [earned, setEarned] = useState<number | null>(null);
@@ -123,6 +129,7 @@ export default function CannonRun() {
             net: transportRef.current,
             upgrades: readBank().up,
             guestUpgrades: guestUpRef.current,
+            aurora: auroraRef.current,
             onHud: setHud,
             onReady: () => setScreen("playing"),
             onEnd: (cash) => {
@@ -195,6 +202,7 @@ export default function CannonRun() {
             className={`pointer-events-none absolute flex flex-col gap-2 ${phone ? "right-3 items-end" : "inset-x-0 items-center px-3"}`}
             style={{ top: "max(env(safe-area-inset-top), 14px)" }}
           >
+            <div className={`flex gap-2 ${phone ? "flex-col items-end" : ""}`}>
             <div className={`${card} px-3 py-1.5 text-center`}>
               <div className="text-[11px] font-bold tracking-[0.18em] text-[#ff7a5a]">
                 MAD MORT{phone ? null : <span className="font-medium tracking-normal text-white/60"> in {hud.ride}</span>}
@@ -207,6 +215,22 @@ export default function CannonRun() {
               <div className="mt-1 text-[10px] text-white/45" style={{ fontFamily: MONO }}>
                 {takeback || over ? "taking his cannon back" : hud.foeWrecked ? "wrecked, for now" : `${Math.max(0, hud.gap)} m behind`}
               </div>
+            </div>
+            {hud.linda ? (
+              <div className={`${card} px-3 py-1.5 text-center`}>
+                <div className="text-[11px] font-bold tracking-[0.18em] text-[#e08aff]">
+                  LUNATIC LINDA{phone ? null : <span className="font-medium tracking-normal text-white/60"> in {hud.linda.ride}</span>}
+                </div>
+                <div className="mt-1 flex max-w-[180px] flex-wrap justify-center gap-1">
+                  {Array.from({ length: hud.linda.max }, (_, i) => (
+                    <span key={i} className="h-2 w-3.5 rounded-sm" style={{ background: i < hud.linda!.hp ? "#c45aff" : "rgba(255,255,255,0.14)" }} />
+                  ))}
+                </div>
+                <div className="mt-1 text-[10px] text-white/45" style={{ fontFamily: MONO }}>
+                  {takeback || over ? "cheering him on" : hud.linda.wrecked ? "wrecked, for now" : "his cousin"}
+                </div>
+              </div>
+            ) : null}
             </div>
             {hud.toast ? <div style={phone ? { position: "fixed", left: 12, right: 12, top: hud.riders.length > 1 ? 330 : 262 } : undefined} className="rounded-full bg-white px-4 py-1.5 text-center text-[13px] font-semibold text-black shadow-lg">{hud.toast}</div> : null}
             {hud.alert && !over ? <div className="animate-pulse rounded-lg bg-[#d8262a] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide shadow-lg ring-2 ring-white/70">{hud.alert}</div> : null}
@@ -303,6 +327,12 @@ export default function CannonRun() {
             ) : null}
             <button className="w-64 rounded-full bg-white/10 px-6 py-2.5 text-[14px] font-semibold ring-1 ring-white/15" onClick={() => { setRoom(""); setScreen("host"); }}>
               Play with a friend's phone
+            </button>
+            <button
+              className={`w-64 rounded-full px-6 py-2 text-[13px] font-semibold ring-1 ${aurora ? "bg-[#1f6b55] ring-[#5dffb0]/60 text-[#cfffe8]" : "bg-white/5 ring-white/15 text-white/70"}`}
+              onClick={() => { const v = !aurora; setAurora(v); try { localStorage.setItem("cannonrun.sky", v ? "aurora" : "moon"); } catch { /* private window */ } }}
+            >
+              {aurora ? "✦ Aurora sky: on" : "✦ Aurora sky: off"}
             </button>
             <div className="mt-1 flex gap-2">
               <button className="rounded-full bg-white/10 px-5 py-2 text-[13px] font-semibold" onClick={() => setScreen("garage")}>
