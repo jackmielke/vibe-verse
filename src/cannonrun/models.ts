@@ -9,7 +9,10 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 /* ---------------------------------------------------------------- textures */
 
 /** Thanksgiving dress-up: pilgrim hats, turkeys on heads, feathers for Linda. */
-export const THEME = { thanksgiving: false };
+/** Face styles for Mort and Linda (Jack, Nov 2026: "make their faces better"). */
+export type FaceStyle = "classic" | "cartoon" | "muppet" | "clay";
+export const FACE_STYLES: FaceStyle[] = ["classic", "cartoon", "muppet", "clay"];
+export const THEME: { thanksgiving: boolean; face: FaceStyle } = { thanksgiving: false, face: "classic" };
 
 export function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
   const c = document.createElement("canvas");
@@ -331,35 +334,39 @@ export function buildMort(linda = false): Mort {
       }
     }
   }
-  const beard = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), stubble);
-  beard.position.set(0, -0.02, 0.02);
-  if (!linda) head.add(beard);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), skin);
-  nose.position.set(0, -0.01, 0.2);
-  head.add(nose);
-  const brows: THREE.Mesh[] = [];
-  for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.048, 10, 8), white);
-    eye.position.set(sx * 0.075, 0.045, 0.165);
-    head.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), black);
-    pupil.position.set(sx * 0.075, 0.045, 0.208);
-    head.add(pupil);
-    const brow = box(0.12, 0.03, 0.04, sx * 0.075, 0.12, 0.18, black);
-    brow.rotation.z = sx * 0.5;
-    head.add(brow);
-    brows.push(brow);
+  let brows: THREE.Mesh[] = [];
+  let mouth: THREE.Mesh;
+  if (THEME.face !== "classic") ({ brows, mouth } = buildFace(head, linda, THEME.face, skin, stubble));
+  else {
+    const beard = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), stubble);
+    beard.position.set(0, -0.02, 0.02);
+    if (!linda) head.add(beard);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), skin);
+    nose.position.set(0, -0.01, 0.2);
+    head.add(nose);
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.048, 10, 8), white);
+      eye.position.set(sx * 0.075, 0.045, 0.165);
+      head.add(eye);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), black);
+      pupil.position.set(sx * 0.075, 0.045, 0.208);
+      head.add(pupil);
+      const brow = box(0.12, 0.03, 0.04, sx * 0.075, 0.12, 0.18, black);
+      brow.rotation.z = sx * 0.5;
+      head.add(brow);
+      brows.push(brow);
+    }
+    mouth = box(0.12, 0.035, 0.04, 0, -0.085, 0.18, linda ? white : black);
+    if (linda) {
+      // Linda grinds her teeth: a clenched white row between red lips
+      mouth.scale.set(1.25, 1.6, 1);
+      for (let i = -2; i <= 2; i++) mouth.add(box(0.006, 0.04, 0.005, i * 0.022, 0, 0.021, black));
+      mouth.add(box(0.12, 0.004, 0.005, 0, 0, 0.021, black));
+      const lips = box(0.17, 0.085, 0.03, 0, -0.085, 0.172, new THREE.MeshBasicMaterial({ color: 0xc0102a }));
+      head.add(lips);
+    }
+    head.add(mouth);
   }
-  const mouth = box(0.12, 0.035, 0.04, 0, -0.085, 0.18, linda ? white : black);
-  if (linda) {
-    // Linda grinds her teeth: a clenched white row between red lips
-    mouth.scale.set(1.25, 1.6, 1);
-    for (let i = -2; i <= 2; i++) mouth.add(box(0.006, 0.04, 0.005, i * 0.022, 0, 0.021, black));
-    mouth.add(box(0.12, 0.004, 0.005, 0, 0, 0.021, black));
-    const lips = box(0.17, 0.085, 0.03, 0, -0.085, 0.172, new THREE.MeshBasicMaterial({ color: 0xc0102a }));
-    head.add(lips);
-  }
-  head.add(mouth);
   if (!linda) {
     if (THEME.thanksgiving) {
       // a pilgrim hat instead of the cap
@@ -378,6 +385,157 @@ export function buildMort(linda = false): Mort {
   hands.position.set(0, 1.12, 0.42);
   root.add(hands);
   return { root, head, brows, mouth, armL, armR, legL, legR, hands };
+}
+
+/**
+ * The other faces, on a head of radius 0.2 facing +z. Each returns the two
+ * brows (left first, which the engine tilts when he is furious) and a mouth
+ * (which it stretches when he shouts).
+ */
+function buildFace(head: THREE.Group, linda: boolean, style: FaceStyle, skin: THREE.Material, stubble: THREE.Material): { brows: THREE.Mesh[]; mouth: THREE.Mesh } {
+  const black = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, emissive: 0x333333 });
+  const tooth = new THREE.MeshStandardMaterial({ color: 0xfffbe8, roughness: 0.4, emissive: 0x2a2a22 });
+  const gum = new THREE.MeshBasicMaterial({ color: 0x3a0a10 });
+  const browCol = new THREE.MeshStandardMaterial({ color: linda ? 0xc0480e : 0x3a2414, roughness: 1 });
+  const lipCol = new THREE.MeshStandardMaterial({ color: linda ? 0xd0103a : 0x9a3a2a, roughness: 0.5 });
+  const cheekCol = new THREE.MeshBasicMaterial({ color: linda ? 0xff6a8a : 0xd03a2a, transparent: true, opacity: 0.45, depthWrite: false });
+  const iris = new THREE.MeshBasicMaterial({ color: linda ? 0x1aa88a : 0x5a3a14 });
+  const brows: THREE.Mesh[] = [];
+  const ball = (r: number, m: THREE.Material, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1): THREE.Mesh => {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), m);
+    b.position.set(x, y, z);
+    b.scale.set(sx, sy, sz);
+    head.add(b);
+    return b;
+  };
+  // ears, for everybody but the muppet
+  if (style !== "muppet") for (const sx of [-1, 1]) ball(0.055, skin, sx * 0.195, 0, -0.01, 0.5, 1, 0.8);
+
+  if (style === "cartoon") {
+    // big glossy eyes with heavy lids, a fat nose, rosy cheeks, a toothy grimace
+    for (const sx of [-1, 1]) {
+      ball(0.062, white, sx * 0.078, 0.04, 0.155, 1, 1.18, 0.7);
+      ball(0.032, iris, sx * 0.074, 0.035, 0.196, 1, 1.1, 0.5);
+      ball(0.017, black, sx * 0.073, 0.035, 0.205, 1, 1, 0.5);
+      ball(0.008, new THREE.MeshBasicMaterial({ color: 0xffffff }), sx * 0.073 + 0.012, 0.05, 0.212);
+      // the upper lid: a skin cap over the eyeball, tipped down at the middle (Mort) or wide open (Linda)
+      const lid = new THREE.Mesh(new THREE.SphereGeometry(0.066, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.38), skin);
+      lid.position.set(sx * 0.078, 0.042, 0.157);
+      lid.scale.set(1.05, 1.2, 0.75);
+      lid.rotation.set(0.5, 0, linda ? 0 : -sx * 0.35);
+      head.add(lid);
+      if (linda) for (let k = 0; k < 3; k++) {
+        const lash = box(0.006, 0.035, 0.004, sx * (0.06 + k * 0.022), 0.115 + (k === 1 ? 0.008 : 0), 0.17, black);
+        lash.rotation.z = -sx * (0.3 + k * 0.25);
+        head.add(lash);
+      }
+      ball(0.04, cheekCol, sx * 0.12, -0.05, 0.15, 1, 0.7, 0.4);
+      const brow = new THREE.Mesh(new THREE.CapsuleGeometry(0.022, 0.09, 4, 8), browCol);
+      brow.rotation.z = Math.PI / 2;
+      const g = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001), black);
+      g.position.set(sx * 0.08, 0.118, 0.18);
+      g.add(brow);
+      head.add(g);
+      brows.push(g);
+    }
+    ball(0.062, skin, 0, -0.02, 0.2, 1, 0.9, 0.9); // nose
+    if (!linda) ball(0.19, stubble, 0, -0.03, 0.02, 1, 1, 1).geometry = new THREE.SphereGeometry(0.19, 16, 10, 0, Math.PI * 2, Math.PI * 0.6, Math.PI * 0.4);
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.045, 0.02), gum);
+    mouth.position.set(0, -0.098, 0.178);
+    for (let i = -3; i <= 3; i++) {
+      mouth.add(box(0.016, 0.018, 0.012, i * 0.017, 0.012, 0.01, tooth));
+      mouth.add(box(0.016, 0.016, 0.012, i * 0.017, -0.013, 0.01, tooth));
+    }
+    head.add(mouth);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.011, 6, 20), lipCol);
+    lip.scale.set(1, 0.42, 0.6);
+    lip.position.set(0, -0.098, 0.176);
+    head.add(lip);
+    return { brows, mouth };
+  }
+
+  if (style === "muppet") {
+    // ping-pong eyes on top, a ball nose and a big hinged mouth
+    for (const sx of [-1, 1]) {
+      ball(0.07, white, sx * 0.075, 0.085, 0.14);
+      ball(0.026, black, sx * 0.07 - sx * 0.006, 0.08, 0.208, 1, 1, 0.5);
+      const lid = new THREE.Mesh(new THREE.SphereGeometry(0.073, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), skin);
+      lid.position.set(sx * 0.075, 0.085, 0.14);
+      lid.rotation.set(0.4, 0, linda ? sx * 0.15 : -sx * 0.4);
+      head.add(lid);
+      const brow = box(0.1, 0.028, 0.03, 0, 0, 0, browCol);
+      const g = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001), black);
+      g.position.set(sx * 0.075, 0.165, 0.17);
+      g.add(brow);
+      head.add(g);
+      brows.push(g);
+      if (linda) for (let k = 0; k < 4; k++) {
+        const lash = box(0.006, 0.04, 0.004, sx * (0.04 + k * 0.022), 0.155, 0.18, black);
+        lash.rotation.z = -sx * (0.1 + k * 0.25);
+        head.add(lash);
+      }
+    }
+    ball(0.055, new THREE.MeshStandardMaterial({ color: linda ? 0xff7a9a : 0xd8402a, roughness: 0.6 }), 0, 0.02, 0.205);
+    // the mouth: a dark half-disc from cheek to cheek with a tongue in it
+    const mouthGeo = new THREE.CircleGeometry(0.12, 24, Math.PI, Math.PI);
+    const mouth = new THREE.Mesh(mouthGeo, gum);
+    mouth.position.set(0, -0.045, 0.19);
+    mouth.rotation.x = -0.25;
+    const tongue = new THREE.Mesh(new THREE.CircleGeometry(0.055, 16, Math.PI, Math.PI), new THREE.MeshBasicMaterial({ color: 0xd8506a }));
+    tongue.position.set(0, -0.06, 0.002);
+    tongue.scale.y = 0.6;
+    mouth.add(tongue);
+    if (linda) mouth.add(box(0.2, 0.025, 0.004, 0, -0.008, 0.003, tooth));
+    head.add(mouth);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.012, 6, 24, Math.PI), lipCol);
+    lip.rotation.z = Math.PI;
+    lip.position.copy(mouth.position);
+    lip.rotation.x = -0.25;
+    head.add(lip);
+    if (!linda) ball(0.195, stubble, 0, -0.03, 0.0).geometry = new THREE.SphereGeometry(0.195, 16, 10, 0, Math.PI * 2, Math.PI * 0.66, Math.PI * 0.34);
+    return { brows, mouth };
+  }
+
+  // clay: Aardman-ish. Eyes close together under one heavy brow ridge, a bulb of a nose, a wide toothy grin
+  for (const sx of [-1, 1]) {
+    ball(0.045, white, sx * 0.05, 0.06, 0.17, 1, 1.25, 0.7);
+    ball(0.02, black, sx * 0.048, 0.055, 0.2, 1, 1.2, 0.5);
+    ball(0.006, new THREE.MeshBasicMaterial({ color: 0xffffff }), sx * 0.048 + 0.008, 0.066, 0.208);
+    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(0.028, 0.06, 4, 8), browCol);
+    brow.rotation.z = Math.PI / 2;
+    const g = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001), black);
+    g.position.set(sx * 0.058, 0.122, 0.175);
+    g.add(brow);
+    head.add(g);
+    brows.push(g);
+    if (linda) {
+      const shadow = ball(0.05, new THREE.MeshBasicMaterial({ color: 0x8a3ad8 }), sx * 0.05, 0.085, 0.165, 1, 0.5, 0.6);
+      shadow.renderOrder = -1;
+    }
+  }
+  ball(0.075, skin, 0, -0.005, 0.205, 1.1, 0.95, 0.85); // the nose, big and round
+  const cheek = (sx: number): void => { ball(0.06, skin, sx * 0.1, -0.06, 0.13, 1, 0.85, 0.8); ball(0.035, cheekCol, sx * 0.12, -0.05, 0.175, 1, 0.7, 0.3); };
+  cheek(-1); cheek(1);
+  if (!linda) ball(0.19, stubble, 0, -0.03, 0.02).geometry = new THREE.SphereGeometry(0.19, 16, 10, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38);
+  // the grin: a wide curved slot with a row of big square teeth
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.02), gum);
+  mouth.position.set(0, -0.105, 0.172);
+  for (let i = -3; i <= 3; i++) {
+    const t = box(0.022, 0.03, 0.012, i * 0.023, 0.006 + Math.abs(i) * 0.002, 0.012, tooth);
+    t.rotation.y = i * 0.08;
+    mouth.add(t);
+  }
+  head.add(mouth);
+  const lipU = new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 0.16, 4, 8), lipCol);
+  lipU.rotation.z = Math.PI / 2;
+  lipU.position.set(0, -0.076, 0.178);
+  head.add(lipU);
+  const lipL = lipU.clone();
+  lipL.position.y = -0.134;
+  lipL.scale.set(1, 0.85, 1);
+  head.add(lipL);
+  return { brows, mouth };
 }
 
 /* ---------------------------------------------------------------- his backup */
