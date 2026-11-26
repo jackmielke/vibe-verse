@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-orange-bad-guys",
+    date: "2026-11-26",
+    emoji: "🟠",
+    title: "Bad guys break out in orange",
+    body: "Summon a bad guy from the Warehouse 13 roof and he now starts behind the wheel inside the warehouse, in an orange jumpsuit and an orange getaway car, and tears out the front door. The police spot the orange cars and go after them, and they still go up in flames when they are caught.",
+    tag: "update",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "city-vibe-arms",
     date: "2026-11-26",
     emoji: "🔫",

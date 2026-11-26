@@ -4711,6 +4711,7 @@ export default function City() {
       },
       onBust: () => heistChase.bust(),
       hideout: hideouts.hideout,
+      lair: hideouts.lair,
       garage: hideouts.garage,
       parked: hideouts.parked,
       onBadDown: (left) => {
