@@ -121,6 +121,12 @@ export interface VoiceOptions {
   memory?: string;
   /** The first line's instruction, in place of the generic greeting. */
   greeting?: string;
+  /**
+   * A different character entirely (Vibe City's bodyguards use this). Without
+   * it the session is Vibey the magician. `realtime` is the one prompt the
+   * Realtime engine takes; `voice` and `backend` are the Live engine's pair.
+   */
+  prompts?: { realtime: string; voice: string; backend: string };
 }
 
 const FUNCTION_NAME = "vibe-magician-voice";
@@ -397,7 +403,7 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
       await pc.setLocalDescription(offer);
 
       if (opts.engine === "realtime") {
-        const minted = await callFunction({ action: "realtime", instructions: withMemory(VIBEY_REALTIME_PROMPT, opts.memory), tools, voice: opts.voice ?? "marin" });
+        const minted = await callFunction({ action: "realtime", instructions: withMemory(opts.prompts?.realtime ?? VIBEY_REALTIME_PROMPT, opts.memory), tools, voice: opts.voice ?? "marin" });
         if (!minted.value) throw new Error("No client secret returned");
         armBudget(minted.secondsLeft ?? null);
         if (minted.overFree) handlers.onOverFree?.(Boolean(minted.insistent));
@@ -418,8 +424,8 @@ export function createVoiceSession(opts: VoiceOptions): VoiceSession {
         const opened = await callFunction({
           action: "live",
           sdp: offer.sdp,
-          instructions: withMemory(VIBEY_VOICE_PROMPT, opts.memory),
-          backendInstructions: VIBEY_BACKEND_PROMPT,
+          instructions: withMemory(opts.prompts?.voice ?? VIBEY_VOICE_PROMPT, opts.memory),
+          backendInstructions: opts.prompts?.backend ?? VIBEY_BACKEND_PROMPT,
           tools,
           voice: opts.voice ?? "marin",
         });

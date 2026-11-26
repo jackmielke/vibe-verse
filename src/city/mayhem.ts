@@ -238,6 +238,16 @@ export interface Mayhem {
   seat(id: number): BadSeat | null;
   /** Hurt a bad guy's car (for a harness). At zero it blows up. */
   hurtBad(id: number, dmg: number): void;
+  /**
+   * The cruisers still running, for allies that fight them (the bodyguards in
+   * `bodyguards.ts`). `i` is only good for the frame it was read in.
+   */
+  threats(): Array<{ i: number; x: number; z: number; yaw: number; speed: number }>;
+  /**
+   * Somebody on your side hurt cruiser `i`. Adds no heat: you did not do it.
+   * True when that was the blow that wrecked it.
+   */
+  allyHit(i: number, dmg: number): boolean;
   dispose(): void;
 }
 
@@ -2048,6 +2058,20 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     hurtBad(id, dmg) {
       const b = bads.find((o) => o.id === id);
       if (b) hurtBad(b, dmg);
+    },
+    threats() {
+      const out: Array<{ i: number; x: number; z: number; yaw: number; speed: number }> = [];
+      cops.forEach((c, i) => {
+        if (c.dead === 0) out.push({ i, x: c.x, z: c.z, yaw: c.yaw, speed: c.speed });
+      });
+      return out;
+    },
+    allyHit(i, dmg) {
+      const c = cops[i];
+      if (!c || c.dead > 0) return false;
+      hurtCop(c, dmg, false);
+      crashFx.sparks(c.x, 1, c.z, 0, 1, 6);
+      return c.dead > 0;
     },
     give(kind) {
       owned.add(kind);
