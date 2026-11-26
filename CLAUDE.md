@@ -100,6 +100,21 @@ back from the runner: `list` polls the GitHub API and updates rows.
 - A new world is a new scope: one entry in `BUILD_SCOPES` (`src/build-mode/api.ts`),
   one in `SCOPES` in the function, and one `case` in the workflow's fence step.
 - Edge function and migration changes are outside every fence on purpose.
+- Every shipped build also files a **What's New** entry: the workflow writes
+  `src/whatsnew/auto/<date>-<time>-<id>.json` from the build's commit message
+  after the fence check, so the agent never touches it, two builds can never
+  conflict over it, and an undo takes the entry out with the change.
+
+## What's New
+
+`/whats-new` is the player-facing changelog, reachable from the ✨ New chip in
+the top bar, the WHAT'S NEW box on the front page (and a link in the Sky and
+Postcard looks), and ✨ New in Vibe Island's world controls, which opens it as
+a sheet so nobody is thrown out of the world. The badge counts entries this
+device has not opened yet. **When you ship something a player would notice,
+add an entry to the top of `src/whatsnew/entries.ts`**: player words, what they
+can do and where, no em dashes, no file names. `src/test/whatsNew.test.ts`
+checks the shape.
 
 ## Dependencies
 

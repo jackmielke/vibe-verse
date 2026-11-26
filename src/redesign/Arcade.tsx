@@ -30,6 +30,7 @@ import {
   useWorldList,
 } from "./shared";
 import type { WorldEntry } from "@/worlds/registry";
+import { WHATS_NEW, shortDay, useUnseenCount } from "@/whatsnew";
 
 const NAVY = "#06204a";
 const BLUE = "#1585f5";
@@ -103,6 +104,7 @@ export default function Arcade() {
   const d = useHomeData();
   const list = useWorldList();
   const price = usePrice();
+  const unseen = useUnseenCount();
   const go = useNavigate();
 
   return (
@@ -148,6 +150,12 @@ export default function Arcade() {
           )}
           <HudBox label="STAMPS" to="/passport">
             {d.passport.visited}/{d.passport.total}
+          </HudBox>
+          <HudBox label="WHAT'S NEW" to="/whats-new">
+            <span className="relative">
+              ✨ {shortDay(WHATS_NEW[0].date).toUpperCase()}
+              {unseen > 0 && <span className="vv-blink absolute -right-3 -top-1 h-2 w-2 rounded-full bg-[#d1344b]" aria-label={`${unseen} new`} />}
+            </span>
           </HudBox>
         </div>
         <Account

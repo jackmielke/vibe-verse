@@ -263,6 +263,27 @@ jobs:
             echo "Build-Mode: $BUILD_ID ($BUILD_MODE)"
             if [ -n "$BUILD_BY" ]; then echo "Requested-By: $BUILD_BY"; fi
           } > "$MSG"
+          # What's New: one file per build, so concurrent builds never
+          # conflict, and an undo reverts the entry along with the change.
+          # It is written by the workflow, after the fence check, from the
+          # same player-facing message the agent wrote for the commit.
+          if [ -z "$REVERT_SHA" ]; then
+            DAY="$(TZ=America/Los_Angeles date +%Y-%m-%d)"
+            ENTRY_ID="$DAY-$(TZ=America/Los_Angeles date +%H%M)-${BUILD_ID:0:8}"
+            BODY="$(tail -n +2 "$RUNNER_TEMP/message.txt" | sed '/./,$!d' | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//' | cut -c1-400)"
+            case "$BUILD_SCOPE" in
+              island) WORLD="Vibe Island" ;;
+              *) WORLD="" ;;
+            esac
+            mkdir -p src/whatsnew/auto
+            jq -n --arg id "$ENTRY_ID" --arg date "$DAY" --arg title "$SUBJECT" --arg body "$BODY" \
+              --arg world "$WORLD" --arg route "${BUILD_ROUTE:-}" \
+              '{id: $id, date: $date, emoji: "🛠️", title: $title, body: $body, tag: "update"}
+               + (if $world != "" then {world: $world} else {} end)
+               + (if $route != "" then {route: $route} else {} end)' \
+              > "src/whatsnew/auto/$ENTRY_ID.json"
+            git add "src/whatsnew/auto/$ENTRY_ID.json"
+          fi
           git commit -q -F "$MSG"
           # The build's prebuild step rewrites a couple of tracked files; none
           # of that belongs in the commit, and a dirty tree cannot rebase.

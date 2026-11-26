@@ -21,7 +21,8 @@
  * invitation. Extend the city by tweaking the constants in the
  * "City plan" section below; everything regenerates from the seed.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { useUnseenCount } from "@/whatsnew";
 import { Link, useLocation } from "react-router-dom";
 import * as THREE from "three";
 import { releaseRenderer } from "@/lib/quality";
@@ -180,6 +181,9 @@ import { registerPOI } from "@/world/worldIndex";
 import { IOS_APP } from "@/lib/iosApp";
 import { isBlocked, noteSafetyContent, openSafety, subscribeSafety } from "@/safety/safety";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
+
+/* Lazy: almost nobody opens the changelog mid-game, so it is not in the world's chunk. */
+const WhatsNewSheet = lazy(() => import("@/whatsnew/WhatsNewSheet"));
 
 // Universal playable character catalog. Keep City/Edge Island aligned
 // with /character-select, /profile, and the global active-character hook.
@@ -662,6 +666,8 @@ export default function City() {
   // ⋯ button so the 3D view isn't buried under HUD pills. md+ shows it
   // inline like before.
   const [hudMenuOpen, setHudMenuOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const whatsNewUnseen = useUnseenCount();
   const [chatOpen, setChatOpen] = useState(false);
   const chatOpenRef = useRef(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -9183,6 +9189,28 @@ export default function City() {
               💬 {peers.online ? peers.count : ""}
               {chatUnread > 0 && <span className="text-amber-300"> +{chatUnread}</span>}
             </button>
+            <button
+              onClick={(e) => {
+                setWhatsNewOpen(true);
+                setHudMenuOpen(false);
+                if (document.pointerLockElement) document.exitPointerLock();
+                e.currentTarget.blur();
+              }}
+              className="relative glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+              title="What's New: every update, with dates"
+            >
+              ✨ New
+              {whatsNewUnseen > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 rounded-full bg-amber-300 text-[10px] font-bold text-black flex items-center justify-center">
+                  {whatsNewUnseen}
+                </span>
+              )}
+            </button>
+            {whatsNewOpen && (
+              <Suspense fallback={null}>
+                <WhatsNewSheet onClose={() => setWhatsNewOpen(false)} />
+              </Suspense>
+            )}
           </div>
           {emoteWheelOpen && (
             /* Two grids tall now that the dance shelf is in here, which is
