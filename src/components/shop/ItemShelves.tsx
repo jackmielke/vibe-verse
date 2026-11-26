@@ -22,6 +22,7 @@ import {
   type FlameItem,
   type JetpackItem,
 } from "@/lib/cosmeticCatalog";
+import WeaponShelf from "@/components/shop/WeaponShelf";
 
 const SHELVES: Array<{
   kind: CosmeticKind;
@@ -86,7 +87,12 @@ function Swatch({ kind, item }: { kind: CosmeticKind; item: CosmeticItem }) {
   );
 }
 
-export default function ItemShelves() {
+export default function ItemShelves({
+  weapons = "last",
+}: {
+  /** Where Vibe City's weapons shelf goes. Vibe Arms in town opens on it. */
+  weapons?: "first" | "last";
+} = {}) {
   const { balance } = useVibecoin();
   const { owned, loadout, refresh } = useWardrobe();
   const [busy, setBusy] = useState<string | null>(null);
@@ -129,6 +135,7 @@ export default function ItemShelves() {
 
   return (
     <div>
+        {weapons === "first" && <WeaponShelf inCity />}
         {SHELVES.map((shelf, si) => (
           <motion.section
             key={shelf.kind}
@@ -218,6 +225,7 @@ export default function ItemShelves() {
             </div>
           </motion.section>
         ))}
+        {weapons === "last" && <WeaponShelf />}
     </div>
   );
 }

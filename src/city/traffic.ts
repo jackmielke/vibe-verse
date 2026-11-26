@@ -332,6 +332,12 @@ interface Car {
   bumpCool: number;
   /** Seconds left of a skid: a bot that lost it, sliding on low grip. */
   skid: number;
+  /**
+   * Seconds left of being soaked by the water gun. A soaked car crawls at a
+   * fraction of its cruise speed, which is the whole of the water gun's
+   * point: it barely scratches the paint, it just slows things down.
+   */
+  soaked: number;
 }
 
 /** Something hit something. For sound and effects; nothing here needs an answer. */
@@ -425,6 +431,8 @@ export interface Traffic {
     /** 0 = travelling along Z, 1 = along X. With `dir`, this is a heading. */
     axis: 0 | 1; dir: 1 | -1;
     dmg: number; wreck: boolean; crushed: boolean;
+    /** Seconds of water-gun slowdown left. */
+    soaked: number;
   }>;
   /**
    * Put the claimed car somewhere. The caller owns its pose until release.
@@ -439,6 +447,8 @@ export interface Traffic {
   release(id: number): void;
   /** Hurt a car. At 100 it explodes. */
   damage(id: number, amount: number): void;
+  /** Water gun: slow this car to a crawl for `seconds`. */
+  soak(id: number, seconds: number): void;
   /**
    * A car somebody was driving blows up under them. It leaves the driver,
    * stays exactly where it is (no snap to a lane), and burns as a wreck.
@@ -520,6 +530,9 @@ const CYCLE = 18;
 const AMBER = 2.2;
 /** Comfortable braking, m/s². Also what the following model plans against. */
 const DECEL = 7;
+
+/** A soaked car's top speed, as a fraction of its cruise. */
+export const SOAKED_PACE = 0.3;
 
 export function buildTraffic(opts: {
   seed: string;
@@ -609,6 +622,7 @@ export function buildTraffic(opts: {
             crushed: false,
             bumpCool: 0,
             skid: 0,
+            soaked: 0,
           });
         }
       }
@@ -1095,6 +1109,7 @@ export function buildTraffic(opts: {
     for (const c of cars) {
       if (c.hit && !c.driven) flying.push(c);
       if (c.bumpCool > 0) c.bumpCool -= dt;
+      if (c.soaked > 0) c.soaked -= dt;
     }
 
     /*
@@ -1223,7 +1238,7 @@ export function buildTraffic(opts: {
        * cushion keeps a stopped car a bonnet's length off the one in front.
        */
       const clear = Math.max(0, Math.min(clearAhead(car, player), clearToStopLine(car, clock)) - 1);
-      const target = Math.min(car.cruise, Math.sqrt(2 * DECEL * clear));
+      const target = Math.min(car.cruise * (car.soaked > 0 ? SOAKED_PACE : 1), Math.sqrt(2 * DECEL * clear));
       const rate = target > car.speed ? 4 : DECEL * 1.6;
       car.speed = Math.max(0, car.speed + THREE.MathUtils.clamp(target - car.speed, -rate * dt, rate * dt));
 
@@ -1533,6 +1548,11 @@ export function buildTraffic(opts: {
       if (car) hurt(car, amount);
     },
 
+    soak(id, seconds) {
+      const car = cars[id];
+      if (car && !car.driven) car.soaked = Math.min(8, Math.max(car.soaked, seconds));
+    },
+
     detonate(id, yaw) {
       const car = cars[id];
       if (!car || !car.driven) return;
@@ -1592,7 +1612,7 @@ export function buildTraffic(opts: {
         if (Math.hypot(cx - x, cz - z) > r) continue;
         out.push({
           id: i, x: cx, y: c.hit ? c.hit.y : 0, z: cz,
-          hit: !!c.hit, speed: c.speed, axis: c.axis, dir: c.dir,
+          hit: !!c.hit, speed: c.speed, axis: c.axis, dir: c.dir, soaked: c.soaked,
           dmg: c.dmg, wreck: c.wreck > 0, crushed: c.crushed,
         });
       }

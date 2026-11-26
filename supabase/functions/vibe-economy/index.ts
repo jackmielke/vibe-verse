@@ -686,6 +686,14 @@ const COSMETICS: Record<string, Record<string, CosmeticSpec>> = {
     tuxedo: { price: 250, title: "Tuxedo" },
     sprout: { price: 175, title: "Sprout" },
   },
+  // Vibe City's weapons counter (Vibe Arms on the plaza, and the island's
+  // Vibe Shop). Bought once, never runs out. See src/lib/weaponCatalog.ts.
+  weapon: {
+    water:     { price: 60,  title: "Super Soaker" },
+    glock:     { price: 150, title: "Glock 19" },
+    pineapple: { price: 250, title: "Pineapple Bombs" },
+    blaster:   { price: 500, title: "Nova Blaster" },
+  },
 };
 
 /** `hat:crown`. Namespaced because "violet" is both a flame and a jetpack. */

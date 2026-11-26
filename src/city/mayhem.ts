@@ -27,8 +27,13 @@
  *
  * ## Guns
  *
- * A rifle, hidden on a rooftop, and a Glock 19, lying on the plaza. Pick one
- * up by walking over it; R fires, G switches. Aim is assisted: the shot goes
+ * A rifle, hidden on a rooftop, is the one free find: walk over it. Everything
+ * else is bought with Vibey Coins at Vibe Arms (the stall on the plaza) or the
+ * Vibe Shop on the island, and lives in `vibe_inventory` like a hat does: the
+ * Glock 19, the Super Soaker (almost no damage, but it slows whatever it hits
+ * to a crawl), the Nova Blaster (fires as fast as you hold it) and pineapple
+ * bombs, which stick to whatever they hit and hurt it until they pop. None of
+ * them run out. R fires, G switches, X throws a pineapple. Aim is assisted: the shot goes
  * to the best target inside a cone in front of you, because aiming a mouse at
  * a moving car while the camera follows your back is no fun at all. Both work
  * from behind the wheel too.
@@ -43,7 +48,10 @@ import type { CrashFx } from "@/city/crashFx";
 import type { Smashables } from "@/city/smash";
 import { buildCityCar, type Traffic } from "@/city/traffic";
 
-export type GunKind = "rifle" | "glock";
+export type GunKind = "rifle" | "glock" | "water" | "blaster";
+/** Guns you buy rather than find. Ids match `weapon:<id>` in the inventory. */
+export const BOUGHT_GUNS: readonly GunKind[] = ["glock", "water", "blaster"];
+const ALL_GUNS: readonly GunKind[] = ["rifle", "glock", "water", "blaster"];
 
 export interface GunSpec {
   label: string;
@@ -54,12 +62,37 @@ export interface GunSpec {
   range: number;
   /** Chance a round that hits a tree sets it alight. */
   ignite: number;
+  /** Seconds a hit slows its target to a crawl. Water only. */
+  soak?: number;
+  /** Tracer colour and thickness. */
+  tracer: number;
+  thick: number;
 }
 
 export const GUNS: Record<GunKind, GunSpec> = {
-  rifle: { label: "Rifle", emoji: "🎯", interval: 0.11, damage: 24, range: 95, ignite: 0.3 },
-  glock: { label: "Glock 19", emoji: "🔫", interval: 0.24, damage: 17, range: 50, ignite: 0.06 },
+  rifle: { label: "Rifle", emoji: "🎯", interval: 0.11, damage: 24, range: 95, ignite: 0.3, tracer: 0xffe29a, thick: 1 },
+  glock: { label: "Glock 19", emoji: "🔫", interval: 0.24, damage: 17, range: 50, ignite: 0.06, tracer: 0xffe29a, thick: 1 },
+  water: { label: "Super Soaker", emoji: "💦", interval: 0.07, damage: 1.5, range: 32, ignite: 0, soak: 4, tracer: 0x6fd0ff, thick: 2.6 },
+  blaster: { label: "Nova Blaster", emoji: "☄️", interval: 0.06, damage: 14, range: 90, ignite: 0.2, tracer: 0xff4a3a, thick: 2 },
 };
+
+/** Pineapple bombs: how many you carry, and how fast a spent one grows back. */
+export const BOMB_PACK = 3;
+const BOMB_REGROW = 6;
+/** A stuck bomb ticks this much damage a second, then pops for BOMB_POP. */
+const BOMB_DPS = 3;
+const BOMB_POP = 45;
+/** The longest a stuck bomb holds on. Jack's number: "about 27 seconds". */
+export const BOMB_MAX_FUSE = 27;
+
+/**
+ * How long a thrown pineapple holds on before it pops: anywhere from an
+ * instant to BOMB_MAX_FUSE, skewed short so most of them go off while you
+ * are still watching. `r` is a uniform 0..1.
+ */
+export function bombFuse(r: number): number {
+  return BOMB_MAX_FUSE * r * r;
+}
 
 export interface MayhemHud {
   stars: number;
@@ -68,6 +101,10 @@ export interface MayhemHud {
   cops: number;
   gun: GunKind | null;
   owned: GunKind[];
+  /** Pineapples in hand, or null if you have not bought the pack. */
+  bombs: number | null;
+  /** Standing at the Vibe Arms stall. */
+  atStall: boolean;
 }
 
 export interface MayhemCtx {
@@ -83,6 +120,8 @@ export interface MayhemCtx {
   heist: THREE.Vector3 | null;
   /** Trigger held. */
   firing: boolean;
+  /** Throw key held (X). */
+  throwing?: boolean;
   /**
    * On your feet on the ground, not flying, falling or already knocked over.
    * A cruiser only knocks you down on a real bump at street level: being
@@ -105,8 +144,8 @@ export interface MayhemOpts {
   half: number;
   /** Where the avatar's hands are, to hold a gun. */
   hand: THREE.Object3D;
-  /** Candidate spots for the Glock, first clear one wins. */
-  glockSpots: Array<[number, number, number]>;
+  /** Candidate spots for the Vibe Arms stall, first clear one wins. */
+  stallSpots: Array<[number, number, number]>;
   /** Something rammed you. `byCop` false means you rammed a cop. */
   onContact(dx: number, dz: number, speed: number, byCop: boolean): void;
   /** An explosion went off here; hurt the player if they are close. */
@@ -130,8 +169,16 @@ export interface Mayhem {
   wall(x: number, y: number, z: number, impact: number, fx: number, fz: number): boolean;
   /** Set the trees within `r` alight. */
   ignite(x: number, z: number, r: number): void;
-  /** G: holster, rifle, Glock, round again (owned ones only). */
+  /** G: holster, then each owned gun, round again. */
   cycle(): void;
+  /**
+   * What the wardrobe says you have bought: `weapon:<id>` ids without the
+   * prefix. Called whenever the inventory changes. A gun that is no longer
+   * owned (a refund, a different account) is taken out of your hand.
+   */
+  setBought(ids: readonly string[]): void;
+  /** Throw a pineapple now, if there is one. For harnesses and touch. */
+  throwBomb(): void;
   update(dt: number, ctx: MayhemCtx): void;
   /** For harnesses. */
   debug(): {
@@ -141,11 +188,18 @@ export interface Mayhem {
     gun: GunKind | null;
     owned: GunKind[];
     spots: Record<GunKind, [number, number, number] | null>;
+    stall: [number, number, number] | null;
     shots: number;
     hits: number;
+    bombs: Array<{ x: number; y: number; z: number; stuck: string | null; fuse: number }>;
+    pops: number;
   };
   setHeat(h: number): void;
   give(kind: GunKind): void;
+  /** For harnesses: fire one round from here, along `yaw`. */
+  shootFrom(kind: GunKind, x: number, y: number, z: number, yaw: number): void;
+  /** For harnesses: throw a pineapple from here, along `yaw`, at `speed`. */
+  throwFrom(x: number, y: number, z: number, yaw: number, speed?: number): void;
   dispose(): void;
 }
 
@@ -195,6 +249,152 @@ function buildGlock(): THREE.Group {
   grip.rotation.x = -0.25;
   g.add(grip);
   return g;
+}
+
+/** A chunky toy water gun: orange body, see-through blue tank on top. */
+function buildSoaker(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.MeshStandardMaterial({ color: 0xff8a2a, roughness: 0.55 });
+  const tank = new THREE.MeshStandardMaterial({ color: 0x4fb8ff, roughness: 0.15, transparent: true, opacity: 0.75 });
+  const nozzle = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.5 });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  };
+  add(new THREE.BoxGeometry(0.08, 0.1, 0.42), body, 0, 0, 0.05);
+  add(new THREE.CylinderGeometry(0.06, 0.06, 0.26, 12).rotateX(Math.PI / 2), tank, 0, 0.1, 0.02);
+  add(new THREE.CylinderGeometry(0.025, 0.03, 0.14, 8).rotateX(Math.PI / 2), nozzle, 0, 0.01, 0.32);
+  add(new THREE.BoxGeometry(0.06, 0.14, 0.06), body, 0, -0.1, -0.06).rotation.x = -0.3;
+  add(new THREE.BoxGeometry(0.05, 0.05, 0.12), nozzle, 0, -0.05, 0.16); // pump
+  return g;
+}
+
+/**
+ * The Nova Blaster: an original space pistol. White shell, orange stripe,
+ * a black barrel with cooling rings and a glowing red emitter at the tip.
+ */
+function buildBlaster(): THREE.Group {
+  const g = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({ color: 0xeef0f3, roughness: 0.35, metalness: 0.2 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.4, metalness: 0.6 });
+  const stripe = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.5 });
+  const glow = new THREE.MeshBasicMaterial({ color: 0xff3b2e });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  };
+  add(new THREE.BoxGeometry(0.07, 0.09, 0.24), shell, 0, 0.02, 0.02);
+  add(new THREE.BoxGeometry(0.074, 0.025, 0.2), stripe, 0, 0.05, 0.03);
+  add(new THREE.CylinderGeometry(0.022, 0.022, 0.24, 10).rotateX(Math.PI / 2), dark, 0, 0.02, 0.24);
+  for (const z of [0.18, 0.23, 0.28]) {
+    add(new THREE.CylinderGeometry(0.032, 0.032, 0.018, 12).rotateX(Math.PI / 2), dark, 0, 0.02, z);
+  }
+  add(new THREE.SphereGeometry(0.02, 8, 6), glow, 0, 0.02, 0.37);
+  add(new THREE.BoxGeometry(0.05, 0.13, 0.06), dark, 0, -0.07, -0.04).rotation.x = -0.28;
+  add(new THREE.BoxGeometry(0.03, 0.04, 0.09), dark, 0, 0.09, -0.02); // scope
+  return g;
+}
+
+/** One pineapple: yellow body with a grid of darker diamonds and a green crown. */
+function buildPineapple(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 10, 8).scale(1, 1.3, 1),
+    new THREE.MeshStandardMaterial({ color: 0xe8b62c, roughness: 0.7, flatShading: true }),
+  );
+  g.add(body);
+  const leaf = new THREE.MeshStandardMaterial({ color: 0x2f9e44, roughness: 0.7, flatShading: true });
+  for (let i = 0; i < 5; i++) {
+    const l = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.18, 4), leaf);
+    const a = (i / 5) * Math.PI * 2;
+    l.position.set(Math.cos(a) * 0.03, 0.22, Math.sin(a) * 0.03);
+    l.rotation.set(Math.sin(a) * 0.4, 0, -Math.cos(a) * 0.4);
+    g.add(l);
+  }
+  // The pin: it is a bomb, after all.
+  const pin = new THREE.Mesh(
+    new THREE.TorusGeometry(0.04, 0.008, 6, 12),
+    new THREE.MeshStandardMaterial({ color: 0xc0c4ca, metalness: 0.8, roughness: 0.3 }),
+  );
+  pin.position.set(0.12, 0.1, 0);
+  pin.rotation.y = Math.PI / 2;
+  g.add(pin);
+  return g;
+}
+
+function signTexture(text: string, bg: string, fg: string): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 128;
+  const x = c.getContext("2d")!;
+  x.fillStyle = bg;
+  x.fillRect(0, 0, 512, 128);
+  x.strokeStyle = fg;
+  x.lineWidth = 6;
+  x.strokeRect(8, 8, 496, 112);
+  x.fillStyle = fg;
+  x.font = "bold 64px system-ui, sans-serif";
+  x.textAlign = "center";
+  x.textBaseline = "middle";
+  x.fillText(text, 256, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/**
+ * Vibe Arms: a street stall with a striped awning, a counter, and the stock
+ * turning slowly on top. The Vibe Shop counter, down in town.
+ */
+function buildStall(): { group: THREE.Group; display: THREE.Group } {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.8 });
+  const top = new THREE.MeshStandardMaterial({ color: 0x7dffd4, roughness: 0.4, emissive: 0x0f3a2c });
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.05, 1.1), wood);
+  counter.position.y = 0.52;
+  g.add(counter);
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.08, 1.2), top);
+  slab.position.y = 1.08;
+  g.add(slab);
+  for (const sx of [-1.6, 1.6]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3, 8), wood);
+    post.position.set(sx, 1.5, -0.45);
+    g.add(post);
+  }
+  // Striped awning.
+  for (let i = 0; i < 7; i++) {
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.52, 0.06, 1.6),
+      new THREE.MeshStandardMaterial({ color: i % 2 ? 0xf4f5f7 : 0xff4f7a, roughness: 0.7 }),
+    );
+    stripe.position.set(-1.56 + i * 0.52, 2.95, 0.15);
+    stripe.rotation.x = 0.22;
+    g.add(stripe);
+  }
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(3, 0.75),
+    new THREE.MeshBasicMaterial({ map: signTexture("VIBE ARMS", "#0c1118", "#7dffd4") }),
+  );
+  sign.position.set(0, 3.55, -0.45);
+  g.add(sign);
+  const back = sign.clone();
+  back.rotation.y = Math.PI;
+  back.position.z = -0.46;
+  g.add(back);
+  const display = new THREE.Group();
+  display.position.y = 1.45;
+  const items = [buildGlock(), buildSoaker(), buildBlaster(), buildPineapple()];
+  items.forEach((m, i) => {
+    m.scale.setScalar(2.2);
+    m.position.x = -1.2 + i * 0.8;
+    display.add(m);
+  });
+  g.add(display);
+  return { group: g, display };
 }
 
 interface CopMesh {
@@ -343,6 +543,22 @@ interface Cop {
   target: "player" | "heist" | "leave";
   /** Seconds since it last had any reason to be here. */
   idle: number;
+  /** Seconds of water-gun slowdown left. */
+  soaked: number;
+}
+
+interface Bomb {
+  mesh: THREE.Group;
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  /** What it is stuck to, if anything. A stuck bomb rides along with it. */
+  stuck: { kind: "cop"; cop: Cop } | { kind: "car"; id: number } | { kind: "ground" } | null;
+  /** Offset from what it is stuck to. */
+  ox: number; oy: number; oz: number;
+  /** Seconds left once stuck. */
+  fuse: number;
+  /** Seconds since thrown, so a bomb in flight that never lands still goes off. */
+  age: number;
 }
 
 interface Fire {
@@ -380,48 +596,59 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   let footCool = 0;
 
   // ---- Guns ----------------------------------------------------------
+  // The rifle is a find and is remembered on this device. Everything else is
+  // bought, and `setBought` is told about it from the wardrobe. The old key
+  // also held "glock" from when it lay free on the plaza; that is ignored now
+  // that it is sold.
   const owned = new Set<GunKind>();
   try {
     const raw = JSON.parse(localStorage.getItem(OWNED_KEY) || "[]");
-    if (Array.isArray(raw)) for (const k of raw) if (k === "rifle" || k === "glock") owned.add(k);
+    if (Array.isArray(raw) && raw.includes("rifle")) owned.add("rifle");
   } catch {
     /* fresh start */
   }
   const saveOwned = () => {
     try {
-      localStorage.setItem(OWNED_KEY, JSON.stringify([...owned]));
+      localStorage.setItem(OWNED_KEY, JSON.stringify(owned.has("rifle") ? ["rifle"] : []));
     } catch {
       /* private window */
     }
   };
-  let gun: GunKind | null = owned.has("rifle") ? "rifle" : owned.has("glock") ? "glock" : null;
+  let gun: GunKind | null = owned.has("rifle") ? "rifle" : null;
+  let hasBombs = false;
+  let bombsInHand = BOMB_PACK;
+  let regrow = 0;
+  let throwCool = 0;
 
-  const inHand: Record<GunKind, THREE.Group> = { rifle: buildRifle(), glock: buildGlock() };
+  const inHand: Record<GunKind, THREE.Group> = {
+    rifle: buildRifle(), glock: buildGlock(), water: buildSoaker(), blaster: buildBlaster(),
+  };
   inHand.rifle.position.set(-0.28, 1.05, 0.3);
   inHand.glock.position.set(-0.3, 1.05, 0.38);
-  for (const k of ["rifle", "glock"] as const) {
+  inHand.water.position.set(-0.28, 1.05, 0.32);
+  inHand.blaster.position.set(-0.3, 1.05, 0.36);
+  for (const k of ALL_GUNS) {
     inHand[k].visible = false;
     opts.hand.add(inHand[k]);
   }
 
   // The pickups. Where they lie is decided once the collision exists, on
   // the first update, because a spot inside a wall is no spot at all.
-  const spots: Record<GunKind, [number, number, number] | null> = { rifle: null, glock: null };
-  const pickups: Record<GunKind, THREE.Group> = { rifle: new THREE.Group(), glock: new THREE.Group() };
+  const spots: Record<GunKind, [number, number, number] | null> = { rifle: null, glock: null, water: null, blaster: null };
+  const rifleUp = new THREE.Group();
   {
     const r = buildRifle();
     r.scale.setScalar(2.2);
-    pickups.rifle.add(r);
-    const gl = buildGlock();
-    gl.scale.setScalar(3.4);
-    pickups.glock.add(gl);
-    pickups.rifle.add(glintSprite("rgba(255,200,90,0.9)"));
-    pickups.glock.add(glintSprite("rgba(120,220,255,0.9)"));
-    for (const k of ["rifle", "glock"] as const) {
-      pickups[k].visible = false;
-      group.add(pickups[k]);
-    }
+    rifleUp.add(r);
+    rifleUp.add(glintSprite("rgba(255,200,90,0.9)"));
+    rifleUp.visible = false;
+    group.add(rifleUp);
   }
+  const stall = buildStall();
+  stall.group.visible = false;
+  group.add(stall.group);
+  let stallAt: [number, number, number] | null = null;
+  let atStall = false;
   let placed = false;
   const place = (blocked: (x: number, z: number, y: number) => boolean) => {
     placed = true;
@@ -445,17 +672,22 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     if (best) {
       spots.rifle = [(best.minX + best.maxX) / 2, best.base + best.height + 1.1, (best.minZ + best.maxZ) / 2];
     }
-    for (const s of opts.glockSpots) {
-      if (!blocked(s[0], s[2], s[1] + 0.8)) {
-        spots.glock = [s[0], s[1] + 0.9, s[2]];
+    // Vibe Arms goes where the free Glock used to lie.
+    for (const s of opts.stallSpots) {
+      if (!blocked(s[0], s[2], s[1] + 0.8) && !blocked(s[0] + 1.6, s[2], s[1] + 0.8) && !blocked(s[0] - 1.6, s[2], s[1] + 0.8)) {
+        stallAt = [s[0], s[1], s[2]];
         break;
       }
     }
-    for (const k of ["rifle", "glock"] as const) {
-      const s = spots[k];
-      if (!s) continue;
-      pickups[k].position.set(s[0], s[1], s[2]);
-      pickups[k].visible = !owned.has(k);
+    if (stallAt) {
+      stall.group.position.set(stallAt[0], stallAt[1], stallAt[2]);
+      // Face the middle of the plaza.
+      stall.group.rotation.y = Math.atan2(-stallAt[0], -stallAt[2]);
+      stall.group.visible = true;
+    }
+    if (spots.rifle) {
+      rifleUp.position.set(spots.rifle[0], spots.rifle[1], spots.rifle[2]);
+      rifleUp.visible = !owned.has("rifle");
     }
   };
 
@@ -463,9 +695,17 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   const tracerMat = new THREE.MeshBasicMaterial({
     color: 0xffe29a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false,
   });
+  const tracerMats: Record<GunKind, THREE.MeshBasicMaterial> = {
+    rifle: tracerMat,
+    glock: tracerMat,
+    water: new THREE.MeshBasicMaterial({ color: GUNS.water.tracer, transparent: true, opacity: 0.7, depthWrite: false }),
+    blaster: new THREE.MeshBasicMaterial({
+      color: GUNS.blaster.tracer, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
+    }),
+  };
   const tracerGeo = new THREE.BoxGeometry(0.05, 0.05, 1).translate(0, 0, 0.5);
   const tracers: Tracer[] = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 16; i++) {
     const m = new THREE.Mesh(tracerGeo, tracerMat);
     m.visible = false;
     group.add(m);
@@ -498,6 +738,35 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   const bang = (kind: GunKind) => {
     const a = audio();
     if (!a || !noise) return;
+    if (kind === "blaster") {
+      // Pew: a saw that falls an octave and a half in a tenth of a second.
+      const o = a.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(1500, a.currentTime);
+      o.frequency.exponentialRampToValueAtTime(320, a.currentTime + 0.12);
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.09, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 0.14);
+      o.connect(g).connect(a.destination);
+      o.start();
+      o.stop(a.currentTime + 0.15);
+      return;
+    }
+    if (kind === "water") {
+      // Pssh: bright, quiet noise.
+      const src = a.createBufferSource();
+      src.buffer = noise;
+      src.playbackRate.value = 1.6;
+      const f = a.createBiquadFilter();
+      f.type = "highpass";
+      f.frequency.value = 3200;
+      const g = a.createGain();
+      g.gain.value = 0.05;
+      src.connect(f).connect(g).connect(a.destination);
+      src.start();
+      src.stop(a.currentTime + 0.12);
+      return;
+    }
     const src = a.createBufferSource();
     src.buffer = noise;
     const f = a.createBiquadFilter();
@@ -534,7 +803,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       forgiveIn: starsFor(heat) > 0 ? Math.max(0, Math.ceil(FORGIVE_AFTER - quiet)) : null,
       cops: cops.filter((c) => c.dead === 0).length,
       gun,
-      owned: (["rifle", "glock"] as const).filter((k) => owned.has(k)),
+      owned: ALL_GUNS.filter((k) => owned.has(k)),
+      bombs: hasBombs ? bombsInHand : null,
+      atStall,
     };
     const key = JSON.stringify(h);
     if (key !== lastHud) {
@@ -618,7 +889,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     group.add(mesh.group);
     cops.push({
       mesh, x, z, yaw: Math.atan2(px - x, pz - z), speed: 6, hp: COP_HP, dead: 0,
-      wpX: px, wpZ: pz, repath: 0, ramCool: 1, stuck: 0, reverse: 0, target: "player", idle: 0,
+      wpX: px, wpZ: pz, repath: 0, ramCool: 1, stuck: 0, reverse: 0, target: "player", idle: 0, soaked: 0,
     });
   };
 
@@ -693,7 +964,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     } else {
       const turn = 2.8 * THREE.MathUtils.clamp(Math.abs(c.speed) / 8, 0.3, 1);
       c.yaw += THREE.MathUtils.clamp(dyaw, -turn * dt, turn * dt);
-      const want = (dist < 6 && c.target === "player" ? COP_TOP : COP_TOP) * Math.max(0.3, Math.cos(dyaw));
+      const top = c.soaked > 0 ? COP_TOP * 0.3 : COP_TOP;
+      const want = top * Math.max(0.3, Math.cos(dyaw));
       c.speed += THREE.MathUtils.clamp(want - c.speed, -COP_ACCEL * 1.5 * dt, COP_ACCEL * dt);
     }
     const fx = Math.sin(c.yaw);
@@ -784,7 +1056,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         const id = traffic.carAt(ox + ax * s, oz + az * s, y, 0.6);
         if (id >= 0) {
           traffic.damage(id, spec.damage);
-          traffic.shove(id, ax, az, 1.5);
+          if (spec.soak) traffic.soak(id, spec.soak);
+          else traffic.shove(id, ax, az, 1.5);
           crime(0.12);
           hits++;
           crashFx.sparks(ox + ax * s, y, oz + az * s, -ax, -az, 6);
@@ -805,35 +1078,225 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       const t = cands[pick];
       hits++;
       if (t.kind === "cop") {
-        hurtCop(cops[t.ref], spec.damage);
-        crime(0.3);
-        crashFx.sparks(ex, 1, ez, -ax, -az, 8);
+        const c = cops[t.ref];
+        hurtCop(c, spec.damage);
+        if (spec.soak) c.soaked = Math.min(8, Math.max(c.soaked, spec.soak));
+        crime(spec.soak ? 0.05 : 0.3);
+        if (!spec.soak) crashFx.sparks(ex, 1, ez, -ax, -az, 8);
       } else if (t.kind === "car") {
         traffic.damage(t.ref, spec.damage);
-        traffic.shove(t.ref, ax, az, 1.5);
-        crime(0.12);
-        crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
+        if (spec.soak) traffic.soak(t.ref, spec.soak);
+        else traffic.shove(t.ref, ax, az, 1.5);
+        crime(spec.soak ? 0.02 : 0.12);
+        if (!spec.soak) crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
+      } else if (spec.soak) {
+        // Water puts a burning tree out.
+        for (let i = fires.length - 1; i >= 0; i--) {
+          const f = fires[i];
+          if (f.tree && Math.hypot(f.x - t.x, f.z - t.z) < 1) f.life = Math.min(f.life, f.t + 1.5);
+        }
       } else {
         crashFx.leaves(t.x, 3, t.z, 6);
         if (Math.random() < spec.ignite) ignite(t.x, t.z, 0.6);
       }
-    } else if (wall) {
+    } else if (wall && !spec.soak) {
       crashFx.sparks(ex, ey, ez, -ax, -az, 5);
       crashFx.debris(ex, ey, ez, 1, 0x9aa2ab, 2);
     }
-    // Shooting in town is noticed.
-    if (cands.some((c) => c.kind !== "tree")) crime(0.03);
+    if (spec.soak && Math.random() < 0.3) crashFx.debris(ex, ey, ez, 2, 0x8fd8ff, 3);
+    // Shooting in town is noticed. Water much less so.
+    if (cands.some((c) => c.kind !== "tree")) crime(spec.soak ? 0.005 : 0.03);
     const tr = tracers[tracerNext];
     tracerNext = (tracerNext + 1) % tracers.length;
     tr.t = 0;
     tr.mesh.visible = true;
+    tr.mesh.material = tracerMats[kind];
     tr.mesh.position.set(ox, oy, oz);
-    tr.mesh.scale.set(1, 1, Math.max(0.5, Math.hypot(ex - ox, ey - oy, ez - oz)));
+    tr.mesh.scale.set(spec.thick, spec.thick, Math.max(0.5, Math.hypot(ex - ox, ey - oy, ez - oz)));
     tr.mesh.lookAt(ex, ey, ez);
-    flash.position.set(ox, oy, oz);
-    flash.visible = true;
-    flashT = 0;
+    if (!spec.soak) {
+      flash.position.set(ox, oy, oz);
+      flash.visible = true;
+      flashT = 0;
+    }
     bang(kind);
+  };
+
+  // ---- Pineapple bombs -------------------------------------------------
+  //
+  // Thrown in an arc. The first moving thing it touches (a cruiser or a car)
+  // it sticks to, and it rides along hurting it a little every second until
+  // the fuse runs out and it pops. Anything else it lands on, it sits on.
+  // Neither the tick nor the pop is a one-shot by design: a fresh cruiser
+  // survives a short fuse, a long one finishes it.
+  const bombs: Bomb[] = [];
+  let pops = 0;
+  let lastCtx: MayhemCtx | null = null;
+  const MAX_BOMBS = 9;
+
+  const throwBomb = () => {
+    const ctx = lastCtx;
+    if (!ctx || !hasBombs || bombsInHand <= 0 || throwCool > 0 || bombs.length >= MAX_BOMBS) return;
+    throwCool = 0.45;
+    bombsInHand--;
+    if (regrow <= 0) regrow = BOMB_REGROW;
+    const d = ctx.driving;
+    const yaw = d ? d.yaw : ctx.yaw;
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const ox = d ? d.x + fx * 2.6 : ctx.player.x + fx * 0.6;
+    const oy = d ? d.y + 1.6 : ctx.player.y + 1.5;
+    const oz = d ? d.z + fz * 2.6 : ctx.player.z + fz * 0.6;
+    const carry = d ? Math.max(0, d.speed) : 0;
+    const mesh = buildPineapple();
+    mesh.scale.setScalar(1.6);
+    group.add(mesh);
+    bombs.push({
+      mesh, x: ox, y: oy, z: oz,
+      vx: fx * (14 + carry), vy: 6.5, vz: fz * (14 + carry),
+      stuck: null, ox: 0, oy: 0, oz: 0,
+      fuse: bombFuse(Math.random()), age: 0,
+    });
+    crime(0.05);
+  };
+
+  const removeBomb = (i: number) => {
+    const b = bombs[i];
+    group.remove(b.mesh);
+    b.mesh.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.geometry.dispose();
+        (m.material as THREE.Material).dispose();
+      }
+    });
+    bombs.splice(i, 1);
+  };
+
+  const pop = (b: Bomb) => {
+    pops++;
+    crashFx.explode(b.x, b.y, b.z, 1, 0xffc23d);
+    crashFx.debris(b.x, b.y, b.z, 8, 0xe8b62c, 6);
+    crashFx.kick(0.25);
+    traffic.blast(b.x, b.z, 5, 9);
+    smash.blast(b.x, b.z, 4, 9);
+    opts.onBlast(b.x, b.z, 4);
+    opts.boom?.(b.x, b.z);
+    const st = b.stuck;
+    if (st?.kind === "cop") hurtCop(st.cop, BOMB_POP);
+    else if (st?.kind === "car") traffic.damage(st.id, BOMB_POP);
+    for (const c of cops) {
+      if (c.dead > 0 || (st?.kind === "cop" && st.cop === c)) continue;
+      const d = Math.hypot(c.x - b.x, c.z - b.z);
+      if (d < 5) hurtCop(c, 25 * (1 - d / 5));
+    }
+    crime(0.4);
+  };
+
+  const carPos = (id: number, x: number, z: number) =>
+    traffic.debugNear(x, z, 12).find((c) => c.id === id) ?? null;
+
+  const updateBombs = (dt: number, blocked: (x: number, z: number, y: number) => boolean, ctx: MayhemCtx) => {
+    const floor = ctx.inCity ? 0 : ctx.player.y;
+    for (let i = bombs.length - 1; i >= 0; i--) {
+      const b = bombs[i];
+      b.age += dt;
+      const st = b.stuck;
+      if (!st) {
+        b.vy -= 20 * dt;
+        const nx = b.x + b.vx * dt;
+        const ny = b.y + b.vy * dt;
+        const nz = b.z + b.vz * dt;
+        // Something moving to stick to?
+        let hit = false;
+        for (const c of cops) {
+          if (c.dead > 0) continue;
+          if (Math.hypot(c.x - nx, c.z - nz) < 1.9 && ny < 2.2) {
+            b.stuck = { kind: "cop", cop: c };
+            b.ox = nx - c.x;
+            b.oy = Math.max(0.9, Math.min(1.6, ny));
+            b.oz = nz - c.z;
+            hit = true;
+            break;
+          }
+        }
+        if (!hit) {
+          // Generous on purpose: a lobbed pineapple that clips a bonnet
+          // should stick, not bounce off a box a hand's width too small.
+          let car: { id: number; x: number; y: number; z: number } | null = null;
+          let best = 2.2;
+          for (const c of traffic.debugNear(nx, nz, 4)) {
+            if (c.wreck || ny > c.y + 2) continue;
+            const d = Math.hypot(c.x - nx, c.z - nz);
+            if (d < best) {
+              best = d;
+              car = c;
+            }
+          }
+          if (car) {
+            const id = car.id;
+            b.stuck = { kind: "car", id };
+            b.ox = nx - car.x;
+            b.oy = Math.max(0.9, ny - car.y);
+            b.oz = nz - car.z;
+            hit = true;
+          }
+        }
+        if (!hit) {
+          if (blocked(nx, nz, ny)) {
+            // A wall: drop down it.
+            b.vx *= -0.2;
+            b.vz *= -0.2;
+          } else {
+            b.x = nx;
+            b.z = nz;
+          }
+          b.y = ny;
+          if (b.y <= floor + 0.15) {
+            b.y = floor + 0.15;
+            b.stuck = { kind: "ground" };
+          } else if (b.age > 6) {
+            b.stuck = { kind: "ground" };
+          }
+        }
+        b.mesh.rotation.x += dt * 9;
+        b.mesh.rotation.z += dt * 5;
+      } else {
+        // Ride along, and hurt.
+        if (st.kind === "cop") {
+          const c = st.cop;
+          if (!cops.includes(c) || c.dead > 0) {
+            b.stuck = { kind: "ground" };
+            b.y = floor + 0.15;
+          } else {
+            b.x = c.x + b.ox;
+            b.y = b.oy;
+            b.z = c.z + b.oz;
+            hurtCop(c, BOMB_DPS * dt);
+          }
+        } else if (st.kind === "car") {
+          const car = carPos(st.id, b.x, b.z);
+          if (!car || car.wreck) {
+            b.stuck = { kind: "ground" };
+            b.y = floor + 0.15;
+          } else {
+            b.x = car.x + b.ox;
+            b.y = car.y + b.oy;
+            b.z = car.z + b.oz;
+            traffic.damage(st.id, BOMB_DPS * dt);
+          }
+        }
+        b.fuse -= dt;
+        // Blinks faster as it gets close.
+        const blink = b.fuse < 3 ? 14 : 4;
+        b.mesh.scale.setScalar(1.6 * (1 + 0.12 * Math.max(0, Math.sin(clock * blink))));
+      }
+      b.mesh.position.set(b.x, b.y, b.z);
+      if (b.stuck && b.fuse <= 0) {
+        pop(b);
+        removeBomb(i);
+      }
+    }
   };
 
   let clock = 0;
@@ -872,7 +1335,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       return true;
     },
     cycle() {
-      const order: Array<GunKind | null> = [null, "rifle", "glock"];
+      const order: Array<GunKind | null> = [null, "glock", "water", "blaster", "rifle"];
       for (let i = 1; i <= order.length; i++) {
         const next = order[(order.indexOf(gun) + i) % order.length];
         if (next === null || owned.has(next)) {
@@ -890,28 +1353,49 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       wallCool = Math.max(0, wallCool - dt);
       footCool = Math.max(0, footCool - dt);
 
-      // Pickups spin, bob, and get collected.
-      for (const k of ["rifle", "glock"] as const) {
-        const p = pickups[k];
-        const s = spots[k];
-        if (!p.visible || !s) continue;
-        p.rotation.y += dt * 1.6;
-        p.position.y = s[1] + Math.sin(clock * 2.2) * 0.15;
-        const sprite = p.children[p.children.length - 1] as THREE.Sprite;
-        sprite.scale.setScalar(1.4 + Math.sin(clock * 4) * 0.4);
-        const dy = Math.abs(ctx.player.y + 0.9 - s[1]);
-        if (!ctx.driving && dy < 2.2 && Math.hypot(ctx.player.x - s[0], ctx.player.z - s[2]) < 2.2) {
-          owned.add(k);
-          saveOwned();
-          p.visible = false;
-          gun = k;
-          opts.onPickup(k);
+      lastCtx = ctx;
+      // The rifle spins, bobs, and gets collected.
+      {
+        const p = rifleUp;
+        const s = spots.rifle;
+        if (p.visible && s) {
+          p.rotation.y += dt * 1.6;
+          p.position.y = s[1] + Math.sin(clock * 2.2) * 0.15;
+          const sprite = p.children[p.children.length - 1] as THREE.Sprite;
+          sprite.scale.setScalar(1.4 + Math.sin(clock * 4) * 0.4);
+          const dy = Math.abs(ctx.player.y + 0.9 - s[1]);
+          if (!ctx.driving && dy < 2.2 && Math.hypot(ctx.player.x - s[0], ctx.player.z - s[2]) < 2.2) {
+            owned.add("rifle");
+            saveOwned();
+            p.visible = false;
+            gun = "rifle";
+            opts.onPickup("rifle");
+          }
         }
       }
+      // The stall: its stock turns, and standing at it opens the counter.
+      if (stallAt) {
+        stall.display.children.forEach((m, i) => {
+          m.rotation.y = clock * 1.2 + i;
+        });
+        atStall = !ctx.driving && Math.abs(ctx.player.y - stallAt[1]) < 3 &&
+          Math.hypot(ctx.player.x - stallAt[0], ctx.player.z - stallAt[2]) < 6;
+      }
+
+      // Pineapples.
+      throwCool = Math.max(0, throwCool - dt);
+      if (hasBombs && bombsInHand < BOMB_PACK) {
+        regrow -= dt;
+        if (regrow <= 0) {
+          bombsInHand++;
+          regrow = bombsInHand < BOMB_PACK ? BOMB_REGROW : 0;
+        }
+      }
+      if (ctx.throwing) throwBomb();
+      updateBombs(dt, blocked, ctx);
 
       // The gun in your hand, and the trigger.
-      inHand.rifle.visible = gun === "rifle" && !ctx.driving;
-      inHand.glock.visible = gun === "glock" && !ctx.driving;
+      for (const k of ALL_GUNS) inHand[k].visible = gun === k && !ctx.driving;
       shotCool = Math.max(0, shotCool - dt);
       if (gun && ctx.firing && shotCool <= 0) {
         shotCool = GUNS[gun].interval;
@@ -926,7 +1410,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       for (const t of tracers) {
         if (!t.mesh.visible) continue;
         t.t += dt;
-        if (t.t > 0.06) t.mesh.visible = false;
+        if (t.t > (t.mesh.material === tracerMats.blaster ? 0.09 : 0.06)) t.mesh.visible = false;
       }
       flashT += dt;
       flash.visible = flashT < 0.05;
@@ -970,6 +1454,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         else c.target = "leave";
         const tx = c.target === "heist" ? ctx.heist!.x : me.x;
         const tz = c.target === "heist" ? ctx.heist!.z : me.z;
+        if (c.soaked > 0) c.soaked -= dt;
         driveCop(blocked, c, dt, tx, tz);
         if (c.dead > 0) continue;
         if (c.hp < 65) {
@@ -1092,8 +1577,14 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         gun,
         owned: [...owned],
         spots,
+        stall: stallAt,
         shots,
         hits,
+        bombs: bombs.map((b) => ({
+          x: b.x, y: b.y, z: b.z, fuse: b.fuse,
+          stuck: b.stuck ? (b.stuck.kind === "car" ? `car:${b.stuck.id}` : b.stuck.kind) : null,
+        })),
+        pops,
       };
     },
     setHeat(h) {
@@ -1102,17 +1593,47 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     },
     give(kind) {
       owned.add(kind);
-      saveOwned();
-      pickups[kind].visible = false;
+      if (kind === "rifle") {
+        saveOwned();
+        rifleUp.visible = false;
+      }
       gun = kind;
       hud();
+    },
+    setBought(ids) {
+      for (const k of BOUGHT_GUNS) {
+        if (ids.includes(k)) owned.add(k);
+        else owned.delete(k);
+      }
+      if (gun && !owned.has(gun)) gun = null;
+      const had = hasBombs;
+      hasBombs = ids.includes("pineapple");
+      if (hasBombs && !had) bombsInHand = BOMB_PACK;
+      hud();
+    },
+    throwBomb,
+    shootFrom(kind, x, y, z, yaw) {
+      const blocked = opts.blocked();
+      if (blocked) shoot(blocked, kind, x, y, z, yaw);
+    },
+    throwFrom(x, y, z, yaw, speed = 14) {
+      const mesh = buildPineapple();
+      mesh.scale.setScalar(1.6);
+      group.add(mesh);
+      bombs.push({
+        mesh, x, y, z, vx: Math.sin(yaw) * speed, vy: 4, vz: Math.cos(yaw) * speed,
+        stuck: null, ox: 0, oy: 0, oz: 0, fuse: bombFuse(Math.random()), age: 0,
+      });
     },
     dispose() {
       while (cops.length) removeCop(cops.length - 1);
       opts.scene.remove(group);
-      for (const k of ["rifle", "glock"] as const) opts.hand.remove(inHand[k]);
+      while (bombs.length) removeBomb(bombs.length - 1);
+      for (const k of ALL_GUNS) opts.hand.remove(inHand[k]);
       tracerGeo.dispose();
       tracerMat.dispose();
+      tracerMats.water.dispose();
+      tracerMats.blaster.dispose();
       try {
         siren?.osc.stop();
         void actx?.close();

@@ -44,7 +44,7 @@ export type CosmeticKind = "hat" | "flame" | "jetpack";
  * bought, owned and equipped through exactly the same three server actions, so
  * it shares the plumbing and not the geometry.
  */
-export type ShopKind = CosmeticKind | "character";
+export type ShopKind = CosmeticKind | "character" | "weapon";
 
 export interface Loadout {
   hat: string;

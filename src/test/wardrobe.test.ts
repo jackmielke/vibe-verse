@@ -26,6 +26,8 @@ import {
   priceOf,
   type CosmeticKind,
 } from "@/lib/cosmeticCatalog";
+import { WEAPON_ITEMS, ownedWeapons } from "@/lib/weaponCatalog";
+import { bombFuse, BOMB_MAX_FUSE, BOUGHT_GUNS } from "@/city/mayhem";
 
 const FN_PATH = resolve(process.cwd(), "supabase/functions/vibe-economy/index.ts");
 
@@ -63,7 +65,7 @@ describe("cosmetic prices", () => {
     // cosmetic — it follows the opposite rule about unlisted ids and is
     // checked by `characterShop.test.ts`. Asserted as present rather than
     // ignored, so deleting it from the server fails a test somewhere.
-    expect(Object.keys(server).sort()).toEqual(["character", "flame", "hat", "jetpack"]);
+    expect(Object.keys(server).sort()).toEqual(["character", "flame", "hat", "jetpack", "weapon"]);
     for (const kind of ["hat", "flame", "jetpack"]) {
       expect(Object.keys(server[kind]).length).toBeGreaterThan(3);
     }
@@ -126,5 +128,38 @@ describe("the catalog itself", () => {
     expect(itemOf("hat", "crown")?.name).toBe("Crown");
     expect(itemOf("hat", "nope")).toBeUndefined();
     expect(priceOf("jetpack", "gold")).toBe(260);
+  });
+});
+
+describe("Vibe City weapons", () => {
+  const server = readServerCatalog();
+
+  it("sells exactly the same weapons on both sides, at the shelf price", () => {
+    expect(Object.keys(server.weapon).sort()).toEqual(WEAPON_ITEMS.map((w) => w.id).sort());
+    for (const w of WEAPON_ITEMS) expect(server.weapon[w.id], w.id).toBe(w.price);
+  });
+
+  it("charges for every one of them, and the blaster is the dearest", () => {
+    for (const w of WEAPON_ITEMS) expect(w.price, w.id).toBeGreaterThan(0);
+    const dearest = [...WEAPON_ITEMS].sort((a, b) => b.price - a.price)[0];
+    expect(dearest.id).toBe("blaster");
+  });
+
+  it("every bought gun in the city has a shelf entry", () => {
+    for (const g of BOUGHT_GUNS) expect(WEAPON_ITEMS.some((w) => w.id === g), g).toBe(true);
+  });
+
+  it("reads weapons out of the inventory keys and nothing else", () => {
+    expect(ownedWeapons(["hat:crown", "weapon:glock", "weapon:pineapple", "character:pixel"])).toEqual([
+      "glock",
+      "pineapple",
+    ]);
+  });
+
+  it("holds a stuck pineapple between an instant and about 27 seconds", () => {
+    expect(bombFuse(0)).toBe(0);
+    expect(bombFuse(1)).toBe(BOMB_MAX_FUSE);
+    expect(BOMB_MAX_FUSE).toBe(27);
+    expect(bombFuse(0.5)).toBeLessThan(BOMB_MAX_FUSE / 2);
   });
 });

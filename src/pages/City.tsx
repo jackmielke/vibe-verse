@@ -136,6 +136,12 @@ import { useWardrobe } from "@/hooks/use-wardrobe";
 import VibeMakerPanel from "@/components/VibeMakerPanel";
 import NameEntryModal from "@/components/city/NameEntryModal";
 import { ArcadeModal } from "@/components/city/ArcadeModal";
+import ItemShelves from "@/components/shop/ItemShelves";
+import CharacterShelf from "@/components/shop/CharacterShelf";
+import { ownedWeapons } from "@/lib/weaponCatalog";
+import { getWardrobeState } from "@/lib/wardrobe";
+import { useVibecoin } from "@/hooks/use-vibecoin";
+import { formatVibecoin } from "@/lib/vibecoin";
 import RockPaperScissors, { RpsDevHook } from "@/components/city/RockPaperScissors";
 import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
 import CharacterDashboardModal from "@/components/city/CharacterDashboardModal";
@@ -581,8 +587,14 @@ export default function City() {
   /** The on-screen fire button, held. */
   const touchFireRef = useRef(false);
   /** GTA Junior: stars, cops and the gun in your hand. */
-  const [mayhemHud, setMayhemHud] = useState<MayhemHud>({ stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [] });
+  const [mayhemHud, setMayhemHud] = useState<MayhemHud>({
+    stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bombs: null, atStall: false,
+  });
   const mayhemCycleRef = useRef<(() => void) | null>(null);
+  const mayhemRef = useRef<Mayhem | null>(null);
+  const touchThrowRef = useRef(false);
+  /** Opened from the Vibe Arms stall in town: the shop opens on its weapons. */
+  const [shopWeaponsFirst, setShopWeaponsFirst] = useState(false);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
   const [respawnFx, setRespawnFx] = useState(0);
   // Transcendence Portal — fires whenever the player falls through the
@@ -1082,6 +1094,11 @@ export default function City() {
    * the point of a shop window.
    */
   const wardrobe = useWardrobe();
+  const { balance: coinBalance } = useVibecoin();
+  // What you have bought at Vibe Arms (or on /shop) is what is in your hands.
+  useEffect(() => {
+    mayhemRef.current?.setBought(ownedWeapons(wardrobe.owned));
+  }, [wardrobe.owned]);
   const ownsCosmetic = useCallback(
     (kind: "hat" | "flame" | "jetpack", id: string, price: number) =>
       price <= 0 || wardrobe.owned.includes(`${kind}:${id}`),
@@ -1108,6 +1125,27 @@ export default function City() {
   const [secretInput, setSecretInput] = useState("");
   const applyFlameRef = useRef<((id: string) => void) | null>(null);
   const applyJetpackRef = useRef<((id: string) => void) | null>(null);
+
+  // The shop shelves equip through the wardrobe; put on whatever it says.
+  useEffect(() => {
+    const { hat, flame, jetpack } = wardrobe.loadout;
+    setEquippedHat((cur) => {
+      if (cur !== hat) applyHatRef.current?.(hat);
+      return hat;
+    });
+    setEquippedFlame((cur) => {
+      if (cur !== flame) applyFlameRef.current?.(flame);
+      return flame;
+    });
+    setEquippedJetpack((cur) => {
+      if (cur !== jetpack) {
+        applyJetpackRef.current?.(jetpack);
+        const def = JETPACK_CATALOG.find((j) => j.id === jetpack);
+        if (def) setFallDamageEnabled(!def.equipped);
+      }
+      return jetpack;
+    });
+  }, [wardrobe.loadout.hat, wardrobe.loadout.flame, wardrobe.loadout.jetpack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "B" toggles the emote wheel. Ignored while typing in chat.
   useEffect(() => {
@@ -3915,7 +3953,7 @@ export default function City() {
     const handled = new Set([
       "KeyW", "KeyA", "KeyS", "KeyD",
       "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-      "Space", "ShiftLeft", "ShiftRight", "KeyC", "KeyR", "KeyQ",
+      "Space", "ShiftLeft", "ShiftRight", "KeyC", "KeyR", "KeyQ", "KeyX",
     ]);
     // Don't steal keys while the player is typing in chat.
     const isTyping = (e: KeyboardEvent) => {
@@ -4251,6 +4289,7 @@ export default function City() {
           if (i >= 0) hurtVehicle(i, "blast", amount, true);
         },
         skid: () => district.traffic.loseControl(player.position),
+        traffic: district.traffic,
         /** Which collision boxes would stop a vehicle probe at this point. */
         probe: (x: number, z: number, y: number) =>
           boxes
@@ -4599,7 +4638,7 @@ export default function City() {
       pitch: BLOCK + STREET,
       half: (GRID * (BLOCK + STREET)) / 2,
       hand: modelHolder,
-      glockSpots: [[6, 0, -6], [-6, 0, -6], [6, 0, 6], [0, 0, -9], [9, 0, 0]],
+      stallSpots: [[6, 0, -6], [-6, 0, -6], [6, 0, 6], [0, 0, -9], [9, 0, 0]],
       onContact: (dx, dz, speed, byCop) => {
         const i = drivingKartRef.current;
         if (i >= 0) {
@@ -4638,6 +4677,8 @@ export default function City() {
       boom: (x, z) => soundsRef.current?.boom?.(1, earshot(x, z, 160)),
     });
     mayhemCycleRef.current = () => mayhem.cycle();
+    mayhemRef.current = mayhem;
+    mayhem.setBought(ownedWeapons(getWardrobeState().owned));
     (window as unknown as Record<string, unknown>).__cityMayhem = mayhem;
 
     // ---- Driving into the sea ------------------------------------------
@@ -7242,6 +7283,7 @@ export default function City() {
             inCity,
             heist: heistChase.isActive() ? heistChase.pos() : null,
             firing: enteredRef.current && (keys.has("KeyR") || keys.has("KeyQ") || touchFireRef.current),
+            throwing: enteredRef.current && (keys.has("KeyX") || touchThrowRef.current),
             grounded: onGround && knockdown <= 0 && !activeMountRef.current,
           });
         }
@@ -8342,6 +8384,8 @@ export default function City() {
       agentResidentsRef.current = null;
       unsubRoster();
       rosterBoard.dispose();
+      mayhem.dispose();
+      mayhemRef.current = null;
       district.dispose();
       landmarks.dispose();
       landmarksRef.current = null;
@@ -9316,16 +9360,16 @@ export default function City() {
         </div>
       )}
 
-      {/* Vibe Shop dialog — styled like stepping inside the neon kiosk:
-          marquee header, string lights, and goods sitting on lit shelves.
-          Free during early access; coin prices are shown for the future. */}
+      {/* Vibe Shop dialog: the neon kiosk's marquee and string lights around
+          the shared shop shelves. The island's kiosk and the Vibe Arms stall
+          in town both open it. */}
       {entered && shopOpen && (
         <div
           className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-3 sm:p-6 bg-background/70 backdrop-blur-sm"
           onClick={() => setShopOpen(false)}
         >
           <div
-            className="rounded-2xl w-full max-w-md max-h-[90dvh] flex flex-col overflow-hidden ring-1 ring-emerald-300/30 shadow-[0_0_60px_rgba(45,212,168,0.18)]"
+            className="rounded-2xl w-full max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden ring-1 ring-emerald-300/30 shadow-[0_0_60px_rgba(45,212,168,0.18)]"
             style={{ background: "linear-gradient(180deg, #0c1118 0%, #10141c 40%, #131a24 100%)" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -9345,16 +9389,16 @@ export default function City() {
                       className="font-heading font-bold text-lg tracking-[0.14em] text-emerald-200"
                       style={{ textShadow: "0 0 18px rgba(45,212,168,0.75)" }}
                     >
-                      VIBE SHOP
+                      {shopWeaponsFirst ? "VIBE ARMS" : "VIBE SHOP"}
                     </div>
                     <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/50">
-                      backed by $VIBE · Vibe Island flagship
+                      {shopWeaponsFirst ? "vibe city plaza · same shop, same stock" : "backed by $VIBE · Vibe Island flagship"}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-amber-300/10 ring-1 ring-amber-300/40 px-2.5 py-1 text-xs font-heading font-semibold text-amber-300">
-                    ✦ {hud.gems}
+                  <span className="rounded-full bg-emerald-300/10 ring-1 ring-emerald-300/40 px-2.5 py-1 text-xs font-heading font-semibold tabular-nums text-[#7dffd4]">
+                    {coinBalance == null ? "…" : formatVibecoin(coinBalance, { compact: false })}
                   </span>
                   <button
                     onClick={() => setShopOpen(false)}
@@ -9384,7 +9428,7 @@ export default function City() {
               {/* The /coin page's account interface, synced in here so
                   it's obvious this shop runs on Vibe Coin: profile,
                   wallet link, live $VIBE balance. */}
-              {!IOS_APP && (
+              {!IOS_APP && !shopWeaponsFirst && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
@@ -9402,165 +9446,17 @@ export default function City() {
               </div>
               )}
 
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
-                    HATS
-                  </span>
-                  <span className="flex-1 h-px bg-gradient-to-r from-emerald-300/40 to-transparent" />
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {HAT_CATALOG.map((h) => {
-                    const eq = equippedHat === h.id;
-                    const ownsIt = ownsCosmetic("hat", h.id, h.price);
-                    return (
-                      <button
-                        key={h.id}
-                        onClick={() => {
-                          if (!ownsIt) return;
-                          setEquippedHat(h.id);
-                          saveEquippedHat(h.id);
-                          applyHatRef.current?.(h.id);
-                        }}
-                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 ${ownsIt ? "hover:-translate-y-0.5" : "opacity-40 cursor-not-allowed"} ${
-                          eq
-                            ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
-                            : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
-                        }`}
-                      >
-                        {eq && (
-                          <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-300 text-emerald-950 text-[8px] font-bold px-1.5 leading-relaxed">
-                            ON
-                          </span>
-                        )}
-                        <span className="text-2xl drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">{h.emoji}</span>
-                        <span className="text-[10px] text-center leading-tight">{h.name}</span>
-                        <span className="text-[9px] font-mono text-amber-300/80">
-                          {ownsIt ? (h.price === 0 ? "free" : "owned") : `🔒 ${h.price} ✦`}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-gradient-to-r from-amber-900/70 via-amber-800/60 to-amber-900/70 shadow-[0_2px_6px_rgba(0,0,0,0.5)]" />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
-                    JET BOOSTS
-                  </span>
-                  <span className="flex-1 h-px bg-gradient-to-r from-emerald-300/40 to-transparent" />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {FLAME_CATALOG.map((f) => {
-                    const eq = equippedFlame === f.id;
-                    const ownsIt = ownsCosmetic("flame", f.id, f.price);
-                    return (
-                      <button
-                        key={f.id}
-                        onClick={() => {
-                          if (!ownsIt) return;
-                          setEquippedFlame(f.id);
-                          saveEquippedFlame(f.id);
-                          applyFlameRef.current?.(f.id);
-                        }}
-                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 ${ownsIt ? "hover:-translate-y-0.5" : "opacity-40 cursor-not-allowed"} ${
-                          eq
-                            ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
-                            : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
-                        }`}
-                      >
-                        {eq && (
-                          <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-300 text-emerald-950 text-[8px] font-bold px-1.5 leading-relaxed">
-                            ON
-                          </span>
-                        )}
-                        <span className="text-xl">{f.emoji}</span>
-                        <span
-                          className="w-6 h-1.5 rounded-full"
-                          style={{ background: f.color, boxShadow: `0 0 10px ${f.color}` }}
-                        />
-                        <span className="text-[10px] text-center leading-tight">{f.name}</span>
-                        <span className="text-[9px] font-mono text-amber-300/80">
-                          {ownsIt ? (f.price === 0 ? "free" : "owned") : `🔒 ${f.price} ✦`}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-gradient-to-r from-amber-900/70 via-amber-800/60 to-amber-900/70 shadow-[0_2px_6px_rgba(0,0,0,0.5)]" />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[11px] font-heading font-semibold tracking-[0.2em] text-emerald-200/80">
-                    JET PACKS
-                  </span>
-                  <span className="flex-1 h-px bg-gradient-to-r from-emerald-300/40 to-transparent" />
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {JETPACK_CATALOG.map((j) => {
-                    const eq = equippedJetpack === j.id;
-                    const ownsIt = ownsCosmetic("jetpack", j.id, j.price);
-                    const returned = !j.equipped;
-                    return (
-                      <button
-                        key={j.id}
-                        onClick={() => {
-                          if (!ownsIt) return;
-                          setEquippedJetpack(j.id);
-                          saveEquippedJetpack(j.id);
-                          applyJetpackRef.current?.(j.id);
-                          setFallDamageEnabled(!j.equipped);
-                        }}
-                        className={`relative rounded-xl p-2 flex flex-col items-center gap-1 transition-all duration-150 ${ownsIt ? "hover:-translate-y-0.5" : "opacity-40 cursor-not-allowed"} ${
-                          eq
-                            ? "bg-emerald-400/15 ring-1 ring-emerald-300 text-emerald-100 shadow-[0_0_16px_rgba(45,212,168,0.3)]"
-                            : "bg-white/[0.04] ring-1 ring-white/10 hover:ring-emerald-300/40 hover:bg-emerald-400/10 text-foreground/80"
-                        }`}
-                      >
-                        {eq && (
-                          <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-300 text-emerald-950 text-[8px] font-bold px-1.5 leading-relaxed">
-                            ON
-                          </span>
-                        )}
-                        <span className="text-xl">{j.emoji}</span>
-                        {returned ? (
-                          <span className="w-6 h-1.5 rounded-full bg-muted-foreground/40" />
-                        ) : (
-                          <span className="flex gap-0.5">
-                            <span
-                              className="w-3 h-1.5 rounded-l-full"
-                              style={{ background: j.body }}
-                            />
-                            <span
-                              className="w-3 h-1.5 rounded-r-full"
-                              style={{ background: j.trim, boxShadow: `0 0 8px ${j.trim}` }}
-                            />
-                          </span>
-                        )}
-                        <span className="text-[10px] text-center leading-tight">{j.name}</span>
-                        <span className="text-[9px] font-mono text-amber-300/80">
-                          {ownsIt
-                            ? j.price === 0
-                              ? returned
-                                ? "return"
-                                : "free"
-                              : "owned"
-                            : `🔒 ${j.price} ✦`}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-gradient-to-r from-amber-900/70 via-amber-800/60 to-amber-900/70 shadow-[0_2px_6px_rgba(0,0,0,0.5)]" />
-              </div>
-
-              <div className="text-[10px] text-emerald-100/40 text-center pb-1">
-                Early access — everything's free while the island grows.
-                <br />
-                Hold Space to test your new boost · the look saves across visits.
+              {/* The same shelves as /shop and the arcade: one till, one
+                  inventory. Weapons lead when you walked up to Vibe Arms. */}
+              <ItemShelves weapons={shopWeaponsFirst ? "first" : "last"} />
+              <CharacterShelf />
+              <div className="text-[10px] text-emerald-100/45 text-center pb-1 leading-relaxed">
+                Bought with Vibey Coins, yours on every device. Hats and jetpacks change as you tap
+                them; a new character arrives on your next visit.{" "}
+                <Link to="/profile" className="underline hover:text-emerald-100">
+                  Stickers and your locker are on My Vibe
+                </Link>
+                .
               </div>
             </div>
           </div>
@@ -10001,7 +9897,7 @@ export default function City() {
       )}
 
       {/* GTA Junior: wanted stars, the gun in hand, and a fire button on touch. */}
-      {entered && !gameHud && !rebelHud?.active && (mayhemHud.stars > 0 || mayhemHud.gun) && (
+      {entered && !gameHud && !rebelHud?.active && (mayhemHud.stars > 0 || mayhemHud.gun || mayhemHud.bombs !== null) && (
         <div className="fixed top-40 right-4 z-30 glass-panel rounded-2xl px-3 py-2 text-xs flex flex-col items-end gap-1 pointer-events-none select-none">
           {mayhemHud.stars > 0 && (
             <div className="flex items-center gap-1.5">
@@ -10027,6 +9923,13 @@ export default function City() {
               <span className="text-muted-foreground"> · {isTouch ? "hold FIRE" : "R or Q fire · G switch"}</span>
             </span>
           )}
+          {mayhemHud.bombs !== null && (
+            <span className="text-foreground/90">
+              {"🍍".repeat(mayhemHud.bombs)}
+              <span className="opacity-25">{"🍍".repeat(Math.max(0, 3 - mayhemHud.bombs))}</span>
+              <span className="text-muted-foreground"> · {isTouch ? "tap 🍍" : "X throw"}</span>
+            </span>
+          )}
         </div>
       )}
       {entered && isTouch && mayhemHud.gun && !rebelHud?.active && (
@@ -10044,6 +9947,25 @@ export default function City() {
           className="fixed bottom-48 right-5 z-30 w-16 h-16 rounded-full bg-amber-500/90 text-white font-heading font-bold text-xs shadow-[0_0_24px_rgba(245,158,11,0.5)] active:scale-90 transition-transform select-none touch-none"
         >
           FIRE
+        </button>
+      )}
+      {entered && isTouch && mayhemHud.bombs !== null && !rebelHud?.active && (
+        <button
+          onPointerDown={(e) => {
+            touchThrowRef.current = true;
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+          }}
+          onPointerUp={() => {
+            touchThrowRef.current = false;
+          }}
+          onPointerCancel={() => {
+            touchThrowRef.current = false;
+          }}
+          disabled={mayhemHud.bombs <= 0}
+          aria-label="Throw a pineapple bomb"
+          className="fixed bottom-[17rem] right-7 z-30 w-12 h-12 rounded-full bg-yellow-400/90 text-xl shadow-[0_0_20px_rgba(250,204,21,0.5)] active:scale-90 transition-transform select-none touch-none disabled:opacity-40"
+        >
+          🍍
         </button>
       )}
 
@@ -10215,9 +10137,22 @@ export default function City() {
               {hud.swinging ? "🤸 Hop off (Space)" : "🪢 Jump on the swing"}
             </button>
           )}
+          {mayhemHud.atStall && !shopOpen && (
+            <button
+              onClick={(e) => {
+                setShopWeaponsFirst(true);
+                setShopOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-rose-100 border border-rose-300/50 shadow-[0_0_24px_rgba(255,90,110,0.45)]"
+            >
+              🔫 Open Vibe Arms
+            </button>
+          )}
           {nearShop && !shopOpen && (
             <button
               onClick={(e) => {
+                setShopWeaponsFirst(false);
                 setShopOpen(true);
                 e.currentTarget.blur();
               }}
