@@ -3,32 +3,58 @@
  *
  * You are in the bed of a pickup doing a hundred and ten down a desert highway
  * at night, sitting behind an old ship's cannon, and the camera looks back
- * over the tailgate at the man who wants his cannon back. His headlights are
- * the brightest thing on the road.
+ * over the tailgate at the man who wants his cannon back. With a friend there
+ * are two pickups, two cannons and two health bars, and one Mort.
  *
- * Everything lives in road coordinates: `s` is metres along the highway, `lat`
- * is metres right of the centre line (right of the direction of travel), `y`
- * is height. The player, the pursuer, the traffic, every cannonball and every
- * tyre he throws are simulated there, and only drawn in world space. That is
- * what makes a ballistic cannon on a curving road cheap and exact: a ball
- * keeps the forward speed of the truck that fired it, and nothing has to
- * reason about curves.
+ * Everything lives in road coordinates (see road.ts): `s` along the highway,
+ * `lat` right of the centre line, `y` up. Trucks, Mort, traffic, every ball
+ * and every tyre he throws are simulated there and only drawn in world space.
  *
- * World mapping: the road runs toward -z. A model built facing +z needs only
- * `rotation.y = heading(s)`, where forward is (sin h, cos h) and the right of
- * forward is (-cos h, sin h), the same convention Fog City uses.
+ * Modes:
+ *  - `solo`: one truck.
+ *  - `duo`: two trucks, one keyboard (A/D/Shift/Space and the mouse for one,
+ *    the arrows and Enter for the other), one camera that frames both.
+ *  - `host` / `guest`: two browsers over net.ts. The host runs the chase; the
+ *    guest drives its own truck and draws everything else from snapshots.
+ *
+ * When every truck is out of the fight Mort stops shouting, parks, gets out,
+ * walks up to your tailgate, lifts his cannon out of the bed and drives off
+ * with it. That is the end of the run.
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { HALF, LANE, LAT_MAX, G, MUZZLE, RELOAD, heading, V, toWorld, toRoad, clamp, lerp, hash } from "./road";
+import {
+  canvasTex, roadTexture, sandTexture, glowTexture, puffTexture, box,
+  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, buildHench, henchKit, buildAutoGun,
+  type Truck, type Foe, type Hench,
+} from "./models";
+import type { Transport, Upgrades, Wire, Snap, Input } from "./net";
 
-export interface ChaseHud {
-  phase: "intro" | "play" | "over";
+export type Mode = "solo" | "duo" | "host" | "guest";
+type Phase = "intro" | "play" | "takeback" | "over";
+
+export interface RiderHud {
   hull: number;
-  score: number;
-  best: number;
-  meters: number;
+  max: number;
   boost: number;
   reload: number;
+  out: boolean;
+  respawn: number;
+  you: boolean;
+  label: string;
+  color: string;
+  gone: boolean;
+}
+
+export interface ChaseHud {
+  phase: Phase;
+  mode: Mode;
+  riders: RiderHud[];
+  score: number;
+  best: number;
+  cash: number;
+  meters: number;
   level: number;
   ride: string;
   foeHp: number;
@@ -39,6 +65,11 @@ export interface ChaseHud {
   wrecks: number;
   toast: string;
   fps: number;
+  /** online only: "ok", or "lost" when the other side has gone quiet */
+  link: "" | "ok" | "lost";
+  /** a big red warning, when Mort's backup is on the way */
+  alert: string;
+  henchmen: number;
 }
 
 export interface CannonRun {
@@ -52,440 +83,61 @@ export interface CannonRun {
   setMuted(m: boolean): void;
 }
 
-interface Opts {
+export interface Opts {
+  mode?: Mode;
+  net?: Transport | null;
+  upgrades?: Upgrades;
+  /** host only: what the guest bought, which decides its truck's health */
+  guestUpgrades?: Upgrades;
   onHud?: (h: ChaseHud) => void;
   onReady?: () => void;
+  /** once per run, when it is over: cash earned and the final score */
+  onEnd?: (cash: number, score: number) => void;
 }
 
-/* ---------------------------------------------------------------- the road */
-
-const HALF = 7.4; // asphalt half width
-const LANE = 3.6;
-const LAT_MAX = 5.4;
-const G = 9.8;
-const MUZZLE = 46;
-const RELOAD = 0.85;
-
-export const roadX = (s: number): number =>
-  38 * Math.sin(s / 310) + 14 * Math.sin(s / 113 + 1.3) + 5 * Math.sin(s / 47 + 0.4);
-const roadDX = (s: number): number =>
-  (38 / 310) * Math.cos(s / 310) + (14 / 113) * Math.cos(s / 113 + 1.3) + (5 / 47) * Math.cos(s / 47 + 0.4);
-export const heading = (s: number): number => Math.atan2(roadDX(s), -1);
-
-const V = new THREE.Vector3();
-function toWorld(s: number, lat: number, y: number, out: THREE.Vector3 = V): THREE.Vector3 {
-  const d = roadDX(s);
-  const inv = 1 / Math.hypot(d, 1);
-  // tangent (d, -1)*inv, right of it (1, d)*inv
-  return out.set(roadX(s) + lat * inv, y, -s + lat * d * inv);
-}
-/** World (x, z) back to road (s, lat). Two Newton steps is plenty on these curves. */
-function toRoad(x: number, z: number): { s: number; lat: number } {
-  let s = -z;
-  let lat = 0;
-  for (let k = 0; k < 3; k++) {
-    const d = roadDX(s);
-    const inv = 1 / Math.hypot(d, 1);
-    const px = x - roadX(s);
-    const pz = z + s;
-    const along = (px * d - pz) * inv;
-    lat = (px + pz * d) * inv;
-    s += along;
-  }
-  return { s, lat };
-}
-
-const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-const hash = (n: number): number => {
-  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
-};
-
-/* ---------------------------------------------------------------- textures */
-
-function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  draw(c.getContext("2d")!);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-
-function roadTexture(): THREE.CanvasTexture {
-  const t = canvasTex(256, 512, (c) => {
-    c.fillStyle = "#2a2b2e";
-    c.fillRect(0, 0, 256, 512);
-    for (let k = 0; k < 2600; k++) {
-      const v = 30 + Math.random() * 30;
-      c.fillStyle = `rgb(${v},${v},${v + 3})`;
-      c.fillRect(Math.random() * 256, Math.random() * 512, 2, 2);
-    }
-    // tyre tracks, a little darker
-    c.fillStyle = "rgba(0,0,0,0.16)";
-    for (const u of [0.2, 0.32, 0.68, 0.8]) c.fillRect(u * 256 - 9, 0, 18, 512);
-    // edge lines, solid
-    c.fillStyle = "#e9e4d2";
-    c.fillRect(10, 0, 6, 512);
-    c.fillRect(240, 0, 6, 512);
-    // centre dashes
-    c.fillStyle = "#f0c64a";
-    c.fillRect(124, 0, 8, 250);
-  });
-  t.wrapS = THREE.ClampToEdgeWrapping;
-  t.wrapT = THREE.RepeatWrapping;
-  return t;
-}
-
-function sandTexture(): THREE.CanvasTexture {
-  const t = canvasTex(256, 256, (c) => {
-    c.fillStyle = "#3a2f28";
-    c.fillRect(0, 0, 256, 256);
-    for (let k = 0; k < 3000; k++) {
-      const r = 50 + Math.random() * 30;
-      c.fillStyle = `rgba(${r},${r * 0.8},${r * 0.65},0.5)`;
-      c.fillRect(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 3, 1 + Math.random() * 2);
-    }
-  });
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-}
-
-function glowTexture(): THREE.CanvasTexture {
-  return canvasTex(128, 128, (c) => {
-    const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.18, "rgba(255,255,255,0.85)");
-    g.addColorStop(0.45, "rgba(255,255,255,0.22)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    c.fillStyle = g;
-    c.fillRect(0, 0, 128, 128);
-  });
-}
-
-function puffTexture(): THREE.CanvasTexture {
-  return canvasTex(64, 64, (c) => {
-    const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, "rgba(255,255,255,0.9)");
-    g.addColorStop(0.6, "rgba(255,255,255,0.35)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    c.fillStyle = g;
-    c.fillRect(0, 0, 64, 64);
-  });
-}
-
-function plateTexture(text: string): THREE.CanvasTexture {
-  return canvasTex(128, 64, (c) => {
-    c.fillStyle = "#f2efe6";
-    c.fillRect(0, 0, 128, 64);
-    c.strokeStyle = "#1d3b6e";
-    c.lineWidth = 5;
-    c.strokeRect(3, 3, 122, 58);
-    c.fillStyle = "#1d3b6e";
-    c.font = "bold 34px monospace";
-    c.textAlign = "center";
-    c.textBaseline = "middle";
-    c.fillText(text, 64, 36);
-  });
-}
-
-/* ---------------------------------------------------------------- models */
-
-type Mat = THREE.Material;
-function box(w: number, h: number, d: number, x: number, y: number, z: number, m: Mat): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-  mesh.position.set(x, y, z);
-  return mesh;
-}
-function wheel(r: number, w: number, m: Mat): THREE.Mesh {
-  const g = new THREE.CylinderGeometry(r, r, w, 16);
-  g.rotateZ(Math.PI / 2);
-  return new THREE.Mesh(g, m);
-}
-
-interface Truck {
-  root: THREE.Group;
-  yaw: THREE.Group;
-  pitch: THREE.Group;
-  barrel: THREE.Group;
-  wheels: THREE.Mesh[];
-  tail: THREE.MeshBasicMaterial;
-}
-
-/** The player's pickup. Built facing +z; the camera sits over the front of the bed. */
-function buildTruck(): Truck {
-  const root = new THREE.Group();
-  const paint = new THREE.MeshStandardMaterial({ color: 0x2f6d8c, roughness: 0.45, metalness: 0.35 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.8 });
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xc9ccd1, roughness: 0.25, metalness: 0.9 });
-  const tyre = new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.95 });
-  const bedFloor = new THREE.MeshStandardMaterial({ color: 0x4a3a2b, roughness: 0.9 });
-  const tail = new THREE.MeshBasicMaterial({ color: 0xff2a1a });
-
-  // cab (mostly out of view, but it casts the silhouette at the bottom edge)
-  root.add(box(1.96, 0.75, 1.9, 0, 0.95, 1.05, paint));
-  root.add(box(1.82, 0.62, 1.4, 0, 1.62, 0.85, paint));
-  root.add(box(1.7, 0.42, 0.06, 0, 1.6, 0.13, new THREE.MeshStandardMaterial({ color: 0x0c1218, roughness: 0.1, metalness: 0.6 })));
-  // bed
-  root.add(box(1.96, 0.18, 2.7, 0, 0.62, -1.25, bedFloor));
-  root.add(box(0.12, 0.55, 2.7, 0.92, 0.98, -1.25, paint));
-  root.add(box(0.12, 0.55, 2.7, -0.92, 0.98, -1.25, paint));
-  root.add(box(1.96, 0.5, 0.1, 0, 0.96, -2.58, paint)); // tailgate
-  root.add(box(1.96, 0.09, 0.14, 0, 1.25, -2.58, chrome));
-  root.add(box(2.02, 0.2, 0.22, 0, 0.5, -2.7, chrome)); // bumper
-  root.add(box(1.98, 0.35, 4.7, 0, 0.42, -0.2, dark)); // chassis skirt
-  // tail lights
-  for (const sx of [-1, 1]) {
-    root.add(box(0.2, 0.36, 0.06, sx * 0.86, 1.0, -2.64, tail));
-  }
-  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.26), new THREE.MeshBasicMaterial({ map: plateTexture("ARRR") }));
-  plate.position.set(0, 0.84, -2.64);
-  plate.rotation.y = Math.PI;
-  root.add(plate);
-  // exhaust
-  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10), chrome);
-  pipe.rotation.x = Math.PI / 2;
-  pipe.position.set(0.6, 0.34, -2.8);
-  root.add(pipe);
-
-  const wheels: THREE.Mesh[] = [];
-  for (const [x, z] of [[0.9, 1.35], [-0.9, 1.35], [0.9, -1.7], [-0.9, -1.7]] as const) {
-    const w = wheel(0.42, 0.3, tyre);
-    w.position.set(x, 0.42, z);
-    root.add(w);
-    wheels.push(w);
-  }
-
-  // The cannon: an oak carriage bolted to the bed, an iron barrel with bronze bands.
-  const oak = new THREE.MeshStandardMaterial({ color: 0x6b4428, roughness: 0.85 });
-  const iron = new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.6, metalness: 0.55 });
-  const bronze = new THREE.MeshStandardMaterial({ color: 0xb4823a, roughness: 0.35, metalness: 0.85 });
-  const carriage = new THREE.Group();
-  carriage.position.set(0, 0.71, -1.15);
-  root.add(carriage);
-  carriage.add(box(1.0, 0.22, 1.3, 0, 0.11, 0, oak));
-  for (const sx of [-1, 1]) {
-    const cheek = box(0.12, 0.42, 1.1, sx * 0.4, 0.42, 0.05, oak);
-    carriage.add(cheek);
-    for (const sz of [-0.42, 0.42]) {
-      const tw = wheel(0.2, 0.1, oak);
-      tw.position.set(sx * 0.55, 0.12, sz);
-      carriage.add(tw);
-    }
-  }
-  const yaw = new THREE.Group();
-  yaw.position.set(0, 0.58, 0.1);
-  carriage.add(yaw);
-  const pitch = new THREE.Group();
-  yaw.add(pitch);
-  const barrel = new THREE.Group();
-  pitch.add(barrel);
-  // barrel points to -z (out over the tailgate)
-  const tube = new THREE.CylinderGeometry(0.15, 0.22, 1.9, 20);
-  tube.rotateX(-Math.PI / 2);
-  tube.translate(0, 0, -0.55);
-  barrel.add(new THREE.Mesh(tube, iron));
-  for (const [z, r] of [[0.3, 0.235], [-0.2, 0.215], [-1.1, 0.19], [-1.42, 0.2]] as const) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.035, 8, 24), bronze);
-    ring.position.z = z;
-    barrel.add(ring);
-  }
-  const swell = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.06, 10, 24), iron);
-  swell.position.z = -1.5;
-  barrel.add(swell);
-  const bore = new THREE.Mesh(new THREE.CircleGeometry(0.11, 18), new THREE.MeshBasicMaterial({ color: 0x050505 }));
-  bore.position.z = -1.531;
-  bore.rotation.y = Math.PI;
-  barrel.add(bore);
-  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), iron);
-  knob.position.z = 0.5;
-  barrel.add(knob);
-  for (const sx of [-1, 1]) {
-    const trunnion = wheel(0.07, 0.16, bronze);
-    trunnion.position.set(sx * 0.27, 0, 0);
-    barrel.add(trunnion);
-  }
-  // a powder keg and a little pile of shot
-  const keg = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.42, 14), oak);
-  keg.position.set(0.62, 0.92, -0.35);
-  root.add(keg);
-  const shot = new THREE.SphereGeometry(0.1, 10, 8);
-  for (let k = 0; k < 5; k++) {
-    const b = new THREE.Mesh(shot, iron);
-    b.position.set(-0.6 + (k % 3) * 0.16 + (k > 2 ? 0.08 : 0), 0.8 + (k > 2 ? 0.13 : 0), -0.45 + (k > 2 ? 0.05 : 0));
-    root.add(b);
-  }
-  return { root, yaw, pitch, barrel, wheels, tail };
-}
-
-interface Foe {
-  root: THREE.Group;
-  body: THREE.Group;
-  arm: THREE.Group;
-  head: THREE.Group;
-  brows: THREE.Mesh[];
-  wheels: THREE.Mesh[];
-  paint: THREE.MeshStandardMaterial;
-  len: number;
-  wid: number;
-  tall: number;
-  lamps: THREE.Vector3[];
-}
-
-const RIDES = [
-  { name: "the station wagon", color: 0x8a5a2b, len: 4.8, wid: 1.9, tall: 1.5, hp: 4 },
-  { name: "the tow truck", color: 0xd6a42a, len: 5.6, wid: 2.1, tall: 1.9, hp: 6 },
-  { name: "the monster pickup", color: 0xb52a22, len: 5.4, wid: 2.5, tall: 2.6, hp: 8 },
-  { name: "the big rig", color: 0x3c4552, len: 7.0, wid: 2.5, tall: 3.2, hp: 11 },
+const NO_UPGRADES: Upgrades = { armor: 0, loader: 0, nitro: 0, auto: 0, punch: 0, engine: 0 };
+const RIDER_LOOK = [
+  { color: 0x2f6d8c, css: "#5ab4ff", plate: "ARRR" },
+  { color: 0xc0472a, css: "#ff7a4a", plate: "YARR" },
 ];
+const NET_HZ = 15;
+const RESPAWN = 10;
 
-/** Mad Mort and whatever he is driving tonight. Built facing +z, so his grille faces us. */
-function buildFoe(level: number): Foe {
-  const spec = RIDES[Math.min(level - 1, RIDES.length - 1)];
-  const { len, wid, tall } = spec;
-  const lift = level === 3 ? 0.7 : 0;
-  const root = new THREE.Group();
-  const body = new THREE.Group();
-  root.add(body);
-  const paint = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.55, metalness: 0.3 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.85 });
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xbfc3c8, roughness: 0.3, metalness: 0.9 });
-  const glass = new THREE.MeshStandardMaterial({ color: 0x1a2630, roughness: 0.15, metalness: 0.4, transparent: true, opacity: 0.55 });
-  const tyreM = new THREE.MeshStandardMaterial({ color: 0x0e0e0e, roughness: 0.95 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xe07a5a, roughness: 0.7, emissive: 0x5a1a08 });
-  const lamp = new THREE.MeshBasicMaterial({ color: 0xfff4d6 });
-
-  const lower = tall * 0.45;
-  const base = 0.35 + lift;
-  body.add(box(wid, lower, len, 0, base + lower / 2, 0, paint));
-  // cab sits toward the front (+z) for trucks, middle for the wagon
-  const cabLen = level === 1 ? len * 0.62 : Math.min(2.2, len * 0.38);
-  const cabZ = level === 1 ? -0.1 : len / 2 - cabLen / 2 - 0.9;
-  const cabH = tall * 0.5;
-  const cabY = base + lower + cabH / 2;
-  // A shell, not a block, so you can see him through the windshield.
-  const cw = wid * 0.92;
-  body.add(box(cw, 0.1, cabLen, 0, cabY + cabH / 2 - 0.05, cabZ, paint)); // roof
-  body.add(box(cw, cabH, 0.08, 0, cabY, cabZ - cabLen / 2 + 0.04, paint)); // back wall
-  for (const sx of [-1, 1]) {
-    body.add(box(0.08, cabH * 0.35, cabLen, sx * (cw / 2 - 0.04), cabY - cabH * 0.32, cabZ, paint)); // door below the window
-    body.add(box(0.1, cabH, 0.1, sx * (cw / 2 - 0.05), cabY, cabZ + cabLen / 2 - 0.05, paint)); // A pillar
-  }
-  body.add(box(cw * 0.95, 0.2, 0.5, 0, cabY - cabH / 2 + 0.25, cabZ + cabLen / 2 - 0.3, dark)); // dashboard
-  // windshield faces +z
-  const shield = box(wid * 0.84, cabH * 0.78, 0.05, 0, cabY + 0.02, cabZ + cabLen / 2 + 0.01, glass);
-  body.add(shield);
-  // hood and grille
-  body.add(box(wid * 0.9, 0.5, 0.08, 0, base + lower * 0.55, len / 2 + 0.02, chrome));
-  // bull bar
-  for (const sx of [-0.35, 0.35]) body.add(box(0.09, lower * 1.05, 0.09, sx * wid, base + lower * 0.5, len / 2 + 0.32, chrome));
-  body.add(box(wid * 0.85, 0.1, 0.1, 0, base + lower * 0.95, len / 2 + 0.32, chrome));
-  body.add(box(wid * 0.85, 0.1, 0.1, 0, base + lower * 0.3, len / 2 + 0.32, chrome));
-  if (level === 2) {
-    // the tow boom, behind the cab
-    const boom = box(0.25, 0.25, 2.4, 0, base + lower + 0.9, -len / 2 + 1.1, dark);
-    boom.rotation.x = 0.35;
-    body.add(boom);
-    body.add(box(wid * 0.6, 0.18, 0.4, 0, base + lower + 0.1 + cabH, cabZ, new THREE.MeshBasicMaterial({ color: 0xff9a1a })));
-  }
-  if (level >= 4) {
-    // twin stacks and a trailer stub
-    for (const sx of [-1, 1]) {
-      const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.2, 10), chrome);
-      stack.position.set(sx * (wid / 2 + 0.05), base + lower + 1.0, cabZ - cabLen / 2 - 0.1);
-      body.add(stack);
-    }
-  }
-  // headlights: two big round lamps, facing +z
-  const lamps: THREE.Vector3[] = [];
-  for (const sx of [-1, 1]) {
-    const l = new THREE.Mesh(new THREE.CircleGeometry(0.2, 18), lamp);
-    const p = new THREE.Vector3(sx * wid * 0.33, base + lower * 0.62, len / 2 + 0.07);
-    l.position.copy(p);
-    body.add(l);
-    lamps.push(p);
-  }
-  // wheels
-  const wheels: THREE.Mesh[] = [];
-  const r = level === 3 ? 0.95 : 0.42 + tall * 0.06;
-  for (const sx of [-1, 1]) for (const sz of [len * 0.32, -len * 0.32]) {
-    const w = wheel(r, level === 3 ? 0.6 : 0.3, tyreM);
-    w.position.set(sx * (wid / 2 - (level === 3 ? -0.1 : 0.05)), r, sz);
-    root.add(w);
-    wheels.push(w);
-  }
-  if (level === 3) body.position.y = 0;
-
-  // Mort himself, on the driver's side (his left, which is +x when facing +z)
-  const head = new THREE.Group();
-  head.position.set(wid * 0.22, cabY + 0.05, cabZ + cabLen / 2 - 0.45);
-  body.add(head);
-  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 14), skin));
-  const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const black = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
-  const brows: THREE.Mesh[] = [];
-  for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), white);
-    eye.position.set(sx * 0.09, 0.04, 0.22);
-    head.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), black);
-    pupil.position.set(sx * 0.09, 0.04, 0.275);
-    head.add(pupil);
-    const brow = box(0.14, 0.035, 0.04, sx * 0.09, 0.13, 0.25, black);
-    brow.rotation.z = sx * 0.5;
-    head.add(brow);
-    brows.push(brow);
-  }
-  const mouth = box(0.16, 0.05, 0.04, 0, -0.1, 0.24, black);
-  head.add(mouth);
-  head.add(box(0.5, 0.1, 0.5, 0, 0.24, 0, new THREE.MeshStandardMaterial({ color: 0x2b3f2a }))); // cap brim
-  head.add(box(0.36, 0.16, 0.36, 0, 0.3, -0.04, new THREE.MeshStandardMaterial({ color: 0x2b3f2a })));
-  // his arm, out of the window, shaking a fist
-  const arm = new THREE.Group();
-  arm.position.set(wid / 2, cabY - 0.05, cabZ + cabLen / 2 - 0.5);
-  body.add(arm);
-  const sleeve = box(0.16, 0.6, 0.16, 0, 0.3, 0, new THREE.MeshStandardMaterial({ color: 0xd8d2c4 }));
-  arm.add(sleeve);
-  const fist = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), skin);
-  fist.position.y = 0.66;
-  arm.add(fist);
-  arm.rotation.z = -0.5;
-
-  return { root, body, arm, head, brows, wheels, paint, len, wid, tall: tall + lift, lamps };
+interface Rider {
+  idx: number;
+  truck: Truck;
+  s: number; lat: number; vl: number; v: number;
+  boost: number; hull: number; max: number;
+  shake: number; bump: number;
+  reload: number; recoil: number;
+  aim: { yaw: number; pitch: number; lat: number };
+  out: boolean; respawn: number; disarmed: boolean; gone: boolean;
+  /** drawn lean and roll, eased */
+  yawSm: number; rollSm: number;
+  wantFire: boolean;
+  reloadMul: number; drainMul: number; bonusV: number;
+  /** garage: base speed, and the roof gun (0 = none) */
+  engine: number; auto: number; punch: number; autoT: number; autoGun: ReturnType<typeof buildAutoGun>; autoYaw: number; autoPitch: number;
+  /** seconds of hard swerving, which is how you shake a henchman off */
+  shakeOff: number;
+  /** host: the guest's latest report. guest: the host's view of the other truck. */
+  net: { s: number; lat: number; v: number; vl: number; at: number; fire: number } | null;
+  fired: number;
 }
-
-function trafficGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const add = (w: number, h: number, d: number, x: number, y: number, z: number, r: number, g: number, b: number): void => {
-    const geo = new THREE.BoxGeometry(w, h, d);
-    geo.translate(x, y, z);
-    const n = geo.attributes.position.count;
-    const c = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { c[i * 3] = r; c[i * 3 + 1] = g; c[i * 3 + 2] = b; }
-    geo.setAttribute("color", new THREE.BufferAttribute(c, 3));
-    parts.push(geo);
-  };
-  add(1.85, 0.6, 4.3, 0, 0.65, 0, 1, 1, 1);
-  add(1.6, 0.55, 2.2, 0, 1.2, -0.2, 0.12, 0.15, 0.2);
-  add(0.4, 0.14, 0.05, 0.6, 0.75, 2.16, 4, 4, 3.4);
-  add(0.4, 0.14, 0.05, -0.6, 0.75, 2.16, 4, 4, 3.4);
-  add(0.42, 0.14, 0.05, 0.62, 0.78, -2.16, 3, 0.1, 0.08);
-  add(0.42, 0.14, 0.05, -0.62, 0.78, -2.16, 3, 0.1, 0.08);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(0.26, 0.64, 0.64, sx * 0.88, 0.32, sz * 1.38, 0.05, 0.05, 0.05);
-  const g = mergeGeometries(parts)!;
-  parts.forEach((p) => p.dispose());
-  return g;
+interface Ball { s: number; lat: number; y: number; vs: number; vl: number; vy: number; age: number; bounces: number; mesh: THREE.Mesh; live: boolean; trail: number; rider: number; dmg: number }
+/** rider -1: thrown at a civilian, `car` */
+interface Thrown { s: number; lat: number; y: number; vs: number; vl: number; vy: number; age: number; spin: number; mesh: THREE.Mesh; live: boolean; targetLat: number; passed: boolean; kind: number; rider: number; car: Traffic | null }
+/** state: -1 none, 0 jumping out, 1 running, 2 on your tailgate, 3 knocked flying, 4 lying in the road */
+interface Henchman { s: number; lat: number; y: number; v: number; vl: number; vy: number; state: number; t: number; rider: number; rx: number; spin: number; walk: number; yaw: number; whack: number; body: Hench }
+/** mode: 0 driving, 1 tipping onto its side, 2 in the air, 3 burnt out, 4 lying on its side */
+interface Traffic {
+  s: number; lat: number; y: number; v: number; vl: number; vy: number;
+  rx: number; ry: number; rz: number; wx: number; wy: number; wz: number;
+  color: THREE.Color; mode: number; air: number; side: number; hitCd: number; live: boolean;
+  /** hit by something Mort threw: a drift sideways for a while */
+  swerve: number;
 }
-
-/* ---------------------------------------------------------------- sim types */
-
-interface Ball { s: number; lat: number; y: number; vs: number; vl: number; vy: number; age: number; bounces: number; mesh: THREE.Mesh; live: boolean; trail: number }
-interface Thrown { s: number; lat: number; y: number; vs: number; vl: number; vy: number; age: number; spin: number; mesh: THREE.Mesh; live: boolean; targetLat: number; passed: boolean }
-interface Traffic { s: number; lat: number; v: number; color: THREE.Color; flung: number; vy: number; y: number; spin: number; vl: number; live: boolean }
-interface Puff { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; s: number; lat: number; y: number; vs: number; vl: number; vy: number; age: number; life: number; size: number; grow: number; kind: "smoke" | "fire" | "spark" | "dust"; live: boolean }
+interface Puff { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; s: number; lat: number; y: number; vs: number; vl: number; vy: number; age: number; life: number; size: number; grow: number; kind: "smoke" | "black" | "fire" | "spark" | "dust"; live: boolean }
 
 const TAUNTS = [
   "GET BACK HERE!", "That's MY cannon!", "You scratched my paint!", "Nobody outruns Mort!",
@@ -498,15 +150,23 @@ const COMMENTS: Record<number, string> = {
   2: "He's back. In a tow truck.",
   3: "Oh no. Monster pickup.",
   4: "He found a big rig somewhere.",
+  5: "A cement truck. Of course it's a cement truck.",
 };
+const BURNT = new THREE.Color(0x1c1714);
 
 /* ---------------------------------------------------------------- the game */
 
 export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun {
   const params = new URLSearchParams(window.location.search);
   const automated = navigator.webdriver || params.has("shot");
+  const mode: Mode = opts.mode ?? "solo";
+  const net = mode === "host" || mode === "guest" ? opts.net ?? null : null;
+  const isGuest = mode === "guest";
+  const two = mode !== "solo";
+  /** the truck this browser drives (in duo, the one the mouse and stick drive) */
+  const mine = isGuest ? 1 : 0;
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: automated });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
@@ -524,14 +184,16 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   scene.fog = new THREE.FogExp2(FOG, 0.0042);
   scene.background = FOG;
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1400);
+  let baseFov = 56;
 
   const resize = (): void => {
     const w = mount.clientWidth || window.innerWidth;
     const h = mount.clientHeight || window.innerHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // Keep the road wide on a portrait phone.
-    camera.fov = w / h < 0.9 ? 72 : 56;
+    // Keep the road wide on a portrait phone, and wider still with two trucks on one screen.
+    baseFov = (w / h < 0.9 ? 72 : 56) + (mode === "duo" ? 8 : 0);
+    camera.fov = baseFov;
     camera.updateProjectionMatrix();
   };
   resize();
@@ -608,8 +270,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   /* ------------------------------------------------------------ ground and road */
   const sand = sandTexture();
   sand.repeat.set(90, 90);
-  const groundMat = new THREE.MeshLambertMaterial({ map: sand });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), groundMat);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), new THREE.MeshLambertMaterial({ map: sand }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.03;
   scene.add(ground);
@@ -683,8 +344,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   scene.add(lampGlow);
   const poolGeo = new THREE.CircleGeometry(1, 24);
   poolGeo.rotateX(-Math.PI / 2);
-  const poolMat = new THREE.MeshBasicMaterial({ map: glow, color: 0xff9a40, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending });
-  const pools = new THREE.InstancedMesh(poolGeo, poolMat, LAMPS);
+  const pools = new THREE.InstancedMesh(poolGeo, new THREE.MeshBasicMaterial({ map: glow, color: 0xff9a40, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending }), LAMPS);
   pools.frustumCulled = false;
   scene.add(pools);
 
@@ -710,9 +370,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const cacti = new THREE.InstancedMesh(cactusGeo, new THREE.MeshLambertMaterial({ color: 0x2f4a33 }), CACTI);
   cacti.frustumCulled = false;
   scene.add(cacti);
-  const rockGeo = new THREE.DodecahedronGeometry(1, 0);
   const ROCKS = 40;
-  const rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshLambertMaterial({ color: 0x5a4636 }), ROCKS);
+  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0x5a4636 }), ROCKS);
   rocks.frustumCulled = false;
   scene.add(rocks);
   const mesaGeo = new THREE.CylinderGeometry(0.75, 1, 1, 7);
@@ -721,7 +380,6 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const mesas = new THREE.InstancedMesh(mesaGeo, new THREE.MeshLambertMaterial({ color: 0x2a2030 }), MESAS);
   mesas.frustumCulled = false;
   scene.add(mesas);
-  // A neon motel sign every so often, for something to read at night.
   const signs: THREE.Group[] = [];
   const signTex = canvasTex(256, 96, (c) => {
     c.fillStyle = "#120a14";
@@ -752,36 +410,102 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     signs.push(g);
   }
 
-  /* ------------------------------------------------------------ vehicles */
-  const truck = buildTruck();
-  scene.add(truck.root);
-  let foe = buildFoe(1);
+  /* ------------------------------------------------------------ the trucks */
+  const myUp = opts.upgrades ?? NO_UPGRADES;
+  const upFor = (i: number): Upgrades => (mode === "host" && i === 1 ? opts.guestUpgrades ?? NO_UPGRADES : mode === "guest" && i === 0 ? NO_UPGRADES : myUp);
+  const riders: Rider[] = [];
+  for (let i = 0; i < (two ? 2 : 1); i++) {
+    const look = RIDER_LOOK[i];
+    const truck = buildTruck(look.color, look.plate);
+    scene.add(truck.root);
+    const up = upFor(i);
+    riders.push({
+      idx: i, truck,
+      s: 0, lat: 0, vl: 0, v: 31, boost: 1, hull: 100, max: 100 + 25 * up.armor, shake: 0, bump: 0,
+      reload: 0, recoil: 0, aim: { yaw: 0, pitch: 0.08, lat: 0 },
+      out: false, respawn: 0, disarmed: false, gone: false, yawSm: 0, rollSm: 0, wantFire: false,
+      reloadMul: 1 - 0.15 * up.loader, drainMul: 1 - 0.15 * up.nitro, bonusV: 2 * up.nitro,
+      net: null, fired: 0,
+      engine: up.engine, auto: up.auto, punch: up.punch, autoT: 2, autoGun: buildAutoGun(), autoYaw: 0, autoPitch: 0, shakeOff: 0,
+    });
+    const rr = riders[riders.length - 1];
+    rr.autoGun.root.position.set(-0.7, 1.24, -2.3);
+    rr.autoGun.root.visible = up.auto > 0;
+    truck.root.add(rr.autoGun.root);
+  }
+  const resetRider = (r: Rider): void => {
+    Object.assign(r, {
+      s: 0, lat: two ? (r.idx === 0 ? 2.4 : -2.4) : 2, vl: 0, v: 31, boost: 1, hull: r.max, shake: 0, bump: 0,
+      reload: 0, recoil: 0, out: false, respawn: 0, disarmed: false, yawSm: 0, rollSm: 0, wantFire: false, autoT: 2, shakeOff: 0,
+    });
+    r.truck.cannon.root.visible = true;
+    r.truck.kit.visible = true;
+  };
+  riders.forEach(resetRider);
+  /** riders this browser steers */
+  const local = riders.filter((r) => (mode === "duo" ? true : r.idx === mine));
+  const me = riders[mine];
+
+  // DOM name tags over the trucks, when there are two of them
+  const tags = riders.map((r) => {
+    const el = document.createElement("div");
+    el.style.cssText = `position:absolute;left:0;top:0;pointer-events:none;padding:2px 7px;border-radius:8px;font:800 11px Inter,system-ui,sans-serif;letter-spacing:.08em;color:#0b0f1c;background:${RIDER_LOOK[r.idx].css};transform:translate(-50%,-100%);opacity:0`;
+    el.textContent = mode === "duo" ? `P${r.idx + 1}` : r.idx === mine ? "YOU" : "FRIEND";
+    if (two) mount.appendChild(el);
+    return el;
+  });
+
+  /* ------------------------------------------------------------ Mort */
+  let foe: Foe = buildFoe(1);
   scene.add(foe.root);
   const glareMat = new THREE.SpriteMaterial({ map: glow, color: 0xfff2d8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
   const glares = [new THREE.Sprite(glareMat), new THREE.Sprite(glareMat)];
   glares.forEach((g) => scene.add(g));
-  const haloMat = new THREE.SpriteMaterial({ map: glow, color: 0xffe2a8, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
-  const halo = new THREE.Sprite(haloMat);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffe2a8, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
   scene.add(halo);
+  // Mort on foot, for when he comes for the cannon, and the cannon he carries back.
+  const walker = buildMort();
+  walker.root.visible = false;
+  scene.add(walker.root);
+  const carried = buildCannon();
+  carried.root.scale.setScalar(0.85);
+  carried.root.rotation.y = Math.PI / 2;
+  carried.root.position.set(0, -0.42, 0.05);
+  carried.root.visible = false;
+  walker.hands.add(carried.root);
+  // His backup: cousins in black face-covering hats, armed with sticks.
+  const henchMats = henchKit();
+  const MAX_HENCH = 8;
+  const henchmen: Henchman[] = [];
+  for (let k = 0; k < MAX_HENCH; k++) {
+    const body = buildHench(henchMats);
+    body.root.visible = false;
+    scene.add(body.root);
+    henchmen.push({ s: 0, lat: 0, y: 0, v: 0, vl: 0, vy: 0, state: -1, t: 0, rider: 0, rx: 0, spin: 0, walk: 0, yaw: 0, whack: 0, body });
+  }
+  const henchBubble = document.createElement("div");
+  henchBubble.style.cssText = bubble.style.cssText + ";background:#111;color:#fff;font-size:12px";
+  mount.appendChild(henchBubble);
+  let henchSay = { i: -1, t: 0 };
 
-  const trafficGeo = trafficGeometry();
-  const trafficMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.3 });
-  const MAX_TRAFFIC = 5;
-  const trafficMesh = new THREE.InstancedMesh(trafficGeo, trafficMat, MAX_TRAFFIC);
+  /* ------------------------------------------------------------ traffic */
+  const trafficMesh = new THREE.InstancedMesh(trafficGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.3 }), 8);
+  const MAX_TRAFFIC = 8;
   trafficMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_TRAFFIC * 3), 3);
   trafficMesh.frustumCulled = false;
   scene.add(trafficMesh);
   const TRAFFIC_COLORS = [0xe8e4da, 0x2e5fa8, 0x8a8f96, 0x3c7a4e, 0x7b4a9e, 0xc96a2a];
+  const traffic: Traffic[] = [];
 
   /* ------------------------------------------------------------ projectiles and puffs */
   const ballGeo = new THREE.SphereGeometry(0.19, 14, 10);
   const ballMat = new THREE.MeshStandardMaterial({ color: 0x18191b, roughness: 0.35, metalness: 0.8 });
   const balls: Ball[] = [];
-  for (let k = 0; k < 10; k++) {
+  for (let k = 0; k < 14; k++) {
     const mesh = new THREE.Mesh(ballGeo, ballMat);
     mesh.visible = false;
     scene.add(mesh);
-    balls.push({ s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, bounces: 0, mesh, live: false, trail: 0 });
+    balls.push({ s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, bounces: 0, mesh, live: false, trail: 0, rider: 0, dmg: 1 });
   }
   const tyreGeo = new THREE.TorusGeometry(0.42, 0.18, 10, 20);
   const canGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12);
@@ -792,7 +516,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     const mesh = new THREE.Mesh(k % 2 ? canGeo : tyreGeo, k % 2 ? thrownMatB : thrownMatA);
     mesh.visible = false;
     scene.add(mesh);
-    thrown.push({ s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, spin: 0, mesh, live: false, targetLat: 0, passed: false });
+    thrown.push({ s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, spin: 0, mesh, live: false, targetLat: 0, passed: false, kind: k % 2, rider: 0, car: null });
   }
   const warnGeo = new THREE.RingGeometry(0.7, 1.0, 28);
   warnGeo.rotateX(-Math.PI / 2);
@@ -806,7 +530,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
 
   const puffTex = puffTexture();
   const puffs: Puff[] = [];
-  for (let k = 0; k < 110; k++) {
+  for (let k = 0; k < 170; k++) {
     const mat = new THREE.SpriteMaterial({ map: puffTex, transparent: true, depthWrite: false });
     const sprite = new THREE.Sprite(mat);
     sprite.visible = false;
@@ -814,38 +538,42 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     puffs.push({ sprite, mat, s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, life: 1, size: 1, grow: 1, kind: "smoke", live: false });
   }
   let puffNext = 0;
+  const PUFF_COLOR: Record<Puff["kind"], number> = { smoke: 0x8a8a8a, black: 0x1a1a1c, dust: 0x7a6650, fire: 0xff8a2a, spark: 0xffd27a };
   const puff = (kind: Puff["kind"], s: number, lat: number, y: number, vs: number, vl: number, vy: number, size: number, life: number): void => {
     const p = puffs[puffNext];
     puffNext = (puffNext + 1) % puffs.length;
-    Object.assign(p, { kind, s, lat, y, vs, vl, vy, size, life, age: 0, live: true, grow: kind === "smoke" ? 2.2 : kind === "dust" ? 1.6 : kind === "fire" ? 0.8 : 0.2 });
+    Object.assign(p, { kind, s, lat, y, vs, vl, vy, size, life, age: 0, live: true, grow: kind === "smoke" || kind === "black" ? 2.2 : kind === "dust" ? 1.6 : kind === "fire" ? 0.8 : 0.2 });
     p.mat.blending = kind === "fire" || kind === "spark" ? THREE.AdditiveBlending : THREE.NormalBlending;
-    p.mat.color.set(kind === "smoke" ? 0x8a8a8a : kind === "dust" ? 0x7a6650 : kind === "fire" ? 0xff8a2a : 0xffd27a);
+    p.mat.color.set(PUFF_COLOR[kind]);
     p.sprite.visible = true;
   };
 
-  // Aim: dots along the predicted arc and a ring where it lands.
+  // Aim: dots along the predicted arc and a ring where it lands, one set per local truck.
   const dotGeo = new THREE.SphereGeometry(0.07, 8, 6);
-  const dotMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.75, depthWrite: false });
   const DOTS = 16;
-  const dots = new THREE.InstancedMesh(dotGeo, dotMat, DOTS);
-  dots.frustumCulled = false;
-  scene.add(dots);
-  const reticle = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9, depthWrite: false }));
-  scene.add(reticle);
+  const aimSets = local.map((r) => {
+    const tint = mode === "duo" ? RIDER_LOOK[r.idx].css : "#ffe08a";
+    const dots = new THREE.InstancedMesh(dotGeo, new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.75, depthWrite: false }), DOTS);
+    dots.frustumCulled = false;
+    scene.add(dots);
+    const reticle = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.9, depthWrite: false }));
+    scene.add(reticle);
+    return { r, dots, reticle, tint };
+  });
 
   /* ------------------------------------------------------------ state */
   let best = 0;
   try { best = Number(localStorage.getItem("cannonrun.best") ?? 0) || 0; } catch { /* private window */ }
 
-  const me = { s: 0, lat: 2, vl: 0, v: 31, boost: 1, hull: 100, shake: 0, spin: 0, bump: 0 };
-  const en = { ramCd: 0, s: -140, lat: 0, v: 40, hp: 4, max: 4, level: 1, hitSlow: 0, lunge: 0, lungeT: 5, throwT: 4, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, dodge: 0, rage: 0 };
-  const aim = { yaw: 0, pitch: 0.08, dist: 30, lat: 0, has: false, sx: 0, sy: 0 };
-  let reload = 0;
-  let recoil = 0;
-  let phase: ChaseHud["phase"] = "intro";
+  const en = { ramCd: 0, s: -140, lat: 0, vl: 0, v: 40, hp: 4, max: 4, level: 1, hitSlow: 0, lunge: 0, lungeT: 5, throwT: 4, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, dodge: 0, rage: 0, seated: true };
+  const tb = { phase: 0, t: 0, rider: 0, s: 0, lat: 0, y: 0, yaw: 0, carrying: false, walk: 0 };
+  let phase: Phase = "intro";
+  let gen = 0;
   let introT = 0;
   let time = 0;
   let score = 0;
+  let cash = 0;
+  let kmPaid = 0;
   let hits = 0;
   let wrecks = 0;
   let toast = "";
@@ -855,25 +583,34 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let tauntT = 3;
   let trafficT = 6;
   let respawnT = 0;
+  let backupT = 30 + Math.random() * 41;
+  let alert = "";
+  let alertT = 0;
+  let ended = false;
   let muted = false;
-  const traffic: Traffic[] = [];
   const keys = new Set<string>();
   const stick = { x: 0, y: 0 };
   const held = { boost: false };
-  let wantFire = false;
   let mouseX = -1;
   let mouseY = -1;
 
   const say = (t: string, d = 2.2): void => { toast = t; toastT = d; };
-  const shout = (t: string, d = 2.2): void => { talk = t; talkT = d; };
+  // Once he has you, Mort stops talking.
+  const shout = (t: string, d = 2.2): void => { if (phase === "takeback" || phase === "over") return; talk = t; talkT = d; };
+  const nameOf = (r: Rider): string => (mode === "duo" ? `P${r.idx + 1}` : r.idx === mine ? "You" : "Your friend");
 
   /* ------------------------------------------------------------ input */
+  const P2_FIRE = new Set(["Enter", "/", "0", "l"]);
   const onKey = (e: KeyboardEvent): void => {
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (e.type === "keydown") {
       audio.start();
-      if (k === " " || k === "f") { wantFire = true; e.preventDefault(); }
-      if (k === "Enter" && phase === "over") api.restart();
+      if (mode === "duo") {
+        if (k === " " || k === "f") { riders[0].wantFire = true; e.preventDefault(); }
+        if (P2_FIRE.has(k)) { riders[1].wantFire = true; e.preventDefault(); }
+      } else if (k === " " || k === "f" || k === "Enter") { me.wantFire = true; e.preventDefault(); }
+      if (k.startsWith("Arrow")) e.preventDefault();
+      if (k === "Enter" && phase === "over" && !isGuest) api.restart();
       keys.add(k);
     } else keys.delete(k);
   };
@@ -890,13 +627,34 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     const r = canvas.getBoundingClientRect();
     mouseX = e.clientX - r.left;
     mouseY = e.clientY - r.top;
-    if (e.button === 0) wantFire = true;
+    if (e.button === 0) me.wantFire = true;
   };
   window.addEventListener("keydown", onKey);
   window.addEventListener("keyup", onKey);
   window.addEventListener("blur", onBlur);
   window.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerdown", onDown);
+
+  const controls = (r: Rider): { steer: number; boost: boolean } => {
+    let steer = 0;
+    let boost = false;
+    if (mode === "duo" && r.idx === 1) {
+      if (keys.has("ArrowLeft")) steer -= 1;
+      if (keys.has("ArrowRight")) steer += 1;
+      boost = keys.has("ArrowUp");
+    } else if (mode === "duo") {
+      if (keys.has("a")) steer -= 1;
+      if (keys.has("d")) steer += 1;
+      boost = keys.has("Shift") || keys.has("w") || held.boost;
+      if (Math.abs(stick.x) > 0.1) steer = stick.x;
+    } else {
+      if (keys.has("a") || keys.has("ArrowLeft")) steer -= 1;
+      if (keys.has("d") || keys.has("ArrowRight")) steer += 1;
+      boost = keys.has("Shift") || keys.has("w") || keys.has("ArrowUp") || held.boost;
+      if (Math.abs(stick.x) > 0.1) steer = stick.x;
+    }
+    return { steer, boost };
+  };
 
   /* ------------------------------------------------------------ sound */
   const audio = (() => {
@@ -907,7 +665,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     let hisEngine: OscillatorNode | null = null;
     let hisGain: GainNode | null = null;
     let noise: AudioBuffer | null = null;
-    const burst = (dur: number, freq: number, gain: number, type: BiquadFilterType = "lowpass"): void => {
+    const burst = (dur: number, freq: number, gain: number, type: BiquadFilterType = "lowpass", delay = 0): void => {
       if (!ctx || !master || !noise) return;
       const src = ctx.createBufferSource();
       src.buffer = noise;
@@ -915,7 +673,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       f.type = type;
       f.frequency.value = freq;
       const g = ctx.createGain();
-      const t = ctx.currentTime;
+      const t = ctx.currentTime + delay;
       g.gain.setValueAtTime(gain, t);
       g.gain.exponentialRampToValueAtTime(0.001, t + dur);
       src.connect(f).connect(g).connect(master);
@@ -936,6 +694,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       o.start(t);
       o.stop(t + dur + 0.05);
     };
+    /** quieter the further from the camera */
+    const near = (s: number): number => clamp(1.15 - Math.abs(s - me.s) / 160, 0.25, 1);
     return {
       start(): void {
         if (ctx) { if (ctx.state === "suspended") void ctx.resume(); return; }
@@ -969,101 +729,408 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         if (!ctx || !myEngine || !myGain || !hisEngine || !hisGain) return;
         const t = ctx.currentTime;
         myEngine.frequency.setTargetAtTime(52 + v * 1.6, t, 0.1);
-        myGain.gain.setTargetAtTime(phase === "over" ? 0 : 0.09, t, 0.2);
+        myGain.gain.setTargetAtTime(phase === "over" ? 0 : 0.03 + Math.min(1, v / 31) * 0.06, t, 0.2);
         hisEngine.frequency.setTargetAtTime(38 + clamp(60 - gap, 0, 60) * 0.6, t, 0.1);
-        hisGain.gain.setTargetAtTime(live ? clamp(1 - gap / 90, 0, 1) * 0.08 : 0, t, 0.2);
+        hisGain.gain.setTargetAtTime(live ? clamp(1 - Math.abs(gap) / 90, 0, 1) * 0.08 : 0, t, 0.2);
       },
-      boom(): void { burst(0.9, 520, 0.9); tone("sine", 130, 34, 0.7, 0.7); },
-      clang(): void { burst(0.35, 2400, 0.5, "bandpass"); tone("triangle", 900, 420, 0.3, 0.25); },
-      crunch(): void { burst(0.6, 900, 0.7, "bandpass"); tone("sawtooth", 90, 30, 0.5, 0.35); },
-      blast(): void { burst(1.6, 380, 1.0); tone("sine", 90, 22, 1.4, 0.8); },
+      boom(s: number): void { const k = near(s); burst(0.9, 520, 0.9 * k); tone("sine", 130, 34, 0.7, 0.7 * k); },
+      clang(s: number): void { const k = near(s); burst(0.35, 2400, 0.5 * k, "bandpass"); tone("triangle", 900, 420, 0.3, 0.25 * k); },
+      crunch(s: number): void { const k = near(s); burst(0.6, 900, 0.7 * k, "bandpass"); tone("sawtooth", 90, 30, 0.5, 0.35 * k); },
+      blast(s: number): void { const k = near(s); burst(1.6, 380, 1.0 * k); tone("sine", 90, 22, 1.4, 0.8 * k); },
+      /** a car coming down and going up: a sharp crack, a fat low thump, a long rumble */
+      explode(s: number): void {
+        const k = near(s);
+        burst(0.22, 3200, 0.7 * k, "highpass");
+        burst(0.5, 700, 1.0 * k);
+        tone("sine", 110, 26, 1.1, 0.95 * k);
+        burst(2.2, 220, 0.6 * k, "lowpass", 0.08);
+        tone("triangle", 60, 30, 1.6, 0.3 * k, 0.1);
+      },
+      scrape(s: number): void { const k = near(s); burst(0.8, 1800, 0.25 * k, "bandpass"); },
       horn(): void { tone("square", 330, 328, 0.55, 0.12); tone("square", 415, 412, 0.55, 0.1); },
       whoosh(): void { burst(0.5, 1200, 0.25, "highpass"); },
+      whack(s: number): void { const k = near(s); burst(0.08, 1500, 0.45 * k, "bandpass"); tone("triangle", 220, 140, 0.08, 0.2 * k); },
+      pop(s: number): void { const k = near(s); burst(0.3, 900, 0.5 * k); tone("sine", 220, 70, 0.25, 0.35 * k); },
+      door(): void { burst(0.18, 600, 0.5, "bandpass"); tone("square", 120, 80, 0.12, 0.15); },
       mute(m: boolean): void { if (master && ctx) master.gain.setTargetAtTime(m ? 0 : 0.55, ctx.currentTime, 0.05); },
       stop(): void { void ctx?.close(); ctx = null; },
     };
   })();
 
+  /* ------------------------------------------------------------ effects */
+  // Everything that makes a bang goes through emit(), so the host can hand
+  // the same bangs to the guest in its next snapshot.
+  const outbox: (string | number)[][] = [];
+  const play = (kind: string, s: number, lat: number, y: number, ri: number): void => {
+    const r = riders[ri] ?? me;
+    switch (kind) {
+      case "fire": {
+        toWorld(s, lat, y, flash.position);
+        flash.intensity = 900;
+        if (r) { r.recoil = 1; r.shake = Math.max(r.shake, 0.5); }
+        const v = r?.v ?? 31;
+        for (let k = 0; k < 7; k++) puff("smoke", s, lat, y, v - 10 - Math.random() * 8, (Math.random() - 0.5) * 3, Math.random() * 2, 0.6, 1.4);
+        for (let k = 0; k < 4; k++) puff("fire", s, lat, y, v - 18, (Math.random() - 0.5) * 4, (Math.random() - 0.3) * 3, 1.2, 0.18);
+        audio.boom(s);
+        break;
+      }
+      case "hit":
+        audio.clang(s);
+        for (let k = 0; k < 10; k++) puff("spark", s, lat, y, en.v + (Math.random() - 0.3) * 14, (Math.random() - 0.5) * 12, Math.random() * 8, 0.45, 0.4);
+        for (let k = 0; k < 5; k++) puff("smoke", s, lat, y, en.v - 4, (Math.random() - 0.5) * 2, 1 + Math.random(), 1.3, 1.4);
+        break;
+      case "wreck":
+        boomLight.intensity = 3000;
+        toWorld(s, lat, 2, boomLight.position);
+        audio.blast(s);
+        for (let k = 0; k < 26; k++) puff("fire", s, lat, 1.2, en.v + (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, Math.random() * 9, 2.4, 0.7 + Math.random() * 0.5);
+        for (let k = 0; k < 18; k++) puff("black", s, lat, 1.5, en.v - 6, (Math.random() - 0.5) * 6, 2 + Math.random() * 3, 2.6, 2.6);
+        break;
+      case "ram":
+        audio.crunch(s);
+        for (let k = 0; k < 8; k++) puff("spark", s, lat, 0.8, r?.v ?? 31, (Math.random() - 0.5) * 10, Math.random() * 6, 0.4, 0.4);
+        if (r) r.shake = Math.max(r.shake, 1);
+        break;
+      case "crunch":
+        audio.crunch(s);
+        for (let k = 0; k < 6; k++) puff("spark", s, lat, y, en.v, (Math.random() - 0.5) * 10, Math.random() * 6, 0.4, 0.4);
+        for (let k = 0; k < 4; k++) puff("dust", s, lat, 0.4, en.v * 0.6, (Math.random() - 0.5) * 4, 1, 1.4, 1.2);
+        break;
+      case "tink":
+        audio.clang(s);
+        for (let k = 0; k < 8; k++) puff("spark", s, lat, y, me.v, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0.4, 0.35);
+        break;
+      case "smack":
+        audio.clang(s);
+        for (let k = 0; k < 6; k++) puff("spark", s, lat, y, r?.v ?? 31, (Math.random() - 0.5) * 8, Math.random() * 5, 0.4, 0.35);
+        if (r) r.shake = Math.max(r.shake, 1);
+        break;
+      case "dust":
+        for (let k = 0; k < 4; k++) puff("dust", s, lat, 0.3, 0, (Math.random() - 0.5) * 3, 1 + Math.random(), 0.9, 1.0);
+        break;
+      case "scrape":
+        audio.scrape(s);
+        break;
+      case "boom":
+        // a car that came down hard
+        boomLight.intensity = Math.max(boomLight.intensity, 2600);
+        toWorld(s, lat, 2, boomLight.position);
+        audio.explode(s);
+        for (let k = 0; k < 22; k++) puff("fire", s, lat, 0.8 + Math.random(), (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 9, 2 + Math.random() * 8, 2.2, 0.6 + Math.random() * 0.5);
+        for (let k = 0; k < 14; k++) puff("black", s, lat, 1.4, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 4, 2 + Math.random() * 3, 2.4, 2.8);
+        for (let k = 0; k < 14; k++) puff("spark", s, lat, 1, (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 16, 4 + Math.random() * 8, 0.4, 0.6);
+        break;
+      case "blast":
+        boomLight.intensity = 3000;
+        audio.blast(s);
+        break;
+      case "horn": audio.horn(); break;
+      case "whoosh": audio.whoosh(); break;
+      case "door": audio.door(); break;
+      case "clank": audio.clang(s); break;
+      case "gogo":
+        henchSay = { i: ri, t: 2.2 };
+        audio.horn();
+        break;
+      case "pop":
+        audio.clang(s);
+        for (let k = 0; k < 8; k++) puff("spark", s, lat, y, en.v * 0.5, (Math.random() - 0.5) * 8, Math.random() * 6, 0.4, 0.4);
+        for (let k = 0; k < 4; k++) puff("dust", s, lat, 0.4, 0, (Math.random() - 0.5) * 3, 1, 1, 1);
+        break;
+      case "whack":
+        audio.whack(s);
+        for (let k = 0; k < 3; k++) puff("spark", s, lat, y, r?.v ?? 31, (Math.random() - 0.5) * 4, Math.random() * 3, 0.25, 0.25);
+        if (r) r.shake = Math.max(r.shake, 0.35);
+        break;
+      case "thunk":
+        audio.clang(s);
+        for (let k = 0; k < 5; k++) puff("spark", s, lat, y, en.v * 0.6, (Math.random() - 0.5) * 6, Math.random() * 4, 0.35, 0.3);
+        break;
+      case "auto":
+        audio.pop(s);
+        for (let k = 0; k < 3; k++) puff("smoke", s, lat, y, (r?.v ?? 31) - 6, (Math.random() - 0.5) * 2, 1, 0.35, 0.8);
+        puff("fire", s, lat, y, (r?.v ?? 31) - 10, 0, 0, 0.5, 0.1);
+        break;
+    }
+  };
+  const emit = (kind: string, s: number, lat: number, y: number, ri = -1): void => {
+    play(kind, s, lat, y, ri);
+    if (mode === "host") outbox.push([kind, +s.toFixed(2), +lat.toFixed(2), +y.toFixed(2), ri]);
+  };
+
   /* ------------------------------------------------------------ rules */
+  const alive = (r: Rider): boolean => !r.out && !r.gone;
+  /** Mort goes for the rearmost truck still fighting. */
+  const target = (): Rider => {
+    let t: Rider | null = null;
+    for (const r of riders) if (alive(r) && (!t || r.s < t.s)) t = r;
+    return t ?? riders[tb.rider] ?? me;
+  };
+  const leadS = (): number => riders.reduce((m, r) => (r.gone ? m : Math.max(m, r.s)), -Infinity);
+
   const spawnFoe = (level: number, gap: number): void => {
     scene.remove(foe.root);
     disposeTree(foe.root);
     foe = buildFoe(level);
     scene.add(foe.root);
     const spec = RIDES[Math.min(level - 1, RIDES.length - 1)];
-    const max = spec.hp + Math.max(0, level - RIDES.length) * 3;
-    Object.assign(en, { ramCd: 0, s: me.s - gap, lat: -me.lat, v: me.v + 14, hp: max, max, level, hitSlow: 0, lunge: 0, lungeT: 6, throwT: 3.5, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, rage: 0 });
+    const max = spec.hp + Math.max(0, level - RIDES.length) * 3 + (two ? 3 : 0);
+    const t = target();
+    Object.assign(en, { ramCd: 0, s: t.s - gap, lat: -t.lat, vl: 0, v: t.v + 14, hp: max, max, level, hitSlow: 0, lunge: 0, lungeT: 6, throwT: 3.5, wreck: 0, roll: 0, rollV: 0, y: 0, vy: 0, rage: 0, seated: true });
   };
 
-  const fire = (): void => {
-    if (reload > 0 || phase === "over") return;
-    reload = RELOAD;
-    recoil = 1;
+  const muzzle = (r: Rider): { s: number; lat: number; y: number; cp: number } => {
+    const cp = Math.cos(r.aim.pitch);
+    return {
+      s: r.s - 1.15 - 1.55 * cp * Math.cos(r.aim.yaw),
+      lat: r.lat + 1.55 * cp * Math.sin(r.aim.yaw),
+      y: 1.29 + 1.55 * Math.sin(r.aim.pitch),
+      cp,
+    };
+  };
+  const canFire = (r: Rider): boolean => r.reload <= 0 && alive(r) && !r.disarmed && (phase === "play" || phase === "intro");
+  /** The ball itself: only ever on the host (or alone). */
+  const fireBall = (r: Rider): void => {
+    r.reload = RELOAD * r.reloadMul;
+    const m = muzzle(r);
     const b = balls.find((x) => !x.live) ?? balls[0];
-    const cp = Math.cos(aim.pitch);
-    // The muzzle sits 1.55 m back from the trunnions, 1.3 m up, over the tailgate.
-    const ms = me.s - 1.15 - 1.55 * cp * Math.cos(aim.yaw);
-    const ml = me.lat + 1.55 * cp * Math.sin(aim.yaw);
     Object.assign(b, {
-      s: ms, lat: ml, y: 1.29 + 1.55 * Math.sin(aim.pitch),
-      vs: me.v - MUZZLE * cp * Math.cos(aim.yaw),
-      vl: MUZZLE * cp * Math.sin(aim.yaw),
-      vy: MUZZLE * Math.sin(aim.pitch),
-      age: 0, bounces: 0, live: true, trail: 0,
+      s: m.s, lat: m.lat, y: m.y,
+      vs: r.v - MUZZLE * m.cp * Math.cos(r.aim.yaw),
+      vl: MUZZLE * m.cp * Math.sin(r.aim.yaw),
+      vy: MUZZLE * Math.sin(r.aim.pitch),
+      age: 0, bounces: 0, live: true, trail: 0, rider: r.idx, dmg: 1,
     });
-    b.mesh.visible = true;
-    flash.intensity = 900;
-    me.shake = Math.max(me.shake, 0.5);
-    for (let k = 0; k < 7; k++) puff("smoke", b.s, b.lat, b.y, me.v - 10 - Math.random() * 8, (Math.random() - 0.5) * 3, Math.random() * 2, 0.6, 1.4);
-    for (let k = 0; k < 4; k++) puff("fire", b.s, b.lat, b.y, me.v - 18, (Math.random() - 0.5) * 4, (Math.random() - 0.3) * 3, 1.2, 0.18);
-    audio.boom();
+    emit("fire", m.s, m.lat, m.y, r.idx);
+    // anybody hanging off your tailgate gets the muzzle blast in the face
+    for (const h of henchmen) if (h.state === 2 && h.rider === r.idx) knockHench(h, "POINT BLANK!", 1);
   };
 
-  const hurt = (n: number, why: string): void => {
-    if (phase !== "play") return;
-    me.hull = Math.max(0, me.hull - n);
-    me.shake = Math.max(me.shake, 1);
-    say(why, 1.6);
-    if (me.hull <= 0) {
-      phase = "over";
-      me.spin = 0.01;
-      shout("HA! GOT YOU!", 4);
-      audio.crunch();
-      if (score > best) {
-        best = score;
-        try { localStorage.setItem("cannonrun.best", String(best)); } catch { /* ignore */ }
+  const hurt = (r: Rider, n: number, why: string): void => {
+    if (phase !== "play" || !alive(r)) return;
+    r.hull = Math.max(0, r.hull - n);
+    r.shake = Math.max(r.shake, 1);
+    say(two ? `${nameOf(r).toUpperCase()}: ${why}` : why, 1.6);
+    if (r.hull <= 0) knockOut(r);
+  };
+  const knockOut = (r: Rider): void => {
+    r.out = true;
+    emit("crunch", r.s - 2, r.lat, 1, r.idx);
+    const others = riders.filter((o) => o !== r && alive(o));
+    if (others.length) {
+      r.respawn = RESPAWN;
+      say(`${nameOf(r)} ${r.idx === mine && mode !== "duo" ? "are" : "is"} out! Back in ${RESPAWN}s. Hold him off!`, 3);
+      shout("ONE DOWN!", 2);
+    } else startTakeback(r);
+  };
+
+  const startTakeback = (r: Rider): void => {
+    phase = "takeback";
+    Object.assign(tb, { phase: 0, t: 0, rider: r.idx, carrying: false, walk: 0 });
+    talk = "";
+    talkT = 0;
+    say("He's got you.", 3);
+    for (const o of riders) o.wantFire = false;
+    for (const h of henchmen) if (h.state >= 0 && h.state <= 2) knockHench(h, "", 0);
+    alert = "";
+  };
+
+  /* ------------------------------------------------------------ his backup */
+  const spawnBackup = (): void => {
+    const n = en.level === 1 ? 1 : en.level >= 4 ? 3 : 2;
+    const tgt = target();
+    let first = -1;
+    for (let k = 0; k < n; k++) {
+      const i = henchmen.findIndex((h) => h.state === -1);
+      if (i < 0) break;
+      const h = henchmen[i];
+      Object.assign(h, {
+        s: en.s + foe.hatch.z - k * 0.9, lat: clamp(en.lat - foe.hatch.x + k * 0.4, -HALF, HALF), y: 1.1, v: en.v, vl: -1.5, vy: 3,
+        state: 0, t: 0, rider: tgt.idx, rx: 0, spin: 0, walk: Math.random() * 6, yaw: 0, whack: 0.5,
+      });
+      if (first < 0) first = i;
+    }
+    if (first < 0) return;
+    const h = henchmen[first];
+    emit("gogo", h.s, h.lat, 2.2, first);
+    alert = n > 1 ? `⚠ ${n} HENCHMEN COMING! SHOOT THEM OR SWERVE THEM OFF` : "⚠ HENCHMAN COMING! SHOOT HIM OR SWERVE HIM OFF";
+    alertT = 3.2;
+  };
+  const knockHench = (h: Henchman, label: string, pay: number): void => {
+    if (h.state < 0 || h.state >= 3) return;
+    const i = henchmen.indexOf(h);
+    h.state = 3;
+    h.t = 0;
+    h.y = Math.max(h.y, 0.3);
+    h.vy = 5 + Math.random() * 3;
+    h.vl = (Math.random() - 0.5) * 8;
+    h.v *= 0.6;
+    h.spin = (Math.random() > 0.5 ? 1 : -1) * (6 + Math.random() * 4);
+    emit("pop", h.s, h.lat, h.y + 1, i);
+    if (pay) {
+      cash += 40 * pay;
+      score += 150 * pay;
+      say(`${label} +$${40 * pay}`, 1.3);
+    } else if (label) say(label, 1.3);
+  };
+  const stepHenchmen = (dt: number): void => {
+    // backup every half a minute to a minute and eleven, whatever he is driving
+    if (phase === "play" && en.wreck === 0) {
+      backupT -= dt;
+      if (backupT <= 0 && target().s - en.s < 70) { backupT = 30 + Math.random() * 41; spawnBackup(); }
+    }
+    for (const h of henchmen) {
+      if (h.state < 0) continue;
+      h.t += dt;
+      const r = riders[h.rider];
+      if (h.state === 0) {
+        // out of the side and down onto the road, already running
+        h.vy -= G * dt;
+        h.y = Math.max(0, h.y + h.vy * dt);
+        h.s += h.v * dt;
+        h.lat += h.vl * dt;
+        h.walk += dt * 14;
+        if (h.y === 0) h.state = 1;
+      } else if (h.state === 1) {
+        if (!alive(r)) { const o = riders.find(alive); if (o) h.rider = o.idx; }
+        const tr = riders[h.rider];
+        const gapH = tr.s - 3.1 - h.s;
+        // cartoon cousins: they sprint faster than a pickup
+        const want = tr.v + clamp(gapH * 0.5, -4, 9);
+        h.v = lerp(h.v, want, Math.min(1, dt * 2));
+        h.s += h.v * dt;
+        h.vl = clamp(tr.lat - h.lat, -1, 1) * 4;
+        h.lat += h.vl * dt;
+        h.walk += dt * (10 + h.v * 0.15);
+        h.yaw = lerp(h.yaw, -Math.atan2(h.vl, Math.max(h.v, 1)), Math.min(1, dt * 6));
+        if (gapH < 0.4 && Math.abs(tr.lat - h.lat) < 0.9 && alive(tr) && henchmen.filter((o) => o.state === 2 && o.rider === tr.idx).length < 2) {
+          h.state = 2;
+          h.t = 0;
+          h.whack = 0.6;
+          h.rider = tr.idx;
+          say(`${two ? nameOf(tr).toUpperCase() + ": " : ""}HENCHMAN ON THE TAILGATE! SWERVE OR SHOOT`, 2);
+        }
+        if (h.state === 1 && (gapH < -12 || h.t > 40)) h.state = -1;
+        // traffic does not stop for him
+        for (const t of traffic) {
+          if (h.state === 1 && Math.abs(t.s - h.s) < 2.6 && Math.abs(t.lat - h.lat) < 1.3) { emit("crunch", h.s, h.lat, 1); knockHench(h, "RUN OVER BY A CIVILIAN!", 0); }
+        }
+      } else if (h.state === 2) {
+        // hanging off the tailgate, beating it with a stick
+        const side = henchmen.filter((o) => o.state === 2 && o.rider === r.idx).indexOf(h) === 0 ? 1 : -1;
+        h.s = r.s - 2.95;
+        h.lat = r.lat + side * 0.45;
+        h.y = 0.35;
+        h.v = r.v;
+        h.yaw = 0;
+        h.whack -= dt;
+        if (h.whack <= 0 && phase === "play") {
+          h.whack = 0.8;
+          if (alive(r)) {
+            emit("whack", h.s + 0.4, h.lat, 1.0, r.idx);
+            r.hull = Math.max(0, r.hull - 4);
+            if (r.hull <= 0) knockOut(r);
+          }
+        }
+        // swerve hard and he comes off
+        if (Math.abs(r.vl) > 5.5) r.shakeOff += dt; else r.shakeOff = Math.max(0, r.shakeOff - dt * 0.5);
+        if (r.shakeOff > 0.5) { r.shakeOff = 0; knockHench(h, "SHOOK HIM OFF!", 1); }
+        else if (!alive(r) || phase !== "play") knockHench(h, "", 0);
+      } else if (h.state === 3) {
+        h.vy -= G * dt;
+        h.y += h.vy * dt;
+        h.s += h.v * dt;
+        h.lat += h.vl * dt;
+        h.rx += h.spin * dt;
+        if (h.y <= 0 && h.vy < 0) { h.y = 0; h.state = 4; h.t = 0; h.rx = Math.PI / 2; h.v = 0; }
+      } else if (h.state === 4) {
+        if (h.t > 6) h.state = -1;
       }
     }
   };
+  /** The garage's roof gun: henchmen first, then Mort. */
+  const autoGuns = (dt: number): void => {
+    for (const r of riders) {
+      if (r.auto <= 0 || !alive(r) || r.disarmed || phase !== "play") continue;
+      r.autoT -= dt;
+      const clinger = henchmen.find((h) => h.state === 2 && h.rider === r.idx);
+      let tS = en.s + (en.v - r.v) * 0.6;
+      let tL = en.lat;
+      let ok = en.wreck === 0 && r.s - en.s < 120;
+      const runner = henchmen.filter((h) => h.state === 1 && r.s - h.s < 60).sort((a, b) => b.s - a.s)[0];
+      if (runner) { tS = runner.s + (runner.v - r.v) * 0.5; tL = runner.lat; ok = true; }
+      if (clinger) { tS = clinger.s - 3; tL = clinger.lat; ok = true; }
+      const a = solveAim(r.s - 2.3, r.lat + 0.7, 1.6, tS, tL, MUZZLE * 0.9);
+      r.autoYaw = lerpAngle(r.autoYaw, a.yaw, Math.min(1, dt * 10));
+      r.autoPitch = a.pitch;
+      if (r.autoT > 0 || !ok) continue;
+      r.autoT = [0, 2.6, 1.9, 1.3][Math.min(3, r.auto)];
+      const muz = { s: r.s - 2.3 - 0.8 * Math.cos(a.yaw), lat: r.lat + 0.7 + 0.8 * Math.sin(a.yaw), y: 1.6 };
+      if (clinger) {
+        knockHench(clinger, "AUTO CANNON GOT HIM!", 1);
+        emit("auto", muz.s, muz.lat, muz.y, r.idx);
+        continue;
+      }
+      const b = balls.find((x) => !x.live) ?? balls[0];
+      const sp = MUZZLE * 0.9;
+      Object.assign(b, {
+        s: muz.s, lat: muz.lat, y: muz.y,
+        vs: r.v - sp * Math.cos(a.pitch) * Math.cos(a.yaw), vl: sp * Math.cos(a.pitch) * Math.sin(a.yaw), vy: sp * Math.sin(a.pitch),
+        age: 0, bounces: 0, live: true, trail: 0, rider: r.idx, dmg: 0.35 + 0.25 * r.punch,
+      });
+      emit("auto", muz.s, muz.lat, muz.y, r.idx);
+    }
+  };
 
-  const hitFoe = (b: { s: number; lat: number; y: number }, label: string): void => {
-    if (en.wreck > 0) return;
-    en.hp -= 1;
+  const hitFoe = (b: { s: number; lat: number; y: number }, label: string, dmg = 1): void => {
+    if (en.wreck > 0 || phase === "takeback" || phase === "over") return;
+    en.hp = Math.round((en.hp - dmg) * 100) / 100;
     hits += 1;
-    score += 100 * en.level;
+    const pay = Math.max(1, Math.round(25 * en.level * Math.min(1, dmg)));
+    score += Math.round(100 * en.level * Math.min(1, dmg));
+    cash += pay;
     en.hitSlow = 12;
     en.rage = 1;
     en.dodge = (Math.random() - 0.5) * 4;
-    audio.clang();
-    for (let k = 0; k < 10; k++) puff("spark", b.s, b.lat, b.y, en.v + (Math.random() - 0.3) * 14, (Math.random() - 0.5) * 12, Math.random() * 8, 0.45, 0.4);
-    for (let k = 0; k < 5; k++) puff("smoke", b.s, b.lat, b.y, en.v - 4, (Math.random() - 0.5) * 2, 1 + Math.random(), 1.3, 1.4);
+    emit("hit", b.s, b.lat, b.y);
     if (en.hp <= 0) {
+      en.hp = 0;
       en.wreck = 0.001;
       en.vy = 6;
       en.rollV = (Math.random() > 0.5 ? 1 : -1) * 4.5;
       wrecks += 1;
       score += 1000 * en.level;
-      me.hull = Math.min(100, me.hull + 15);
-      boomLight.intensity = 3000;
-      audio.blast();
-      for (let k = 0; k < 26; k++) puff("fire", en.s, en.lat, 1.2, en.v + (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, Math.random() * 9, 2.4, 0.7 + Math.random() * 0.5);
-      for (let k = 0; k < 18; k++) puff("smoke", en.s, en.lat, 1.5, en.v - 6, (Math.random() - 0.5) * 6, 2 + Math.random() * 3, 2.6, 2.6);
-      say(`WRECKED ${RIDES[Math.min(en.level - 1, RIDES.length - 1)].name.toUpperCase()}! +${1000 * en.level}`, 2.6);
+      cash += 250 * en.level;
+      for (const r of riders) if (alive(r)) r.hull = Math.min(r.max, r.hull + 15);
+      emit("wreck", en.s, en.lat, 1);
+      say(`WRECKED ${RIDES[Math.min(en.level - 1, RIDES.length - 1)].name.toUpperCase()}! +$${250 * en.level}`, 2.6);
       shout(COMEBACK[Math.floor(Math.random() * COMEBACK.length)], 2.6);
       respawnT = 5.5;
     } else {
-      say(label, 1.1);
+      say(`${label} +$${pay}`, 1.1);
       shout(OUCH[Math.floor(Math.random() * OUCH.length)], 1.6);
+    }
+  };
+
+  /** Knock a car: tip it onto its side, or throw it in the air spinning. */
+  const launch = (t: Traffic, fromLat: number, force: number, fly: boolean): void => {
+    const side = Math.sign(t.lat - fromLat) || (Math.random() > 0.5 ? 1 : -1);
+    t.side = side;
+    t.hitCd = 0.8;
+    if (fly) {
+      t.mode = 2;
+      t.air = 0;
+      t.vy = 6.5 + force * 0.9 + Math.random() * 2;
+      t.vl = side * (3 + force * 0.5);
+      t.v = Math.max(t.v, en.v * 0.7) + force;
+      t.wx = (Math.random() - 0.5) * 7;
+      t.wy = (Math.random() - 0.5) * 5;
+      t.wz = side * (3 + Math.random() * 4);
+    } else {
+      t.mode = 1;
+      t.vl = side * 4.5;
+      t.v = Math.max(t.v, en.v * 0.6);
+      t.vy = 0;
     }
   };
 
@@ -1071,194 +1138,342 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const ray = new THREE.Raycaster();
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.02);
   const hitP = new THREE.Vector3();
-  const updateAim = (): void => {
-    if (mouseX < 0) {
-      // No pointer yet: point at him, which is also what a phone sees until a tap.
-      setAimTo(en.s, en.lat, true);
+  const NDC = new THREE.Vector2();
+  const updateAim = (r: Rider): void => {
+    const mouseRider = r.idx === mine;
+    if (!mouseRider || mouseX < 0) {
+      // No pointer: point at him. Also what a phone sees until a tap, and what P2 always does.
+      setAimTo(r, en.s, en.lat, true);
       return;
     }
     const w = canvas.clientWidth || 1;
     const h = canvas.clientHeight || 1;
-    ray.setFromCamera(new THREE.Vector2((mouseX / w) * 2 - 1, -(mouseY / h) * 2 + 1), camera);
+    ray.setFromCamera(NDC.set((mouseX / w) * 2 - 1, -(mouseY / h) * 2 + 1), camera);
     if (ray.ray.intersectPlane(plane, hitP)) {
-      const r = toRoad(hitP.x, hitP.z);
-      setAimTo(r.s, r.lat, false);
-    } else {
-      setAimTo(me.s - 160, aim.lat, false);
-    }
+      const p = toRoad(hitP.x, hitP.z);
+      setAimTo(r, p.s, p.lat, false);
+    } else setAimTo(r, r.s - 160, r.aim.lat, false);
   };
   /** Low-angle ballistic solution to land at road point (s, lat), in the truck's frame. */
-  const setAimTo = (s: number, lat: number, auto: boolean): void => {
-    // A little help: near him, aim where he will be.
-    if (en.wreck === 0 && phase !== "over") {
+  const setAimTo = (r: Rider, s: number, lat: number, auto: boolean): void => {
+    if (en.wreck === 0 && phase !== "over" && phase !== "takeback") {
       const dS = s - en.s;
       const dL = lat - en.lat;
       if (auto || Math.hypot(dS, dL) < 7.5) {
-        const d0 = Math.max(4, me.s - 1.15 - en.s);
+        const d0 = Math.max(4, r.s - 1.15 - en.s);
         const tf = d0 / MUZZLE;
-        const rel = en.v - me.v;
-        s = en.s + rel * tf * 1.05;
-        lat = en.lat + (auto ? 0 : dL * 0.25);
+        s = en.s + (en.v - r.v) * tf * 1.05;
+        lat = en.lat + en.vl * tf + (auto ? 0 : dL * 0.25);
       }
     }
-    const D = clamp(me.s - 1.15 - s, 5, 190);
-    const L = lat - me.lat;
-    aim.yaw = clamp(Math.atan2(L, D), -0.85, 0.85);
-    aim.lat = lat;
+    const a = solveAim(r.s - 1.15, r.lat, 1.3, s, lat, MUZZLE);
+    r.aim.yaw = clamp(a.yaw, -0.85, 0.85);
+    r.aim.pitch = a.pitch;
+    r.aim.lat = lat;
+  };
+  /** Low-angle ballistic solution from (s0, lat0, y0) backward to land at road point (s, lat). */
+  const solveAim = (s0: number, lat0: number, y0: number, s: number, lat: number, speed: number): { yaw: number; pitch: number } => {
+    const D = clamp(s0 - s, 5, 190);
+    const L = lat - lat0;
+    const yaw = Math.atan2(L, D);
     const dist = Math.hypot(D, L);
-    aim.dist = dist;
-    // Land a ball fired from 1.3 m up at distance dist: solve numerically on the low arc.
-    let lo = -0.12;
+    let lo = -0.25;
     let hi = 0.75;
     const range = (p: number): number => {
-      const vh = MUZZLE * Math.cos(p);
-      const vv = MUZZLE * Math.sin(p);
-      const t = (vv + Math.sqrt(vv * vv + 2 * G * 1.3)) / G;
-      return vh * t;
+      const vh = speed * Math.cos(p);
+      const vv = speed * Math.sin(p);
+      return vh * ((vv + Math.sqrt(Math.max(0, vv * vv + 2 * G * y0))) / G);
     };
-    if (range(hi) < dist) aim.pitch = hi;
-    else {
-      for (let k = 0; k < 18; k++) {
-        const m = (lo + hi) / 2;
-        if (range(m) < dist) lo = m; else hi = m;
-      }
-      aim.pitch = (lo + hi) / 2;
+    if (range(hi) < dist) return { yaw, pitch: hi };
+    for (let k = 0; k < 18; k++) {
+      const m = (lo + hi) / 2;
+      if (range(m) < dist) lo = m; else hi = m;
     }
-    aim.has = true;
+    return { yaw, pitch: (lo + hi) / 2 };
   };
 
-  /* ------------------------------------------------------------ step */
+  /* ------------------------------------------------------------ your truck, wherever it is simulated */
+  const driveRider = (r: Rider, dt: number): void => {
+    r.reload = Math.max(0, r.reload - dt);
+    if (r.gone) return;
+    const { steer, boost: wantBoost } = controls(r);
+    const canDrive = phase === "play" || phase === "intro";
+    const s0 = canDrive && !r.out ? steer : 0;
+    // Looking back, screen right is the truck's left.
+    const wantLat = r.lat - s0 * 9;
+    r.vl = lerp(r.vl, clamp(wantLat - r.lat, -1, 1) * 9 * Math.abs(s0), Math.min(1, dt * 6));
+    if (s0 === 0) r.vl *= Math.pow(0.02, dt);
+    r.lat = clamp(r.lat + r.vl * dt, -LAT_MAX, LAT_MAX);
+    const boosting = wantBoost && r.boost > 0.02 && phase === "play" && !r.out;
+    r.boost = clamp(r.boost + (boosting ? -0.32 * r.drainMul : 0.09) * dt, 0, 1);
+    if (phase === "takeback" || phase === "over") {
+      r.v = Math.max(0, r.v - 13 * dt);
+    } else {
+      let want = 31 + r.engine * 1.5 + (boosting ? 13 + r.bonusV : 0) + Math.min(10, r.s / 1500);
+      // a rubber band, so two trucks stay in one fight
+      if (two) {
+        const o = riders[1 - r.idx];
+        if (!o.gone) want += clamp((o.s - r.s) * 0.22, -5, 5);
+      }
+      if (r.out) want = 30;
+      r.v = lerp(r.v, want, Math.min(1, dt * 1.4));
+    }
+    if (r.bump > 0) { r.v += r.bump * dt * 4; r.bump = Math.max(0, r.bump - dt * 8); }
+    r.s += r.v * dt;
+    // shoulder past traffic and each other rather than through
+    for (const t of traffic) if (t.live && t.mode !== 2 && Math.abs(t.s - r.s) < 4.5 && Math.abs(t.lat - r.lat) < 2) r.lat += Math.sign(r.lat - t.lat || 1) * dt * 8;
+    if (two) {
+      const o = riders[1 - r.idx];
+      if (!o.gone && Math.abs(o.s - r.s) < 5 && Math.abs(o.lat - r.lat) < 2.1) {
+        r.lat += Math.sign(r.lat - o.lat || (r.idx ? -1 : 1)) * dt * 9;
+        if (Math.abs(o.lat - r.lat) < 1.6 && Math.random() < dt * 6) emit("scrape", r.s, (r.lat + o.lat) / 2, 0.8);
+      }
+    }
+    r.lat = clamp(r.lat, -LAT_MAX, LAT_MAX);
+  };
+
+  /** Host only: the guest's truck, eased onto what it last said. */
+  const followRemote = (r: Rider, dt: number): void => {
+    r.reload = Math.max(0, r.reload - dt);
+    if (!r.net) return;
+    const age = Math.min(0.5, time - r.net.at);
+    r.v = r.net.v;
+    r.vl = r.net.vl;
+    r.s += r.v * dt;
+    r.lat += r.vl * dt;
+    const k = Math.min(1, dt * 9);
+    r.s += (r.net.s + r.net.v * age - r.s) * k;
+    r.lat = clamp(r.lat + (r.net.lat + r.net.vl * age - r.lat) * k, -LAT_MAX, LAT_MAX);
+  };
+
+  const stepRiderStatus = (r: Rider, dt: number): void => {
+    if (r.gone) return;
+    r.shake = Math.max(0, r.shake - dt * 2.4);
+    r.recoil = Math.max(0, r.recoil - dt * 3.2);
+    if (r.out && r.respawn > 0 && phase === "play") {
+      r.respawn -= dt;
+      if (r.respawn <= 0) {
+        r.respawn = 0;
+        r.out = false;
+        r.hull = Math.round(r.max * 0.5);
+        say(`${nameOf(r)} ${r.idx === mine && mode !== "duo" ? "are" : "is"} back in it!`, 2);
+      }
+    }
+  };
+
+  /* ------------------------------------------------------------ the takeback */
+  const WALK = 1.7;
+  const doorAt = (): { s: number; lat: number } => ({ s: en.s + foe.door.z, lat: en.lat - foe.door.x });
+  const walkTo = (s: number, lat: number, speed: number, dt: number): boolean => {
+    const ds = s - tb.s;
+    const dl = lat - tb.lat;
+    const d = Math.hypot(ds, dl);
+    if (d < 0.12) return true;
+    const k = Math.min(d, speed * dt) / d;
+    tb.s += ds * k;
+    tb.lat += dl * k;
+    tb.yaw = lerpAngle(tb.yaw, -Math.atan2(dl, ds), Math.min(1, dt * 8));
+    tb.walk += dt * speed * 4.2;
+    return false;
+  };
+  const stepTakeback = (dt: number): void => {
+    const r = riders[tb.rider];
+    tb.t += dt;
+    if (tb.phase < 4) {
+      // park behind the truck he is robbing
+      const ps = r.s - (foe.len / 2 + 4.6);
+      en.v = r.v;
+      en.s += en.v * dt;
+      en.s += (ps - en.s) * Math.min(1, dt * 1.6);
+      en.vl = 0;
+      en.lat += (r.lat - 0.3 * Math.sign(r.lat || 1) - en.lat) * Math.min(1, dt * 1.5);
+    }
+    if (tb.phase === 0) {
+      if (tb.t > 2.8 && r.v < 0.4) {
+        const d = doorAt();
+        Object.assign(tb, { phase: 1, t: 0, s: d.s, lat: d.lat, y: 0, yaw: 0, carrying: false, walk: 0 });
+        en.seated = false;
+        emit("door", d.s, d.lat, 1);
+      }
+    } else if (tb.phase === 1) {
+      if (walkTo(r.s - 3.4, r.lat, WALK, dt)) { tb.phase = 2; tb.t = 0; }
+    } else if (tb.phase === 2) {
+      // up into the bed, lift it, turn round, down again
+      const t = tb.t;
+      if (t < 0.55) { tb.y = lerp(0, 0.71, t / 0.55); tb.s = lerp(r.s - 3.4, r.s - 2.3, t / 0.55); tb.walk += dt * 6; }
+      else if (t < 1.0) { tb.y = 0.71; tb.s = r.s - 2.3; }
+      else if (t < 1.5) {
+        if (!tb.carrying) { tb.carrying = true; r.disarmed = true; emit("clank", r.s - 1.2, r.lat, 1.2, r.idx); }
+        tb.yaw = lerpAngle(tb.yaw, Math.PI, Math.min(1, dt * 7));
+      } else if (t < 2.1) { tb.yaw = Math.PI; tb.y = lerp(0.71, 0, (t - 1.5) / 0.6); tb.s = lerp(r.s - 2.3, r.s - 3.4, (t - 1.5) / 0.6); tb.walk += dt * 6; }
+      else { tb.y = 0; tb.phase = 3; tb.t = 0; }
+    } else if (tb.phase === 3) {
+      const d = doorAt();
+      if (walkTo(d.s, d.lat, WALK * 0.75, dt)) {
+        tb.phase = 4;
+        tb.t = 0;
+        en.seated = true;
+        emit("door", d.s, d.lat, 1);
+      }
+    } else if (tb.phase === 4) {
+      // and off he goes, round you and away up the road, without a word
+      if (tb.t > 0.6) {
+        en.v = Math.min(36, en.v + dt * 9);
+        const pass = r.lat > 0 ? -LANE : LANE;
+        en.lat += (pass - en.lat) * Math.min(1, dt * 2.2);
+        en.s += en.v * dt;
+      }
+      if (tb.t > 0.6 && tb.t - dt <= 0.6) emit("horn", en.s, en.lat, 1);
+      if (tb.t > 5) endRun();
+    }
+  };
+  const endRun = (): void => {
+    if (phase === "over") return;
+    phase = "over";
+    finish();
+  };
+  const finish = (): void => {
+    if (ended) return;
+    ended = true;
+    const sc = Math.max(0, Math.round(score));
+    if (sc > best) {
+      best = sc;
+      try { localStorage.setItem("cannonrun.best", String(best)); } catch { /* ignore */ }
+    }
+    opts.onEnd?.(Math.round(cash), sc);
+  };
+
+  /* ------------------------------------------------------------ the world steps (host, solo, duo) */
   const step = (dt: number): void => {
     time += dt;
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) toast = ""; }
     if (talkT > 0) { talkT -= dt; if (talkT <= 0) talk = ""; }
-    reload = Math.max(0, reload - dt);
-    recoil = Math.max(0, recoil - dt * 3.2);
-    me.shake = Math.max(0, me.shake - dt * 2.4);
     flash.intensity *= Math.pow(0.0005, dt);
     boomLight.intensity *= Math.pow(0.02, dt);
 
     if (phase === "intro") {
       introT += dt;
-      if (introT > 0.6 && introT - dt <= 0.6) { audio.horn(); shout("HEY! THAT'S MY CANNON!", 2.8); }
-      if (introT > 2.6) { phase = "play"; say("Here he comes. Light him up!", 3); }
+      if (introT > 0.6 && introT - dt <= 0.6) { emit("horn", en.s, en.lat, 1); shout("HEY! THAT'S MY CANNON!", 2.8); }
+      if (introT > 2.6) { phase = "play"; say(two ? "Here he comes. Both barrels!" : "Here he comes. Light him up!", 3); }
     }
 
-    // --- you
-    let steer = 0;
-    if (keys.has("a") || keys.has("ArrowLeft")) steer -= 1;
-    if (keys.has("d") || keys.has("ArrowRight")) steer += 1;
-    if (Math.abs(stick.x) > 0.1) steer = stick.x;
-    // Looking back, screen right is the truck's left.
-    const wantLat = phase === "over" ? me.lat : me.lat - steer * 9;
-    me.vl = lerp(me.vl, clamp(wantLat - me.lat, -1, 1) * 9 * Math.abs(steer), Math.min(1, dt * 6));
-    if (steer === 0) me.vl *= Math.pow(0.02, dt);
-    me.lat = clamp(me.lat + me.vl * dt, -LAT_MAX, LAT_MAX);
-    const boosting = (keys.has("Shift") || held.boost || keys.has("w") || keys.has("ArrowUp")) && me.boost > 0.02 && phase === "play";
-    me.boost = clamp(me.boost + (boosting ? -0.32 : 0.09) * dt, 0, 1);
-    const target = phase === "over" ? Math.max(0, me.v - 18 * dt) : 31 + (boosting ? 13 : 0) + Math.min(10, me.s / 1500);
-    me.v = phase === "over" ? target : lerp(me.v, target, Math.min(1, dt * 1.4));
-    if (me.bump > 0) { me.v += me.bump * dt * 4; me.bump = Math.max(0, me.bump - dt * 8); }
-    me.s += me.v * dt;
-    if (phase === "over") me.spin += dt * (me.v / 10);
-    if (phase === "play") score += me.v * dt * 0.5;
+    // --- trucks
+    for (const r of riders) {
+      if (mode === "host" && r.idx === 1) followRemote(r, dt);
+      else driveRider(r, dt);
+      stepRiderStatus(r, dt);
+    }
+    if (mode === "host") {
+      const r = riders[1];
+      if (!r.gone && r.net && time - r.net.at > 8 && phase !== "over") {
+        r.gone = true;
+        r.out = true;
+        say("Your friend lost the signal.", 3);
+        if (!riders.some(alive) && phase === "play") startTakeback(riders[0]);
+      }
+    }
+    const lead = leadS();
+    if (phase === "play") {
+      score += me.v * dt * 0.5;
+      const km = Math.floor(lead / 1000);
+      if (km > kmPaid) { kmPaid = km; cash += 20; }
+    }
+    if (phase === "play" && !riders.some(alive)) startTakeback(riders.reduce((a, b) => (a.gone ? b : b.gone ? a : a.s < b.s ? a : b)));
 
     // --- traffic you overtake, which becomes his problem
     trafficT -= dt;
-    if (trafficT <= 0 && phase === "play" && traffic.filter((t) => t.live).length < MAX_TRAFFIC) {
-      trafficT = 5 + Math.random() * 7;
-      const lat = me.lat > 0 ? -LANE / 2 - 0.2 : LANE / 2 + 0.2;
-      traffic.push({ s: me.s + 28, lat, v: 18 + Math.random() * 5, color: new THREE.Color(TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]), flung: 0, vy: 0, y: 0, spin: 0, vl: 0, live: true });
+    if (trafficT <= 0 && phase === "play" && traffic.length < MAX_TRAFFIC) {
+      trafficT = (two ? 3.5 : 5) + Math.random() * 6;
+      const t0 = target();
+      const lat = two ? (Math.random() > 0.5 ? 1 : -1) * (LANE / 2 + 0.2) : t0.lat > 0 ? -LANE / 2 - 0.2 : LANE / 2 + 0.2;
+      traffic.push({
+        s: lead + 28, lat, y: 0.75, v: 18 + Math.random() * 5, vl: 0, vy: 0, rx: 0, ry: 0, rz: 0, wx: 0, wy: 0, wz: 0,
+        color: new THREE.Color(TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]), mode: 0, air: 0, side: 1, hitCd: 0, live: true, swerve: 0,
+      });
     }
-    for (const t of traffic) {
-      if (!t.live) continue;
-      t.s += t.v * dt;
-      if (t.flung > 0) {
-        t.flung += dt;
-        t.vy -= G * dt;
-        t.y = Math.max(0, t.y + t.vy * dt);
-        if (t.y === 0) { t.vy = Math.abs(t.vy) * 0.3; t.v *= 0.9; }
-        t.lat += t.vl * dt;
-        t.spin += dt * 5;
-        t.v = Math.max(0, t.v - dt * 14);
-      }
-      // you shoulder past it rather than through it
-      if (t.flung === 0 && Math.abs(t.s - me.s) < 4.5 && Math.abs(t.lat - me.lat) < 2) me.lat += Math.sign(me.lat - t.lat || 1) * dt * 8;
-      if (t.s < me.s - 420) t.live = false;
-    }
-    for (let i = traffic.length - 1; i >= 0; i--) if (!traffic[i].live) traffic.splice(i, 1);
+    stepTraffic(dt, true);
 
     // --- Mort
-    const gap = me.s - en.s;
-    if (en.wreck > 0) {
+    const tgt = target();
+    const gap = tgt.s - en.s;
+    if (phase === "takeback") stepTakeback(dt);
+    else if (en.wreck > 0) {
       en.wreck += dt;
       en.v = Math.max(0, en.v - dt * 22);
       en.vy -= G * dt;
       en.y = Math.max(0, en.y + en.vy * dt);
       if (en.y === 0 && en.vy < 0) { en.vy = -en.vy * 0.35; en.rollV *= 0.6; }
       en.roll += en.rollV * dt;
-      if (Math.random() < dt * 14) puff("fire", en.s, en.lat, 0.8 + Math.random(), en.v, (Math.random() - 0.5), 2 + Math.random() * 2, 1.4, 0.5);
-      if (Math.random() < dt * 10) puff("smoke", en.s, en.lat, 1.6, en.v, 0, 3, 2.2, 2.4);
+      en.s += en.v * dt;
       respawnT -= dt;
       if (respawnT <= 0 && phase === "play") {
         spawnFoe(en.level + 1, 220);
-        audio.horn();
+        emit("horn", en.s, en.lat, 1);
         say(COMMENTS[en.level] ?? `Level ${en.level}. He just keeps coming.`, 2.8);
         shout(TAUNTS[Math.floor(Math.random() * TAUNTS.length)], 2.5);
       }
     } else {
       en.hitSlow = Math.max(0, en.hitSlow - dt * 5);
       en.rage = Math.max(0, en.rage - dt * 0.6);
-      const close = 4 + en.level * 1.3 + Math.min(4, me.s / 2000);
-      let want = me.v + (gap > 30 ? close + (gap - 30) * 0.25 : close * 0.6);
-      if (phase === "intro") want = me.v + 10;
-      if (phase === "over") want = me.v - 5;
+      const close = Math.max(1.5, 4 + en.level * 1.3 + Math.min(4, tgt.s / 2000) - tgt.engine * 1.1);
+      let want = tgt.v + (gap > 30 ? close + (gap - 30) * 0.25 : close * 0.6);
+      if (phase === "intro") want = tgt.v + 10;
+      if (phase === "over") want = tgt.v - 5;
       en.lungeT -= dt;
-      if (en.lungeT <= 0 && gap < 26 && phase === "play") { en.lunge = 1.3; en.lungeT = 7 - Math.min(4, en.level); audio.horn(); }
+      if (en.lungeT <= 0 && gap < 26 && phase === "play") { en.lunge = 1.3; en.lungeT = 7 - Math.min(4, en.level); emit("horn", en.s, en.lat, 1); }
       if (en.lunge > 0) { en.lunge -= dt; want += 11; }
       want -= en.hitSlow;
       en.v = lerp(en.v, Math.max(8, want), Math.min(1, dt * 1.8));
       en.s += en.v * dt;
-      if (gap < 4) en.s = me.s - 4;
-      // steer for you, around traffic, and (later in the night) out of the way of a ball
-      let target = me.lat;
+      for (const r of riders) {
+        if (r.gone) continue;
+        if (r.s - en.s < 4 && Math.abs(r.lat - en.lat) < (foe.wid + 1.96) / 2) en.s = r.s - 4;
+      }
+      // steer for the target, round traffic, and (later in the night) out of the way of a ball
+      let aimLat = tgt.lat;
       for (const t of traffic) {
-        if (t.flung > 0 || !t.live) continue;
+        if (t.mode !== 0) continue;
         const ahead = t.s - en.s;
-        if (ahead > 0 && ahead < 26 && Math.abs(t.lat - en.lat) < 2.6 && Math.random() < 0.85 - en.level * 0.1) target = t.lat > 0 ? -LANE : LANE;
+        if (ahead > 0 && ahead < 26 && Math.abs(t.lat - en.lat) < 2.6 && hash(Math.floor(t.s / 50) + en.level) < 0.85 - en.level * 0.1) aimLat = t.lat > 0 ? -LANE : LANE;
       }
       if (en.level >= 2) for (const b of balls) {
         if (!b.live || b.vy < -2) continue;
         if (Math.abs(b.lat - en.lat) < 2 && b.s - en.s < 30 && b.s - en.s > 0 && Math.random() < dt * en.level * 0.5) en.dodge = (b.lat > en.lat ? -1 : 1) * 3.5;
       }
       en.dodge *= Math.pow(0.4, dt);
-      target = clamp(target + en.dodge + Math.sin(time * 0.9) * 1.2, -LAT_MAX, LAT_MAX);
-      en.lat += clamp(target - en.lat, -1, 1) * dt * (3.2 + en.level * 0.5);
+      aimLat = clamp(aimLat + en.dodge + Math.sin(time * 0.9) * 1.2, -LAT_MAX, LAT_MAX);
+      // steering is a velocity that eases, not a position that snaps: that is what makes him look heavy
+      const wantVl = clamp(aimLat - en.lat, -1.4, 1.4) * (3.2 + en.level * 0.5);
+      en.vl = lerp(en.vl, wantVl, Math.min(1, dt * 3.2));
+      en.lat = clamp(en.lat + en.vl * dt, -LAT_MAX, LAT_MAX);
       // the ram
       const reach = foe.len / 2 + 2.6;
       en.ramCd = Math.max(0, en.ramCd - dt);
-      if (gap < reach + 0.4 && en.ramCd === 0 && Math.abs(en.lat - me.lat) < (foe.wid + 1.96) / 2 && phase === "play") {
-        en.ramCd = 1.6;
-        en.s -= 3;
-        hurt(14 + en.level * 4, "RAMMED!");
-        audio.crunch();
-        en.hitSlow = 18;
-        en.lunge = 0;
-        me.bump = 3;
-        for (let k = 0; k < 8; k++) puff("spark", me.s - 2.6, me.lat, 0.8, me.v, (Math.random() - 0.5) * 10, Math.random() * 6, 0.4, 0.4);
-        shout("BOOP!", 1);
+      for (const r of riders) {
+        if (!alive(r) || en.ramCd > 0 || phase !== "play") continue;
+        if (r.s - en.s < reach + 0.4 && Math.abs(en.lat - r.lat) < (foe.wid + 1.96) / 2) {
+          en.ramCd = 1.6;
+          en.s -= 3;
+          en.hitSlow = 18;
+          en.lunge = 0;
+          r.bump = 3;
+          emit("ram", r.s - 2.6, r.lat, 0.8, r.idx);
+          hurt(r, 14 + en.level * 4, "RAMMED!");
+          shout("BOOP!", 1);
+        }
       }
-      // pursuer through traffic
+      // straight through traffic: cars go flying
       for (const t of traffic) {
-        if (t.flung > 0 || !t.live) continue;
-        if (Math.abs(t.s - en.s) < (foe.len + 4.3) / 2 && Math.abs(t.lat - en.lat) < (foe.wid + 1.85) / 2) {
-          t.flung = 0.001;
-          t.vy = 4 + en.level;
-          t.vl = Math.sign(t.lat - en.lat || 1) * 7;
-          t.v = en.v + 3;
-          audio.crunch();
-          hitFoe({ s: en.s + foe.len / 2, lat: en.lat, y: 1 }, "HE HIT TRAFFIC!");
-          score += 150;
+        if (t.hitCd > 0 || !t.live) continue;
+        if (Math.abs(t.s - en.s) < (foe.len + 4.3) / 2 && Math.abs(t.lat - en.lat) < (foe.wid + 1.85) / 2 && t.y < 2.2) {
+          const fresh = t.mode === 0;
+          launch(t, en.lat, en.level + 2, !fresh || Math.random() < 0.55);
+          emit("crunch", en.s + foe.len / 2, (en.lat + t.lat) / 2, 1);
+          if (fresh) {
+            score += 150;
+            cash += 15;
+            hitFoe({ s: en.s + foe.len / 2, lat: en.lat, y: 1 }, "HE HIT TRAFFIC!");
+          } else en.hitSlow = Math.max(en.hitSlow, 6);
         }
       }
       // throwing things (from the second truck on)
@@ -1267,33 +1482,49 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         if (en.throwT <= 0) {
           en.throwT = Math.max(1.6, 4.2 - en.level * 0.55) + Math.random() * 1.5;
           const it = thrown.find((x) => !x.live);
-          if (it) {
+          // seven times in ten it is a civilian in his way, to clear the road
+          const civ = Math.random() < 0.7 ? traffic.filter((t) => t.mode === 0 && t.swerve <= 0 && t.s - en.s > 6 && t.s - en.s < 55).sort((a, b) => a.s - b.s)[0] : undefined;
+          if (it && civ) {
+            const d = civ.s - en.s;
+            const T = 0.7 + d / 45;
+            const s0 = en.s + foe.len / 2 - 0.6;
+            const y0 = foe.tall + 0.3;
+            const ls = en.lat + foe.wid / 2;
+            Object.assign(it, {
+              s: s0, lat: ls, y: y0,
+              vs: (civ.s + civ.v * T - s0) / T,
+              vl: (civ.lat - ls) / T,
+              vy: (1.1 - y0 + 0.5 * G * T * T) / T,
+              age: 0, spin: 0, live: true, targetLat: civ.lat, passed: false, rider: -1, car: civ,
+            });
+            shout(["OUTTA MY WAY!", "MOVE IT, GRANDMA!", "SHIFT IT!", "THIS IS A CHASE, PAL!"][Math.floor(Math.random() * 4)], 1.4);
+            emit("whoosh", s0, en.lat, y0);
+          } else if (it) {
             const T = 1.25 + gap / 90;
             const s0 = en.s + foe.len / 2 - 0.6;
             const y0 = foe.tall + 0.3;
-            const tl = clamp(me.lat + me.vl * T * 0.4, -LAT_MAX, LAT_MAX);
+            const tl = clamp(tgt.lat + tgt.vl * T * 0.4, -LAT_MAX, LAT_MAX);
             Object.assign(it, {
               s: s0, lat: en.lat + foe.wid / 2, y: y0,
-              vs: (me.s + me.v * T - 1.2 - s0) / T,
+              vs: (tgt.s + tgt.v * T - 1.2 - s0) / T,
               vl: (tl - (en.lat + foe.wid / 2)) / T,
               vy: (1.2 - y0 + 0.5 * G * T * T) / T,
-              age: 0, spin: 0, live: true, targetLat: tl, passed: false,
+              age: 0, spin: 0, live: true, targetLat: tl, passed: false, rider: tgt.idx, car: null,
             });
-            it.mesh.visible = true;
-            shout(it.mesh.geometry === tyreGeo ? "CATCH!" : "HAVE A CAN!", 1.2);
-            audio.whoosh();
+            shout(it.kind === 0 ? "CATCH!" : "HAVE A CAN!", 1.2);
+            emit("whoosh", s0, en.lat, y0);
           }
         }
       }
       tauntT -= dt;
       if (tauntT <= 0 && talkT <= 0) { tauntT = 4 + Math.random() * 4; shout(TAUNTS[Math.floor(Math.random() * TAUNTS.length)]); }
-      // a tired engine smokes
-      if (en.hp <= en.max / 2 && Math.random() < dt * (6 - en.hp)) puff("smoke", en.s + foe.len / 2 - 0.8, en.lat, foe.tall * 0.6, en.v - 2, 0, 1.5, 1.2, 1.6);
     }
 
-    // --- cannon
-    updateAim();
-    if (wantFire) { wantFire = false; fire(); }
+    // --- cannons
+    for (const r of riders) {
+      if (local.includes(r)) updateAim(r);
+      if (r.wantFire) { r.wantFire = false; if (canFire(r)) fireBall(r); }
+    }
     for (const b of balls) {
       if (!b.live) continue;
       b.age += dt;
@@ -1301,43 +1532,42 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       b.s += b.vs * dt;
       b.lat += b.vl * dt;
       b.y += b.vy * dt;
-      b.trail -= dt;
-      if (b.trail <= 0 && b.age < 2) { b.trail = 0.035; puff("smoke", b.s, b.lat, b.y, b.vs * 0.2 + me.v * 0.3, 0, 0.5, 0.35, 0.7); }
       if (b.y < 0.19) {
         b.y = 0.19;
         b.vy = Math.abs(b.vy) * 0.42;
         b.vs = lerp(b.vs, 0, 0.2);
         b.vl *= 0.6;
         b.bounces += 1;
-        for (let k = 0; k < 4; k++) puff("dust", b.s, b.lat, 0.3, b.vs * 0.3, (Math.random() - 0.5) * 3, 1 + Math.random(), 0.9, 1.0);
+        emit("dust", b.s, b.lat, 0.3);
       }
-      // him
-      if (en.wreck === 0 && Math.abs(b.s - en.s) < foe.len / 2 + 0.35 && Math.abs(b.lat - en.lat) < foe.wid / 2 + 0.3 && b.y < foe.tall + 0.3) {
+      if (en.wreck === 0 && phase !== "takeback" && Math.abs(b.s - en.s) < foe.len / 2 + 0.35 && Math.abs(b.lat - en.lat) < foe.wid / 2 + 0.3 && b.y < foe.tall + 0.3) {
         b.live = false;
-        hitFoe(b, b.bounces > 0 ? "BOUNCE SHOT!" : b.y > foe.tall * 0.6 ? "RIGHT IN THE CAB!" : "DIRECT HIT!");
+        hitFoe(b, b.dmg < 1 ? "AUTO CANNON!" : b.bounces > 0 ? "BOUNCE SHOT!" : b.y > foe.tall * 0.6 ? "RIGHT IN THE CAB!" : "DIRECT HIT!", b.dmg);
         continue;
       }
-      // whatever he threw
+      for (const h of henchmen) {
+        if (b.live && (h.state === 1 || h.state === 0) && Math.abs(b.s - h.s) < 1.1 && Math.abs(b.lat - h.lat) < 0.9 && b.y < 2.2) {
+          b.live = false;
+          knockHench(h, "HENCHMAN DOWN!", 1);
+        }
+      }
       for (const it of thrown) {
         if (it.live && Math.hypot(it.s - b.s, it.lat - b.lat, it.y - b.y) < 1.1) {
           it.live = false;
           b.live = false;
           score += 75;
-          say("SHOT IT OUT OF THE AIR! +75", 1.4);
-          audio.clang();
-          for (let k = 0; k < 8; k++) puff("spark", it.s, it.lat, it.y, me.v, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0.4, 0.35);
+          cash += 10;
+          say("SHOT IT OUT OF THE AIR! +$10", 1.4);
+          emit("tink", it.s, it.lat, it.y);
         }
       }
-      // traffic
       for (const t of traffic) {
-        if (b.live && t.flung === 0 && Math.abs(b.s - t.s) < 2.3 && Math.abs(b.lat - t.lat) < 1.1 && b.y < 1.6) {
+        if (b.live && t.mode === 0 && Math.abs(b.s - t.s) < 2.3 && Math.abs(b.lat - t.lat) < 1.1 && b.y < 1.6) {
           b.live = false;
-          t.flung = 0.001;
-          t.vy = 5;
-          t.vl = Math.sign(t.lat || 1) * 4;
+          launch(t, b.lat - Math.sign(b.vl || 1), 2, true);
           score -= 25;
           say("Hey, that was a civilian. -25", 1.4);
-          audio.clang();
+          emit("hit", t.s, t.lat, 1);
         }
       }
       if (b.age > 4.5 || b.bounces > 3) b.live = false;
@@ -1350,20 +1580,108 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       it.lat += it.vl * dt;
       it.y += it.vy * dt;
       it.spin += dt * 9;
-      if (!it.passed && it.s >= me.s - 2.4) {
-        it.passed = true;
-        if (Math.abs(it.lat - me.lat) < 1.35 && it.y < 2.4 && phase === "play") {
-          it.live = false;
-          hurt(10 + en.level * 2, "TAKE THAT TO THE TAILGATE!");
-          audio.clang();
-          for (let k = 0; k < 6; k++) puff("spark", me.s - 2.4, me.lat, 1.2, me.v, (Math.random() - 0.5) * 8, Math.random() * 5, 0.4, 0.35);
-        } else if (phase === "play") {
-          score += 20;
+      if (it.car) {
+        const c = it.car;
+        if (!it.passed && it.s >= c.s - 1.6) {
+          it.passed = true;
+          if (c.live && c.mode === 0 && Math.abs(it.lat - c.lat) < 1.6 && it.y < 2.4) {
+            it.live = false;
+            emit("thunk", c.s, c.lat, 1.3);
+            // 57 in 100 swerve the wrong way, into him; 42 get out of his way; 1 just wobbles
+            const roll = Math.random();
+            const toward = Math.sign(en.lat - c.lat) || 1;
+            c.swerve = 2.4;
+            c.side = roll < 0.57 ? toward : roll < 0.99 ? -toward : 0;
+            say(roll < 0.57 ? "He hit a car and it swerved right into him!" : "That car's getting out of his way.", 1.5);
+          }
         }
+        if (it.y < 0.3 && it.vy < 0) { it.vy = Math.abs(it.vy) * 0.35; it.vs *= 0.7; }
+        if (it.age > 3.2) it.live = false;
+        continue;
+      }
+      const r = riders[it.rider];
+      if (!it.passed && it.s >= r.s - 2.4) {
+        it.passed = true;
+        if (alive(r) && Math.abs(it.lat - r.lat) < 1.35 && it.y < 2.4 && phase === "play") {
+          it.live = false;
+          emit("smack", r.s - 2.4, r.lat, 1.2, r.idx);
+          hurt(r, 10 + en.level * 2, "TAKE THAT TO THE TAILGATE!");
+        } else if (phase === "play") score += 20;
       }
       if (it.y < 0.3 && it.vy < 0) { it.vy = Math.abs(it.vy) * 0.35; it.vs *= 0.7; }
       if (it.age > 3.2) it.live = false;
     }
+    stepHenchmen(dt);
+    autoGuns(dt);
+    if (alertT > 0) { alertT -= dt; if (alertT <= 0) alert = ""; }
+    stepPuffs(dt);
+    ambient(dt);
+    sendNet(dt);
+  };
+
+  /** Cars: driving, tipping, flying, landing, and going up when they land hard. */
+  const stepTraffic = (dt: number, authority: boolean): void => {
+    const back = Math.min(...riders.filter((r) => !r.gone).map((r) => r.s), en.s);
+    for (const t of traffic) {
+      if (!t.live) continue;
+      t.hitCd = Math.max(0, t.hitCd - dt);
+      t.s += t.v * dt;
+      t.lat += t.vl * dt;
+      if (t.mode === 0) {
+        t.y = 0.75;
+        if (t.swerve > 0) {
+          t.swerve -= dt;
+          const want = t.side * 5.5;
+          t.vl = lerp(t.vl, want, Math.min(1, dt * 3));
+          t.ry = Math.sin(t.swerve * 9) * 0.2 * Math.min(1, t.swerve) - t.vl * 0.03;
+          if (t.swerve <= 0) { t.vl = 0; t.ry = 0; }
+          t.lat = clamp(t.lat, -HALF - 1.5, HALF + 1.5);
+        }
+      } else if (t.mode === 1) {
+        // over onto its side, sliding
+        t.rz += t.side * dt * 3.6;
+        if (Math.abs(t.rz) >= Math.PI / 2) { t.rz = t.side * Math.PI / 2; t.mode = 4; if (authority) emit("crunch", t.s, t.lat, 0.6); }
+        t.y = lerp(0.75, 0.93, Math.min(1, Math.abs(t.rz) / (Math.PI / 2)));
+        t.v = Math.max(0, t.v - dt * 12);
+        t.vl *= Math.pow(0.2, dt);
+      } else if (t.mode === 2) {
+        t.air += dt;
+        t.vy -= G * dt;
+        t.y += t.vy * dt;
+        t.rx += t.wx * dt;
+        t.ry += t.wy * dt;
+        t.rz += t.wz * dt;
+        t.v = Math.max(0, t.v - dt * 3);
+        if (t.y <= 0.8 && t.vy < 0) {
+          if (t.air > 0.45) {
+            // it lands on whatever side it lands on, and goes up
+            t.rx = Math.round(t.rx / Math.PI) * Math.PI;
+            t.rz = Math.round(t.rz / (Math.PI / 2)) * (Math.PI / 2);
+            const onSide = Math.abs(Math.round(t.rz / (Math.PI / 2))) % 2 === 1;
+            t.y = onSide ? 0.93 : 0.75;
+            t.vy = 0;
+            t.mode = 3;
+            t.v *= 0.35;
+            t.vl *= 0.3;
+            t.color.lerp(BURNT, 0.85);
+            if (authority) emit("boom", t.s, t.lat, 1);
+          } else {
+            t.y = 0.8;
+            t.vy = Math.abs(t.vy) * 0.35;
+            t.air = 0;
+          }
+        }
+      } else {
+        // 3 burnt out, 4 on its side: grinding to a stop
+        t.v = Math.max(0, t.v - dt * 16);
+        t.vl *= Math.pow(0.05, dt);
+      }
+      if (t.s < back - 260) t.live = false;
+    }
+    for (let i = traffic.length - 1; i >= 0; i--) if (!traffic[i].live) traffic.splice(i, 1);
+  };
+
+  const stepPuffs = (dt: number): void => {
     for (const p of puffs) {
       if (!p.live) continue;
       p.age += dt;
@@ -1372,11 +1690,254 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       p.lat += p.vl * dt;
       p.y += p.vy * dt;
       if (p.kind === "spark") p.vy -= G * dt;
-      p.vs = lerp(p.vs, 0, Math.min(1, dt * (p.kind === "smoke" ? 1.2 : 0.4)));
+      p.vs = lerp(p.vs, 0, Math.min(1, dt * (p.kind === "smoke" || p.kind === "black" ? 1.2 : 0.4)));
     }
+  };
 
-    // dust off your rear wheels on the shoulder
-    if (Math.abs(me.lat) > HALF - 2.2 && Math.random() < dt * 24) puff("dust", me.s - 3, me.lat + Math.sign(me.lat) * 0.8, 0.3, me.v * 0.7, 0, 0.6, 0.6, 0.8);
+  /** Smoke that comes from state rather than events, so both browsers make their own. */
+  const ambient = (dt: number): void => {
+    const chance = (rate: number): boolean => Math.random() < dt * rate;
+    for (const r of riders) {
+      if (r.gone) continue;
+      // exhaust
+      if (r.v > 1 && chance(10)) puff("smoke", r.s - 2.85, r.lat - 0.6, 0.34, r.v * 0.75, (Math.random() - 0.5) * 0.6, 0.5, 0.28, 0.7);
+      // nitro: blue flame out of the pipe
+      if (r.v > 38 && chance(26)) puff("fire", r.s - 2.95, r.lat - 0.6, 0.34, r.v - 6, (Math.random() - 0.5), 0.3, 0.42, 0.14);
+      // damage: grey under 60%, black under 30%, fire when out
+      const f = r.hull / r.max;
+      if ((f < 0.6 || r.out) && chance(f < 0.3 || r.out ? 16 : 7)) puff(f < 0.3 || r.out ? "black" : "smoke", r.s + 0.4, r.lat + (Math.random() - 0.5) * 0.8, 1.75, r.v - 7, (Math.random() - 0.5) * 0.8, 1.6, 0.8, 1.5);
+      if (r.out && chance(14)) puff("fire", r.s + 0.2, r.lat + (Math.random() - 0.5) * 0.9, 1.2, r.v - 1, 0, 1.6, 0.9, 0.35);
+      // dust off the rear wheels on the shoulder
+      if (Math.abs(r.lat) > HALF - 2.2 && r.v > 5 && chance(24)) puff("dust", r.s - 3, r.lat + Math.sign(r.lat) * 0.8, 0.3, r.v * 0.7, 0, 0.6, 0.6, 0.8);
+    }
+    if (en.wreck === 0) {
+      if (en.v > 1 && chance(9)) puff("smoke", en.s - foe.len / 2, en.lat + foe.wid * 0.3, 0.4, en.v * 0.75, 0, 0.5, 0.4, 0.8);
+      if (en.level >= 4 && chance(8)) puff("black", en.s + foe.len / 2 - 2.6, en.lat + (Math.random() > 0.5 ? 1 : -1) * foe.wid / 2, foe.tall + 1.5, en.v - 1, 0, 2.2, 0.7, 1.2);
+      const f = en.hp / en.max;
+      if (f <= 0.5 && chance(4 + (1 - f) * 10)) puff(f <= 0.25 ? "black" : "smoke", en.s + foe.len / 2 - 0.8, en.lat, foe.tall * 0.6, en.v - 2, 0, 1.5, 1.2, 1.6);
+      if (f <= 0.25 && chance(7)) puff("fire", en.s + foe.len / 2 - 0.7, en.lat + (Math.random() - 0.5), foe.tall * 0.55, en.v - 1, 0, 1.4, 0.7, 0.3);
+    } else {
+      if (chance(14)) puff("fire", en.s, en.lat, 0.8 + Math.random(), en.v, (Math.random() - 0.5), 2 + Math.random() * 2, 1.4, 0.5);
+      if (chance(10)) puff("black", en.s, en.lat, 1.6, en.v, 0, 3, 2.2, 2.4);
+    }
+    for (const t of traffic) {
+      if (t.mode === 3) {
+        if (chance(12)) puff("fire", t.s, t.lat + (Math.random() - 0.5) * 1.2, 0.9 + Math.random() * 0.6, t.v, 0, 1.8, 1.1, 0.4);
+        if (chance(8)) puff("black", t.s, t.lat, 1.6, t.v, 0, 2.4, 1.6, 2.4);
+      } else if (t.mode === 4 || t.mode === 1) {
+        if (chance(5)) puff("smoke", t.s + 1.8, t.lat, 0.9, t.v, 0, 1.2, 0.9, 1.5);
+        if (t.v > 4 && chance(30)) puff("spark", t.s, t.lat + t.side * 0.9, 0.2, t.v, (Math.random() - 0.5) * 3, Math.random() * 3, 0.3, 0.3);
+      } else if (t.mode === 2 && chance(10)) puff("smoke", t.s, t.lat, t.y, t.v, 0, 0, 0.8, 0.9);
+    }
+  };
+
+  /* ------------------------------------------------------------ the wire */
+  let netT = 0;
+  let lastHeard = 0;
+  let lastSnap: Snap | null = null;
+  let snapAt = 0;
+  const r2 = (n: number): number => Math.round(n * 100) / 100;
+  const sendNet = (dt: number): void => {
+    if (!net) return;
+    netT -= dt;
+    if (netT > 0) return;
+    netT = 1 / NET_HZ;
+    if (mode === "host") {
+      const walking = phase === "takeback" && tb.phase >= 1 && tb.phase <= 3;
+      const snap: Snap = {
+        t: "st", k: r2(time), g: gen, ph: phase,
+        r: riders.map((r) => [r2(r.s), r2(r.lat), r2(r.v), r2(r.vl), Math.round(r.hull), r.max, r2(r.boost), r2(r.reload), r2(r.aim.yaw), r2(r.aim.pitch), r.out ? 1 : 0, r2(r.respawn), r.disarmed ? 1 : 0, r.gone ? 1 : 0, r2(r.autoYaw)]),
+        e: [r2(en.s), r2(en.lat), r2(en.y), r2(en.roll), en.level, en.hp, en.max, r2(en.wreck), r2(en.rage), r2(en.lunge), r2(en.v), r2(en.vl), en.seated ? 1 : 0, r2(en.rollV), r2(en.vy)],
+        b: balls.filter((b) => b.live).map((b) => [r2(b.s), r2(b.lat), r2(b.y), r2(b.vs), r2(b.vl), r2(b.vy), b.dmg < 1 ? 1 : 0]),
+        th: thrown.filter((x) => x.live).map((x) => [r2(x.s), r2(x.lat), r2(x.y), r2(x.vs), r2(x.vl), r2(x.vy), x.kind, r2(x.targetLat), x.passed ? 1 : 0, x.rider]),
+        tr: traffic.map((t) => [r2(t.s), r2(t.lat), r2(t.y), r2(t.v), r2(t.vl), r2(t.vy), r2(t.rx), r2(t.ry), r2(t.rz), r2(t.wx), r2(t.wy), r2(t.wz), t.color.getHex(), t.mode]),
+        w: walking ? [r2(tb.s), r2(tb.lat), r2(tb.y), r2(tb.yaw), tb.phase, tb.carrying ? 1 : 0, tb.rider] : null,
+        sc: Math.round(score), cash: Math.round(cash), hits, wrecks, talk, toast,
+        hm: henchmen.map((h) => (h.state < 0 ? [0, 0, 0, -1, 0, 0, 0, 0] : [r2(h.s), r2(h.lat), r2(h.y), h.state, r2(h.v), r2(h.rx), r2(h.walk), r2(h.yaw)])),
+        al: alert,
+        ev: outbox.splice(0),
+      };
+      net.send(snap);
+    } else {
+      net.send({ t: "in", g: gen, s: r2(me.s), lat: r2(me.lat), v: r2(me.v), vl: r2(me.vl), boost: r2(me.boost), yaw: r2(me.aim.yaw), pitch: r2(me.aim.pitch), fire: me.fired });
+    }
+  };
+
+  const onWire = (msg: Wire): void => {
+    lastHeard = time;
+    if (msg.t === "bye") {
+      if (mode === "host" && !riders[1].gone) { riders[1].gone = true; riders[1].out = true; say("Your friend left.", 3); }
+      if (mode === "guest") lastHeard = -1e9;
+      return;
+    }
+    if (mode === "host" && msg.t === "in") {
+      const m = msg as Input;
+      if (m.g !== gen) return;
+      const r = riders[1];
+      const prev = r.net?.fire ?? m.fire;
+      r.net = { s: m.s, lat: m.lat, v: m.v, vl: m.vl, at: time, fire: m.fire };
+      if (!r.net || Math.abs(r.s - m.s) > 40) { r.s = m.s; r.lat = m.lat; }
+      r.boost = m.boost;
+      r.aim.yaw = m.yaw;
+      r.aim.pitch = m.pitch;
+      if (m.fire > prev && canFire(r)) fireBall(r);
+      if (r.gone && phase !== "over") { r.gone = false; r.out = false; r.hull = Math.max(r.hull, Math.round(r.max * 0.5)); say("Your friend is back!", 2); }
+    }
+    if (mode === "guest" && msg.t === "st") applySnap(msg as Snap);
+  };
+  net?.receive(onWire);
+
+  const applySnap = (sn: Snap): void => {
+    if (sn.g !== gen) {
+      // the host restarted
+      gen = sn.g;
+      resetRider(me);
+      me.fired = 0;
+      ended = false;
+      kmPaid = 0;
+      puffs.forEach((p) => { p.live = false; p.sprite.visible = false; });
+    }
+    lastSnap = sn;
+    snapAt = time;
+    const prevPhase = phase;
+    phase = sn.ph as Phase;
+    if (phase === "over" && prevPhase !== "over") finish();
+    score = sn.sc;
+    cash = sn.cash;
+    hits = sn.hits;
+    wrecks = sn.wrecks;
+    talk = sn.talk;
+    if (sn.toast !== toast && sn.toast) say(sn.toast, 1.8);
+    for (let i = 0; i < riders.length; i++) {
+      const r = riders[i];
+      const a = sn.r[i];
+      if (!a) continue;
+      r.hull = a[4];
+      r.max = a[5];
+      r.out = a[10] === 1;
+      r.respawn = a[11];
+      r.disarmed = a[12] === 1;
+      r.gone = a[13] === 1;
+      if (r === me) continue;
+      r.net = { s: a[0], lat: a[1], v: a[2], vl: a[3], at: time, fire: 0 };
+      if (Math.abs(r.s - a[0]) > 40) { r.s = a[0]; r.lat = a[1]; }
+      r.boost = a[6];
+      r.reload = a[7];
+      r.aim.yaw = a[8];
+      r.aim.pitch = a[9];
+      r.autoYaw = a[14] ?? 0;
+    }
+    const e = sn.e;
+    if (e[4] !== en.level) {
+      scene.remove(foe.root);
+      disposeTree(foe.root);
+      foe = buildFoe(e[4]);
+      scene.add(foe.root);
+      en.s = e[0];
+      en.lat = e[1];
+    }
+    Object.assign(en, { y: e[2], roll: e[3], level: e[4], hp: e[5], max: e[6], wreck: e[7], rage: e[8], lunge: e[9], v: e[10], vl: e[11], seated: e[12] === 1, rollV: e[13], vy: e[14] });
+    enNet.s = e[0];
+    enNet.lat = e[1];
+    for (let i = 0; i < balls.length; i++) {
+      const b = balls[i];
+      const a = sn.b[i];
+      b.live = !!a;
+      if (a) Object.assign(b, { s: a[0], lat: a[1], y: a[2], vs: a[3], vl: a[4], vy: a[5], dmg: a[6] ? 0.5 : 1 });
+    }
+    for (let i = 0; i < thrown.length; i++) {
+      const it = thrown[i];
+      const a = sn.th.find((x) => x[6] === it.kind && !used.has(x));
+      it.live = !!a;
+      if (a) { used.add(a); Object.assign(it, { s: a[0], lat: a[1], y: a[2], vs: a[3], vl: a[4], vy: a[5], targetLat: a[7], passed: a[8] === 1, rider: a[9], car: null }); }
+    }
+    used.clear();
+    traffic.length = 0;
+    for (const a of sn.tr) {
+      traffic.push({ s: a[0], lat: a[1], y: a[2], v: a[3], vl: a[4], vy: a[5], rx: a[6], ry: a[7], rz: a[8], wx: a[9], wy: a[10], wz: a[11], color: new THREE.Color(a[12]), mode: a[13], air: 0, side: Math.sign(a[8]) || 1, hitCd: 1, live: true, swerve: 0 });
+    }
+    for (let i = 0; i < henchmen.length; i++) {
+      const h = henchmen[i];
+      const a = sn.hm?.[i];
+      if (!a || a[3] < 0) { h.state = -1; continue; }
+      if (h.state < 0 || Math.abs(h.s - a[0]) > 6) { h.s = a[0]; h.lat = a[1]; }
+      Object.assign(h, { y: a[2], state: a[3], v: a[4], rx: a[5], walk: a[6], yaw: a[7], vl: 0 });
+      h.vy = a[0];
+      h.whack = a[1];
+    }
+    if (sn.al !== alert) { alert = sn.al ?? ""; }
+    if (sn.w) Object.assign(tb, { s: sn.w[0], lat: sn.w[1], y: sn.w[2], yaw: sn.w[3], phase: sn.w[4], carrying: sn.w[5] === 1, rider: sn.w[6] });
+    else if (phase === "takeback") tb.phase = en.seated ? 4 : 0;
+    for (const ev of sn.ev) {
+      const [kind, s, lat, y, ri] = ev as [string, number, number, number, number];
+      if (kind === "fire" && ri === mine) continue; // already seen, the moment we pulled the lanyard
+      play(kind, s, lat, y, ri);
+    }
+  };
+  const used = new Set<number[]>();
+  const enNet = { s: en.s, lat: en.lat };
+
+  /** The guest's world step: drive my own truck, ease everything else toward the host. */
+  const guestStep = (dt: number): void => {
+    time += dt;
+    if (toastT > 0) { toastT -= dt; if (toastT <= 0) toast = ""; }
+    flash.intensity *= Math.pow(0.0005, dt);
+    boomLight.intensity *= Math.pow(0.02, dt);
+    driveRider(me, dt);
+    stepRiderStatus(me, dt);
+    updateAim(me);
+    for (const r of riders) r.autoPitch = 0.05;
+    if (me.wantFire) {
+      me.wantFire = false;
+      if (canFire(me) && lastSnap) {
+        me.fired += 1;
+        me.reload = RELOAD * me.reloadMul;
+        const m = muzzle(me);
+        play("fire", m.s, m.lat, m.y, mine);
+      }
+    }
+    const age = Math.min(0.4, time - snapAt);
+    const k = Math.min(1, dt * 9);
+    for (const r of riders) {
+      if (r === me || !r.net) continue;
+      r.s += r.net.v * dt;
+      r.lat += r.net.vl * dt;
+      r.v = r.net.v;
+      r.vl = r.net.vl;
+      r.s += (r.net.s + r.net.v * age - r.s) * k;
+      r.lat += (r.net.lat + r.net.vl * age - r.lat) * k;
+      r.recoil = Math.max(0, r.recoil - dt * 3.2);
+    }
+    en.s += en.v * dt;
+    en.lat += en.vl * dt;
+    en.s += (enNet.s + en.v * age - en.s) * k;
+    en.lat += (enNet.lat + en.vl * age - en.lat) * k;
+    if (en.wreck > 0) { en.roll += en.rollV * dt; en.vy -= G * dt; en.y = Math.max(0, en.y + en.vy * dt); }
+    for (const b of balls) {
+      if (!b.live) continue;
+      b.vy -= G * dt;
+      b.s += b.vs * dt;
+      b.lat += b.vl * dt;
+      b.y = Math.max(0.19, b.y + b.vy * dt);
+    }
+    for (const it of thrown) {
+      if (!it.live) continue;
+      it.vy -= G * dt;
+      it.s += it.vs * dt;
+      it.lat += it.vl * dt;
+      it.y = Math.max(0.3, it.y + it.vy * dt);
+      it.spin += dt * 9;
+    }
+    for (const h of henchmen) {
+      if (h.state < 0) continue;
+      h.s += h.v * dt;
+      h.s += (h.vy + h.v * age - h.s) * k;
+      h.lat += (h.whack - h.lat) * k;
+    }
+    stepTraffic(dt, false);
+    stepPuffs(dt);
+    ambient(dt);
+    sendNet(dt);
   };
 
   /* ------------------------------------------------------------ draw */
@@ -1386,40 +1947,104 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const S3 = new THREE.Vector3();
   const P = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
-  const camTarget = new THREE.Vector3();
+  const camPos = new THREE.Vector3();
+  const camLook = new THREE.Vector3();
+  const wantPos = new THREE.Vector3();
+  const wantLook = new THREE.Vector3();
+  let camReady = false;
   const tmp = new THREE.Vector3();
-  const tmpColor = new THREE.Color();
 
   const place = (obj: THREE.Object3D, s: number, lat: number, y: number, yawOff = 0): void => {
     toWorld(s, lat, y, obj.position);
     obj.rotation.set(0, heading(s) + yawOff, 0);
   };
 
-  const draw = (): void => {
-    // you
-    place(truck.root, me.s, me.lat, 0, me.spin + me.vl * -0.02);
-    truck.root.rotation.z = me.vl * 0.012;
-    for (const w of truck.wheels) w.rotation.x -= me.v * 0.016;
-    truck.yaw.rotation.y = aim.yaw;
-    truck.pitch.rotation.x = aim.pitch;
-    truck.barrel.position.z = recoil * recoil * 0.35;
-    truck.tail.color.setRGB(1, 0.16 + (me.boost < 0.05 ? 0 : 0), 0.1);
-    toWorld(me.s - 3.4, me.lat, 0.9, tailLight.position);
-    toWorld(me.s - 3.2, me.lat, 1.5, flash.position);
-    toWorld(me.s + 0.2, me.lat, 2.6, work.position);
+  const project = (el: HTMLElement, s: number, lat: number, y: number, show: boolean, pad = 40): void => {
+    if (!show) { el.style.opacity = "0"; return; }
+    toWorld(s, lat, y, tmp);
+    tmp.project(camera);
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (tmp.z >= 1 || Math.abs(tmp.x) > 1.2) { el.style.opacity = "0"; return; }
+    el.style.left = `${clamp((tmp.x * 0.5 + 0.5) * w, pad, w - pad)}px`;
+    el.style.top = `${clamp((-tmp.y * 0.5 + 0.5) * h, 50, h - 30)}px`;
+    el.style.opacity = "1";
+  };
 
-    // the camera: over the front of the bed, looking back down the road
-    const shake = me.shake * me.shake * 0.25;
-    const h = heading(me.s);
-    toWorld(me.s + 1.6, me.lat * 0.9, 3.5, camera.position);
-    camera.position.x += (Math.random() - 0.5) * shake;
-    camera.position.y += (Math.random() - 0.5) * shake;
-    toWorld(me.s - 28, me.lat * 0.55, -2.6, camTarget);
+  const draw = (dt: number): void => {
+    const ease = (rate: number): number => 1 - Math.exp(-dt * rate);
+    // trucks
+    for (const r of riders) {
+      r.truck.root.visible = !r.gone;
+      if (r.gone) continue;
+      // lean into the swerve, roll with the road, and bob on the springs
+      const wantYaw = -Math.atan2(r.vl, Math.max(r.v, 6)) * 0.9;
+      r.yawSm = lerp(r.yawSm, wantYaw, ease(7));
+      r.rollSm = lerp(r.rollSm, clamp(r.vl * 0.016, -0.09, 0.09), ease(5));
+      const bob = r.v > 1 ? Math.sin(r.s * 0.9) * 0.012 + Math.sin(r.s * 2.3 + r.idx) * 0.006 : 0;
+      place(r.truck.root, r.s, r.lat, bob + r.shake * r.shake * 0.04 * Math.sin(time * 41), r.yawSm);
+      r.truck.root.rotation.z = r.rollSm;
+      r.truck.root.rotation.x = Math.sin(r.s * 0.7 + 1) * 0.004 - (r.bump > 0 ? 0.02 : 0);
+      for (const w of r.truck.wheels) w.rotation.x -= r.v * 0.016 * (dt * 60);
+      r.truck.cannon.yaw.rotation.y = r.aim.yaw;
+      r.truck.cannon.pitch.rotation.x = r.aim.pitch;
+      r.truck.cannon.barrel.position.z = r.recoil * r.recoil * 0.35;
+      r.truck.cannon.root.visible = !r.disarmed;
+      r.truck.kit.visible = !r.disarmed;
+      r.autoGun.root.visible = r.auto > 0 && !r.disarmed;
+      r.autoGun.yaw.rotation.y = r.autoYaw;
+      r.autoGun.barrel.rotation.x = r.autoPitch;
+      r.truck.paint.emissive.setRGB(r.out ? 0.25 : 0, r.out ? 0.05 : 0, 0);
+    }
+    const f = me.gone ? riders.find((r) => !r.gone) ?? me : me;
+    toWorld(f.s - 3.4, f.lat, 0.9, tailLight.position);
+    toWorld(f.s + 0.2, f.lat, 2.6, work.position);
+
+    // the camera
+    let camS: number;
+    let fov = baseFov;
+    if (phase === "takeback" || (phase === "over" && camReady)) {
+      const r = riders[tb.rider];
+      const side = r.lat > 0 ? -1 : 1;
+      if (phase === "takeback") {
+        toWorld(r.s - 2.6, r.lat + side * 8.5, 3.4, wantPos);
+        const ls = tb.phase === 4 ? clamp(en.s, r.s - 6, r.s + 18) : tb.phase >= 1 ? lerp(r.s - 5, tb.s, 0.35) : r.s - 6;
+        toWorld(ls, lerp(r.lat, en.lat, 0.3), 1.1, wantLook);
+      } else {
+        wantPos.copy(camPos);
+        wantLook.copy(camLook);
+      }
+      camS = r.s;
+      fov = baseFov - 4;
+    } else if (mode === "duo") {
+      const a = riders[0].gone ? riders[1] : riders[0];
+      const b = riders[1].gone ? riders[0] : riders[1];
+      const ms = Math.max(a.s, b.s);
+      const ml = (a.lat + b.lat) / 2;
+      toWorld(ms + 4.2, ml * 0.6, 6.0, wantPos);
+      toWorld(ms - 28, ml * 0.45, -3.4, wantLook);
+      camS = ms;
+    } else {
+      toWorld(f.s + 1.6, f.lat * 0.9, 3.5, wantPos);
+      toWorld(f.s - 28, f.lat * 0.55, -2.6, wantLook);
+      camS = f.s;
+    }
+    if (!camReady || dt >= 0.5) { camPos.copy(wantPos); camLook.copy(wantLook); camReady = true; }
+    else {
+      const k = phase === "takeback" ? ease(2.2) : ease(14);
+      camPos.lerp(wantPos, k);
+      camLook.lerp(wantLook, k);
+    }
+    const shakeAmp = Math.max(...local.map((r) => r.shake)) ** 2 * 0.22;
+    camera.position.copy(camPos);
+    camera.position.x += Math.sin(time * 47) * shakeAmp;
+    camera.position.y += Math.sin(time * 61 + 1) * shakeAmp * 0.8;
     camera.up.copy(UP);
-    camera.lookAt(camTarget);
+    camera.lookAt(camLook);
+    if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = lerp(camera.fov, fov, ease(3)); camera.updateProjectionMatrix(); }
     sky.position.copy(camera.position);
     stars.position.copy(camera.position);
-    // the moon hangs over the road behind you
+    const h = heading(camS);
     tmp.set(-Math.sin(h) * 700 - 180 * Math.cos(h), 240, -Math.cos(h) * 700 + 180 * Math.sin(h));
     moon.position.copy(camera.position).add(tmp);
     moonDisc.position.copy(moon.position);
@@ -1429,12 +2054,12 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     ground.position.set(camera.position.x, -0.03, camera.position.z);
     sand.offset.set(camera.position.x / 20, -camera.position.z / 20);
 
-    const s0 = me.s - SEG * STEP + 30;
+    const s0 = camS - SEG * STEP + 30;
     layRibbon(road, s0);
     layRibbon(shoulder, s0);
 
     // lamps, alternating sides
-    const k0 = Math.floor((me.s - LAMPS * LAMP_GAP + 40) / LAMP_GAP);
+    const k0 = Math.floor((camS - LAMPS * LAMP_GAP + 40) / LAMP_GAP);
     const glowPos = lampGlowGeo.attributes.position as THREE.BufferAttribute;
     const near: { s: number; lat: number }[] = [];
     for (let i = 0; i < LAMPS; i++) {
@@ -1457,24 +2082,22 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     lamps.instanceMatrix.needsUpdate = true;
     pools.instanceMatrix.needsUpdate = true;
     glowPos.needsUpdate = true;
-    near.sort((a, b) => Math.abs(a.s - (me.s - 25)) - Math.abs(b.s - (me.s - 25)));
+    near.sort((a, b) => Math.abs(a.s - (camS - 25)) - Math.abs(b.s - (camS - 25)));
     for (let i = 0; i < lampLights.length; i++) toWorld(near[i].s, near[i].lat, 7.2, lampLights[i].position);
 
     // desert furniture
-    const c0 = Math.floor((me.s - CACTI * CACTUS_GAP + 30) / CACTUS_GAP);
+    const c0 = Math.floor((camS - CACTI * CACTUS_GAP + 30) / CACTUS_GAP);
     for (let i = 0; i < CACTI; i++) {
       const k = c0 + i;
-      const r = hash(k);
-      const side = r > 0.5 ? 1 : -1;
-      const lat = side * (HALF + 6 + hash(k + 0.31) * 55);
-      toWorld(k * CACTUS_GAP + hash(k + 7) * 8, lat, 0, P);
+      const side = hash(k) > 0.5 ? 1 : -1;
+      toWorld(k * CACTUS_GAP + hash(k + 7) * 8, side * (HALF + 6 + hash(k + 0.31) * 55), 0, P);
       const sc = 0.7 + hash(k + 2.2) * 0.9;
       Q.setFromEuler(E.set(0, hash(k + 9) * 6.28, 0));
       M.compose(P, Q, S3.set(sc, sc, sc));
       cacti.setMatrixAt(i, M);
     }
     cacti.instanceMatrix.needsUpdate = true;
-    const r0 = Math.floor((me.s - ROCKS * 20 + 30) / 20);
+    const r0 = Math.floor((camS - ROCKS * 20 + 30) / 20);
     for (let i = 0; i < ROCKS; i++) {
       const k = r0 + i;
       const side = hash(k + 3.3) > 0.5 ? 1 : -1;
@@ -1485,7 +2108,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       rocks.setMatrixAt(i, M);
     }
     rocks.instanceMatrix.needsUpdate = true;
-    const m0 = Math.floor((me.s - MESAS * 90) / 90);
+    const m0 = Math.floor((camS - MESAS * 90) / 90);
     for (let i = 0; i < MESAS; i++) {
       const k = m0 + i;
       const side = hash(k + 4.4) > 0.5 ? 1 : -1;
@@ -1496,10 +2119,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
     mesas.instanceMatrix.needsUpdate = true;
     for (let i = 0; i < signs.length; i++) {
-      const k = Math.floor(me.s / 700) - i;
-      const s = k * 700 + 300;
+      const k = Math.floor(camS / 700) - i;
       const side = k % 2 === 0 ? -1 : 1;
-      place(signs[i], s, side * (HALF + 7), 0, side * 0.45);
+      place(signs[i], k * 700 + 300, side * (HALF + 7), 0, side * 0.45);
     }
 
     // traffic
@@ -1507,49 +2129,104 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       const t = traffic[i];
       if (!t) { M.makeScale(0, 0, 0); trafficMesh.setMatrixAt(i, M); continue; }
       toWorld(t.s, t.lat, t.y, P);
-      Q.setFromEuler(E.set(t.spin * 0.3, heading(t.s) + t.spin, t.spin * 0.6));
+      const lean = t.mode === 0 ? Math.sin(time * 1.7 + i) * 0.01 : 0;
+      Q.setFromEuler(E.set(t.rx, heading(t.s) + t.ry, t.rz + lean));
       M.compose(P, Q, S3.set(1, 1, 1));
       trafficMesh.setMatrixAt(i, M);
-      trafficMesh.setColorAt(i, tmpColor.copy(t.color));
+      trafficMesh.setColorAt(i, t.color);
     }
     trafficMesh.instanceMatrix.needsUpdate = true;
     if (trafficMesh.instanceColor) trafficMesh.instanceColor.needsUpdate = true;
 
-    // Mort
-    place(foe.root, en.s, en.lat, en.y, 0);
-    const lean = en.wreck > 0 ? 0 : clamp((me.lat - en.lat) * 0.02, -0.06, 0.06);
+    // Mort, and what he drives
+    const lean = en.wreck > 0 ? 0 : clamp(-en.vl * 0.012, -0.07, 0.07);
+    const steerYaw = en.wreck > 0 ? 0 : -Math.atan2(en.vl, Math.max(en.v, 8)) * 0.8;
+    place(foe.root, en.s, en.lat, en.y, steerYaw);
     foe.root.rotation.z = en.roll + lean;
     foe.root.rotation.x = en.wreck > 0 ? en.roll * 0.3 : en.lunge > 0 ? -0.04 : 0;
-    for (const w of foe.wheels) w.rotation.x += en.v * 0.016;
-    foe.body.position.y = Math.sin(time * 17) * 0.02 + (en.lunge > 0 ? 0.04 : 0);
-    const fury = 0.5 + en.rage * 0.4;
-    foe.arm.rotation.z = -0.5 - Math.abs(Math.sin(time * (8 + en.rage * 6))) * 0.5;
-    foe.arm.rotation.x = Math.sin(time * 11) * 0.25;
-    foe.head.rotation.y = Math.sin(time * 1.3) * 0.15;
-    foe.head.position.y += 0;
-    foe.brows[0].rotation.z = -fury;
-    foe.brows[1].rotation.z = fury;
+    for (const w of foe.wheels) w.rotation.x += en.v * 0.016 * (dt * 60);
+    if (foe.drum) foe.drum.rotation.z += dt * 1.6;
+    foe.body.position.y = en.v > 1 ? Math.sin(en.s * 0.8) * 0.02 + (en.lunge > 0 ? 0.04 : 0) : 0;
+    const m = foe.mort;
+    m.root.visible = en.seated;
+    const quiet = phase === "takeback" || phase === "over";
+    const fury = quiet ? 0.25 : 0.5 + en.rage * 0.4;
+    // a fist out at you, shaking, and the other hand on the wheel
+    m.armL.rotation.x = quiet ? -1.1 : -1.55 - Math.abs(Math.sin(time * (8 + en.rage * 6))) * 0.35;
+    m.armL.rotation.z = quiet ? 0 : 0.25 + Math.sin(time * 11) * 0.15;
+    m.armR.rotation.x = -1.1;
+    m.head.rotation.y = quiet ? 0 : Math.sin(time * 1.3) * 0.15;
+    m.brows[0].rotation.z = fury;
+    m.brows[1].rotation.z = -fury;
+    m.mouth.scale.y = talk && !quiet ? 1.6 + Math.abs(Math.sin(time * 18)) * 1.6 : 1;
     foe.paint.emissive.setRGB(en.rage * 0.35, 0, 0);
-    const live = en.wreck === 0;
+    const lit = en.wreck === 0;
     foe.root.updateMatrixWorld(true);
     for (let i = 0; i < 2; i++) {
       tmp.copy(foe.lamps[i]);
       foe.body.localToWorld(tmp);
       beams[i].position.copy(tmp);
       toWorld(en.s + 40, en.lat + (i ? 1 : -1) * 0.8, 0, beams[i].target.position);
-      beams[i].intensity = live ? 1400 : 0;
+      beams[i].intensity = lit ? 1400 : 0;
       glares[i].position.copy(tmp);
       const dCam = tmp.distanceTo(camera.position);
-      // bigger the closer he gets, the way real headlights blow out a mirror
-      glares[i].scale.setScalar(live ? Math.min(4.2, 2.2 + 26 / Math.max(6, dCam)) : 0.001);
+      glares[i].scale.setScalar(lit ? Math.min(4.2, 2.2 + 26 / Math.max(6, dCam)) : 0.001);
     }
     halo.position.copy(glares[0].position).lerp(glares[1].position, 0.5);
-    halo.scale.setScalar(live ? Math.min(16, 10 + 160 / Math.max(8, halo.position.distanceTo(camera.position))) : 0.001);
+    halo.scale.setScalar(lit ? Math.min(16, 10 + 160 / Math.max(8, halo.position.distanceTo(camera.position))) : 0.001);
+
+    // Mort on foot
+    const walking = phase === "takeback" && tb.phase >= 1 && tb.phase <= 3;
+    walker.root.visible = walking;
+    carried.root.visible = walking && tb.carrying;
+    if (walking) {
+      place(walker.root, tb.s, tb.lat, tb.y, tb.yaw);
+      const sw = Math.sin(tb.walk) * 0.55;
+      walker.legL.rotation.x = sw;
+      walker.legR.rotation.x = -sw;
+      if (tb.carrying) { walker.armL.rotation.x = -1.25; walker.armR.rotation.x = -1.25; walker.armL.rotation.z = -0.25; walker.armR.rotation.z = 0.25; }
+      else { walker.armL.rotation.x = -sw * 0.8; walker.armR.rotation.x = sw * 0.8; walker.armL.rotation.z = 0; walker.armR.rotation.z = 0; }
+      walker.root.position.y += Math.abs(Math.cos(tb.walk)) * 0.04;
+      walker.brows[0].rotation.z = 0.25;
+      walker.brows[1].rotation.z = -0.25;
+    }
+
+    // his backup
+    for (const h of henchmen) {
+      const bd = h.body;
+      bd.root.visible = h.state >= 0;
+      if (h.state < 0) continue;
+      place(bd.root, h.s, h.lat, h.y, h.state === 2 ? 0 : h.yaw);
+      if (h.state === 2) bd.root.rotation.y = heading(h.s); // facing the cab, his back to Mort
+      bd.root.rotation.x = h.rx;
+      const sw = Math.sin(h.walk) * 0.8;
+      if (h.state === 0 || h.state === 1) {
+        bd.legL.rotation.x = sw;
+        bd.legR.rotation.x = -sw;
+        bd.armL.rotation.x = -sw * 0.7;
+        bd.armR.rotation.x = -1.9 + Math.sin(h.walk * 0.5) * 0.4; // stick up, ready
+      } else if (h.state === 2) {
+        bd.legL.rotation.x = 0.9;
+        bd.legR.rotation.x = 0.9;
+        bd.armL.rotation.x = -1.3;
+        bd.armR.rotation.x = -2.6 + Math.abs(Math.sin(time * 7.8)) * 2.0; // and down on your tailgate
+      } else {
+        bd.legL.rotation.x = 0.3;
+        bd.legR.rotation.x = -0.4;
+        bd.armL.rotation.x = -2.6;
+        bd.armR.rotation.x = -2.2;
+      }
+    }
+    if (henchSay.t > 0) henchSay.t -= dt >= 0.5 ? 0 : dt;
 
     // projectiles
     for (const b of balls) {
       b.mesh.visible = b.live;
-      if (b.live) toWorld(b.s, b.lat, b.y, b.mesh.position);
+      if (b.live) { toWorld(b.s, b.lat, b.y, b.mesh.position); b.mesh.scale.setScalar(b.dmg < 1 ? 0.55 : 1); }
+      if (b.live && dt > 0 && dt < 0.5) {
+        b.trail -= dt;
+        if (b.trail <= 0) { b.trail = 0.035; puff("smoke", b.s, b.lat, b.y, b.vs * 0.2, 0, 0.5, 0.35, 0.7); }
+      }
     }
     for (let i = 0; i < thrown.length; i++) {
       const it = thrown[i];
@@ -1558,7 +2235,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       if (!it.live) continue;
       toWorld(it.s, it.lat, it.y, it.mesh.position);
       it.mesh.rotation.set(it.spin, heading(it.s), it.spin * 0.5);
-      toWorld(me.s - 1.2, it.targetLat, 0.06, warns[i].position);
+      toWorld((riders[it.rider] ?? me).s - 1.2, it.targetLat, 0.06, warns[i].position);
       warns[i].scale.setScalar(1 + Math.sin(time * 20) * 0.15);
     }
     for (const p of puffs) {
@@ -1566,50 +2243,50 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       toWorld(p.s, p.lat, p.y, p.sprite.position);
       const k = p.age / p.life;
       p.sprite.scale.setScalar(p.size * (1 + k * p.grow));
-      p.mat.opacity = (p.kind === "smoke" ? 0.55 : p.kind === "dust" ? 0.4 : 1) * (1 - k);
+      p.mat.opacity = (p.kind === "smoke" ? 0.55 : p.kind === "black" ? 0.7 : p.kind === "dust" ? 0.4 : 1) * (1 - k);
       if (p.kind === "fire") p.mat.color.setRGB(1, 0.55 * (1 - k) + 0.15, 0.15 * (1 - k));
     }
 
-    // the arc you are about to fire
-    const showAim = phase !== "over";
-    reticle.visible = showAim;
-    if (showAim) {
-      const cp = Math.cos(aim.pitch);
-      let s = me.s - 1.15 - 1.55 * cp * Math.cos(aim.yaw);
-      let l = me.lat + 1.55 * cp * Math.sin(aim.yaw);
-      let y = 1.29 + 1.55 * Math.sin(aim.pitch);
-      const vs = -MUZZLE * cp * Math.cos(aim.yaw);
-      const vl = MUZZLE * cp * Math.sin(aim.yaw);
-      let vy = MUZZLE * Math.sin(aim.pitch);
+    // the arc each local truck is about to fire
+    for (const a of aimSets) {
+      const r = a.r;
+      const show = phase !== "over" && phase !== "takeback" && alive(r) && !r.disarmed;
+      a.reticle.visible = show;
+      a.dots.visible = show;
+      if (!show) continue;
+      const mz = muzzle(r);
+      let s = mz.s;
+      let l = mz.lat;
+      let y = mz.y;
+      const vs = -MUZZLE * mz.cp * Math.cos(r.aim.yaw);
+      const vl = MUZZLE * mz.cp * Math.sin(r.aim.yaw);
+      let vy = MUZZLE * Math.sin(r.aim.pitch);
       const tTot = (vy + Math.sqrt(vy * vy + 2 * G * y)) / G;
       const dtd = tTot / DOTS;
+      const sc = r.reload > 0 ? 0.6 : 1;
       for (let i = 0; i < DOTS; i++) {
         s += vs * dtd; l += vl * dtd; vy -= G * dtd; y = Math.max(0.1, y + vy * dtd);
         toWorld(s, l, y, P);
-        const sc = reload > 0 ? 0.6 : 1;
         M.compose(P, Q.identity(), S3.set(sc, sc, sc));
-        dots.setMatrixAt(i, M);
+        a.dots.setMatrixAt(i, M);
       }
-      dots.instanceMatrix.needsUpdate = true;
-      toWorld(s, l, 0.05, reticle.position);
-      reticle.rotation.set(0, heading(s), 0);
-      (reticle.material as THREE.MeshBasicMaterial).color.set(reload > 0 ? 0x8a7a5a : 0xffe08a);
+      a.dots.instanceMatrix.needsUpdate = true;
+      toWorld(s, l, 0.05, a.reticle.position);
+      a.reticle.rotation.set(0, heading(s), 0);
+      (a.reticle.material as THREE.MeshBasicMaterial).color.set(r.reload > 0 ? 0x8a7a5a : a.tint);
     }
-    dots.visible = showAim;
 
-    // his speech bubble, over his cab
-    if (talk && en.wreck < 2) {
-      toWorld(en.s + foe.len / 2 - 1, en.lat, foe.tall + 1.2, tmp);
-      tmp.project(camera);
-      const w = canvas.clientWidth;
-      const hh = canvas.clientHeight;
-      if (tmp.z < 1) {
-        bubble.textContent = talk;
-        bubble.style.left = `${clamp((tmp.x * 0.5 + 0.5) * w, 80, w - 80)}px`;
-        bubble.style.top = `${clamp((-tmp.y * 0.5 + 0.5) * hh, 60, hh - 40)}px`;
-        bubble.style.opacity = "1";
-      }
+    // words over heads
+    if (talk && en.wreck < 2 && !quiet) {
+      bubble.textContent = talk;
+      project(bubble, en.s + foe.len / 2 - 1, en.lat, foe.tall + 1.2, true, 80);
     } else bubble.style.opacity = "0";
+    const hs = henchmen[henchSay.i];
+    if (hs && henchSay.t > 0 && hs.state >= 0 && hs.state <= 2) {
+      henchBubble.textContent = "Go get 'em, guys!";
+      project(henchBubble, hs.s, hs.lat, hs.y + 2.3, true, 70);
+    } else henchBubble.style.opacity = "0";
+    if (two) for (const r of riders) project(tags[r.idx], r.s - 1, r.lat, 2.7, !r.gone && phase !== "over", 30);
   };
 
   /* ------------------------------------------------------------ loop */
@@ -1618,21 +2295,34 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let hudT = 0;
   let fps = 60;
   let disposed = false;
-  const hud = (): ChaseHud => ({
-    phase, hull: Math.round(me.hull), score: Math.max(0, Math.round(score)), best: Math.round(best), meters: Math.round(me.s),
-    boost: me.boost, reload: 1 - reload / RELOAD, level: en.level,
-    ride: RIDES[Math.min(en.level - 1, RIDES.length - 1)].name, foeHp: Math.max(0, en.hp), foeMax: en.max,
-    foeWrecked: en.wreck > 0, gap: Math.round(me.s - en.s), hits, wrecks, toast, fps: Math.round(fps),
-  });
+  const tick = (dt: number): void => { if (isGuest) guestStep(dt); else step(dt); };
+  const hud = (): ChaseHud => {
+    const t = target();
+    return {
+      phase, mode,
+      riders: riders.map((r) => ({
+        hull: Math.round(r.hull), max: r.max, boost: r.boost, reload: 1 - r.reload / (RELOAD * r.reloadMul),
+        out: r.out, respawn: Math.ceil(r.respawn), you: local.includes(r),
+        label: mode === "duo" ? `P${r.idx + 1}` : !two ? "TRUCK" : r.idx === mine ? "YOU" : "FRIEND",
+        color: RIDER_LOOK[r.idx].css, gone: r.gone,
+      })),
+      score: Math.max(0, Math.round(score)), best: Math.round(Math.max(best, score)), cash: Math.round(cash),
+      meters: Math.round(Math.max(0, leadS())), level: en.level,
+      ride: RIDES[Math.min(en.level - 1, RIDES.length - 1)].name, foeHp: Math.max(0, Math.ceil(en.hp - 0.001)), foeMax: en.max,
+      foeWrecked: en.wreck > 0, gap: Math.round(t.s - en.s), hits, wrecks, toast, fps: Math.round(fps),
+      link: !net ? "" : time - lastHeard > 6 ? "lost" : "ok",
+      alert, henchmen: henchmen.filter((h) => h.state >= 0 && h.state <= 2).length,
+    };
+  };
   const frame = (now: number): void => {
     if (disposed) return;
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     fps = lerp(fps, 1 / Math.max(dt, 0.001), 0.05);
-    step(dt);
-    audio.update(me.v, me.s - en.s, en.wreck === 0);
-    draw();
+    tick(dt);
+    audio.update(me.v, target().s - en.s, en.wreck === 0 && en.seated);
+    draw(dt);
     renderer.render(scene, camera);
     hudT -= dt;
     if (hudT <= 0) { hudT = 0.1; opts.onHud?.(hud()); }
@@ -1640,9 +2330,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
 
   function disposeTree(o: THREE.Object3D): void {
     o.traverse((x) => {
-      const m = x as THREE.Mesh;
-      m.geometry?.dispose();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+      const mm = x as THREE.Mesh;
+      mm.geometry?.dispose();
+      const mat = mm.material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(mat)) mat.forEach((y) => y.dispose()); else mat?.dispose();
     });
   }
@@ -1651,6 +2341,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
+      try { net?.send({ t: "bye" }); } catch { /* closed */ }
+      net?.close();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKey);
       window.removeEventListener("blur", onBlur);
@@ -1659,9 +2351,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       canvas.removeEventListener("pointerdown", onDown);
       audio.stop();
       scene.traverse((x) => {
-        const m = x as THREE.Mesh;
-        m.geometry?.dispose();
-        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        const mm = x as THREE.Mesh;
+        mm.geometry?.dispose();
+        const mat = mm.material as THREE.Material | THREE.Material[] | undefined;
         if (Array.isArray(mat)) mat.forEach((y) => y.dispose()); else mat?.dispose();
       });
       [roadTex, sand, glow, puffTex, signTex].forEach((t) => t.dispose());
@@ -1669,6 +2361,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       renderer.forceContextLoss();
       canvas.remove();
       bubble.remove();
+      tags.forEach((t) => t.remove());
+      henchBubble.remove();
       delete (window as unknown as { __chase?: unknown }).__chase;
     },
     setStick(x, y) { stick.x = x; stick.y = y; },
@@ -1677,38 +2371,92 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       const r = canvas.getBoundingClientRect();
       mouseX = clientX - r.left;
       mouseY = clientY - r.top;
-      if (f) wantFire = true;
+      if (f) me.wantFire = true;
     },
     hold(action, down) { if (action === "boost") held.boost = down; },
     restart() {
-      Object.assign(me, { s: 0, lat: 2, vl: 0, v: 31, boost: 1, hull: 100, shake: 0, spin: 0, bump: 0 });
-      score = 0; hits = 0; wrecks = 0; time = 0; introT = 0; phase = "intro"; toast = ""; talk = "";
+      if (isGuest) return;
+      gen += 1;
+      riders.forEach((r) => { resetRider(r); if (r.idx === 1 && mode === "host") r.net = null; });
+      score = 0; cash = 0; kmPaid = 0; hits = 0; wrecks = 0; introT = 0; phase = "intro"; toast = ""; talk = ""; ended = false;
       traffic.length = 0;
       balls.forEach((b) => { b.live = false; });
       thrown.forEach((t) => { t.live = false; });
+      henchmen.forEach((h) => { h.state = -1; });
+      backupT = 30 + Math.random() * 41;
+      alert = "";
       puffs.forEach((p) => { p.live = false; p.sprite.visible = false; });
+      Object.assign(tb, { phase: 0, t: 0, carrying: false });
       spawnFoe(1, 140);
       en.v = 40;
+      camReady = false;
     },
     setMuted(m) { muted = m; audio.mute(m); },
   };
 
+  if (mode === "host") riders[1].net = null;
+  spawnFoe(1, 140);
+  en.v = 40;
+
   // For scripts that play it without a person: scripts/cannonrun-check.mjs.
   (window as unknown as { __chase?: unknown }).__chase = {
-    state: () => ({ ...hud(), lat: me.lat, foeLat: en.lat, foeS: en.s, s: me.s, balls: balls.filter((b) => b.live).length, thrown: thrown.filter((t) => t.live).length, traffic: traffic.length, draws: renderer.info.render.calls, tris: renderer.info.render.triangles }),
-    key: (k: string, down: boolean) => { if (down) { if (k === " ") wantFire = true; keys.add(k); } else keys.delete(k); },
-    /** Aim at the road by screen fraction (0..1) and fire if asked; no args points back at him. */
-    aim: (fx?: number, fy?: number) => { if (fx === undefined || fy === undefined) { mouseX = -1; mouseY = -1; } else { mouseX = fx * canvas.clientWidth; mouseY = (fy ?? 0.5) * canvas.clientHeight; } },
-    fire: () => { wantFire = true; },
+    state: () => ({
+      ...hud(), lat: me.lat, swerves: traffic.map((t) => +t.swerve.toFixed(1)), foeLat: en.lat, foeS: en.s, s: me.s, seated: en.seated, tb: { ...tb },
+      riderS: riders.map((r) => r.s), riderLat: riders.map((r) => r.lat), disarmed: riders.map((r) => r.disarmed),
+      balls: balls.filter((b) => b.live).length, thrown: thrown.filter((t) => t.live).length,
+      traffic: traffic.map((t) => ({ mode: t.mode, y: +t.y.toFixed(2), s: Math.round(t.s - me.s) })),
+      draws: renderer.info.render.calls, tris: renderer.info.render.triangles,
+    }),
+    key: (k: string, down: boolean) => {
+      if (down) {
+        if (mode === "duo") { if (k === " ") riders[0].wantFire = true; if (P2_FIRE.has(k)) riders[1].wantFire = true; }
+        else if (k === " ") me.wantFire = true;
+        keys.add(k);
+      } else keys.delete(k);
+    },
+    /** Aim at the road by screen fraction (0..1); no args points back at him. */
+    aim: (fx?: number, fy?: number) => { if (fx === undefined || fy === undefined) { mouseX = -1; mouseY = -1; } else { mouseX = fx * canvas.clientWidth; mouseY = fy * canvas.clientHeight; } },
+    fire: (i = mine) => { (riders[i] ?? me).wantFire = true; },
     level: (n: number, gap = 40) => spawnFoe(n, gap),
-    gap: (g: number) => { en.s = me.s - g; },
-    hull: (n: number) => { me.hull = n; },
-    run: (n: number, dt = 1 / 60) => { for (let k = 0; k < n; k++) step(dt); },
-    snapshot: () => { draw(); renderer.render(scene, camera); return canvas.toDataURL("image/jpeg", 0.9); },
+    gap: (g: number) => { en.s = target().s - g; },
+    hull: (n: number, i = mine) => { const r = riders[i] ?? me; r.hull = n; if (n <= 0 && alive(r)) knockOut(r); },
+    /** Put a car right in front of Mort's grille: fly=true launches it into the air at once. */
+    launchCar: (fly = true) => {
+      const t: Traffic = {
+        s: en.s + foe.len / 2 + 6, lat: en.lat, y: 0.75, v: en.v * 0.5, vl: 0, vy: 0, rx: 0, ry: 0, rz: 0, wx: 0, wy: 0, wz: 0,
+        color: new THREE.Color(TRAFFIC_COLORS[traffic.length % TRAFFIC_COLORS.length]), mode: 0, air: 0, side: 1, hitCd: 0, live: true, swerve: 0,
+      };
+      traffic.push(t);
+      if (traffic.length > MAX_TRAFFIC) traffic.shift();
+      launch(t, en.lat - 1, en.level + 2, fly);
+    },
+    /** call his backup now */
+    backup: () => { backupT = 0; },
+    hench: () => henchmen.filter((h) => h.state >= 0).map((h) => ({ state: h.state, ds: +(h.s - riders[h.rider].s).toFixed(1), lat: +h.lat.toFixed(1) })),
+    /** put a civilian just ahead of Mort and have him throw at it */
+    throwAtCar: () => {
+      const t: Traffic = {
+        s: en.s + 22, lat: en.lat + 2.5, y: 0.75, v: en.v * 0.6, vl: 0, vy: 0, rx: 0, ry: 0, rz: 0, wx: 0, wy: 0, wz: 0,
+        color: new THREE.Color(0x2e5fa8), mode: 0, air: 0, side: 1, hitCd: 0, live: true, swerve: 0,
+      };
+      traffic.push(t);
+      if (traffic.length > MAX_TRAFFIC) traffic.shift();
+      en.throwT = 0;
+    },
+    upgrade: (u: Partial<Upgrades>, i = mine) => { const r = riders[i]; Object.assign(r, u); r.autoGun.root.visible = r.auto > 0; },
+    run: (n: number, dt = 1 / 60) => { for (let k = 0; k < n; k++) { tick(dt); draw(dt); } },
+    snapshot: () => { draw(1); renderer.render(scene, camera); return canvas.toDataURL("image/jpeg", 0.9); },
   };
 
-  draw();
+  draw(1);
   raf = requestAnimationFrame(frame);
   opts.onReady?.();
   return api;
+}
+
+function lerpAngle(a: number, b: number, t: number): number {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
 }
