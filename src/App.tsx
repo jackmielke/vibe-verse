@@ -425,7 +425,7 @@ const App = () => (
           {["/fogcity", "/fog-city"].map((path) => (
             <Route key={path} path={path} element={<FogCity />} />
           ))}
-          {["/cannon-run", "/cannonrun", "/car-chase", "/chase"].map((path) => (
+          {["/cannon-run", "/cannon-chase", "/cannonchase", "/cannonrun", "/car-chase", "/chase"].map((path) => (
             <Route key={path} path={path} element={<CannonRun />} />
           ))}
           {["/thalassa", "/harbor", "/harbour", "/greek-harbor"].map((path) => (

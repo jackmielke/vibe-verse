@@ -564,8 +564,8 @@ const WORLDS_RAW: WorldEntry[] = [
   {
     key: "cannon-run",
     route: "/cannon-run",
-    aliases: ["/cannonrun", "/car-chase", "/chase"],
-    name: "Cannon Run",
+    aliases: ["/cannon-chase", "/cannonchase", "/cannonrun", "/car-chase", "/chase"],
+    name: "Cannon Chase",
     emoji: "💣",
     kind: "game",
     blurb:
