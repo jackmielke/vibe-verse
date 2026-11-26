@@ -1,29 +1,30 @@
 /**
- * Bricks. Infinite bricks.
+ * Snowballs. There is always another snowball.
  *
- * This is the roof of the brownstone in *Lost in New York*, imported wholesale
- * into Winnetka, and it earns its place because it is the one thing in the
- * whole film that is pure uncomplicated wish fulfilment: no setup, no clock,
- * no plan — just a boy with a brick and a man who deserves it.
+ * (The file is still called `bricks` because that is what it threw first.)
  *
- * Three decisions make it feel good rather than fiddly.
+ * It is snowing, there is a bucket by the back door, and throwing things at
+ * people who are robbing your house is the one piece of pure uncomplicated
+ * wish fulfilment in the whole game. Three decisions make it feel good rather
+ * than fiddly.
  *
- * **It is a real projectile.** It arcs, it spins, it bounces off the floor and
- * skitters, it thumps off a wall. A hitscan brick would be easier and would
- * feel like nothing; the half-second the brick is in the air, while you watch
- * to see whether you led him enough, *is* the mechanic.
+ * **It is a real projectile.** It arcs, it bounces off the floor, it thumps
+ * off a wall. A hitscan snowball would be easier and would feel like nothing;
+ * the half-second it is in the air, while you watch to see whether you led him
+ * enough, *is* the mechanic.
  *
  * **It aims itself, a bit.** There is no crosshair on a phone and there never
- * will be, so a throw that lands anywhere near a burglar bends towards his
- * chest — see `AIM_CONE`. Aim assist is usually a smell; here it is the
+ * will be, so a throw that lands anywhere near somebody bends towards his
+ * chest. See `AIM_CONE`. Aim assist is usually a smell; here it is the
  * difference between a toy that works with a thumb and one that does not.
  *
- * **There are infinitely many.** Kevin's supply is not a resource to manage.
- * The moment you make somebody count bricks they stop throwing them, and the
- * entire point of this feature is that you throw one at Marv because you can.
+ * **It does not win the fight.** A snowball staggers; it does not floor. The
+ * first version of this threw bricks that knocked people down, and the best
+ * way to play the trap game turned out to be ignoring the traps. What a
+ * snowball is for is turning a head, buying a second, and finishing somebody a
+ * trap has already left stuck or blind.
  */
 import * as THREE from "three";
-import * as T from "./textures";
 
 /** Anything a brick can hit and hurt. */
 export interface BrickTarget {
@@ -74,15 +75,9 @@ export function makeBricks(parent: THREE.Object3D): BrickRig {
   const group = new THREE.Group();
   parent.add(group);
 
-  const geo = new THREE.BoxGeometry(0.21, 0.09, 0.1);
+  const geo = new THREE.SphereGeometry(0.075, 10, 8);
   owned.push(geo);
-  const tex = T.brick().clone();
-  tex.needsUpdate = true;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  // One brick should be one brick, not a wall of them shrunk down.
-  tex.repeat.set(0.17, 0.06);
-  owned.push(tex);
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, color: 0xd8b0a0 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xf6f9ff, roughness: 0.85, emissive: 0x8fa4c4, emissiveIntensity: 0.25 });
   owned.push(mat);
 
   const live: Brick[] = [];
@@ -156,7 +151,7 @@ export function makeBricks(parent: THREE.Object3D): BrickRig {
       }
       if (b.landed) {
         // Lying on the floor. Fade the last second so it does not blink out.
-        if (b.life < 1) b.mesh.scale.setScalar(Math.max(0.01, b.life));
+        if (b.life < 1) b.mesh.scale.set(1.5 * b.life, 0.35 * b.life, 1.5 * b.life);
         continue;
       }
 
@@ -205,7 +200,9 @@ export function makeBricks(parent: THREE.Object3D): BrickRig {
           b.spin.multiplyScalar(0.4);
         } else {
           b.landed = true;
-          b.life = Math.min(b.life, 5);
+          b.life = Math.min(b.life, 3);
+          // It is snow. It lands as a splat, not a ball.
+          b.mesh.scale.set(1.5, 0.35, 1.5);
           b.mesh.rotation.set(0, b.mesh.rotation.y, 0);
           continue;
         }

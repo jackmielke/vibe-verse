@@ -1,6 +1,6 @@
 /**
- * The overlay: objective, compass, traps, the two nerve bars, and — on a phone
- * — every control there is.
+ * The overlay: the night's clock, the box of traps, who is in the house and
+ * what they are carrying, and on a phone every control there is.
  *
  * The rule the whole layout obeys: **the middle of the screen belongs to the
  * house.** Everything here hugs an edge, because the thing you need to see is
@@ -8,14 +8,14 @@
  * prompt, which sits just under centre, because it is about the thing you are
  * standing in front of.
  *
- * The touch controls are not a port. The stick is a real stick with a dead
- * zone and a clamped radius, the action button is thumb-sized and lives where
- * a right thumb rests, and looking is a drag anywhere on the right-hand half
- * of the screen — the same gesture the stick's half does not use.
+ * The kit bar is the same thing on a laptop and a phone: a row of buttons
+ * along the bottom. On a laptop the number keys pick from it, because the
+ * mouse is busy being the camera.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { HomeAloneEngine, Snapshot } from "../engine";
+import type { HomeAloneEngine, IntruderState, Snapshot } from "../engine";
+import { EXPLORE, LIGHTS, ROAM } from "../levels";
 
 const COARSE =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -37,19 +37,21 @@ export default function HomeAloneHUD({
   onMenu: () => void;
   onPick: (n: number) => void;
 }) {
-  const playing = state.phase === "playing" || state.phase === "outro";
+  const playing = state.phase === "playing";
+  const trapGame = state.kind === "night" || state.kind === "roam";
 
   return (
     <div className="pointer-events-none absolute inset-0 select-none font-mono text-white">
       {playing && <Vignette danger={state.danger} caught={state.caught} />}
-      {playing && <TopBar state={state} />}
+      {playing && <TopBar state={state} engine={engine} />}
       {playing && state.compass !== null && <Compass state={state} />}
-      {playing && <TrapRail state={state} />}
-      {playing && <NerveBars state={state} />}
+      {playing && trapGame && <LootRail state={state} />}
+      {playing && trapGame && <IntruderList state={state} />}
+      {playing && trapGame && <Feed state={state} />}
       {playing && <Speech state={state} />}
-      {playing && <BurglarChatter state={state} />}
       {playing && state.banner && <Banner text={state.banner} />}
       {playing && state.action && <ActionPrompt label={state.action} touch={COARSE} />}
+      {playing && trapGame && <KitBar engine={engine} state={state} />}
       {playing && COARSE && <TouchControls engine={engine} state={state} />}
       {playing && !COARSE && <KeyHint state={state} />}
 
@@ -66,20 +68,20 @@ export default function HomeAloneHUD({
 /**
  * Switch mode without going anywhere.
  *
- * Every level is open, always. Gating them behind each other is right for a
- * game somebody bought and wrong for one somebody opened from a link — the
- * person who wants to see the battle should get to see the battle, and the
- * person who just wants to walk round the house with the lights on should
- * never meet a locked door. It collapses to a chip so it costs one tap and no
- * screen space.
+ * Every night is open, always. Gating them behind each other is right for a
+ * game somebody bought and wrong for one somebody opened from a link: the
+ * person who wants to see five of them come through both doors should get to
+ * see that. It collapses to a chip so it costs one tap and no screen space.
  */
 const MODES: Array<[number, string]> = [
-  [1, "Empty house"],
-  [2, "Wet Bandits"],
-  [3, "Set the traps"],
-  [4, "The battle"],
-  [5, "The zipline"],
-  [6, "Free roam"],
+  [1, "Night 1"],
+  [2, "Night 2"],
+  [3, "Night 3"],
+  [4, "Night 4"],
+  [5, "Night 5"],
+  [ROAM, "Sandbox"],
+  [EXPLORE, "The quiet house"],
+  [LIGHTS, "Somebody's home"],
 ];
 
 function ModeSwitch({ state, onPick }: { state: Snapshot; onPick: (n: number) => void }) {
@@ -108,7 +110,6 @@ function ModeSwitch({ state, onPick }: { state: Snapshot; onPick: (n: number) =>
                 n === state.level ? "bg-amber-500/20 text-amber-100" : "text-white/60 hover:bg-white/10"
               }`}
             >
-              {n <= 5 ? `${n}. ` : ""}
               {label}
             </button>
           ))}
@@ -153,37 +154,87 @@ function Vignette({ danger, caught }: { danger: number; caught: number }) {
   );
 }
 
-function TopBar({ state }: { state: Snapshot }) {
-  const pct = state.total ? (state.done / state.total) * 100 : 0;
+function clock(s: number) {
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+}
+
+function levelName(state: Snapshot) {
+  if (state.kind === "night") return `Night ${state.level}`;
+  if (state.kind === "roam") return "Sandbox";
+  return state.title;
+}
+
+function TopBar({ state, engine }: { state: Snapshot; engine: HomeAloneEngine }) {
+  const night = state.kind === "night";
+  const planning = state.stage === "plan";
+  const stop = (fn: () => void) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fn();
+  };
   return (
     <div
       className="absolute inset-x-0 top-0 flex flex-col items-center gap-1 px-3 pt-2"
       style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
     >
-      <div className="flex w-full max-w-2xl items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/45 px-3 py-1.5 backdrop-blur-sm">
+      <div className="flex w-full max-w-2xl items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/45 px-3 py-1.5 pl-20 pr-24 backdrop-blur-sm sm:pl-3 sm:pr-3">
         <span className="truncate text-[9px] uppercase tracking-[0.22em] text-amber-200/70">
-          {state.level <= 5 ? `Level ${state.level}` : "Free roam"} · {state.room}
+          {levelName(state)} · {state.room}
         </span>
+        {night && (
+          <span
+            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] tabular-nums ${
+              planning ? "bg-sky-500/20 text-sky-100" : "bg-red-500/25 text-red-100"
+            }`}
+          >
+            {planning ? `Plan ${clock(state.planLeft)}` : `Scared off ${state.done}/${state.total}`}
+          </span>
+        )}
         {state.timeLeft !== null && (
           <span
             className={`shrink-0 text-sm font-bold tabular-nums ${state.timeLeft < 30 ? "text-red-400" : "text-white/85"}`}
           >
-            {Math.floor(state.timeLeft / 60)}:{String(Math.floor(state.timeLeft % 60)).padStart(2, "0")}
+            {clock(state.timeLeft)}
           </span>
         )}
-        {state.total > 0 && (
+        {night && (
+          <span className="shrink-0 text-[12px] tracking-[0.1em] text-red-400">
+            {"♥".repeat(Math.max(0, state.hearts))}
+            <span className="text-white/15">{"♥".repeat(Math.max(0, 3 - state.hearts))}</span>
+          </span>
+        )}
+        {(night || state.sandbox) && (
+          <span className="shrink-0 text-[11px] tabular-nums text-amber-100/85">
+            ⚙ {state.sandbox ? "∞" : state.parts}
+          </span>
+        )}
+        {night && <span className="shrink-0 text-[11px] tabular-nums text-white/70">{state.score}</span>}
+        {!night && state.total > 0 && (
           <span className="shrink-0 text-[11px] tabular-nums text-white/70">
             {state.done}/{state.total}
           </span>
         )}
       </div>
       <p className="max-w-xl text-balance text-center text-[10px] leading-snug tracking-wide text-white/45 sm:text-[11px]">
-        {state.goal}
+        {night && planning
+          ? "Lay traps on the dotted routes. They walk to a valuable, then back out the door they came in by."
+          : state.goal}
       </p>
-      {state.total > 0 && (
-        <div className="h-[3px] w-40 overflow-hidden rounded-full bg-white/10 sm:w-56">
-          <div className="h-full rounded-full bg-amber-300/80 transition-[width] duration-300" style={{ width: `${pct}%` }} />
-        </div>
+      {night && planning && (
+        <button
+          onPointerDown={stop(() => engine.ready())}
+          className="pointer-events-auto mt-0.5 rounded-full border border-red-300/40 bg-red-500/20 px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-red-100 transition active:scale-95 hover:bg-red-500/35"
+        >
+          Let them in{COARSE ? "" : " · G"}
+        </button>
+      )}
+      {state.sandbox && (
+        <button
+          onPointerDown={stop(() => engine.callIn())}
+          className="pointer-events-auto mt-0.5 rounded-full border border-red-300/40 bg-red-500/20 px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-red-100 transition active:scale-95 hover:bg-red-500/35"
+        >
+          Send one in{COARSE ? "" : " · B"}
+        </button>
       )}
       {state.kind === "lights" && (
         <div className="mt-0.5 flex items-center gap-2">
@@ -199,13 +250,13 @@ function TopBar({ state }: { state: Snapshot }) {
 
 /**
  * The compass. A house with sixteen rooms on three floors is genuinely easy to
- * get lost in, and getting lost is not the game — so an arrow always points at
+ * get lost in, and getting lost is not the game, so an arrow always points at
  * whatever the level wants next, with the distance under it.
  */
 function Compass({ state }: { state: Snapshot }) {
   const deg = ((state.compass ?? 0) * 180) / Math.PI;
   return (
-    <div className="absolute left-1/2 top-[92px] -translate-x-1/2 text-center sm:top-[104px]">
+    <div className="absolute left-1/2 top-[112px] -translate-x-1/2 text-center sm:top-[124px]">
       <div className="mx-auto grid h-9 w-9 place-items-center rounded-full border border-amber-200/25 bg-black/35">
         <svg viewBox="0 0 24 24" className="h-5 w-5" style={{ transform: `rotate(${deg}deg)` }}>
           <path d="M12 3 L18 20 L12 16 L6 20 Z" fill="rgba(252,211,77,0.9)" />
@@ -218,73 +269,118 @@ function Compass({ state }: { state: Snapshot }) {
   );
 }
 
-function TrapRail({ state }: { state: Snapshot }) {
-  if (state.kind !== "traps" && state.kind !== "battle") return null;
+/** The valuables: what is still where you left it, and what is walking away. */
+function LootRail({ state }: { state: Snapshot }) {
+  if (!state.loot.length) return null;
   return (
-    <div className="absolute left-2 top-1/2 flex -translate-y-1/2 flex-col gap-1">
-      {state.traps.map((t) => (
+    <div className="absolute left-2 top-[30%] flex flex-col gap-1">
+      <span className="text-[8px] uppercase tracking-[0.2em] text-white/30">Valuables</span>
+      {state.loot.map((l) => (
         <div
-          key={t.kind}
+          key={l.id}
           className={`flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-[8px] uppercase tracking-[0.1em] backdrop-blur-sm transition ${
-            t.spent
+            l.state === "gone"
               ? "border-white/5 bg-black/25 text-white/20 line-through"
-              : t.armed
-                ? "border-amber-300/40 bg-amber-500/10 text-amber-100/90"
-                : "border-white/10 bg-black/35 text-white/30"
+              : l.state === "taken"
+                ? "border-red-400/60 bg-red-600/25 text-red-100"
+                : "border-amber-300/25 bg-black/35 text-amber-100/70"
           }`}
         >
-          <span className="text-[11px] leading-none">{TRAP_ICON[t.kind] ?? "•"}</span>
-          <span className="hidden max-w-[7.5rem] truncate sm:inline">{t.name}</span>
+          <span className="text-[10px] leading-none">{l.state === "safe" ? "◆" : l.state === "taken" ? "!" : "✕"}</span>
+          <span className="max-w-[6.5rem] truncate">{l.name.replace(/^(the|your) /, "")}</span>
         </div>
       ))}
     </div>
   );
 }
 
-const TRAP_ICON: Record<string, string> = {
-  cars: "🚗",
-  tar: "🕳️",
-  iron: "🧲",
-  torch: "🔥",
-  paint: "🪣",
-  ornaments: "🎄",
-  glue: "🪶",
-  doorknob: "🚪",
-};
+function intruderLabel(b: IntruderState) {
+  if (b.eta > 0) return `${b.entry} door · ${Math.ceil(b.eta)}s`;
+  if (b.state === "gone") return b.nerve <= 0 ? "ran for it" : "gone";
+  if (b.status === "flying") return "airborne";
+  if (b.status === "stuck") return "stuck";
+  if (b.status === "blind") return "blinded";
+  if (b.down) return "down";
+  if (b.carrying) return `has ${b.carrying.replace(/^(the|your) /, "")}`;
+  if (b.state === "hunt") return "after you";
+  if (b.state === "disarm") return "disarming";
+  if (b.state === "flee") return "running";
+  if (b.state === "search") return "listening";
+  return "prowling";
+}
 
-function NerveBars({ state }: { state: Snapshot }) {
-  if (state.kind !== "battle" && state.kind !== "escape") return null;
+/** Everybody on tonight's list: where they are coming from, and how they are doing. */
+function IntruderList({ state }: { state: Snapshot }) {
+  if (!state.intruders.length) return null;
   return (
     <div
-      className="absolute right-2 top-24 flex flex-col gap-1.5 sm:top-28"
+      className="absolute right-2 top-24 flex flex-col gap-1 sm:top-28"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      {state.burglars.map((b) => (
-        <div
-          key={b.who}
-          className={`w-28 rounded-md border px-2 py-1 backdrop-blur-sm transition ${
-            b.state === "gone"
-              ? "border-white/5 bg-black/20 opacity-40"
-              : b.down
-                ? "border-amber-300/50 bg-amber-500/15"
-                : b.state === "hunt"
-                  ? "border-red-500/50 bg-red-900/30"
-                  : "border-white/10 bg-black/35"
-          }`}
-        >
-          <div className="flex items-baseline justify-between">
-            <span className="text-[9px] uppercase tracking-[0.16em] text-white/70">{b.who}</span>
-            <span className="text-[8px] uppercase tracking-[0.1em] text-white/35">
-              {b.state === "gone" ? "gone" : b.down ? "down" : b.state}
-            </span>
+      {state.intruders.map((b) => (
+        <div key={b.id} className="flex flex-col items-end gap-1">
+          <div
+            className={`w-28 rounded-md border px-2 py-1 backdrop-blur-sm transition sm:w-32 ${
+              b.eta > 0
+                ? "border-white/10 bg-black/25 opacity-60"
+                : b.state === "gone"
+                  ? "border-white/5 bg-black/20 opacity-35"
+                  : b.carrying
+                    ? "border-red-400/70 bg-red-700/30"
+                    : b.down || b.status
+                      ? "border-amber-300/50 bg-amber-500/15"
+                      : b.state === "hunt"
+                        ? "border-red-500/50 bg-red-900/30"
+                        : "border-white/10 bg-black/35"
+            }`}
+          >
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="text-[9px] uppercase tracking-[0.14em] text-white/75">{b.name}</span>
+              <span className="truncate text-[8px] uppercase tracking-[0.06em] text-white/45">{intruderLabel(b)}</span>
+            </div>
+            {b.eta <= 0 && b.state !== "gone" && (
+              <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-red-400/80 transition-[width] duration-300"
+                  style={{ width: `${b.nerve}%` }}
+                />
+              </div>
+            )}
           </div>
-          <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-red-400/80 transition-[width] duration-300"
-              style={{ width: `${b.nerve}%` }}
-            />
-          </div>
+          {b.says && (
+            <p
+              className={`max-w-[13rem] rounded-lg border px-2 py-1 text-right text-[10px] italic leading-snug backdrop-blur-sm ${
+                b.voice === "gus"
+                  ? "border-amber-700/40 bg-amber-950/50 text-amber-100/85"
+                  : "border-sky-700/40 bg-sky-950/50 text-sky-100/85"
+              }`}
+            >
+              “{b.says}”
+            </p>
+          )}
         </div>
+      ))}
+    </div>
+  );
+}
+
+/** The running commentary: one line per chain, growing as the chain does. */
+function Feed({ state }: { state: Snapshot }) {
+  const lines = state.feed.slice(-3);
+  if (!lines.length) return null;
+  return (
+    <div className="absolute inset-x-0 top-[21%] flex flex-col items-center gap-1 px-4 sm:top-[19%]">
+      {lines.map((f) => (
+        <p
+          key={f.id}
+          className={`max-w-[92vw] truncate rounded-md px-2 py-0.5 text-[10px] tracking-wide backdrop-blur-sm transition-opacity duration-500 sm:text-[11px] ${
+            f.hot ? "opacity-100" : "opacity-30"
+          } ${f.chain >= 2 ? "bg-amber-500/20 text-amber-100" : "bg-black/35 text-white/70"}`}
+        >
+          <span className="mr-1.5 text-[8px] uppercase tracking-[0.18em] opacity-60">{f.who}</span>
+          {f.text}
+          {f.chain >= 2 && <span className="ml-1.5 font-black text-amber-300">{f.chain}x</span>}
+        </p>
       ))}
     </div>
   );
@@ -297,35 +393,6 @@ function Speech({ state }: { state: Snapshot }) {
       <p className="max-w-md text-balance rounded-lg border border-amber-200/15 bg-black/55 px-3 py-2 text-center text-[11px] italic leading-snug text-amber-50/85 backdrop-blur-sm sm:text-sm">
         “{state.say}”
       </p>
-    </div>
-  );
-}
-
-/**
- * What Harry and Marv are shouting.
- *
- * Deliberately *not* in the middle: their lines are colour, not instructions,
- * and the middle of the screen belongs to the corridor. They sit at the top
- * corners under the nerve bars, one line each, and fade on their own.
- */
-function BurglarChatter({ state }: { state: Snapshot }) {
-  const talking = state.burglars.filter((b) => b.says);
-  if (!talking.length) return null;
-  return (
-    <div className="absolute right-2 top-48 flex w-52 flex-col items-end gap-1.5 sm:top-52 sm:w-64">
-      {talking.map((b) => (
-        <p
-          key={b.who}
-          className={`rounded-lg border px-2.5 py-1.5 text-right text-[10px] italic leading-snug backdrop-blur-sm sm:text-[11px] ${
-            b.who === "harry"
-              ? "border-amber-700/40 bg-amber-950/50 text-amber-100/85"
-              : "border-sky-700/40 bg-sky-950/50 text-sky-100/85"
-          }`}
-        >
-          <span className="mr-1.5 text-[8px] uppercase not-italic tracking-[0.2em] opacity-50">{b.who}</span>
-          “{b.says}”
-        </p>
-      ))}
     </div>
   );
 }
@@ -353,19 +420,81 @@ function ActionPrompt({ label, touch }: { label: string; touch: boolean }) {
   );
 }
 
-function KeyHint({ state }: { state: Snapshot }) {
-  const fight = state.kind === "battle" || state.kind === "escape";
+/**
+ * The box of traps.
+ *
+ * Tap one (or press its number) and a ghost of it appears on the floor in
+ * front of you; the action button, F or a click lays it. Tap it again to put
+ * it away.
+ */
+function KitBar({ engine, state }: { engine: HomeAloneEngine; state: Snapshot }) {
+  if (!state.kit.length) return null;
+  const picked = state.kit.find((k) => k.selected);
+  const stop = (fn: () => void) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fn();
+  };
   return (
-    <div className="absolute bottom-3 left-3 hidden text-[9px] leading-relaxed tracking-[0.16em] text-white/25 sm:block">
-      <div>WASD MOVE · SHIFT RUN</div>
-      <div>MOUSE LOOK · WHEEL ZOOM · E INTERACT</div>
-      {fight && (
+    <div
+      className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-2"
+      style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+    >
+      {(state.placeHint || picked) && (
+        <p
+          className={`max-w-[90vw] rounded-md px-2 py-1 text-center text-[10px] leading-snug backdrop-blur-sm ${
+            state.placeHint ? "bg-red-900/50 text-red-100" : "bg-black/50 text-white/75"
+          }`}
+        >
+          {state.placeHint ?? `${picked!.name}: ${picked!.blurb}`}
+        </p>
+      )}
+      <div className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-xl border border-white/10 bg-black/55 p-1 backdrop-blur-sm">
+        {state.kit.map((k) => (
+          <button
+            key={k.kind}
+            onPointerDown={stop(() => engine.selectKit(k.kind))}
+            title={`${k.name}: ${k.blurb}`}
+            className={`relative flex h-12 w-11 shrink-0 touch-none flex-col items-center justify-center rounded-lg border text-center transition sm:h-14 sm:w-14 ${
+              k.selected
+                ? "border-amber-300 bg-amber-400/30"
+                : k.affordable
+                  ? "border-white/15 bg-white/5 hover:bg-white/15"
+                  : "border-white/5 bg-black/20 opacity-35"
+            }`}
+          >
+            {!COARSE && <span className="absolute left-1 top-0.5 text-[7px] text-white/40">{k.key}</span>}
+            <span className="text-base leading-none sm:text-lg">{k.icon}</span>
+            <span className="mt-0.5 text-[8px] tabular-nums text-amber-100/80">⚙{k.cost}</span>
+          </button>
+        ))}
+        {state.clocks > 0 && (
+          <button
+            onPointerDown={stop(() => engine.ring())}
+            className="flex h-12 shrink-0 touch-none flex-col items-center justify-center rounded-lg border border-sky-300/50 bg-sky-500/20 px-2 text-[8px] uppercase tracking-[0.1em] text-sky-100 sm:h-14"
+          >
+            <span className="text-base leading-none">🔔</span>
+            Ring{COARSE ? "" : " · R"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function KeyHint({ state }: { state: Snapshot }) {
+  const trapGame = state.kind === "night" || state.kind === "roam";
+  return (
+    <div className="absolute bottom-3 left-3 hidden text-[9px] leading-relaxed tracking-[0.16em] text-white/25 lg:block">
+      <div>WASD MOVE · SHIFT RUN · MOUSE LOOK</div>
+      <div>E LIGHTS, PICK UP, THE WIRE</div>
+      {trapGame && <div className="text-amber-200/50">1-8 PICK A TRAP · F OR CLICK LAYS IT</div>}
+      {trapGame && (
         <div className={state.tauntCooldown > 0 ? "text-white/15" : "text-amber-200/50"}>
-          Q SHOUT{state.tauntCooldown > 0 ? ` (${state.tauntCooldown.toFixed(1)}s)` : ""}
+          Q SHOUT{state.tauntCooldown > 0 ? ` (${state.tauntCooldown.toFixed(1)}s)` : ""} · R RING A CLOCK
         </div>
       )}
-      <div className="text-amber-200/50">SPACE THROW A BRICK</div>
-      {state.hasBB && <div className="text-sky-200/50">F BB GUN · {state.ammo} left</div>}
+      <div className="text-sky-200/50">SPACE SNOWBALL</div>
     </div>
   );
 }
@@ -377,15 +506,15 @@ function KeyHint({ state }: { state: Snapshot }) {
 /**
  * Touch controls.
  *
- * The *stick is not here any more* — the engine owns every pointer on the
- * canvas, because a fixed pad in the corner and a look-drag on the canvas were
- * two owners fighting over the same thumb. What is left here is buttons, which
- * are real DOM elements sitting above the canvas and therefore swallow their
- * own pointer events, and a ring drawn wherever the engine says the thumb
- * currently is.
+ * The stick is not here: the engine owns every pointer on the canvas, because
+ * a fixed pad in the corner and a look-drag on the canvas were two owners
+ * fighting over the same thumb. What is left here is buttons, which are real
+ * DOM elements above the canvas and so swallow their own pointer events, and
+ * a ring drawn wherever the engine says the thumb currently is.
  */
 function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snapshot }) {
-  const fight = state.kind === "battle" || state.kind === "escape";
+  const trapGame = state.kind === "night" || state.kind === "roam";
+  const holding = state.kit.some((k) => k.selected);
   const stop = (fn: () => void) => (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -413,42 +542,19 @@ function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snap
         </>
       )}
 
-      {/* A standing hint on the left, so the scheme is discoverable at all. */}
-      {!state.stick && (
-        <div
-          className="pointer-events-none absolute text-[9px] uppercase leading-relaxed tracking-[0.18em] text-white/20"
-          style={{ left: "max(1.2rem, env(safe-area-inset-left))", bottom: "max(1.6rem, env(safe-area-inset-bottom))" }}
-        >
-          <div>touch here to walk</div>
-          <div>drag right to look</div>
-          <div>pinch to zoom</div>
-          <div className="text-orange-200/40">🧱 throws a brick</div>
-        </div>
-      )}
-
       <div
-        className="pointer-events-auto absolute flex flex-col items-end gap-2.5"
-        style={{ right: "max(1rem, env(safe-area-inset-right))", bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+        className="pointer-events-auto absolute flex flex-col items-end gap-2"
+        style={{ right: "max(0.75rem, env(safe-area-inset-right))", bottom: "max(5rem, calc(env(safe-area-inset-bottom) + 4.5rem))" }}
       >
-        {/* Always there, always loaded. */}
         <button
           onPointerDown={stop(() => engine.throwBrick())}
           disabled={state.brickCooldown > 0}
-          className="h-16 w-16 touch-none rounded-full border-2 border-orange-300/45 bg-orange-700/30 text-[10px] font-bold uppercase leading-tight tracking-[0.08em] text-orange-100 active:scale-95 active:bg-orange-600/50 disabled:opacity-40"
+          className="h-14 w-14 touch-none rounded-full border border-sky-200/45 bg-sky-500/25 text-[8px] font-bold uppercase leading-tight tracking-[0.08em] text-sky-50 active:scale-95 active:bg-sky-500/50 disabled:opacity-40"
         >
-          🧱
-          <span className="mt-0.5 block text-[8px] tracking-[0.14em] opacity-70">Brick</span>
+          <span className="block text-base leading-none">❄</span>
+          Throw
         </button>
-        {state.hasBB && (
-          <button
-            onPointerDown={stop(() => engine.fire())}
-            disabled={state.ammo <= 0}
-            className="h-14 w-14 touch-none rounded-full border border-sky-200/35 bg-sky-400/15 text-[9px] uppercase tracking-[0.1em] text-sky-100/80 active:bg-sky-400/35 disabled:opacity-30"
-          >
-            BB {state.ammo}
-          </button>
-        )}
-        {fight && (
+        {trapGame && (
           <button
             onPointerDown={stop(() => engine.taunt())}
             disabled={state.tauntCooldown > 0}
@@ -468,9 +574,13 @@ function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snap
         </button>
         <button
           onPointerDown={stop(() => engine.act())}
-          className="h-20 w-20 touch-none rounded-full border-2 border-amber-200/45 bg-amber-400/20 text-2xl text-amber-100 active:scale-95 active:bg-amber-400/40"
+          className={`h-20 w-20 touch-none rounded-full border-2 text-amber-100 active:scale-95 ${
+            holding
+              ? "border-amber-200 bg-amber-400/45 text-[11px] font-black uppercase tracking-[0.12em]"
+              : "border-amber-200/45 bg-amber-400/20 text-2xl active:bg-amber-400/40"
+          }`}
         >
-          ●
+          {holding ? "Lay" : "●"}
         </button>
       </div>
     </>
@@ -488,7 +598,7 @@ function clampKnob(origin: number, at: number) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-auto absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-black/78 backdrop-blur-md">
+    <div className="pointer-events-auto absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-md">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_20%,rgba(190,140,60,0.16),transparent_62%)]" />
       <div
         className="relative flex min-h-full flex-col items-center justify-center px-6 py-10 text-center"
@@ -501,7 +611,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function BriefCard({ state, onStart, onMenu }: { state: Snapshot; onStart: () => void; onMenu: () => void }) {
-  // Enter should start it — the brief is a beat, not a form.
+  // Enter should start it: the brief is a beat, not a form.
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.code === "Enter" || e.code === "Space") onStart();
@@ -512,28 +622,53 @@ function BriefCard({ state, onStart, onMenu }: { state: Snapshot; onStart: () =>
 
   return (
     <Shell>
-      <p className="text-[9px] uppercase tracking-[0.42em] text-amber-300/50">
-        {state.level <= 5 ? `Level ${state.level} of 5` : "Free roam"}
-      </p>
+      <p className="text-[9px] uppercase tracking-[0.42em] text-amber-300/50">{levelName(state)}</p>
       <h2 className="mt-3 max-w-lg text-balance text-2xl font-black leading-tight tracking-tight text-[#f0e6d2] sm:text-4xl">
         {state.title}
       </h2>
-      <p className="mt-3 max-w-md text-balance text-[11px] italic text-amber-200/50 sm:text-sm">{state.quote}</p>
-      <div className="mt-6 max-w-md space-y-1.5">
+      <div className="mt-5 max-w-md space-y-1.5">
         {state.brief.map((line) => (
           <p key={line} className="text-balance text-[11px] leading-relaxed text-white/60 sm:text-[13px]">
             {line}
           </p>
         ))}
       </div>
+
+      {state.cast.length > 0 && (
+        <div className="mt-6 flex w-full max-w-md flex-col gap-1.5 text-left">
+          {state.cast.map((c, i) => (
+            <div key={i} className="flex items-baseline gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5">
+              <span className="w-16 shrink-0 text-[11px] font-bold uppercase tracking-[0.1em] text-red-200/85">{c.name}</span>
+              <span className="min-w-0 flex-1 text-[10px] leading-snug text-white/50">{c.trait}</span>
+              <span className="shrink-0 text-[8px] uppercase tracking-[0.14em] text-white/30">{c.entry}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {state.newKit.length > 0 && (
+        <div className="mt-4 flex w-full max-w-md flex-col gap-1.5 text-left">
+          {state.newKit.map((k) => (
+            <div key={k.name} className="flex items-baseline gap-2 rounded-lg border border-amber-300/25 bg-amber-500/10 px-3 py-1.5">
+              <span className="shrink-0 text-sm">{k.icon}</span>
+              <span className="shrink-0 text-[11px] font-bold tracking-tight text-amber-100">{k.name}</span>
+              <span className="min-w-0 flex-1 text-[10px] leading-snug text-white/55">{k.blurb}</span>
+              <span className="shrink-0 text-[8px] uppercase tracking-[0.14em] text-amber-300/70">new</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {state.kind === "night" && state.bestScore > 0 && (
+        <p className="mt-4 text-[10px] uppercase tracking-[0.2em] text-white/30">Your best: {state.bestScore}</p>
+      )}
+
       <button
         onClick={onStart}
-        className="mt-8 rounded-full border border-amber-300/45 bg-amber-500/15 px-8 py-3 text-[11px] font-bold uppercase tracking-[0.28em] text-amber-100 transition active:scale-95 hover:bg-amber-500/30"
+        className="mt-7 rounded-full border border-amber-300/45 bg-amber-500/15 px-8 py-3 text-[11px] font-bold uppercase tracking-[0.28em] text-amber-100 transition active:scale-95 hover:bg-amber-500/30"
       >
-        Begin
+        {state.kind === "night" ? "Start laying traps" : "Begin"}
       </button>
       <button onClick={onMenu} className="mt-4 text-[10px] uppercase tracking-[0.24em] text-white/25 hover:text-white/60">
-        ← back to the levels
+        ← back to the nights
       </button>
     </Shell>
   );
@@ -552,31 +687,56 @@ function EndCard({
   onNext: () => void;
   onMenu: () => void;
 }) {
-  const last = state.level >= 5;
+  const r = state.result;
   return (
     <Shell>
-      <p className="text-[9px] uppercase tracking-[0.42em] text-amber-300/45">Level {state.level}</p>
+      <p className="text-[9px] uppercase tracking-[0.42em] text-amber-300/45">{levelName(state)}</p>
       <h2
         className={`mt-3 text-3xl font-black uppercase tracking-tight sm:text-5xl ${
           win ? "text-amber-200" : "text-red-400"
         }`}
       >
-        {win ? (last ? "Merry Christmas" : "Cleared") : "Caught"}
+        {win ? (r ? "House held" : "Done") : r ? "They win this one" : "Not this time"}
       </h2>
+      {r && (
+        <>
+          <p className="mt-3 text-4xl tracking-[0.2em] text-amber-300">
+            {"★".repeat(r.stars)}
+            <span className="text-white/15">{"★".repeat(3 - r.stars)}</span>
+          </p>
+          <p className="mt-2 text-xl font-black tabular-nums text-white/90">{r.score}</p>
+          {state.bestScore > 0 && (
+            <p className="text-[9px] uppercase tracking-[0.2em] text-white/30">Best {state.bestScore}</p>
+          )}
+          <div className="mt-4 flex max-w-sm flex-col gap-1 text-left">
+            {r.lines.map((l) => (
+              <p key={l.text} className={`text-[11px] leading-snug ${l.earned ? "text-amber-100/90" : "text-white/30"}`}>
+                {l.earned ? "★" : "☆"} {l.text}
+              </p>
+            ))}
+          </div>
+          <p className="mt-3 text-[10px] uppercase tracking-[0.16em] text-white/40">
+            Longest chain {state.bestChain}x · kept {state.loot.filter((l) => l.state === "safe").length} of{" "}
+            {state.loot.length}
+          </p>
+        </>
+      )}
       <p className="mt-3 max-w-md text-balance text-[12px] leading-relaxed text-white/55">
         {win
-          ? last
-            ? "The rope's cut, the police have them, and the house is still standing. Not bad for eight."
+          ? r
+            ? r.stars === 3
+              ? "Nothing left the house, and something chained. That is the whole game."
+              : "Three stars wants every valuable still here and a chain of three."
             : state.title
-          : state.banner ?? "Try it again. This time, listen for them."}
+          : (state.banner ?? "Try it again. This time, listen for them.")}
       </p>
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-        {win && !last && (
+      <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+        {win && state.hasNext && (
           <button
             onClick={onNext}
             className="rounded-full border border-amber-300/45 bg-amber-500/15 px-7 py-3 text-[11px] font-bold uppercase tracking-[0.24em] text-amber-100 transition active:scale-95 hover:bg-amber-500/30"
           >
-            Next level
+            Next night
           </button>
         )}
         <button
@@ -589,7 +749,7 @@ function EndCard({
           onClick={onMenu}
           className="rounded-full border border-white/10 px-7 py-3 text-[11px] uppercase tracking-[0.24em] text-white/40 transition hover:text-white/80"
         >
-          Levels
+          Menu
         </button>
       </div>
       <Link to="/" className="mt-8 text-[10px] uppercase tracking-[0.28em] text-white/25 transition hover:text-white/60">

@@ -1,5 +1,5 @@
 /**
- * Every surface in Winnetka, drawn into a 2D canvas at boot. No image files.
+ * Every surface on Juniper Lane, drawn into a 2D canvas at boot. No image files.
  *
  * The look this is chasing is a specific one: a 1990 suburban Chicago house at
  * night, in snow, shot on film. That means three things the textures have to
@@ -13,7 +13,7 @@
  * - **Nothing is flat.** Brick has mortar, plaster has orange-peel, snow has a
  *   blue shadow under every drift. Per-texel noise does this far better than a
  *   tiled JPEG, and it costs nothing to tune.
- * - **Faces are drawn, not modelled.** Kevin's face is a 512px canvas on the
+ * - **Faces are drawn, not modelled.** Pip's face is a 512px canvas on the
  *   front of a sphere. This is the single highest-leverage decision in the
  *   world: no arrangement of boxes was ever going to read as a specific blond
  *   eight-year-old, and a drawn face reads as one instantly.
@@ -79,9 +79,8 @@ function grain(c: CanvasRenderingContext2D, w: number, h: number, amount: number
  * ------------------------------------------------------------------ */
 
 /**
- * The red brick. 671 Lincoln Ave is a big square red-brick Georgian, and the
- * brick is the first thing anybody recognises about it, so this gets the most
- * care: five clay tones mixed per course, a mortar line that is never straight,
+ * The red brick of the chimney and the fireplace. It gets the most
+ * care of any surface here: five clay tones mixed per course, a mortar line that is never straight,
  * and a wash of soot in the joints.
  */
 export function brick() {
@@ -284,7 +283,7 @@ export function carpet(hex: string, seed = 5) {
  * where every room has the same walls reads as a level and not as a home.
  *
  * 0 cream damask (hall) · 1 hunter-green stripe (dining) · 2 kitchen tile
- * 3 pale blue with a small print (Kevin's room)
+ * 3 pale blue with a small print (Pip's room)
  */
 export function wallpaper(kind = 0) {
   return make(`paper${kind}`, 256, 256, (c, w, h) => {
@@ -442,8 +441,8 @@ export function stone() {
  *
  * The three of them, drawn head-on into a 512 canvas that gets wrapped round
  * the front of a sphere. Everything specific about a character lives here:
- * Kevin's blond bowl cut and the eyebrows he raises at everything, Harry's
- * five o'clock shadow and gold tooth, Marv's nose and his gormless grin.
+ * Pip's blond bowl cut and the eyebrows he raises at everything, Gus's
+ * five o'clock shadow and gold tooth, Lenny's nose and his gormless grin.
  * ------------------------------------------------------------------ */
 
 interface FaceOpts {
@@ -461,14 +460,14 @@ interface FaceOpts {
 const FACES: Record<string, FaceOpts> = {
   // Wide-open eyes, high brows, freckles. Everything about the drawing is
   // pushed young — a kid's face is eyes and forehead, an adult's is jaw.
-  kevin: { skin: "#f4c9a4", shade: "#d99f78", brow: "#c99a4e", eyeW: 1.16, mouth: "flat", freckles: true },
-  kevinScream: { skin: "#f4c9a4", shade: "#d99f78", brow: "#c99a4e", eyeW: 1.3, mouth: "scream", freckles: true },
-  harry: { skin: "#dba97f", shade: "#b07c53", brow: "#2b1d13", eyeW: 0.86, mouth: "sneer", stubble: true, gold: true },
-  marv: { skin: "#e8c39a", shade: "#c0906a", brow: "#3a2a1a", eyeW: 0.94, mouth: "grin", bigNose: true },
+  kid: { skin: "#f4c9a4", shade: "#d99f78", brow: "#4a2a18", eyeW: 1.16, mouth: "flat", freckles: true },
+  kidScream: { skin: "#f4c9a4", shade: "#d99f78", brow: "#4a2a18", eyeW: 1.3, mouth: "scream", freckles: true },
+  gus: { skin: "#dba97f", shade: "#b07c53", brow: "#2b1d13", eyeW: 0.86, mouth: "sneer", stubble: true },
+  lenny: { skin: "#e8c39a", shade: "#c0906a", brow: "#3a2a1a", eyeW: 0.94, mouth: "grin", bigNose: true },
 };
 
 export function face(kind: keyof typeof FACES | string) {
-  const o = FACES[kind] ?? FACES.kevin;
+  const o = FACES[kind] ?? FACES.kid;
   return make(
     `face:${kind}`,
     512,
@@ -531,7 +530,7 @@ export function face(kind: keyof typeof FACES | string) {
         c.beginPath();
         c.ellipse(ex, eyeY, eyeRx, eyeRy, 0, 0, Math.PI * 2);
         c.fill();
-        c.fillStyle = kind.startsWith("kevin") ? "#4b7fbd" : "#4a3a26";
+        c.fillStyle = kind.startsWith("kid") ? "#4b7fbd" : "#4a3a26";
         c.beginPath();
         c.arc(ex, eyeY + 1, eyeRy * 0.78, 0, Math.PI * 2);
         c.fill();
@@ -553,14 +552,14 @@ export function face(kind: keyof typeof FACES | string) {
 
       // Brows.
       c.strokeStyle = o.brow;
-      c.lineWidth = kind.startsWith("kevin") ? 5.5 : 11;
+      c.lineWidth = kind.startsWith("kid") ? 5.5 : 11;
       c.lineCap = "round";
       for (const s of [-1, 1]) {
         const ex = cx + s * eyeDx;
-        const lift = o.mouth === "scream" ? 62 : kind.startsWith("kevin") ? 56 : 42;
+        const lift = o.mouth === "scream" ? 62 : kind.startsWith("kid") ? 56 : 42;
         c.beginPath();
-        if (kind === "harry") {
-          // Harry's brows come down in the middle. He is always annoyed.
+        if (kind === "gus") {
+          // Gus's brows come down in the middle. He is always annoyed.
           c.moveTo(ex - s * eyeRx, eyeY - lift - 8);
           c.quadraticCurveTo(ex, eyeY - lift - 12, ex + s * eyeRx, eyeY - lift + 6);
         } else {
@@ -723,7 +722,7 @@ export function face(kind: keyof typeof FACES | string) {
 }
 
 /**
- * Kevin's sweater: cream with the red-and-navy Nordic band. Wrapped round a
+ * Pip's sweater: cream with the red-and-navy Nordic band. Wrapped round a
  * torso box, so the band has to land horizontally across the chest.
  */
 export function nordicSweater() {
@@ -794,7 +793,7 @@ export function cloth(hex: string, seed = 1, weave = 0.12) {
 }
 
 /**
- * A lit window seen from the street — the neighbours', and the McCallister
+ * A lit window seen from the street — the neighbours', and this
  * house's own once you start switching lights on. Warm rectangle, a mullion
  * cross, and a curtain silhouette so it is not a glowing hole.
  */
@@ -1016,59 +1015,47 @@ export function mirrorGlass() {
 }
 
 /**
- * A frame of the black-and-white gangster picture on the television.
+ * A frame of the late cartoon on the television.
  *
  * Three frames, cycled. It only ever occupies about eighty pixels on screen,
- * so what has to read is *black and white, hard contrast, a man in a hat* —
- * and that is enough for anybody to know exactly which film Kevin is watching.
+ * so what has to read is colour and movement: a ball bouncing across a
+ * hillside, bright enough to light the room it is in.
  */
-export function filmFrame(i: number) {
+export function tvFrame(i: number) {
   return make(
-    `film${i}`,
+    `tv${i}`,
     128,
     96,
     (c, w, h) => {
-      c.fillStyle = "#12120f";
+      const sky = c.createLinearGradient(0, 0, 0, h);
+      sky.addColorStop(0, i === 1 ? "#ffe9a8" : "#7fc4f0");
+      sky.addColorStop(1, i === 1 ? "#ffb070" : "#cfeeff");
+      c.fillStyle = sky;
       c.fillRect(0, 0, w, h);
-      const r = rnd(900 + i * 37);
-      // Key light from the left, hard.
-      const g = c.createLinearGradient(0, 0, w, 0);
-      g.addColorStop(0, "rgba(230,230,220,0.5)");
-      g.addColorStop(0.55, "rgba(120,120,115,0.12)");
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      c.fillStyle = g;
-      c.fillRect(0, 0, w, h);
-      // Two men: hat, shoulders, and on frame 2 a muzzle flash.
-      const man = (x: number, s: number) => {
-        c.fillStyle = "#0a0a09";
-        c.fillRect(x - 15 * s, h - 46 * s, 30 * s, 46 * s);
-        c.beginPath();
-        c.arc(x, h - 48 * s, 9 * s, 0, Math.PI * 2);
-        c.fill();
-        c.fillRect(x - 16 * s, h - 56 * s, 32 * s, 5 * s); // brim
-        c.fillRect(x - 9 * s, h - 64 * s, 18 * s, 9 * s); // crown
-      };
-      man(w * 0.32, 1);
-      man(w * 0.72, 0.92);
-      if (i === 1) {
-        c.fillStyle = "rgba(255,255,240,0.95)";
-        c.beginPath();
-        c.arc(w * 0.52, h * 0.52, 13, 0, Math.PI * 2);
-        c.fill();
-        c.fillStyle = "rgba(255,255,255,0.35)";
-        c.fillRect(0, 0, w, h);
-      }
-      // Print damage and scan lines.
-      for (let y = 0; y < h; y += 2) {
-        c.fillStyle = "rgba(0,0,0,0.18)";
-        c.fillRect(0, y, w, 1);
-      }
-      for (let k = 0; k < 40; k++) {
-        c.fillStyle = `rgba(255,255,255,${r() * 0.25})`;
-        c.fillRect(r() * w, r() * h, 1, 1 + r() * 3);
-      }
+      // A hill, and a sun that has seen better animators.
+      c.fillStyle = "#58b36a";
+      c.beginPath();
+      c.ellipse(w * 0.5, h * 1.05, w * 0.75, h * 0.42, 0, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = "#fff3b0";
+      c.beginPath();
+      c.arc(w * 0.82, h * 0.2, 11, 0, Math.PI * 2);
+      c.fill();
+      // The ball, at three points of one bounce.
+      const bx = w * (0.25 + i * 0.22);
+      const by = h * (i === 1 ? 0.3 : 0.56);
+      c.fillStyle = "#e2433a";
+      c.beginPath();
+      c.ellipse(bx, by, 12, i === 1 ? 12 : 10, 0, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = "rgba(255,255,255,0.7)";
+      c.beginPath();
+      c.arc(bx - 4, by - 4, 3, 0, Math.PI * 2);
+      c.fill();
+      // Scan lines, so it reads as a set and not a window.
+      c.fillStyle = "rgba(0,0,0,0.12)";
+      for (let y = 0; y < h; y += 3) c.fillRect(0, y, w, 1);
     },
-    false,
   );
 }
 

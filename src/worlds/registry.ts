@@ -510,17 +510,19 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    /* Shipped as a film tribute and rebuilt as its own game; the key and the
+       directory kept the old name, and the old link still opens it. */
     key: "home-alone",
-    route: "/home-alone",
-    aliases: ["/kevin"],
-    name: "Home Alone",
-    emoji: "🎄",
+    route: "/house-rules",
+    aliases: ["/home-alone", "/traps"],
+    name: "House Rules",
+    emoji: "🪤",
     kind: "game",
     blurb:
-      "671 Lincoln Avenue at Christmas — lights on the eaves, a tree in the window, and two men outside who think it is empty. Walk the house, light it up, arm eight traps, then shout from the top of the stairs and see who comes.",
-    status: "Playable — five levels, plus free roam",
+      "You are eight, the house is yours until Sunday, and five people would like what is in it. Lay marbles, tripwires, soap and a springboard where they have to walk, then shout and watch one trap throw a burglar into the next.",
+    status: "Playable: five nights, endless after that, and a sandbox",
     accent: "#e0b64a",
-    /* A winter night, not a void — the house's own opening frame. */
+    /* A winter night, not a void: the house's own opening frame. */
     backdrop: "#0d1524",
     featured: true,
     source: "src/homealone",

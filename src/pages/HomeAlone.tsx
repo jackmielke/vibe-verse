@@ -1,21 +1,21 @@
 /**
- * HOME ALONE — the vibeverse's first film-as-a-world.
+ * HOUSE RULES: lay traps, let them in, watch it chain.
  *
- * A thin page, per the house rules: it owns the title screen, mounts the
- * canvas, and renders the HUD off engine snapshots. Everything that moves
- * lives in `src/homealone/`, and `src/homealone/README.md` explains why the
- * house is one continuous scene with real stairs in it.
+ * A thin page, per the repository's rules: it owns the title screen, mounts
+ * the canvas, and renders the HUD off engine snapshots. Everything that moves
+ * lives in `src/homealone/` (the directory kept its first name), and
+ * `src/homealone/README.md` explains how the game is put together.
  */
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { HomeAloneEngine, type Snapshot } from "@/homealone/engine";
-import { LEVELS, LEVEL_COUNT } from "@/homealone/levels";
+import { EXPLORE, LEVELS, LIGHTS, ROAM } from "@/homealone/levels";
 import HomeAloneHUD from "@/homealone/ui/HomeAloneHUD";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 
 export default function HomeAlone() {
   // Passport: every world records that you were here. See lib/passport.ts.
-  useWorldStamp("/home-alone", "Home Alone");
+  useWorldStamp("/house-rules", "House Rules");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<HomeAloneEngine | null>(null);
@@ -35,7 +35,7 @@ export default function HomeAlone() {
       eng.resize();
       eng.start();
     } catch (err) {
-      console.error("[Home Alone] boot failed", err);
+      console.error("[House Rules] boot failed", err);
       setError(err instanceof Error ? err.message : String(err));
       return;
     }
@@ -72,11 +72,11 @@ export default function HomeAlone() {
     if (!shot || !engine || !state || state.phase !== "menu") return;
     const params = new URLSearchParams(window.location.search);
     engine.setMuted(true);
-    engine.select(Number(params.get("level") ?? 6) || 6);
+    engine.select(Number(params.get("level") ?? ROAM) || ROAM);
     const w = window as unknown as Record<string, unknown>;
     w.__homeAlone = engine;
     // `begin()` re-spawns the player, so the harness must not pose the camera
-    // until after it has run — hence a separate ready flag rather than just
+    // until after it has run, hence a separate ready flag rather than just
     // the engine handle. Racing this made every capture come out identical,
     // at the spawn point, which reads exactly like a broken camera.
     window.setTimeout(() => {
@@ -111,7 +111,7 @@ export default function HomeAlone() {
 
       {error && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/95 p-8 text-center">
-          <h2 className="text-xl font-bold text-red-400">Home Alone failed to boot</h2>
+          <h2 className="text-xl font-bold text-red-400">House Rules failed to boot</h2>
           <p className="max-w-lg font-mono text-xs text-white/60">{error}</p>
           <Link to="/" className="mt-4 font-mono text-xs uppercase tracking-widest text-amber-300">
             ← back to the vibeverse
@@ -128,44 +128,50 @@ const COARSE =
     : false;
 
 const KEYS: Array<[string, string]> = [
-  ["WASD", "walk — hold SHIFT to run"],
-  ["MOUSE", "swing the camera round him"],
-  ["E", "switches, traps, windows, ropes"],
-  ["Q", "shout — makes them come to you"],
-  ["SPACE", "throw a brick. You have infinite bricks"],
-  ["F", "Buzz's BB gun, once you've found it"],
-  ["THE ARROW", "always points at what's next"],
+  ["WASD", "walk. Hold SHIFT to run"],
+  ["MOUSE", "swing the camera round"],
+  ["1 to 8", "pick a trap out of the box"],
+  ["F or CLICK", "lay it where the ghost is"],
+  ["E", "light switches, pick a trap back up, the wire"],
+  ["Q", "shout. They come to wherever you are standing"],
+  ["R", "ring an alarm clock you laid"],
+  ["SPACE", "throw a snowball"],
+  ["G", "stop planning and let them in"],
 ];
 
 const TOUCH: Array<[string, string]> = [
-  ["STICK", "walk — the RUN pad makes him leg it"],
-  ["DRAG RIGHT", "swing the camera round him"],
-  ["● BUTTON", "switches, traps, windows, ropes"],
-  ["SHOUT", "makes them come to you"],
-  ["🧱", "throw a brick. You have infinite bricks"],
-  ["BB", "Buzz's gun, once you've found it"],
-  ["THE ARROW", "always points at what's next"],
+  ["LEFT THUMB", "walk. The RUN pad makes you leg it"],
+  ["DRAG RIGHT", "swing the camera round"],
+  ["THE BOX", "tap a trap along the bottom to hold it"],
+  ["LAY", "the big button puts it down"],
+  ["SHOUT", "they come to wherever you are standing"],
+  ["❄", "throw a snowball"],
+];
+
+const HOW: Array<[string, string]> = [
+  ["They want the valuables", "Each one walks to something worth taking and carries it out of the door he came in by. The dotted lines show you where."],
+  ["Traps move people", "Marbles slide him the way he was going. A springboard throws him where you aimed it. Whatever he lands on goes off too."],
+  ["Chains are the score", "Marbles into a springboard into a wall is three links. Stairs, walls and other burglars all count."],
 ];
 
 function TitleScreen({ cleared, onSelect }: { cleared: number; onSelect: (n: number) => void }) {
   /*
    * Nothing is locked.
    *
-   * Gating level 4 behind level 3 is right for a game somebody bought and
-   * wrong for one somebody opened from a link on a phone — the whole reason to
-   * post this is "come and see the bit with the paint cans", and a person who
-   * arrives wanting that should not first be made to light seven rooms. The
-   * tick still marks what you have actually cleared, which is the part worth
-   * keeping.
+   * Gating night four behind night three is right for a game somebody bought
+   * and wrong for one somebody opened from a link on a phone. The tick still
+   * marks what you have actually cleared, which is the part worth keeping.
    */
   const controls = COARSE ? TOUCH : KEYS;
+  const nights = LEVELS.filter((l) => l.kind === "night");
+  const extras = LEVELS.filter((l) => l.kind !== "night");
   return (
     /*
      * This sits on top of a *live* snowy street, so the scrim carries the text
      * on its own, and on a tall phone the content scrolls rather than piling
-     * on top of itself. Both lessons are Five Nights', paid for once already.
+     * on top of itself.
      */
-    <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-black/72 font-mono backdrop-blur-[6px]">
+    <div className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-black/75 font-mono backdrop-blur-[6px]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_28%,rgba(210,150,60,0.18),transparent_62%)]" />
       <div
         className="relative flex min-h-full flex-col items-center justify-center px-5 py-10"
@@ -175,42 +181,63 @@ function TitleScreen({ cleared, onSelect }: { cleared: number; onSelect: (n: num
           The Vibeverse presents
         </p>
         <h1 className="mt-3 text-center text-[2.6rem] font-black leading-[0.9] tracking-tight text-[#f2e8d2] drop-shadow-[0_3px_36px_rgba(220,150,50,0.35)] sm:text-7xl">
-          HOME
-          <span className="mt-1 block text-[1.9rem] tracking-[0.22em] text-red-500/85 sm:text-5xl">ALONE</span>
+          HOUSE
+          <span className="mt-1 block text-[1.9rem] tracking-[0.22em] text-red-500/85 sm:text-5xl">RULES</span>
         </h1>
         <p className="mt-5 max-w-md text-balance text-center text-[11px] leading-relaxed tracking-wide text-white/50">
-          671 Lincoln Avenue, Winnetka, Illinois. Lights on the eaves, a tree
-          in the window, three floors, sixteen rooms and a basement with a
-          furnace in it — and two men outside who think the house is empty.
-          It is not.
+          You are eight. The house on Juniper Lane is yours until Sunday, and
+          some people outside have noticed. You have a box of parts, two
+          floors of corridors, and a few minutes before they come in.
         </p>
 
-        <div className="mt-8 flex w-full max-w-md flex-col gap-1.5">
-          {LEVELS.filter((l) => l.n <= LEVEL_COUNT).map((l) => {
-            return (
+        <div className="mt-6 grid w-full max-w-md gap-1.5">
+          {HOW.map(([head, body]) => (
+            <p key={head} className="text-[10px] leading-snug text-white/45">
+              <span className="font-bold text-amber-200/80">{head}.</span> {body}
+            </p>
+          ))}
+        </div>
+
+        <div className="mt-7 flex w-full max-w-md flex-col gap-1.5">
+          {nights.map((l) => (
+            <button
+              key={l.n}
+              onClick={() => onSelect(l.n)}
+              className="flex items-center gap-3 rounded-lg border border-amber-200/20 bg-white/[0.03] px-3 py-2.5 text-left text-white/85 transition active:scale-[0.99] hover:border-amber-200/45 hover:bg-amber-500/10"
+            >
+              <span className="w-5 shrink-0 text-center text-sm font-black tabular-nums">{l.n}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-bold tracking-tight sm:text-sm">{l.title}</span>
+                <span className="block truncate text-[9px] uppercase tracking-[0.16em] text-white/30">
+                  {l.night ? `${l.night.arrivals.length} of them · ${l.night.parts} parts` : l.goal}
+                </span>
+              </span>
+              {l.n <= cleared && <span className="shrink-0 text-[10px] text-amber-300/70">✓</span>}
+            </button>
+          ))}
+          {cleared >= nights.length && (
+            <button
+              onClick={() => onSelect(Math.max(nights.length, cleared) + 1)}
+              className="rounded-lg border border-red-300/25 bg-red-500/10 px-3 py-2.5 text-left text-white/85 transition hover:bg-red-500/20"
+            >
+              <span className="block text-[12px] font-bold tracking-tight">Night {Math.max(nights.length, cleared) + 1}</span>
+              <span className="block text-[9px] uppercase tracking-[0.16em] text-white/30">They keep coming</span>
+            </button>
+          )}
+          <div className="mt-1 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+            {extras.map((l) => (
               <button
                 key={l.n}
                 onClick={() => onSelect(l.n)}
-                className="flex items-center gap-3 rounded-lg border border-amber-200/20 bg-white/[0.03] px-3 py-2.5 text-left text-white/85 transition active:scale-[0.99] hover:border-amber-200/45 hover:bg-amber-500/10"
+                className="rounded-lg border border-white/10 px-3 py-2 text-left text-white/60 transition hover:border-white/25 hover:bg-white/5"
               >
-                <span className="w-5 shrink-0 text-center text-sm font-black tabular-nums">{l.n}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] font-bold tracking-tight sm:text-sm">{l.title}</span>
-                  <span className="block truncate text-[9px] uppercase tracking-[0.16em] text-white/30">{l.goal}</span>
+                <span className="block text-[11px] font-bold tracking-tight">{l.title}</span>
+                <span className="block text-[8px] uppercase leading-snug tracking-[0.12em] text-white/25">
+                  {l.n === ROAM ? "Every trap, no budget" : l.n === EXPLORE ? "No burglars. Just the house" : l.n === LIGHTS ? "Light it up before the van decides" : ""}
                 </span>
-                {l.n <= cleared && <span className="shrink-0 text-[10px] text-amber-300/70">✓</span>}
               </button>
-            );
-          })}
-          <button
-            onClick={() => onSelect(6)}
-            className="mt-1 rounded-lg border border-white/10 px-3 py-2.5 text-left text-white/60 transition hover:border-white/25 hover:bg-white/5"
-          >
-            <span className="block text-[12px] font-bold tracking-tight">Free roam</span>
-            <span className="block text-[9px] uppercase tracking-[0.16em] text-white/25">
-              No burglars, no clock. Just the house, the snow and the tree
-            </span>
-          </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-8 grid w-full max-w-md grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[10px] leading-snug tracking-[0.1em] text-white/30 sm:gap-x-8">
