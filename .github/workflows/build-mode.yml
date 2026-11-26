@@ -122,7 +122,12 @@ jobs:
           fi
           # An API key, when there is one, is what pays: it bills the console's
           # prepaid credits instead of the Claude plan's usage limits.
-          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then unset CLAUDE_CODE_OAUTH_TOKEN; fi
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            unset CLAUDE_CODE_OAUTH_TOKEN
+            echo "Paying with: ANTHROPIC_API_KEY (console credits)"
+          elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "Paying with: CLAUDE_CODE_OAUTH_TOKEN (Claude plan)"
+          fi
           if [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
             echo "::error::Build mode needs CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in the repo's Actions secrets."
             exit 1
