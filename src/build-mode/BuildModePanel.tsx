@@ -10,6 +10,7 @@
  * and check its work. Both go through the same fence and the same checks.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 
 import {
@@ -53,6 +54,14 @@ const STATUS_TONE: Record<Build["status"], string> = {
 const MODE_KEY = "vibe.buildMode.mode";
 const SHIP_KEY = "vibe.buildMode.ship";
 const BILLING_KEY = "vibe.buildMode.billing";
+const LAYOUT_KEY = "vibe.buildMode.layout";
+
+/** Width of the docked sidebar; the world shrinks by exactly this. */
+const DOCK_W = 380;
+/** Below this the world would be too narrow to play beside a sidebar. */
+const DOCK_MIN_VIEWPORT = 820;
+
+export type BuildLayout = "dock" | "mini";
 
 function readPref(key: string, fallback: string): string {
   try {
@@ -96,6 +105,39 @@ export default function BuildModePanel({
   const [billing, setBilling] = useState<BuildBilling>(() =>
     readPref(BILLING_KEY, "api") === "plan" ? "plan" : "api",
   );
+  const [layout, setLayoutState] = useState<BuildLayout>(() =>
+    readPref(LAYOUT_KEY, "dock") === "mini" ? "mini" : "dock",
+  );
+  const setLayout = (l: BuildLayout) => {
+    setLayoutState(l);
+    writePref(LAYOUT_KEY, l);
+  };
+  const [wide, setWide] = useState(() => window.innerWidth >= DOCK_MIN_VIEWPORT);
+  useEffect(() => {
+    const onResize = () => setWide(window.innerWidth >= DOCK_MIN_VIEWPORT);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  /**
+   * Docked, the page itself gets narrower instead of being covered. The class
+   * on <html> pins #root to the left of the sidebar, and its transform makes
+   * #root the containing block for every `position: fixed` inside it, so a
+   * world's HUD and canvas all land in the narrower box without any world
+   * knowing build mode exists. Canvases resize through their own observers.
+   * On a phone there is no room for both, so the sidebar overlays as before.
+   */
+  const docked = layout === "dock" && wide;
+  useEffect(() => {
+    if (!docked) return;
+    const html = document.documentElement;
+    html.style.setProperty("--vb-dock", `${DOCK_W}px`);
+    html.classList.add("vb-docked");
+    window.dispatchEvent(new Event("resize"));
+    return () => {
+      html.classList.remove("vb-docked");
+      window.dispatchEvent(new Event("resize"));
+    };
+  }, [docked]);
   const [builds, setBuilds] = useState<Build[]>([]);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -224,56 +266,38 @@ export default function BuildModePanel({
     }
   };
 
-  return (
-    <div
-      className="fixed right-0 top-0 z-[9999] flex h-full w-full max-w-[380px] flex-col border-l border-white/10 bg-[#0b0d18]/95 text-white shadow-2xl backdrop-blur"
-      onKeyDown={swallow}
-      onKeyUp={swallow}
-      onKeyPress={swallow}
-      onPointerDown={swallow}
-      onMouseDown={swallow}
-      onClick={swallow}
-      onWheel={swallow}
-      role="dialog"
-      aria-label="Build mode"
-    >
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <div>
-          <div className="text-sm font-semibold">✦ Build mode</div>
-          <div className="text-xs text-white/50">Changes {BUILD_SCOPES[scope].name} only</div>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md px-2 py-1 text-white/60 hover:bg-white/10 hover:text-white"
-          aria-label="Close build mode"
-        >
-          ✕
-        </button>
-      </div>
+  const swallowAll = {
+    onKeyDown: swallow,
+    onKeyUp: swallow,
+    onKeyPress: swallow,
+    onPointerDown: swallow,
+    onMouseDown: swallow,
+    onClick: swallow,
+    onWheel: swallow,
+  };
 
-      <div className="space-y-3 border-b border-white/10 px-4 py-4">
-        {configured === false && (
-          <div className="rounded-md bg-amber-400/15 px-3 py-2 text-xs text-amber-100">
-            Not switched on yet: the GitHub token for build mode has not been added.
-          </div>
-        )}
-        <div className="relative">
+  const promptBox = (rows: number) => (
+    <>
+      <div className="relative">
         <textarea
           ref={textRef}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey || layout === "mini") && !e.shiftKey) {
               e.preventDefault();
               void send();
             }
             if (e.key === "Escape") onClose();
           }}
-          rows={4}
+          rows={rows}
           maxLength={4000}
-          placeholder="Make the zipline twice as fast, and put a lighthouse on the east edge."
+          placeholder={
+            layout === "mini"
+              ? "What should change here?"
+              : "Make the zipline twice as fast, and put a lighthouse on the east edge."
+          }
           className="w-full resize-none rounded-md border border-white/15 bg-black/40 px-3 py-2 pr-11 text-sm text-white placeholder:text-white/30 focus:border-white/40 focus:outline-none"
         />
         {canListen && (
@@ -289,37 +313,167 @@ export default function BuildModePanel({
             🎙️
           </button>
         )}
+      </div>
+      {dictation.listening && <div className="text-[11px] text-rose-200">Listening. Say what you want to change.</div>}
+      {dictation.error && <div className="text-[11px] text-amber-200">{dictation.error}</div>}
+      {countdown !== null && (
+        <div className="flex items-center justify-between rounded-md bg-white/10 px-3 py-2 text-xs">
+          <span>Building this in {countdown}…</span>
+          <button type="button" onClick={cancelSpoken} className="font-semibold underline">
+            Cancel
+          </button>
         </div>
-        {dictation.listening && <div className="text-[11px] text-rose-200">Listening. Say what you want on the island.</div>}
-        {dictation.error && <div className="text-[11px] text-amber-200">{dictation.error}</div>}
-        {countdown !== null && (
-          <div className="flex items-center justify-between rounded-md bg-white/10 px-3 py-2 text-xs">
-            <span>Building this in {countdown}…</span>
-            <button type="button" onClick={cancelSpoken} className="font-semibold underline">
-              Cancel
-            </button>
+      )}
+    </>
+  );
+
+  const speed = (
+    <div className="flex rounded-md border border-white/15 p-0.5 text-xs" role="radiogroup" aria-label="Speed">
+      {(["fast", "smart"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          role="radio"
+          aria-checked={mode === m}
+          onClick={() => {
+            setMode(m);
+            writePref(MODE_KEY, m);
+          }}
+          title={m === "fast" ? "Sonnet: quick and cheap, a few minutes" : "Opus: reads more, checks more, slower"}
+          className={`rounded ${layout === "mini" ? "px-2" : "px-3"} py-1 ${mode === m ? "bg-white text-black" : "text-white/70 hover:text-white"}`}
+        >
+          {m === "fast" ? "⚡ Fast" : "🧠 Smart"}
+        </button>
+      ))}
+    </div>
+  );
+
+  const notes = (
+    <>
+      {error && <div className="rounded-md bg-rose-500/15 px-3 py-2 text-xs text-rose-100">{error}</div>}
+      {shippedSinceOpen && (
+        <div className="flex items-center justify-between rounded-md bg-emerald-400/15 px-3 py-2 text-xs text-emerald-100">
+          <span>A change landed. The deploy takes a minute or two.</span>
+          <button type="button" onClick={() => window.location.reload()} className="font-semibold underline">
+            Reload
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  const chip = (b: Build) => (
+    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_TONE[b.status]}`}>
+      {b.status === "running" ? "● " : ""}
+      {STATUS_LABEL[b.status] ?? b.status}
+    </span>
+  );
+
+  const layoutButtons = (
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={() => setLayout(layout === "dock" ? "mini" : "dock")}
+        className="rounded-md px-2 py-1 text-xs text-white/60 hover:bg-white/10 hover:text-white"
+        title={layout === "dock" ? "Shrink to a small widget" : "Open as a sidebar beside the world"}
+        aria-label={layout === "dock" ? "Shrink to a small widget" : "Open as a sidebar"}
+      >
+        {layout === "dock" ? "▭ Mini" : "◧ Sidebar"}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded-md px-2 py-1 text-white/60 hover:bg-white/10 hover:text-white"
+        aria-label="Close build mode"
+      >
+        ✕
+      </button>
+    </div>
+  );
+
+  if (layout === "mini") {
+    // The widget: one line of prompt, the speed, a send button, and how the
+    // latest build is doing. Everything else is one tap away in the sidebar.
+    const latest = builds.find((b) => LIVE_STATUSES.includes(b.status)) ?? builds[0];
+    return createPortal(
+      <div
+        className="fixed bottom-4 right-4 z-[9999] w-[min(320px,calc(100vw-2rem))] space-y-2 rounded-xl border border-white/10 bg-[#0b0d18]/90 p-3 text-white shadow-2xl backdrop-blur"
+        {...swallowAll}
+        role="dialog"
+        aria-label="Build mode"
+      >
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold text-white/80">
+            ✦ Build <span className="font-normal text-white/40">· {BUILD_SCOPES[scope].name}</span>
+          </div>
+          {layoutButtons}
+        </div>
+        {configured === false && (
+          <div className="rounded-md bg-amber-400/15 px-2 py-1.5 text-[11px] text-amber-100">Not switched on yet.</div>
+        )}
+        {promptBox(2)}
+        <div className="flex items-center gap-2">
+          {speed}
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={sending || prompt.trim().length < 3}
+            className="flex-1 rounded-md bg-white py-1.5 text-xs font-semibold text-black disabled:opacity-40"
+            title={ship ? "Lands on main once typecheck and build pass" : "Waits on its branch for Ship it"}
+          >
+            {sending ? "Sending…" : ship ? "Build & ship" : "Build"}
+          </button>
+        </div>
+        {notes}
+        {latest && (
+          <button
+            type="button"
+            onClick={() => setLayout("dock")}
+            className="flex w-full items-center gap-2 rounded-md bg-white/[0.04] px-2 py-1.5 text-left hover:bg-white/[0.08]"
+            title="Open the full history"
+          >
+            {chip(latest)}
+            <span className="min-w-0 flex-1 truncate text-[11px] text-white/70">
+              {latest.status === "running" || latest.status === "queued"
+                ? `${latest.step ?? (latest.status === "queued" ? "Waiting its turn" : "Starting")}…`
+                : latest.prompt}
+            </span>
+            {total > 1 && <span className="shrink-0 text-[10px] text-white/35">{total}</span>}
+          </button>
+        )}
+      </div>,
+      document.body,
+    );
+  }
+
+  return createPortal(
+    <div
+      className={`fixed right-0 top-0 z-[9999] flex h-full w-full flex-col border-l border-white/10 bg-[#0b0d18] text-white ${
+        docked ? "" : "max-w-[380px] bg-[#0b0d18]/95 shadow-2xl backdrop-blur"
+      }`}
+      style={docked ? { width: DOCK_W } : undefined}
+      {...swallowAll}
+      role={docked ? "complementary" : "dialog"}
+      aria-label="Build mode"
+    >
+      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <div>
+          <div className="text-sm font-semibold">✦ Build mode</div>
+          <div className="text-xs text-white/50">Changes {BUILD_SCOPES[scope].name} only</div>
+        </div>
+        {layoutButtons}
+      </div>
+
+      <div className="space-y-3 border-b border-white/10 px-4 py-4">
+        {configured === false && (
+          <div className="rounded-md bg-amber-400/15 px-3 py-2 text-xs text-amber-100">
+            Not switched on yet: the GitHub token for build mode has not been added.
           </div>
         )}
+        {promptBox(4)}
 
         <div className="flex items-center justify-between gap-2">
-          <div className="flex rounded-md border border-white/15 p-0.5 text-xs" role="radiogroup" aria-label="Speed">
-            {(["fast", "smart"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={mode === m}
-                onClick={() => {
-                  setMode(m);
-                  writePref(MODE_KEY, m);
-                }}
-                title={m === "fast" ? "Sonnet: quick and cheap, a few minutes" : "Opus: reads more, checks more, slower"}
-                className={`rounded px-3 py-1 ${mode === m ? "bg-white text-black" : "text-white/70 hover:text-white"}`}
-              >
-                {m === "fast" ? "⚡ Fast" : "🧠 Smart"}
-              </button>
-            ))}
-          </div>
+          {speed}
           <label className="flex cursor-pointer items-center gap-2 text-xs text-white/70">
             <input
               type="checkbox"
@@ -370,15 +524,7 @@ export default function BuildModePanel({
             : "Waits on its own branch until you press Ship it."}{" "}
           {canListen ? "Tap the mic and just say it, or Ctrl/Cmd+Enter to send." : "Ctrl/Cmd+Enter sends."}
         </p>
-        {error && <div className="rounded-md bg-rose-500/15 px-3 py-2 text-xs text-rose-100">{error}</div>}
-        {shippedSinceOpen && (
-          <div className="flex items-center justify-between rounded-md bg-emerald-400/15 px-3 py-2 text-xs text-emerald-100">
-            <span>A change landed. The deploy takes a minute or two.</span>
-            <button type="button" onClick={() => window.location.reload()} className="font-semibold underline">
-              Reload
-            </button>
-          </div>
-        )}
+        {notes}
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
@@ -387,10 +533,7 @@ export default function BuildModePanel({
         {builds.map((b) => (
           <div key={b.id} className="rounded-md border border-white/10 bg-white/[0.03] p-3">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_TONE[b.status]}`}>
-                {b.status === "running" ? "● " : ""}
-                {STATUS_LABEL[b.status] ?? b.status}
-              </span>
+              {chip(b)}
               <span className="text-[10px] text-white/40">
                 {b.mode === "smart" ? "🧠" : "⚡"} {ago(b.created_at)}
                 {b.requester_name ? ` · ${b.requester_name}` : ""}
@@ -496,6 +639,7 @@ export default function BuildModePanel({
           </button>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

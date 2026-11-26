@@ -7,18 +7,20 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 import WorldPicker from "@/components/WorldPicker";
 import LogInWithVibe from "@/components/vibe-auth/LogInWithVibe";
 import VibeCoinChip from "@/components/VibeCoinChip";
 import { VibeMark } from "@/components/HomeButton";
 import { shouldOpenSearch } from "@/lib/searchHotkey";
 import { IOS_APP } from "@/lib/iosApp";
+import { useUnseenCount } from "@/whatsnew";
 
 
 export default function GlobalNav() {
   const location = useLocation();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const unseen = useUnseenCount();
 
   // /start is the first sixty seconds of the VibeVerse — Vibey hosts it
   // full-bleed, so the world chips and profile pill stay out of frame.
@@ -113,6 +115,24 @@ export default function GlobalNav() {
             <Search className="h-3.5 w-3.5" aria-hidden />
             <span className={labelClass}>Search</span>
           </button>
+
+          {/* What's New: every update, with dates. The dot is how many landed
+              since this device last opened it. */}
+          <span className="mx-0.5 h-4 w-px bg-border/60" aria-hidden />
+          <Link
+            to="/whats-new"
+            className={chipClass(location.pathname === "/whats-new")}
+            title="What's New: every update, with dates"
+            aria-label={unseen > 0 ? `What's New, ${unseen} new` : "What's New"}
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-300" aria-hidden />
+            <span className={labelClass}>New</span>
+            {unseen > 0 && location.pathname !== "/whats-new" && (
+              <span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 rounded-full bg-amber-300 text-[10px] font-bold leading-none text-black flex items-center justify-center">
+                {unseen}
+              </span>
+            )}
+          </Link>
         </div>
       </div>
 

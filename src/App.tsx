@@ -43,6 +43,7 @@ import NotFound from "./pages/NotFound.tsx";
  */
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Scores = lazy(() => import("./pages/Scores.tsx"));
+const WhatsNew = lazy(() => import("./pages/WhatsNew.tsx"));
 const Magician = lazy(() => import("./pages/Magician.tsx"));
 const Oni = lazy(() => import("./pages/Oni.tsx"));
 const Unit7Playground = lazy(() => import("./pages/Unit7Playground.tsx"));
@@ -102,6 +103,7 @@ const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
 const Thalassa = lazy(() => import("./pages/Thalassa.tsx"));
 const FogCity = lazy(() => import("./pages/FogCity.tsx"));
 const CannonRun = lazy(() => import("./pages/CannonRun.tsx"));
+const GatchClip = lazy(() => import("./pages/GatchClip.tsx"));
 const Terminal = lazy(() => import("./pages/Terminal.tsx"));
 const Seafair = lazy(() => import("./pages/Seafair.tsx"));
 const GlassLake = lazy(() => import("./pages/GlassLake.tsx"));
@@ -328,6 +330,9 @@ const App = () => (
           <Route path="/admin/games" element={<AdminGames />} />
           {/* Lore, fun, smooth and hours played for every world. */}
           <Route path="/scores" element={<Scores />} />
+          <Route path="/whats-new" element={<WhatsNew />} />
+          <Route path="/whatsnew" element={<Navigate to="/whats-new" replace />} />
+          <Route path="/changelog" element={<Navigate to="/whats-new" replace />} />
           <Route path="/scoreboard" element={<Scores />} />
           {/* THE VIBE SHOP — the other half of the arcade. Coins won there buy
               something here that is recorded against your wallet rather than
@@ -439,6 +444,7 @@ const App = () => (
           {["/cannon-run", "/cannon-chase", "/cannonchase", "/cannonrun", "/car-chase", "/chase"].map((path) => (
             <Route key={path} path={path} element={<CannonRun />} />
           ))}
+          <Route path="/gatch/:id" element={<GatchClip />} />
           {["/thalassa", "/harbor", "/harbour", "/greek-harbor"].map((path) => (
             <Route key={path} path={path} element={<Thalassa />} />
           ))}

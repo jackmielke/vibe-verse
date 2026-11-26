@@ -37,7 +37,7 @@ export function LandmarkHud({ system, compact }: { system: MutableRefObject<Land
         <div className="pointer-events-none fixed left-1/2 top-20 z-30 -translate-x-1/2 rounded-full border border-white/15 bg-black/55 px-4 py-1.5 text-sm text-white backdrop-blur">
           <span className="mr-2">🛗 {ui.ride.name}</span>
           <span className="font-mono tabular-nums text-amber-300">
-            {ui.ride.up ? "▲" : "▼"} {ui.ride.altitude} m
+            {ui.ride.readout ?? `${ui.ride.up ? "▲" : "▼"} ${ui.ride.altitude} m`}
           </span>
         </div>
       )}

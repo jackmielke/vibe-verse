@@ -105,6 +105,8 @@ export interface MayhemHud {
   bombs: number | null;
   /** Standing at the Vibe Arms stall. */
   atStall: boolean;
+  /** Bad guys on the loose right now, out of `MAX_BAD`. */
+  bads: number;
 }
 
 export interface MayhemCtx {
@@ -128,6 +130,20 @@ export interface MayhemCtx {
    * batted out of the air the moment you jump out of a car is not a chase.
    */
   grounded: boolean;
+  /** The bad guy whose roof you are riding on, by id, or null. */
+  riding: number | null;
+}
+
+/** A bad guy's car, for seating a rider on its roof and finding it. */
+export interface BadSeat {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  speed: number;
+  /** Still jumping down from the roof into his car. */
+  boarding: boolean;
 }
 
 export interface MayhemOpts {
@@ -156,6 +172,14 @@ export interface MayhemOpts {
   onPickup(kind: GunKind): void;
   /** Gunshot / siren / boom hooks into the city's own sound, optional. */
   boom?(x: number, z: number): void;
+  /** A bad guy's car went up. */
+  onBadDown?(left: number): void;
+  /** The bad guys' roof pad, if the city built one: [x, y, z]. */
+  hideout?: [number, number, number];
+  /** Where cruisers roll out of the police station: [x, z, yaw]. */
+  garage?: [number, number, number];
+  /** Cruisers parked outside the station: [x, z, yaw] each. */
+  parked?: Array<[number, number, number]>;
 }
 
 export interface Mayhem {
@@ -193,6 +217,7 @@ export interface Mayhem {
     hits: number;
     bombs: Array<{ x: number; y: number; z: number; stuck: string | null; fuse: number }>;
     pops: number;
+    bads: Array<{ id: number; x: number; z: number; hp: number; speed: number; boarding: boolean; chasers: number }>;
   };
   setHeat(h: number): void;
   give(kind: GunKind): void;
@@ -200,12 +225,30 @@ export interface Mayhem {
   shootFrom(kind: GunKind, x: number, y: number, z: number, yaw: number): void;
   /** For harnesses: throw a pineapple from here, along `yaw`, at `speed`. */
   throwFrom(x: number, y: number, z: number, yaw: number, speed?: number): void;
+  /**
+   * Send a bad guy off the hideout roof into the nearest car. Returns what
+   * happened: "ok", "full" at `MAX_BAD`, or "nocar" when no car is near.
+   */
+  summon(): "ok" | "full" | "nocar";
+  /** The hideout pad on the roof, once placed: [x, y, z]. */
+  hideout(): [number, number, number] | null;
+  /** Every bad guy on the loose. The array is fresh each call. */
+  bads(): BadSeat[];
+  /** One bad guy by id, or null once he is gone. */
+  seat(id: number): BadSeat | null;
+  /** Hurt a bad guy's car (for a harness). At zero it blows up. */
+  hurtBad(id: number, dmg: number): void;
   dispose(): void;
 }
 
 const OWNED_KEY = "vibe.city.guns";
 const MAX_STARS = 5;
 const MAX_COPS = 5;
+/** Bad guys on the loose at once. */
+export const MAX_BAD = 3;
+const BAD_HP = 100;
+/** A little slower than a cruiser, so the police can catch him. */
+const BAD_TOP = 23;
 const MAX_FIRES = 18;
 const COP_HP = 100;
 /**
@@ -397,7 +440,7 @@ function buildStall(): { group: THREE.Group; display: THREE.Group } {
   return { group: g, display };
 }
 
-interface CopMesh {
+export interface CopMesh {
   group: THREE.Group;
   /** The two halves of the light bar, both blue, strobing in turn. */
   a: THREE.MeshBasicMaterial;
@@ -414,7 +457,7 @@ const CHARRED = new THREE.MeshStandardMaterial({ color: 0x1f1d1b, roughness: 0.9
  * bar on the roof. Nothing else marks it, which is the point: it looks like
  * any other car on the street until you notice the lights.
  */
-function buildCruiser(): CopMesh {
+export function buildCruiser(): CopMesh {
   const car = buildCityCar({ body: 0x0c0d0f, accent: 0x15171a, trim: 0xd9dde2 });
   const a = new THREE.MeshBasicMaterial({ color: 0x2a6bff });
   const b = new THREE.MeshBasicMaterial({ color: 0x2a6bff });
@@ -525,22 +568,28 @@ export function pickTarget(
 
 // ---- The module ----------------------------------------------------------
 
-interface Cop {
-  mesh: CopMesh;
+/** Anything that drives itself round the grid: a cruiser or a bad guy. */
+interface Driver {
   x: number;
   z: number;
   yaw: number;
   speed: number;
-  hp: number;
-  /** 0 while running; seconds since it was wrecked. */
-  dead: number;
   wpX: number;
   wpZ: number;
   repath: number;
-  ramCool: number;
   stuck: number;
   reverse: number;
-  target: "player" | "heist" | "leave";
+}
+
+interface Cop extends Driver {
+  mesh: CopMesh;
+  hp: number;
+  /** 0 while running; seconds since it was wrecked. */
+  dead: number;
+  ramCool: number;
+  target: "player" | "heist" | "leave" | "bad";
+  /** The bad guy it is after, by id, when `target` is "bad". */
+  prey: number;
   /** Seconds since it last had any reason to be here. */
   idle: number;
   /** Seconds of water-gun slowdown left. */
@@ -561,6 +610,70 @@ interface Bomb {
   age: number;
 }
 
+interface Bad extends Driver {
+  id: number;
+  /** The traffic car he took. */
+  car: number;
+  hp: number;
+  roofY: number;
+  /** Seconds into the jump off the roof; past `JUMP_T` he is driving. */
+  jump: number;
+  from: THREE.Vector3;
+  /** The junction he last left, so he does not double straight back. */
+  prevX: number;
+  prevZ: number;
+  ramCool: number;
+  figure: THREE.Group;
+  tag: THREE.Sprite;
+}
+
+/** Seconds from the roof to the driver's seat. */
+const JUMP_T = 1.6;
+
+/** A man in black with a red mask. Feet at the origin, facing +Z. */
+function buildBadGuy(): THREE.Group {
+  const g = new THREE.Group();
+  const black = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.7 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xd9a77e, roughness: 0.8 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xd7262e, roughness: 0.5 });
+  const add = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => {
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    g.add(mesh);
+    return mesh;
+  };
+  add(new THREE.BoxGeometry(0.5, 0.65, 0.3), black, 0, 1.05, 0);
+  for (const sx of [-0.13, 0.13]) add(new THREE.BoxGeometry(0.18, 0.7, 0.22), black, sx, 0.36, 0);
+  for (const sx of [-0.33, 0.33]) add(new THREE.BoxGeometry(0.14, 0.58, 0.16), black, sx, 1.06, 0);
+  add(new THREE.SphereGeometry(0.2, 14, 10), skin, 0, 1.58, 0);
+  add(new THREE.BoxGeometry(0.43, 0.1, 0.43), red, 0, 1.6, 0.01);
+  add(new THREE.CylinderGeometry(0.24, 0.24, 0.06, 14), black, 0, 1.74, 0);
+  add(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 14), black, 0, 1.86, 0);
+  return g;
+}
+
+/** A floating label so you can find him from down the street. */
+function badTag(): THREE.Sprite {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 96;
+  const x = c.getContext("2d")!;
+  x.fillStyle = "rgba(160,16,24,0.88)";
+  x.beginPath();
+  x.roundRect(8, 14, 240, 68, 30);
+  x.fill();
+  x.fillStyle = "#fff";
+  x.font = "bold 38px system-ui, sans-serif";
+  x.textAlign = "center";
+  x.textBaseline = "middle";
+  x.fillText("🦹 BAD GUY", 128, 50);
+  const t = new THREE.CanvasTexture(c);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false, transparent: true }));
+  s.scale.set(3.2, 1.2, 1);
+  return s;
+}
+
 interface Fire {
   x: number;
   y: number;
@@ -577,6 +690,11 @@ interface Tracer {
   t: number;
 }
 
+/** 1 next to you, 0 a block and a half away: how hard a far crash shakes the camera. */
+function earshotish(x: number, z: number, mx: number, mz: number): number {
+  return Math.max(0, 1 - Math.hypot(x - mx, z - mz) / 60);
+}
+
 export function createMayhem(opts: MayhemOpts): Mayhem {
   const { crashFx, smash, traffic } = opts;
   const group = new THREE.Group();
@@ -588,6 +706,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   let shots = 0;
   let hits = 0;
   const cops: Cop[] = [];
+  const bads: Bad[] = [];
+  let nextBadId = 1;
   const fires: Fire[] = [];
   let spawnCool = 0;
   let wallCool = 0;
@@ -649,6 +769,16 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   group.add(stall.group);
   let stallAt: [number, number, number] | null = null;
   let atStall = false;
+  const parkedMeshes: CopMesh[] = [];
+  for (const [x, z, yaw] of opts.parked ?? []) {
+    const m = buildCruiser();
+    m.group.position.set(x, 0, z);
+    m.group.rotation.y = yaw;
+    m.a.color.set(0x0a1a44);
+    m.b.color.set(0x0a1a44);
+    group.add(m.group);
+    parkedMeshes.push(m);
+  }
   let placed = false;
   const place = (blocked: (x: number, z: number, y: number) => boolean) => {
     placed = true;
@@ -671,6 +801,30 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     }
     if (best) {
       spots.rifle = [(best.minX + best.maxX) / 2, best.base + best.height + 1.1, (best.minZ + best.maxZ) / 2];
+    }
+    // The bad guys' hideout: the roof of a low building right by the middle
+    // of town, low enough to jetpack up to and close enough to find.
+    let hq: WorldBox | null = null;
+    let hqD = Infinity;
+    for (const b of opts.boxes) {
+      if (b === best) continue;
+      const w = b.maxX - b.minX;
+      const d = b.maxZ - b.minZ;
+      if (b.base !== 0 || b.height < 7 || b.height > 22 || w < 8 || d < 8) continue;
+      const cx = (b.minX + b.maxX) / 2;
+      const cz = (b.minZ + b.maxZ) / 2;
+      const dist = Math.hypot(cx - 40, cz - 40);
+      if (dist < hqD) {
+        hqD = dist;
+        hq = b;
+      }
+    }
+    if (opts.hideout) {
+      hideoutAt = opts.hideout;
+      buildHideout(hideoutAt);
+    } else if (hq) {
+      hideoutAt = [(hq.minX + hq.maxX) / 2, hq.base + hq.height, (hq.minZ + hq.maxZ) / 2];
+      buildHideout(hideoutAt);
     }
     // Vibe Arms goes where the free Glock used to lie.
     for (const s of opts.stallSpots) {
@@ -804,6 +958,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       cops: cops.filter((c) => c.dead === 0).length,
       gun,
       owned: ALL_GUNS.filter((k) => owned.has(k)),
+      bads: bads.length,
       bombs: hasBombs ? bombsInHand : null,
       atStall,
     };
@@ -829,7 +984,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       fires.push({ x: t.x, y: 3, z: t.z, t: Math.random() * 0.6, life: 15 + Math.random() * 5, tree: true, fallen: false, nextSpread: 3 });
     }
   };
-  const boom = (x: number, y: number, z: number, power: number) => {
+  const boom = (x: number, y: number, z: number, power: number, byPlayer = true) => {
     crashFx.explode(x, y, z, power, 0xff8a3d);
     crashFx.kick(0.5);
     traffic.blast(x, z, 12, 18);
@@ -840,7 +995,11 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     for (const c of cops) {
       if (c.dead > 0) continue;
       const d = Math.hypot(c.x - x, c.z - z);
-      if (d < 11) hurtCop(c, 90 * (1 - d / 11));
+      if (d < 11) hurtCop(c, 90 * (1 - d / 11), byPlayer);
+    }
+    for (const b of bads) {
+      const d = Math.hypot(b.x - x, b.z - z);
+      if (b.jump >= JUMP_T && d < 11 && d > 0.5) hurtBad(b, 70 * (1 - d / 11));
     }
   };
 
@@ -853,7 +1012,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     c.speed *= 0.3;
     c.mesh.char();
     if (byPlayer) crime(0.8);
-    boom(c.x, 0.9, c.z, 1.6);
+    boom(c.x, 0.9, c.z, 1.6, byPlayer);
     crashFx.debris(c.x, 1.2, c.z, 10, 0xf4f5f7, 8);
   };
 
@@ -875,6 +1034,20 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   };
 
   const spawnCop = (px: number, pz: number) => {
+    // Out of the station garage when the station is within a few blocks and
+    // nobody is already sitting in the doorway.
+    const g = opts.garage;
+    if (g && Math.hypot(g[0] - px, g[1] - pz) < 230 && Math.random() < 0.6 &&
+      !cops.some((c) => Math.hypot(c.x - g[0], c.z - g[1]) < 6)) {
+      const mesh = buildCruiser();
+      group.add(mesh.group);
+      cops.push({
+        mesh, x: g[0], z: g[1], yaw: g[2], speed: 4, hp: COP_HP, dead: 0,
+        wpX: g[0] + Math.sin(g[2]) * 8, wpZ: g[1] + Math.cos(g[2]) * 8, repath: 0.6, ramCool: 1, stuck: 0, reverse: 0,
+        target: "player", prey: -1, idle: 0, soaked: 0,
+      });
+      return;
+    }
     // A junction 70 to 120 m away, picked at random among the ones that fit.
     const choices: Array<[number, number]> = [];
     for (const x of LINES) {
@@ -889,7 +1062,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     group.add(mesh.group);
     cops.push({
       mesh, x, z, yaw: Math.atan2(px - x, pz - z), speed: 6, hp: COP_HP, dead: 0,
-      wpX: px, wpZ: pz, repath: 0, ramCool: 1, stuck: 0, reverse: 0, target: "player", idle: 0, soaked: 0,
+      wpX: px, wpZ: pz, repath: 0, ramCool: 1, stuck: 0, reverse: 0, target: "player", prey: -1, idle: 0, soaked: 0,
     });
   };
 
@@ -951,6 +1124,18 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         route(blocked, c, tx, tz);
       }
     }
+    steer(blocked, c, dt, c.soaked > 0 ? COP_TOP * 0.3 : COP_TOP, (d) => hurtCop(c, d, false));
+  };
+
+  /**
+   * Drive toward the current waypoint: turn, throttle, and deal with whatever
+   * is in the way. Bot cars get barged aside, walls bounce you, and being
+   * stuck for a second backs you out.
+   */
+  const steer = (
+    blocked: (x: number, z: number, y: number) => boolean, c: Driver, dt: number,
+    top: number, hurtSelf: (dmg: number) => void,
+  ) => {
     const dx = c.wpX - c.x;
     const dz = c.wpZ - c.z;
     const dist = Math.hypot(dx, dz);
@@ -964,7 +1149,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     } else {
       const turn = 2.8 * THREE.MathUtils.clamp(Math.abs(c.speed) / 8, 0.3, 1);
       c.yaw += THREE.MathUtils.clamp(dyaw, -turn * dt, turn * dt);
-      const top = c.soaked > 0 ? COP_TOP * 0.3 : COP_TOP;
+      void dist;
       const want = top * Math.max(0.3, Math.cos(dyaw));
       c.speed += THREE.MathUtils.clamp(want - c.speed, -COP_ACCEL * 1.5 * dt, COP_ACCEL * dt);
     }
@@ -984,7 +1169,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (id >= 0) {
         traffic.shove(id, fx * sign, fz * sign, 4 + Math.abs(c.speed) * 0.7);
         traffic.damage(id, Math.abs(c.speed) * 1.5);
-        hurtCop(c, Math.abs(c.speed) * 0.5, false);
+        hurtSelf(Math.abs(c.speed) * 0.5);
         crashFx.sparks(nx, 0.7, nz, fx, fz, 8);
         c.x = nx;
         c.z = nz;
@@ -998,7 +1183,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       } else {
         if (Math.abs(c.speed) > 10) {
           crashFx.sparks(c.x + fx * 2, 0.7, c.z + fz * 2, -fx, -fz, 6);
-          hurtCop(c, Math.abs(c.speed) * 1.1, false);
+          hurtSelf(Math.abs(c.speed) * 1.1);
         }
         c.speed *= -0.2;
         c.stuck += dt * 2;
@@ -1016,9 +1201,220 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     c.z = THREE.MathUtils.clamp(c.z, -lim, lim);
   };
 
+  // ---- Bad guys ------------------------------------------------------------
+  /**
+   * A bad guy is a traffic car with somebody else at the wheel. He takes it
+   * from the fleet with `claim`, so it stops being a bot and is posed by
+   * `drive` every frame, and when his health runs out it is handed back with
+   * `detonate`, which is the same explosion a car you were driving gets.
+   * Nobody arrests him. The only way out is up.
+   */
+  let hideoutAt: [number, number, number] | null = null;
+  const hideoutGroup = new THREE.Group();
+  group.add(hideoutGroup);
+  const hideoutGeos: THREE.BufferGeometry[] = [];
+  const hideoutMats: THREE.Material[] = [];
+  let hideoutBeacon: THREE.Mesh | null = null;
+  const buildHideout = ([x, y, z]: [number, number, number]) => {
+    hideoutGroup.position.set(x, y + 0.03, z);
+    const padMat = new THREE.MeshBasicMaterial({ color: 0xc81e2a, transparent: true, opacity: 0.85, depthWrite: false });
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false });
+    const beamMat = new THREE.MeshBasicMaterial({ color: 0xff3344, transparent: true, opacity: 0.22, depthWrite: false });
+    hideoutMats.push(padMat, ringMat, beamMat);
+    const pad = new THREE.CircleGeometry(2.6, 32).rotateX(-Math.PI / 2);
+    const ring = new THREE.RingGeometry(2.6, 2.95, 40).rotateX(-Math.PI / 2);
+    const beam = new THREE.CylinderGeometry(0.5, 0.5, 40, 12, 1, true).translate(0, 20, 0);
+    hideoutGeos.push(pad, ring, beam);
+    hideoutGroup.add(new THREE.Mesh(pad, padMat), new THREE.Mesh(ring, ringMat));
+    hideoutBeacon = new THREE.Mesh(beam, beamMat);
+    hideoutGroup.add(hideoutBeacon);
+    // The sign: a bad guy standing on the pad, waiting.
+    const boss = buildBadGuy();
+    boss.scale.setScalar(1.15);
+    hideoutGroup.add(boss);
+    const sign = badTag();
+    sign.position.set(0, 3.2, 0);
+    hideoutGroup.add(sign);
+  };
+
+  const hurtBad = (b: Bad, dmg: number) => {
+    if (b.hp <= 0 || dmg <= 0) return;
+    b.hp -= dmg;
+    if (b.hp > 0) return;
+    // He goes up with the car. Do it after this frame's loop so the array is
+    // not shrinking under somebody iterating it.
+    deadBads.push(b);
+  };
+  const deadBads: Bad[] = [];
+  const removeBad = (b: Bad) => {
+    const i = bads.indexOf(b);
+    if (i < 0) return;
+    bads.splice(i, 1);
+    group.remove(b.figure, b.tag);
+    b.figure.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.geometry.dispose();
+        (m.material as THREE.Material).dispose();
+      }
+    });
+    b.tag.material.map?.dispose();
+    b.tag.material.dispose();
+  };
+  const blowBad = (b: Bad) => {
+    if (b.jump >= JUMP_T) traffic.detonate(b.car, b.yaw + Math.PI);
+    else traffic.release(b.car);
+    boom(b.x, 1, b.z, 1.4, false);
+    crashFx.debris(b.x, 1.4, b.z, 12, 0x2b2d31, 9);
+    removeBad(b);
+    opts.onBadDown?.(bads.length);
+  };
+
+  /** Which way to run next: the junction that is ahead, clear, and furthest from the police. */
+  const flee = (blocked: (x: number, z: number, y: number) => boolean, b: Bad) => {
+    let bx = b.wpX;
+    let bz = b.wpZ;
+    let best = -Infinity;
+    const fx = Math.sin(b.yaw);
+    const fz = Math.cos(b.yaw);
+    for (const x of LINES) {
+      if (Math.abs(x - b.x) > opts.pitch * 1.2) continue;
+      for (const z of LINES) {
+        if (Math.abs(z - b.z) > opts.pitch * 1.2) continue;
+        const d = Math.hypot(x - b.x, z - b.z);
+        if (d < 6) continue;
+        if (!clear(blocked, b.x, b.z, x, z)) continue;
+        let s = ((x - b.x) * fx + (z - b.z) * fz) / d * 14 + Math.random() * 18;
+        if (Math.abs(x - b.prevX) < 1 && Math.abs(z - b.prevZ) < 1) s -= 30;
+        let cop = 140;
+        for (const c of cops) if (c.dead === 0) cop = Math.min(cop, Math.hypot(c.x - x, c.z - z));
+        s += cop * 0.35;
+        if (s > best) {
+          best = s;
+          bx = x;
+          bz = z;
+        }
+      }
+    }
+    b.prevX = b.wpX;
+    b.prevZ = b.wpZ;
+    b.wpX = bx;
+    b.wpZ = bz;
+  };
+
+  const summon = (): "ok" | "full" | "nocar" => {
+    if (bads.length >= MAX_BAD) return "full";
+    if (!hideoutAt) return "nocar";
+    const [hx, hy, hz] = hideoutAt;
+    const near = traffic
+      .debugNear(hx, hz, 90)
+      .filter((c) => !c.wreck && !c.hit && !c.crushed && !bads.some((b) => b.car === c.id))
+      .sort((a, b) => Math.hypot(a.x - hx, a.z - hz) - Math.hypot(b.x - hx, b.z - hz));
+    for (const c of near) {
+      const ride = traffic.claim(c.id);
+      if (!ride) continue;
+      const figure = buildBadGuy();
+      const tag = badTag();
+      figure.position.set(hx, hy, hz);
+      group.add(figure, tag);
+      const yaw = ride.yaw - Math.PI;
+      bads.push({
+        id: nextBadId++, car: c.id, hp: BAD_HP, roofY: ride.roofY,
+        x: ride.x, z: ride.z, yaw, speed: 0,
+        wpX: ride.x + Math.sin(yaw) * 20, wpZ: ride.z + Math.cos(yaw) * 20,
+        repath: 0, stuck: 0, reverse: 0,
+        jump: 0, from: new THREE.Vector3(hx, hy, hz),
+        prevX: Infinity, prevZ: Infinity, ramCool: 0, figure, tag,
+      });
+      return "ok";
+    }
+    return "nocar";
+  };
+
+  const updateBads = (dt: number, blocked: (x: number, z: number, y: number) => boolean, ctx: MayhemCtx) => {
+    const me = ctx.driving ?? ctx.player;
+    for (const b of bads) {
+      b.ramCool = Math.max(0, b.ramCool - dt);
+      if (b.jump < JUMP_T) {
+        // Off the roof in one arc, into the car, which waits for him.
+        b.jump += dt;
+        const k = Math.min(1, b.jump / JUMP_T);
+        const tx = b.x + Math.cos(b.yaw) * -0.4;
+        const tz = b.z - Math.sin(b.yaw) * -0.4;
+        b.figure.position.set(
+          b.from.x + (tx - b.from.x) * k,
+          b.from.y + (0.6 - b.from.y) * k + Math.sin(k * Math.PI) * 5,
+          b.from.z + (tz - b.from.z) * k,
+        );
+        b.figure.rotation.set(k * Math.PI * 2, Math.atan2(tx - b.from.x, tz - b.from.z), 0);
+        traffic.drive(b.car, b.x, 0, b.z, b.yaw + Math.PI);
+        b.tag.position.set(b.figure.position.x, b.figure.position.y + 2.6, b.figure.position.z);
+        continue;
+      }
+      // Driving. Pick the next junction when this one is reached or lost.
+      b.repath -= dt;
+      if (b.repath <= 0 || Math.hypot(b.wpX - b.x, b.wpZ - b.z) < 6) {
+        b.repath = 2.5;
+        if (Math.hypot(b.wpX - b.x, b.wpZ - b.z) < 6 || !clear(blocked, b.x, b.z, b.wpX, b.wpZ)) flee(blocked, b);
+      }
+      steer(blocked, b, dt, BAD_TOP, (d) => hurtBad(b, d * 0.6));
+      traffic.drive(b.car, b.x, 0, b.z, b.yaw + Math.PI);
+      // He sits in the driver's seat; the label floats over the roof.
+      const lx = Math.cos(b.yaw) * 0.38;
+      const lz = -Math.sin(b.yaw) * 0.38;
+      b.figure.position.set(b.x + lx, 0.15, b.z + lz);
+      b.figure.rotation.set(0, b.yaw, 0);
+      b.figure.scale.setScalar(0.82);
+      b.tag.position.set(b.x, b.roofY + 2.2 + Math.sin(clock * 3 + b.id) * 0.15, b.z);
+      // Hurt: smoke, then fire.
+      if (b.hp < 65) {
+        const hurt = (65 - b.hp) / 65;
+        crashFx.smoulder(dt, b.x + Math.sin(b.yaw) * 1.5, 1.1, b.z + Math.cos(b.yaw) * 1.5, hurt, b.hp < 30 ? hurt : 0);
+      }
+      // You, in something, ramming him.
+      if (b.id !== ctx.riding && b.ramCool <= 0) {
+        const d = Math.hypot(me.x - b.x, me.z - b.z);
+        if (d < (ctx.driving ? 3 : 2.4)) {
+          const nx = (me.x - b.x) / (d || 1);
+          const nz = (me.z - b.z) / (d || 1);
+          const into = Math.max(0, b.speed * (Math.sin(b.yaw) * nx + Math.cos(b.yaw) * nz));
+          const meInto = ctx.driving
+            ? Math.max(0, ctx.driving.speed * -(Math.sin(ctx.driving.yaw) * nx + Math.cos(ctx.driving.yaw) * nz))
+            : 0;
+          if (meInto > 3) {
+            hurtBad(b, meInto * 2.2);
+            opts.onContact(-nx, -nz, meInto, false);
+            crashFx.sparks((me.x + b.x) / 2, 0.8, (me.z + b.z) / 2, nx, nz, 10);
+            b.ramCool = 1;
+          } else if (into > 4 && (ctx.driving || (ctx.grounded && ctx.player.y < 1.2))) {
+            opts.onContact(nx, nz, into + 3, true);
+            b.speed *= 0.5;
+            b.ramCool = 1.5;
+          }
+          const push = (ctx.driving ? 3 : 2.4) - d;
+          b.x -= nx * push;
+          b.z -= nz * push;
+        }
+      }
+    }
+    while (deadBads.length) blowBad(deadBads.pop()!);
+  };
+
+  const seatOf = (b: Bad): BadSeat => ({
+    id: b.id,
+    x: b.x,
+    y: b.jump >= JUMP_T ? b.roofY : b.figure.position.y,
+    z: b.z,
+    yaw: b.yaw,
+    speed: b.speed,
+    boarding: b.jump < JUMP_T,
+  });
+
   // ---- Shooting ----------------------------------------------------------
   let shotCool = 0;
-  const cands: Array<{ x: number; z: number; weight: number; kind: "cop" | "car" | "tree"; ref: number }> = [];
+  const cands: Array<{ x: number; z: number; weight: number; kind: "cop" | "car" | "tree" | "bad"; ref: number }> = [];
+  /** The bad guy you are riding with, so you do not shoot your own ride. */
+  let riding: number | null = null;
   const shoot = (
     blocked: (x: number, z: number, y: number) => boolean, kind: GunKind,
     ox: number, oy: number, oz: number, yaw: number,
@@ -1028,6 +1424,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     cands.length = 0;
     cops.forEach((c, i) => {
       if (c.dead === 0) cands.push({ x: c.x, z: c.z, weight: 0.35, kind: "cop", ref: i });
+    });
+    bads.forEach((b, i) => {
+      if (b.jump >= JUMP_T && b.id !== riding) cands.push({ x: b.x, z: b.z, weight: 0.4, kind: "bad", ref: i });
     });
     for (const car of traffic.debugNear(ox, oz, spec.range)) {
       if (!car.wreck) cands.push({ x: car.x, z: car.z, weight: 0.1, kind: "car", ref: car.id });
@@ -1083,6 +1482,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         if (spec.soak) c.soaked = Math.min(8, Math.max(c.soaked, spec.soak));
         crime(spec.soak ? 0.05 : 0.3);
         if (!spec.soak) crashFx.sparks(ex, 1, ez, -ax, -az, 8);
+      } else if (t.kind === "bad") {
+        hurtBad(bads[t.ref], spec.damage);
+        if (spec.soak) bads[t.ref].speed *= 0.4;
+        crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
       } else if (t.kind === "car") {
         traffic.damage(t.ref, spec.damage);
         if (spec.soak) traffic.soak(t.ref, spec.soak);
@@ -1423,12 +1826,21 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       // Who should be out there.
       const me = ctx.driving ?? ctx.player;
       const heistLoose = !!ctx.heist && ctx.inCity;
-      const want = ctx.inCity ? copsFor(heat, heistLoose) : 0;
+      riding = ctx.riding;
+      updateBads(dt, blocked, ctx);
+      const loose = bads.filter((b) => b.jump >= JUMP_T);
+      const forMe = ctx.inCity ? copsFor(heat, heistLoose) : 0;
+      // Every bad guy on the loose draws two cruisers of his own.
+      const want = Math.min(MAX_COPS + 2, forMe + loose.length * 2);
       const alive = cops.filter((c) => c.dead === 0 && c.target !== "leave").length;
       spawnCool -= dt;
-      if (alive < want && spawnCool <= 0 && cops.length < MAX_COPS + 3) {
+      if (alive < want && spawnCool <= 0 && cops.length < MAX_COPS + 4) {
         spawnCool = 2.2;
-        spawnCop(me.x, me.z);
+        if (alive < forMe || !loose.length) spawnCop(me.x, me.z);
+        else {
+          const b = loose[alive % loose.length];
+          spawnCop(b.x, b.z);
+        }
       }
 
       let nearest = Infinity;
@@ -1451,9 +1863,21 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         const aliveRank = cops.filter((o) => o.dead === 0).indexOf(c);
         if (heistLoose && (heat < 1 || dHeist < dMe || aliveRank >= copsFor(heat, false))) c.target = "heist";
         else if (heat >= 0.5 && ctx.inCity && aliveRank < Math.max(1, copsFor(heat, false))) c.target = "player";
-        else c.target = "leave";
-        const tx = c.target === "heist" ? ctx.heist!.x : me.x;
-        const tz = c.target === "heist" ? ctx.heist!.z : me.z;
+        else if (loose.length) {
+          // Off duty for you, so after the nearest bad guy instead.
+          c.target = "bad";
+          let bd = Infinity;
+          for (const b of loose) {
+            const d = Math.hypot(b.x - c.x, b.z - c.z);
+            if (d < bd) {
+              bd = d;
+              c.prey = b.id;
+            }
+          }
+        } else c.target = "leave";
+        const prey = c.target === "bad" ? loose.find((b) => b.id === c.prey) ?? null : null;
+        const tx = c.target === "heist" ? ctx.heist!.x : prey ? prey.x : me.x;
+        const tz = c.target === "heist" ? ctx.heist!.z : prey ? prey.z : me.z;
         if (c.soaked > 0) c.soaked -= dt;
         driveCop(blocked, c, dt, tx, tz);
         if (c.dead > 0) continue;
@@ -1464,7 +1888,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         c.ramCool = Math.max(0, c.ramCool - dt);
         if (c.target === "leave") {
           c.idle += dt;
-          if (c.idle > 25 || dMe > 140) {
+          if (c.idle > 25 || (dMe > 140 && !loose.length)) {
             removeCop(i);
             continue;
           }
@@ -1474,6 +1898,24 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         nearest = Math.min(nearest, dMe);
 
         // Contact.
+        if (prey && c.ramCool <= 0 && Math.hypot(prey.x - c.x, prey.z - c.z) < 3.1) {
+          const d = Math.hypot(prey.x - c.x, prey.z - c.z) || 1;
+          const nx = (prey.x - c.x) / d;
+          const nz = (prey.z - c.z) / d;
+          const into = Math.max(0, c.speed * (Math.sin(c.yaw) * nx + Math.cos(c.yaw) * nz));
+          hurtBad(prey, into * 1.3 + 5);
+          hurtCop(c, into * 0.4, false);
+          prey.x += nx * 0.6;
+          prey.z += nz * 0.6;
+          prey.yaw += (Math.random() - 0.5) * 0.4;
+          c.speed *= 0.4;
+          c.ramCool = 1.1;
+          crashFx.sparks((prey.x + c.x) / 2, 0.8, (prey.z + c.z) / 2, nx, nz, 10);
+          crashFx.kick(0.15 * earshotish(c.x, c.z, me.x, me.z));
+          const push = 3.1 - d;
+          c.x -= nx * push;
+          c.z -= nz * push;
+        }
         if (c.target === "heist" && dHeist < 2.8) {
           opts.onBust();
           c.speed *= 0.2;
@@ -1536,6 +1978,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         }
       }
       sirenTo(nearest < 120 ? (1 - nearest / 120) : 0, clock);
+      if (hideoutBeacon) (hideoutBeacon.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.sin(clock * 2.5) * 0.08;
 
       // Fire.
       fireCool -= dt;
@@ -1585,11 +2028,26 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
           stuck: b.stuck ? (b.stuck.kind === "car" ? `car:${b.stuck.id}` : b.stuck.kind) : null,
         })),
         pops,
+        bads: bads.map((b) => ({
+          id: b.id, x: b.x, z: b.z, hp: b.hp, speed: b.speed, boarding: b.jump < JUMP_T,
+          chasers: cops.filter((c) => c.dead === 0 && c.target === "bad" && c.prey === b.id).length,
+        })),
       };
     },
     setHeat(h) {
       heat = THREE.MathUtils.clamp(h, 0, MAX_STARS);
       quiet = 0;
+    },
+    summon,
+    hideout: () => hideoutAt,
+    bads: () => bads.map(seatOf),
+    seat(id) {
+      const b = bads.find((o) => o.id === id);
+      return b ? seatOf(b) : null;
+    },
+    hurtBad(id, dmg) {
+      const b = bads.find((o) => o.id === id);
+      if (b) hurtBad(b, dmg);
     },
     give(kind) {
       owned.add(kind);
@@ -1627,6 +2085,14 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     },
     dispose() {
       while (cops.length) removeCop(cops.length - 1);
+      for (const m of parkedMeshes) m.dispose();
+      while (bads.length) {
+        const b = bads[0];
+        traffic.release(b.car);
+        removeBad(b);
+      }
+      hideoutGeos.forEach((g) => g.dispose());
+      hideoutMats.forEach((m) => m.dispose());
       opts.scene.remove(group);
       while (bombs.length) removeBomb(bombs.length - 1);
       for (const k of ALL_GUNS) opts.hand.remove(inHand[k]);

@@ -1,269 +1,353 @@
-# The VibeVerse
+<div align="center">
 
-**A massive collection of AI-coded games, where every builder grows the universe.**
+# 🌌 The VibeVerse
 
-Forty-odd worlds and games, every one of them vibe-coded, all served from one
-website. No install, no account, no launcher, no store page — open a link and
-you are inside a world a few seconds later. Live at
-[myvibeverse.com](https://myvibeverse.com).
+### A whole universe of AI-built games, and every one of them is just a link.
 
-It is a real collection: a 110,000-line open-world game set in the actual
-geometry of San Francisco, an arcade kart racer, a tropical FPS, 63 holes of
-physics golf, a procedural galaxy you fly a survey ship through, an evolution
-sim, a geoguessing game, and a floating village built on top of the real
-Healdsburg map, which is where the whole thing started.
+**[myvibeverse.com](https://myvibeverse.com)** · [Every world on one page](https://myvibeverse.com/game) · [Watch the 30 second trailer](https://jack-clips.vercel.app/e7502921)
 
-Nobody planned this as a portfolio. Each world was its own spontaneous weekend
-project, built fast because the tools got fast, and they ended up in one repo
-because a hub of forty games is more fun than forty abandoned tabs.
+<img src="src/assets/worlds/cannon-run.jpg" width="32%" alt="Cannon Chase"> <img src="src/assets/worlds/magician.jpg" width="32%" alt="The Magician"> <img src="src/assets/worlds/vibe-island.jpg" width="32%" alt="Vibe Island">
+<img src="src/assets/worlds/san-francisco.jpg" width="32%" alt="San Francisco"> <img src="src/assets/worlds/oni.jpg" width="32%" alt="Zombie Tag"> <img src="src/assets/worlds/kart.jpg" width="32%" alt="Vibe Kart">
 
-**Start at [/game](https://myvibeverse.com/game)** — every world and game on
-one page.
+</div>
 
-## The collection
+---
 
-Everything below is playable in a browser right now. `/game` is the same list,
-with screenshots.
+Send somebody a link. A few seconds later they are driving a pickup truck with
+a pirate cannon bolted in the back, or standing in a Japanese valley telling a
+wizard robot to make it snow, or running from a zombie in a festival square
+with six friends on their phones.
+
+No install. No account. No launcher. No app store. **Just a link.**
+
+The VibeVerse is **65+ worlds and games** in one website: an open-world San
+Francisco in the city's real weather, a GTA-style island with cops and
+helicopters, a night highway chase with its own TV news channel, a voice
+world you talk into existence, arcade racers, battle royales, physics golf,
+a galaxy you fly a survey ship through, and a lot of beautifully strange
+little places in between. Every line of it was vibe-coded, and the
+universe keeps growing, sometimes while you are standing in it.
+
+> **By the numbers:** ~720,000 lines of TypeScript · 65+ playable worlds ·
+> 100+ routes · 33 edge functions · 130+ test files · one link.
+
+---
+
+## ✨ The headliners
+
+### 💣 Cannon Chase · [`/cannon-run`](https://myvibeverse.com/cannon-run)
+
+<img src="docs/readme/chase-linda.jpg" width="49%" alt="Two trucks chased by two trains"> <img src="docs/readme/chase-gatch-news.jpg" width="49%" alt="Gatch News covering the chase live">
+
+Midnight on a desert highway. You stole **Mad Mort's** ship's cannon, it is
+bolted into the bed of your pickup, and he wants it back. Swerve, hit the
+nitro, lob iron at him until his truck gives up... and then he comes back in
+something bigger. A wagon. A tow truck. A monster truck. A cement mixer. An
+18-wheeler. **A freight train.** And then another train, because the chase
+never ends.
+
+- **Lunatic Linda**, Mort's cousin with the orange hair and the grinding
+  teeth, joins the hunt in two-player.
+- **Two players** on one keyboard, or a friend joins **from their phone** by
+  scanning a QR code.
+- **Junkyard henchmen** in ridiculous hats show up as backup: *"Go get 'em, guys!"*
+- **Gatch News** covers your chase live from a news chopper, picture in
+  picture, with BREAKING headlines and Gatch Radio between bulletins.
+- **Replay:** the game records every bulletin, so the end screen hands you
+  the Gatch News replay of your own run.
+- **The story book** (`?story`) tells how it all started, in a one-player and
+  a two-player version.
+- A garage to spend your cash in, a Thanksgiving mode, and an aurora sky.
+
+<img src="docs/readme/chase-train.jpg" width="49%" alt="A train under the aurora"> <img src="docs/readme/chase-storybook.jpg" width="49%" alt="The Cannon Chase story book">
+
+### 🏝️ Vibe Island & Vibe City: GTA Junior · [`/city`](https://myvibeverse.com/city)
+
+<img src="docs/readme/island-plaza.jpg" width="49%" alt="The plaza on Vibe Island"> <img src="docs/readme/island-thanksgiving.jpg" width="49%" alt="Thanksgiving on Vibe Island">
+
+A magically weird island in the sky, and a neon city with a jetpack on your
+back. Multiplayer, with your name over your head and stickers on your body.
+
+- **GTA Junior:** pick up a Glock in the plaza or the rifle on the rooftop,
+  set trees on fire, blow up buildings, and watch your **wanted stars** climb.
+  The **police** come in black cruisers, and their cars explode too. Lie low
+  for 63 seconds and they forgive you.
+- **Bad guys and their hideout:** a warehouse with a roof pad where you summon
+  villains who steal cars, and a **police station** across town. Two cops per
+  bad guy. Jump on his roof and ride it.
+- **A rideable police helicopter.**
+- **Landmarks you can go up:** the Space Needle, the Empire State Building
+  and the Eiffel Tower.
+- Crashes with real damage, a monster truck, a rare Comet, go-karts, a ride-on
+  lawnmower, **Pegasus** to fly, sky tag, a zipline, a zeppelin, the SnackFe
+  cafe, Jerry, and a Thanksgiving parade with a turkey you can ride.
+- Swim out into the bay and dive: there are wrecks on the bottom, and
+  somewhere offshore it does not have a bottom at all.
+- Spawn points for **Powder Peak** (ski), **The Moon** and **Vibe Star**.
+
+### ✦ Build Mode: type a change, and it ships
+
+Standing on Vibe Island, an admin hits **✦ Build** (Ctrl/Cmd+Shift+B), says
+or types what they want ("add a ride-on lawnmower next to the go-karts"), and
+**a Claude Code agent builds it** in GitHub Actions. It edits a branch, stays
+inside a fenced set of files, has to pass typecheck and build, and then ships
+to `main`. The lawnmower was the first one: about four minutes from sentence
+to grass. There is a mic button, Fast (Sonnet) and Smart (Opus) modes, and
+Stop, Retry, Edit and Undo.
+
+The world, building itself, from inside the world.
+
+### 🪄 The Magician · [`/magician`](https://myvibeverse.com/magician)
+
+A valley village in rural Japan, with **Vibey** floating beside you in a
+wizard's hat. **Talk to it.** Say "make it rain" and it rains. "Midnight."
+"Northern lights." "Turn into a pug." "Cherry blossom forest." Wishes land
+over two seconds so it feels like magic instead of a settings menu.
+
+- A real-time **voice agent** (OpenAI Realtime) with tools that reshape the
+  world, and a spellbook fallback so typing works too.
+- **Vibey remembers you:** "Welcome back, Jack. Aurora again?"
+- **Phones are wands:** put `/magician?show` on a big screen, everyone scans
+  the QR code, and their phones become spell buttons. "Maya made it snow."
+- **The Magic Screen:** ask Vibey to program the screen in the square and it
+  writes the code live, safely sandboxed, for the whole room.
+- Three mini-games where the weather is the weapon (rain drowns fire oni),
+  Zombie Tag in the village, VR on Quest, and a built-in recorder.
+
+### 🧟 Zombie Tag · [`/zombies`](https://myvibeverse.com/zombies)
+
+Infection tag for a whole room at once: phones, laptops and a VR headset in
+the same festival square. Put `/zombies?show` on the TV, everyone scans the
+QR code, and one of you is a zombie. Anyone it touches turns green and starts
+shambling. Last human standing wins. No host, no server deciding anything:
+every device agrees from the same messages.
+
+### 🌉 San Francisco · [`/sf`](https://myvibeverse.com/sf)
+
+<img src="docs/readme/sf-skyline.jpg" width="60%" alt="San Francisco at sunset">
+
+The real city, hill for hill and bridge for bridge, nine kilometres of it, in
+**the weather San Francisco is actually having right now.** If Karl the Fog
+is in off the Pacific this afternoon, he is in here too. Other players walk
+it with you, any parked car is yours, there is a Mayhem mode at
+[`/free-fall`](https://myvibeverse.com/free-fall), and the watercolour Terraces
+on Twin Peaks climb to a pavilion at 440 metres. Its leaner sibling
+[**Fog City**](https://myvibeverse.com/fogcity) is the from-scratch open-world
+version built to fly on any laptop.
+
+### 👤 My Vibe · [`/profile`](https://myvibeverse.com/profile)
+
+<img src="docs/readme/my-vibe.jpg" width="49%" alt="My Vibe locker"> <img src="docs/readme/scores.jpg" width="49%" alt="The scoreboard">
+
+Your locker: pick a character (around sixty of them), dress it from the
+**Vibe Shop** with hats, jetpacks and flames bought with **Vibecoin**, stick
+stickers on it, and see which worlds carry you with them. Sign in with an
+email code, a password, MetaMask or Google; it all ends in one session.
+
+### 🏆 The Scoreboard · [`/scores`](https://myvibeverse.com/scores)
+
+Every world, scored by the people who played it on **lore, fun and smooth**,
+plus total hours played and real measured frame rate. Strictly anonymous:
+nothing remembers who played, only how much.
+
+---
+
+## 🎮 The whole collection
+
+Everything here is playable in a browser right now.
+[**/game**](https://myvibeverse.com/game) is the same list with pictures.
+
+### Play with friends (send the link)
+
+| | | |
+|---|---|---|
+| 💣 **[Cannon Chase](https://myvibeverse.com/cannon-run)** | Two trucks, one keyboard, or a friend on their phone | `/cannon-run` |
+| 🧟 **[Zombie Tag](https://myvibeverse.com/zombies)** | The whole room, one festival square | `/zombies` |
+| 🪄 **[The Magician](https://myvibeverse.com/magician)** | A shared valley; phones become wands | `/magician` |
+| 🏙️ **[Vibe City](https://myvibeverse.com/city)** | Jetpacks, sky tag, cops, chat | `/city` |
+| 🌉 **[San Francisco](https://myvibeverse.com/sf)** | Walk the real city together | `/sf` |
+| 🏁 **[Vibe Kart](https://myvibeverse.com/kart)** | Room code, up to six on the grid, rollback netcode | `/kart` |
+| 💦 **[Splash Royale](https://myvibeverse.com/splash-royale)** | Water-gun battle royale, text a friend the code | `/splash-royale` |
+| 🫧 **[BLOB](https://myvibeverse.com/blob)** | Eat or be eaten in a shared petri dish | `/blob` |
+| 🐍 **[COIL](https://myvibeverse.com/coil)** | Snake arena where your shop character rides the front | `/coil` |
+| 🥊 **[Bot Battle](https://myvibeverse.com/bots)** | Your X handle becomes a battle bot; dare a friend's | `/bots` |
+| 🛰️ **[Orbit](https://myvibeverse.com/orbit)** | Same sky for everyone; best run takes the Vibecoin pot | `/orbit` |
 
 ### Games
 
-| | Game | Where | What it is |
-|---|---|---|---|
-| 🌉 | **San Francisco: Free Fall** | `/sf` | The real city, hill for hill, bridge for bridge. Fly it now; grapple and wingsuit soon. |
-| 🌴 | **San Palmas** | `/san-palmas` | Tropical San Francisco — guns, sun, and a very long draw distance. |
-| 🛰️ | **The Vibeverse** | `/vibeverse` | Fly a survey ship through a procedural galaxy. Some stars are worlds you can land on; one of them shoots back. |
-| 🏁 | **Vibe Kart** | `/kart` | Drift for mini-turbos, sling shells, take the hairpin shortcut. |
-| ⛳ | **Vibe Golf** | `/golf` | 63 holes of physics golf, with portals, jetpacks and very silly balls. |
-| 🧬 | **Genesis Bloom** | `/evolve` | Play a creature. Eat, mutate, survive the apex. |
-| 🌍 | **Globetrotter** | `/globetrotter` | Dropped somewhere on the real Earth. Work out where you are. |
-| 📍 | **Vibe GO** | `/go` | Pokémon-GO-shaped catching in the real world. Phone first. |
-| 🍉 | **Fruit Ninja** | `/ninja` | Slice fruit in VR, or with a mouse. Chase the score. |
+| | | |
+|---|---|---|
+| 🪝 **Better Fortnite** · `/better-fortnite` | 🪂 **Drop Zero** · `/drop-zero` | 🌴 **San Palmas** · `/san-palmas` |
+| ⛳ **Vibe Golf** (63 holes) · `/golf` | 🛰️ **The Vibeverse** · `/vibeverse` | 🐻 **Five Nights at Vibey's** · `/fnaf` |
+| 🎄 **Home Alone** · `/home-alone` | 🛩️ **Airplane!** · `/airplane` | 🏃 **Run, Vibey, Run** · `/run` |
+| 🖖 **The Final Frontier** · `/trek` | 🛸 **Strange New Worlds** · `/strange-new-worlds` | 🔦 **The Midnight Zone** · `/deep` |
+| ♀️ **Venus Rising** · `/venus` | 👁 **I Spy** · `/i-spy` | 🔵 **Blue Angels** · `/blue-angels` |
+| 🎈 **Pathfinder** (airship) · `/airship` | 🏃 **The Dipsea** · `/dipsea` | 🥽 **The Half-Blind Triathlon** · `/goggles` |
+| 🏘️ **Developer Trail** · `/developer-trail` | 🏛️ **Agentocracy** · `/agentocracy` | 🏜️ **Mars College** · `/mars` |
+| 🛵 **Flow Phangan** · `/phangan` | 🦆 **Duck On My Head** · `/duck` | 🛹 **Coast Road** · `/coast-road` |
+| 🏜️ **The Dune Sea** · `/dunes` | 🔢 **Neon 2048** · `/2048` | 🧬 **Evolution** · `/evolve` |
+| 🍉 **Fruit Ninja** (VR) · `/ninja` | 🌍 **Globetrotter** · `/globetrotter` | 📍 **Vibe GO** · `/go` |
+| 🕹️ **Vibe Arcade** · `/arcade` | 🌁 **Fog City** · `/fogcity` | |
 
-### Worlds
+### Worlds to wander
 
-| | World | Where | What it is |
-|---|---|---|---|
-| 🛫 | **The Terminal** | `/terminal` | The front door. Stand in the sky with every world floating around you and pick one. |
-| 🏝️ | **Vibe Island II** | `/island-2` | A floating archipelago — a carved lagoon spilling into the clouds, islands you can fly underneath. |
-| 🛩️ | **Seafair 2117** | `/seafair` | Future Seattle on Seafair weekend. Hydros, Blue Angels, and something alien holding the Space Needle. |
-| 🏙️ | **Vibe City** | `/city` | Jetpack a neon district. Multiplayer, NPCs, star runs, and Vibey to talk to. |
-| 🏝️ | **Vibe Island** | `/city?spawn=island` | The magically weird world in the sky — Jerry, the SnackFe cafe, the zipline, the rideable zeppelin. |
-| ⛷️ | **Powder Peak** | `/city?spawn=ski` | Carve real slopes, ride the gondola, warm up at the Vibe Lodge. |
-| 🌙 | **The Moon** | `/city?spawn=moon` | A tiny landable moon. Touch down on the pad and plant a flag. |
-| 🧭 | **Island Explorer** | `/island-explorer` | Pick a character and a world, then walk, run and jump around it. |
-| 🗺️ | **Healdsburg Village** | `/welcome` | Where this started — the real Healdsburg map with Vibey, Unit-7, choppers and spawnable worlds over real streets. |
+| | | |
+|---|---|---|
+| 🛫 **The Terminal** · `/terminal` | 🏝️ **Vibe Island II** · `/island-2` | 🪐 **The Empyrean** · `/empyrean` |
+| 🌅 **Horizon Garden** · `/horizon` | 🏛️ **Thalassa** (VR) · `/thalassa` | 🛩️ **Seafair 2117** · `/seafair` |
+| 🌁 **Vibe Francisco** · `/frisco` | 🪴 **The Conservatory** · `/conservatory` | 🌌 **The Glass Lake** · `/glass-lake` |
+| 🌒 **First Light** · `/first-light` | 🏡 **Beck Road** · `/beck-road` | 🧭 **Island Explorer** · `/island-explorer` |
+| ⛷️ **Powder Peak** · `/city?spawn=ski` | 🌙 **The Moon** · `/city?spawn=moon` | 🗺️ **Healdsburg Village** · `/welcome` |
 
-### Places to be
+### Places to hang out
 
-| | Place | Where | What it is |
-|---|---|---|---|
-| 🪩 | **EDM Town** | `/edm-town` | Low-poly neon festival town — lasers, a dancing crowd, photo mode, a guestbook. |
-| 🌌 | **Space Outpost** | `/space` | Vibey 2.0's late-night show on a floating asteroid, with the alien next door. |
-| 🌱 | **Memory Garden** | `/garden` | Walk among planted memories and the outdoor art fair. |
-| 🖼️ | **Fractal Museum** | `/museum` | A walkable, Seuss-flavoured gallery of famous fractals. |
-| 🛋️ | **VIBE World** | `/world` | An always-on room that AI agents join over HTTP and live in. Drop in and see who is home. |
+🪩 **EDM Town** `/edm-town` · 🌌 **Space Outpost** `/space` · 🌱 **Memory Garden** `/garden` ·
+🖼️ **Fractal Museum** `/museum` · 🗞 **The Newsroom** `/newsroom` · 🛋️ **VIBE World** `/agent-lobby`
+(an always-on room that AI agents join over HTTP)
 
-### And the rest of the app
+### And the rest of the universe
 
-`/game` (the index) · `/` (the 3D hub) · `/lobby` (~60 characters and vehicles) ·
-`/character-select` · `/times` (a daily newspaper, [written by an edge
-function](docs/vibe-times.md)) ·
-`/coin` ($VIBE) · `/companions` (hatch an agent) · `/world-builder` ·
-`/submit-world` · `/about`
+🛂 **The Passport** `/passport` (a stamp for every world you visit) ·
+📰 **The Vibe Times** `/times` (a newspaper written fresh every morning) ·
+🪙 **Vibe Coin** `/coin` · 🛍️ **Vibe Shop** `/shop` · 📜 **The Chronicle** `/chronicle`
+(every world in the order it was born, read out of git) · ✍️ **The Manifesto** `/manifesto` ·
+🧪 **Agent Lab** `/companions` · 🛠️ **World Builder** `/world-builder`
 
-## The "and friends" part
+---
 
-- **[Anshu Chimala](https://github.com/achimala/TheLongSilence)** wrote THE LONG
-  SILENCE, the procedural space game that became `/vibeverse`. It is vendored
-  under MIT in `src/longsilence/`, licence and all, and that directory's README
-  documents exactly what was changed and why.
-- **Anyone can add a world.** `/submit-world` puts it in front of the hub, and
-  approved submissions appear on the landing page next to the official ones.
-  `/world-builder` will even write the prompt for you.
-- **The characters** come from [Quaternius](https://quaternius.com/) packs
-  (CC0), with props from [Meshy](https://www.meshy.ai/) — see the asset notes
-  further down.
-- **The code** is written with Claude Code, Cursor and Lovable, and reviewed by
-  a human who has to look at every frame before it ships. `main` deploys, so
-  every world in that list is live the moment it lands.
+## 🚪 Bring your own game
 
-## How it is built
+Built something? There are two doors.
 
-One Vite + React SPA, 53 routes, ~343,000 lines. Each world is a nearly
-self-contained engine in its own directory under `src/`; under 1% of the code
-is shared between them. Every destination is declared once in
-`src/worlds/registry.ts`, and the nav, the picker, `/game`, the 3D hub and the
-passport are all views of that one list.
+- **[`/submit-game`](https://myvibeverse.com/submit-game)**: paste one link (a
+  deployed game or a GitHub repo) and it lands on the arcade shelf inside the
+  VibeVerse, sandboxed, on its own origin. Add four lines of
+  [`vibeverse.js`](public/vibeverse.js) and it can **pay players in Vibey
+  Coins**, from a daily allowance we hold, so a game can never mint money.
+- **[`/submit-world`](https://myvibeverse.com/submit-world)**: send in a world
+  for the hub, and [`/world-builder`](https://myvibeverse.com/world-builder)
+  will write the prompt for you.
 
-**[ARCHITECTURE.md](./ARCHITECTURE.md)** is the full map: what is in here, how
-the ten engines fit together, the numbers, and the honest debt.
+---
 
-Also worth reading:
+## 🛠️ How it is built
 
-- **[CLAUDE.md](./CLAUDE.md)** — the working rules. Push straight to `main`,
-  verify before pushing, and the contract every new world follows.
-- **[WORLDBUILDING.md](./WORLDBUILDING.md)** — everything learned building the
-  map-based village world, distilled. Still the best guide to the Mapbox +
-  Three.js half of the codebase.
-- **[src/longsilence/README.md](./src/longsilence/README.md)** — how to vendor
-  somebody else's standalone game and turn it into a route.
+One Vite + React + TypeScript app. Each world is a nearly self-contained
+engine in its own folder under `src/`, lazy-loaded so the front door opens
+instantly. Every destination is one entry in
+[`src/worlds/registry.ts`](src/worlds/registry.ts); the nav, the picker,
+`/game`, the hub and the passport are all views of that one list.
 
-## The original village map
+- **Three.js** (pinned at 0.160) for nearly everything that draws, react-three-fiber in a few places, Mapbox for the real-map worlds.
+- **Supabase** for auth, Realtime multiplayer, the economy, and 33 edge functions.
+- **Four netcodes, on purpose:** rollback for kart racing, an authoritative
+  host for BLOB, presence and chat for Vibe City, interpolation for San
+  Francisco. Zombie Tag and the Magician have no host at all.
+- **Voice:** OpenAI Realtime over WebRTC, with the key held by an edge function and a ten-free-minutes ledger.
+- **Build mode:** Supabase function → GitHub Actions → Claude Code → `main`.
+- **Lovable** hosts the live site; Claude Code, Cursor and Lovable write the code; a human looks at every frame.
 
-The Edge Esmeralda world at `/welcome` is still fully wired:
+The deep dives:
 
-- **Live village map** — Mapbox 3D buildings + custom Three.js landmarks
-  anchored to real Healdsburg coordinates
-- **Vibey** — the community agent hovering above the plaza. Tap to chat
-- **Unit-7** — an autonomous resident bot wandering the streets
-- **Sky Patrol** — a pilotable chopper and Nimbus VTOL
-- **Spawnables** — heavy GLB worlds that load on demand: a floating island, a
-  Death Star, a keyframe-animated micro-city
-- **Events + Community panels**, and both a dusk 3D style and a satellite view
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)**: the full map, the engines, the numbers and the honest debt.
+- **[CLAUDE.md](./CLAUDE.md)**: the working rules (push to `main`, verify before you push, how to add a world) and every hard-won lesson.
+- **[WORLDBUILDING.md](./WORLDBUILDING.md)**: the Mapbox + Three.js half, from the village map where it all started.
+- **[src/longsilence/README.md](./src/longsilence/README.md)**: how to vendor somebody else's game into a route.
 
-## Project layout
+### Run it locally
+
+```bash
+bun install            # bun.lock is the real lockfile; run `npm ci` too after touching package.json
+bun dev                # http://localhost:8080
+npm run typecheck      # never bare `tsc --noEmit`, it checks nothing here
+npm run build          # must pass before anything is pushed: main is always live
+npm test
+npm run smoke -- /sf /kart    # open routes in a real Chromium and catch black screens
+```
+
+### Project layout
 
 ```
 src/
-  App.tsx                     ← the router. 53 paths, ~30 destinations
-  worlds/
-    registry.ts               ← THE list of worlds. Everything else is a view of it
-    art.ts                    ← card art, keyed by world key
-  pages/                      ← one thin page per route; the engine lives elsewhere
-  components/                 ← app shell (GlobalNav, WorldPicker, VibeRadio),
-                                Vibe City's guts, and 49 shadcn/ui primitives
-
-  sf/                         ← San Francisco: Free Fall   (110k lines)
-  kart/                       ← Vibe Kart                   (51k)
-  longsilence/                ← The Vibeverse — vendored fork, has its own README
-  palmas/                     ← San Palmas                  (25k)
-  golf/                       ← Vibe Golf                   (23k)
-  seafair/                    ← Seafair 2117
-  island2/                    ← Vibe Island II
-  terminal/                   ← The Terminal (the 3D lobby)
-  island/                     ← Island Explorer (react-three-fiber)
-  game/                       ← Genesis Bloom (react-three-fiber)
-
-  lib/                        ← the genuinely shared code: passport, characters,
-                                economy, wallet, sounds. Deliberately small
-  hooks/                      ← identity, active character, world stamps
-  integrations/supabase/      ← generated client + types
-  assets/glb/                 ← characters, kits, props (see below)
-  assets/worlds/              ← world card art, captured from the running worlds
-  test/                       ← cross-world tests: registry, passport, chart
-
-scripts/
-  route-shot.mjs              ← screenshot any route → world card art
-  make-app-icon.mjs           ← regenerate every PWA / apple-touch icon
-  sf-shot.mjs, kart-shot.mjs  ← per-world capture harnesses with posed cameras
-
-supabase/functions/           ← 16 edge functions (Vibey chat, the nightly
-                                newspaper, the economy, agent replies, …)
-docs/
-  skills/quaternius-pack.md   ← playbook for adding a new Quaternius asset kit
+  App.tsx              the router; every page is lazy()
+  worlds/registry.ts   THE list of worlds; everything else is a view of it
+  pages/               one thin page per route
+  cannonrun/           Cannon Chase        magician/   The Magician
+  city/                Vibe City + GTA Junior          oni/        Zombie Tag
+  sf/                  San Francisco       kart/       Vibe Kart
+  build-mode/          prompt-to-change    portal/     other people's games
+  lib/ hooks/          the small shared core: identity, characters, passport, economy
+supabase/functions/    edge functions: Vibey, voice, build mode, the paper, the economy
+scripts/               capture, smoke, model optimisation and per-world check harnesses
 ```
 
-### Adding a new Quaternius / Meshy asset pack
+---
 
-See `docs/skills/quaternius-pack.md` — the short version:
+## 💛 And friends
 
-1. Drop FBX/OBJ files in a temp dir, then `assimp export … -fglb2` (animated FBX) or `npx -y obj2gltf -i in.obj -o out.glb -b` (static OBJ)
-2. Characters → `src/assets/glb/characters/<name>.glb` — they auto-appear in the Lobby grid via Vite's `import.meta.glob`
-3. Themed kits → `src/assets/glb/kits/<kitname>/<category>/*.glb`
-4. For scatter packs (trees, props), copy the `NaturePackLayer.ts` pattern; for character packs, the alien's saucer mount is the reference
+- **[Anshu Chimala](https://github.com/achimala/TheLongSilence)** wrote THE LONG
+  SILENCE, which became `/vibeverse`. Vendored under MIT in `src/longsilence/`.
+- Characters from [Quaternius](https://quaternius.com/) and
+  [KayKit](https://kaylousberg.itch.io/) (CC0), props from
+  [Meshy](https://www.meshy.ai/). Provenance in `src/assets/glb/CREDITS.md`.
+- **Anyone can add a world.** That is the whole idea: everyone can build now,
+  and every builder grows the universe.
 
-
-
-## Stack
-
-Vite · React · TypeScript · Tailwind · shadcn/ui · Mapbox GL JS · Three.js (GLTF + Draco) · Supabase · Bun
-
-## Running it locally
-
-```bash
-bun install          # npm needs --legacy-peer-deps; bun.lock is the real lockfile
-bun dev
-```
-
-Open <http://localhost:8080>. The Mapbox token is wired through `.env`.
-
-```bash
-npm run build        # must pass before anything is pushed — main is always live
-npm test             # 253 tests, ~14s
-node scripts/make-app-icon.mjs                       # regenerate the PWA icons
-node scripts/route-shot.mjs /<route> src/assets/worlds/<key>.jpg   # world card art
-```
-
-### Heavy GLB assets (Spawnables)
-
-The Edge Island and Death Star GLBs are too large to ship in the repo and are gitignored. Drop them into `public/models/` to enable those spawn buttons:
-
-- `public/models/edge-island.glb` (~272 MB, Meshy-generated)
-- `public/models/death-star.glb` (~60 MB, Meshy-generated)
-- `public/models/littlest-tokyo.glb` (~4 MB, from threejs.org examples — re-fetch with `curl -o public/models/littlest-tokyo.glb https://threejs.org/examples/models/gltf/LittlestTokyo.glb`)
-
-Tokyo is small enough to fetch on demand; the bigger Meshy assets are personal exports.
-
-## Notes
-
-- Every line here is AI-written and human-directed — Lovable.dev, Cursor and Claude Code as the scaffolds, with the taste, the art direction and the "no, do it again" supplied by a person.
-- A single `SpawnableLayer` is the generic Three.js → Mapbox bridge; adding a new world is one entry in the `spawnables` list in `MapView.tsx`.
-- Everything is anchored to real Healdsburg lng/lat, so Vibey, the helicopter, and the floating island all share the same coordinate system as the live map underneath.
-
-## Tools, references, and inspiration
-
-This is also a personal repository for figuring out how to build immersive, beautiful worlds on the web. Below is the toolkit and reading list I keep coming back to.
+<details>
+<summary><b>Tools, references and inspiration</b> (the reading list)</summary>
 
 ### How the layers fit together
 
 ```
-WebGL  ⟶  Three.js  ⟶  react-three-fiber / A-Frame  ⟶  Edge Esmeralda
+WebGL  ⟶  Three.js  ⟶  react-three-fiber / A-Frame  ⟶  the VibeVerse
 (browser GPU API)   (3D library)   (declarative wrappers)
 ```
 
-- **WebGL** is the browser's low-level GPU API. Powerful but verbose — you write shaders in GLSL and push vertex buffers by hand. <https://webglfundamentals.org/> is the best primer.
-- **[Three.js](https://github.com/mrdoob/three.js/)** wraps WebGL into something usable: `new THREE.Mesh(geo, mat)`, scenes, cameras, GLTF loading. Built by Ricardo Cabello (mrdoob) and a huge community. ~100k stars; this is what powers our custom Mapbox layers.
-- **[A-Frame](https://aframe.io/)** wraps Three.js into HTML markup (`<a-scene><a-box></a-box></a-scene>`). Originally built at Mozilla. The fastest path to WebXR / browser-based VR — drop a few tags and you can walk around in a Quest headset.
-- **[react-three-fiber](https://github.com/pmndrs/react-three-fiber)** is Three.js as React components. With **[drei](https://github.com/pmndrs/drei)** as its standard library, this is the modern way to build 3D React apps.
+- **WebGL** is the browser's low-level GPU API. Powerful but verbose: you write shaders in GLSL and push vertex buffers by hand. <https://webglfundamentals.org/> is the best primer.
+- **[Three.js](https://github.com/mrdoob/three.js/)** wraps WebGL into something usable: `new THREE.Mesh(geo, mat)`, scenes, cameras, GLTF loading.
+- **[A-Frame](https://aframe.io/)** wraps Three.js into HTML markup. The fastest path to WebXR.
+- **[react-three-fiber](https://github.com/pmndrs/react-three-fiber)** is Three.js as React components, with **[drei](https://github.com/pmndrs/drei)** as its standard library.
 
 ### 3D engines and helpers
 
 | Tool | Why it's worth knowing |
 |---|---|
-| [Babylon.js](https://www.babylonjs.com/) | Microsoft-backed Three.js alternative, batteries-included for game-style work. |
+| [Babylon.js](https://www.babylonjs.com/) | Microsoft-backed Three.js alternative, batteries included for game work. |
 | [PlayCanvas](https://playcanvas.com/) | Browser-based Unity-like editor, exports to WebGL. |
-| [Hyperfy](https://hyperfy.io/) | Open-source multiplayer 3D worlds — reference architecture if Edge Esmeralda ever goes multi-user. |
-| [Rapier](https://rapier.rs/) | Rust physics in WASM — fast, character-collision quality. |
-| [theatre.js](https://www.theatrejs.com/) | In-browser timeline animator, drag-and-drop camera flights and keyframes. |
-| [CesiumJS](https://cesium.com/platform/cesiumjs/) | 3D globe with real terrain — Mapbox's heavier sibling for planet-scale work. |
-| [deck.gl](https://deck.gl/) | High-performance data layers on Mapbox/Leaflet, made by Uber. |
+| [Hyperfy](https://hyperfy.io/) | Open-source multiplayer 3D worlds. |
+| [Rapier](https://rapier.rs/) | Rust physics in WASM. |
+| [theatre.js](https://www.theatrejs.com/) | In-browser timeline animator for camera flights and keyframes. |
+| [CesiumJS](https://cesium.com/platform/cesiumjs/) | 3D globe with real terrain. |
+| [deck.gl](https://deck.gl/) | High-performance data layers on maps. |
 
 ### Asset creation
 
 | Tool | What it does |
 |---|---|
-| [Meshy](https://www.meshy.ai/) | Text-to-3D and image-to-3D — used for the Edge Island and Death Star here. |
-| [Luma AI](https://lumalabs.ai/) | Text/image-to-3D plus NeRF captures (turn a real video into a 3D scene). |
-| [Spline](https://spline.design/) | Browser-based 3D editor, designer-friendly, exports to code. |
-| [Sketchfab](https://sketchfab.com/) | Massive asset marketplace, lots of free CC0. |
+| [Meshy](https://www.meshy.ai/) | Text-to-3D and image-to-3D. |
+| [Luma AI](https://lumalabs.ai/) | Text/image-to-3D plus NeRF captures. |
+| [Spline](https://spline.design/) | Designer-friendly browser 3D editor. |
+| [Sketchfab](https://sketchfab.com/) | Huge asset marketplace, lots of CC0. |
 | [Poly Haven](https://polyhaven.com/) | Free CC0 HDRs, textures, models. |
-| [Mixamo](https://www.mixamo.com/) | Adobe's free auto-rigging and humanoid animation library. |
-| [Blender](https://www.blender.org/) | Free, open-source 3D suite — the standard. |
-| [gltf-transform](https://gltf-transform.dev/) | CLI to optimize GLBs (Draco, Meshopt). Drops a 272MB asset to ~30MB. |
+| [Mixamo](https://www.mixamo.com/) | Free auto-rigging and humanoid animation. |
+| [Blender](https://www.blender.org/) | The free, open-source standard. |
+| [gltf-transform](https://gltf-transform.dev/) | Optimise GLBs; every model here goes through it (`scripts/glb-optimize.mjs`). |
 
 ### Inspiration
 
-- The official Three.js examples gallery — every interaction pattern, animation, and shader I've needed has had a precedent here: <https://threejs.org/examples/>
-- [@om_patel5](https://twitter.com/om_patel5/status/2050062761229496425) — vibe-coded 3D game in a single weekend; the kind of bar I'm aiming at for solo immersive work.
-- [@andybroncek](https://twitter.com/andybroncek/status/2042931678989951197) — beautifully art-directed 3D websites; less game, more interactive product page, big inspiration for how UI and 3D can blend.
-- [Bruno Simon's "Three.js Journey"](https://threejs-journey.com/) — best paid course; if you want to truly internalize how WebGL/Three.js works, this is the path.
-- [Spatial.io](https://www.spatial.io/), [Mozilla Hubs](https://hubs.mozilla.com/) (archived but instructive), and the early Decentraland builds — for thinking about social and multi-user spaces.
-- The [glTF specification](https://github.com/KhronosGroup/glTF) — useful to skim once; saves hours of debugging when textures or animations don't work right.
+- The [Three.js examples gallery](https://threejs.org/examples/).
+- [@om_patel5](https://twitter.com/om_patel5/status/2050062761229496425): a vibe-coded 3D game in a single weekend.
+- [@andybroncek](https://twitter.com/andybroncek/status/2042931678989951197): beautifully art-directed 3D websites.
+- [Bruno Simon's Three.js Journey](https://threejs-journey.com/).
+- [Spatial.io](https://www.spatial.io/), [Mozilla Hubs](https://hubs.mozilla.com/) and early Decentraland, for social spaces.
+- The [glTF specification](https://github.com/KhronosGroup/glTF).
 
-### Things I've already learned the hard way (passing them on)
+</details>
 
-- **Draco compression is the #1 reason Three.js example models render invisible.** GLTFLoader silently returns empty meshes if you don't register a `DRACOLoader`. We do this in `SpawnableLayer.ts`.
-- **Mapbox custom layers get wiped on style toggle.** Always re-mount on `style.load`.
-- **Healdsburg sits ~32m above sea level.** If you place a model at altitude 0, it renders underground. Use `queryTerrainElevation({ exaggerated: true })` to get the rendered terrain height.
-- **For things that should sit on the ground vs. float in the sky, the model needs to be anchored at its bottom or its center — they're different.** `bottomAnchor` flag in `SpawnableLayer`.
-- **Heavy GLBs go in `public/`, not `src/assets/`.** Vite bundles `src/assets` imports into the JS chunk; `public/` is served as static files and lazy-fetched.
+<div align="center">
+
+**[Open the VibeVerse →](https://myvibeverse.com)**
+
+*Every line AI-written, human-directed. Keep rippin'.*
+
+</div>

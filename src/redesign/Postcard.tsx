@@ -113,6 +113,9 @@ export default function Postcard() {
         <a href="#worlds" className="hidden px-3 py-2 text-[14px] text-[#1c2b45]/75 hover:text-[#1c2b45] sm:block">Worlds</a>
         <Link to="/arcade" className="hidden px-3 py-2 text-[14px] text-[#1c2b45]/75 hover:text-[#1c2b45] sm:block">Arcade</Link>
         <Link to="/passport" className="hidden px-3 py-2 text-[14px] text-[#1c2b45]/75 hover:text-[#1c2b45] sm:block">Passport</Link>
+        <Link to="/whats-new" className="hidden px-3 py-2 text-[14px] text-[#1c2b45]/75 hover:text-[#1c2b45] sm:block">
+          ✨ What&apos;s New
+        </Link>
         <Account className="ml-2 h-9 rounded-full border border-[#1c2b45]/25 px-4 text-[13.5px] font-semibold transition-colors hover:border-[#1c2b45]" />
       </header>
 

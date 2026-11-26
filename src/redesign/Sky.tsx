@@ -162,6 +162,9 @@ export default function Sky() {
           <Link to="/passport" className="hidden rounded-full px-3 py-2 text-[13px] font-semibold text-white/90 hover:text-white sm:block">
             Passport
           </Link>
+          <Link to="/whats-new" className="hidden rounded-full px-3 py-2 text-[13px] font-semibold text-white/90 hover:text-white sm:block">
+            ✨ What&apos;s New
+          </Link>
           <Account className="ml-1 h-9 rounded-full bg-white px-4 text-[13px] font-bold shadow-sm transition-transform hover:scale-[1.03]" />
         </header>
 
