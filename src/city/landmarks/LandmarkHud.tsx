@@ -4,11 +4,17 @@
  *
  * It polls the landmarks itself (eight times a second) instead of taking
  * props, so Vibe City's page does not re-render whenever an elevator moves.
+ *
+ * Everything here is portalled to <body>. The page mounts this inside a
+ * translated, centred toolbar, and a transformed ancestor becomes the
+ * containing block for `position: fixed`: the binocular mask and the phone
+ * helm were laid out inside that toolbar instead of over the screen.
  */
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { createPortal } from "react-dom";
 import type { LandmarkUi, Landmarks } from "./index";
 
-const EMPTY: LandmarkUi = { prompt: null, ride: null, express: null, viewing: false };
+const EMPTY: LandmarkUi = { prompt: null, ride: null, express: null, viewing: false, helm: false };
 
 export function LandmarkHud({ system, compact }: { system: MutableRefObject<Landmarks | null>; compact?: boolean }) {
   const [ui, setUi] = useState<LandmarkUi>(EMPTY);
@@ -29,7 +35,7 @@ export function LandmarkHud({ system, compact }: { system: MutableRefObject<Land
 
   const act = () => system.current?.act();
 
-  return (
+  return createPortal(
     <>
       {ui.viewing && <Binoculars onClose={act} />}
       {ui.express && <ExpressElevator up={ui.express.up} progress={ui.express.progress} />}
@@ -41,7 +47,8 @@ export function LandmarkHud({ system, compact }: { system: MutableRefObject<Land
           </span>
         </div>
       )}
-      {ui.prompt && !ui.express && (
+      {ui.helm && compact && <Helm system={system} label={ui.prompt?.label ?? "Step off"} onExit={act} />}
+      {ui.prompt && !ui.express && !(ui.helm && compact) && (
         <button
           onClick={(e) => {
             act();
@@ -56,7 +63,8 @@ export function LandmarkHud({ system, compact }: { system: MutableRefObject<Land
           {!compact && <span className="ml-2 rounded bg-white/15 px-1.5 py-0.5 font-mono text-xs text-amber-200">E</span>}
         </button>
       )}
-    </>
+    </>,
+    document.body,
   );
 }
 
@@ -144,6 +152,130 @@ function ExpressElevator({ up, progress }: { up: boolean; progress: number }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The phone helm: a wheel under the left thumb, the throttle under the
+ * right, and a big button to step off. The city's own joystick is
+ * camera-relative, which is right for walking and wrong for a boat: a boat
+ * turns its bow, and pushing a stick "left" while the camera swings round
+ * behind it is a tug of war. So at the helm the two thumbs do what a boat's
+ * controls do, and the pads sit over the walking joystick and jump button
+ * so a thumb cannot land on those by mistake.
+ */
+function Helm({ system, label, onExit }: { system: MutableRefObject<Landmarks | null>; label: string; onExit: () => void }) {
+  const [wheel, setWheel] = useState(0);
+  const [gas, setGas] = useState<0 | 1 | -1>(0);
+  const wheelPtr = useRef<number | null>(null);
+  const wheelBox = useRef<HTMLDivElement>(null);
+  const wheelV = useRef(0);
+  const gasV = useRef(0);
+  const push = () => system.current?.setTouchHelm(gasV.current, wheelV.current);
+  useEffect(
+    () => () => {
+      system.current?.setTouchHelm(0, 0);
+    },
+    [system],
+  );
+  const steerFrom = (clientX: number) => {
+    const r = wheelBox.current?.getBoundingClientRect();
+    if (!r) return;
+    const v = Math.max(-1, Math.min(1, ((clientX - (r.left + r.width / 2)) / (r.width / 2)) * 1.25));
+    wheelV.current = v;
+    setWheel(v);
+    push();
+  };
+  const releaseWheel = () => {
+    wheelPtr.current = null;
+    wheelV.current = 0;
+    setWheel(0);
+    push();
+  };
+  const setThrottle = (v: 0 | 1 | -1) => {
+    gasV.current = v;
+    setGas(v);
+    push();
+  };
+  const capture = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* fine */
+    }
+  };
+  return (
+    <div className="pointer-events-none fixed inset-0 z-40 select-none" data-testid="landmark-helm">
+      <button
+        onClick={(e) => {
+          onExit();
+          e.currentTarget.blur();
+        }}
+        className="pointer-events-auto absolute left-1/2 top-32 -translate-x-1/2 rounded-full border border-white/25 bg-black/65 px-5 py-2.5 text-sm font-medium text-white shadow-lg backdrop-blur"
+      >
+        {label.startsWith("Tie") ? "⚓" : "🌊"} {label}
+      </button>
+      {/* The wheel: drag left and right, springs back to centre. */}
+      <div
+        ref={wheelBox}
+        className="pointer-events-auto absolute bottom-16 left-3 flex h-36 w-48 touch-none items-center justify-center rounded-3xl border border-white/20 bg-black/55 backdrop-blur"
+        onPointerDown={(e) => {
+          capture(e);
+          wheelPtr.current = e.pointerId;
+          steerFrom(e.clientX);
+        }}
+        onPointerMove={(e) => {
+          if (wheelPtr.current !== e.pointerId) return;
+          e.stopPropagation();
+          steerFrom(e.clientX);
+        }}
+        onPointerUp={releaseWheel}
+        onPointerCancel={releaseWheel}
+        data-testid="helm-wheel"
+      >
+        <div className="absolute top-2 text-[10px] uppercase tracking-[0.25em] text-white/60">Steer</div>
+        <div
+          className="flex h-24 w-24 items-center justify-center rounded-full border-[6px] border-amber-200/80 transition-transform duration-75"
+          style={{ transform: `rotate(${wheel * 110}deg)` }}
+        >
+          <div className="h-[6px] w-full bg-amber-200/80" />
+          <div className="absolute h-1/2 w-[6px] translate-y-1/2 bg-amber-200/80" />
+        </div>
+      </div>
+      {/* Throttle: hold to go, the small one backs up. */}
+      <div className="pointer-events-auto absolute bottom-16 right-3 flex flex-col items-center gap-2">
+        <button
+          className={`flex h-28 w-28 touch-none items-center justify-center rounded-full border text-lg font-bold text-white backdrop-blur ${
+            gas === 1 ? "border-emerald-300 bg-emerald-500/70 shadow-[0_0_24px_rgba(52,211,153,0.6)]" : "border-white/25 bg-black/55"
+          }`}
+          onPointerDown={(e) => {
+            capture(e);
+            setThrottle(1);
+          }}
+          onPointerUp={() => setThrottle(0)}
+          onPointerCancel={() => setThrottle(0)}
+          onContextMenu={(e) => e.preventDefault()}
+          data-testid="helm-gas"
+        >
+          GO
+        </button>
+        <button
+          className={`h-12 w-20 touch-none rounded-full border text-xs font-semibold text-white backdrop-blur ${
+            gas === -1 ? "border-rose-300 bg-rose-500/70" : "border-white/25 bg-black/55"
+          }`}
+          onPointerDown={(e) => {
+            capture(e);
+            setThrottle(-1);
+          }}
+          onPointerUp={() => setThrottle(0)}
+          onPointerCancel={() => setThrottle(0)}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          REVERSE
+        </button>
       </div>
     </div>
   );

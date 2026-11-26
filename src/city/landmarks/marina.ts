@@ -18,12 +18,32 @@ import { canvas, merge, rng, signTexture, solid, tex } from "./common";
 const DECK = 1.5;
 const MAIN_W = 3;
 const FINGER_W = 1.6;
-const DRAUGHT = 0.75;
-const MAX_FWD = 17;
-const MAX_REV = 4.5;
-const BOAT_R = 1.4;
+
+/** How one kind of boat handles. Speeds in m/s. */
+export interface CraftSpec {
+  name: string;
+  maxFwd: number;
+  maxRev: number;
+  accel: number;
+  /** Yaw rate at full lock, rad/s, with way on. */
+  turn: number;
+  /** How much of the turn is left at top speed (a hydroplane carves wide). */
+  turnAtSpeed: number;
+  draught: number;
+  radius: number;
+  /** How far the hull rises out of the water at full speed. */
+  lift: number;
+  /** Bow-up pitch at full speed, radians. */
+  rake: number;
+  /** Where the driver's feet go, in the boat's own space. */
+  seat: [number, number, number];
+  /** Length, for the swell sampling and where the wake starts. */
+  length: number;
+}
 
 export interface Boat {
+  id: string;
+  spec: CraftSpec;
   x: number;
   z: number;
   yaw: number;
@@ -34,20 +54,65 @@ export interface Boat {
   home: { x: number; z: number; yaw: number };
 }
 
+/** The hydroplane course: a loop of buoy gates out past the T-head. */
+export interface RaceState {
+  /** Gate the driver must take next (0 is start and finish). */
+  next: number;
+  gates: number;
+  /** Lap clock, seconds, or null before the start gate. */
+  lap: number | null;
+  best: number | null;
+}
+
+export type MarinaEvent = { type: "start" } | { type: "lap"; time: number; best: boolean } | { type: "gate"; n: number };
+
 export interface Marina {
   group: THREE.Group;
   /** The land end of the pier, for "take me to the marina". */
   entrance: THREE.Vector3;
-  boat: Boat;
+  boats: Boat[];
   /** The nearest standing spot on a pier within `reach`, or null. */
   landing(x: number, z: number, reach: number): THREE.Vector3 | null;
-  update(dt: number, now: number, drive: { throttle: number; steer: number } | null): void;
-  /** Put the boat back on its mooring. */
-  moor(): void;
+  update(dt: number, now: number, drive: { boat: Boat; throttle: number; steer: number } | null): MarinaEvent | null;
+  race(): RaceState;
+  /** Dev: the gate centres, start first. */
+  gates(): number[][];
   setNight(night: boolean): void;
   roofs: THREE.Material[];
   dispose(): void;
 }
+
+const SPEEDBOAT: CraftSpec = {
+  name: "Vibe Runner",
+  maxFwd: 17,
+  maxRev: 4.5,
+  accel: 5.5,
+  turn: 1.25,
+  turnAtSpeed: 1,
+  draught: 0.75,
+  radius: 1.4,
+  lift: 0.18,
+  rake: 0.09,
+  seat: [-0.4, 0.52, -0.25],
+  length: 5.6,
+};
+
+const HYDROPLANE: CraftSpec = {
+  name: "Hydroplane",
+  maxFwd: 38,
+  maxRev: 4,
+  accel: 9.5,
+  turn: 1.5,
+  turnAtSpeed: 0.55,
+  draught: 0.9,
+  radius: 1.6,
+  lift: 0.45,
+  rake: 0.07,
+  seat: [0, 0.3, 0.9],
+  length: 7.4,
+};
+
+const RACE_KEY = "city.hydroplane.best";
 
 function plankTexture() {
   const { c, x } = canvas(256);
@@ -350,6 +415,7 @@ export function buildMarina(opts: { boxes: WorldBox[]; z: number; lowDetail: boo
     bobbers.push({ obj: b, x, z, yaw, ph: i * 1.7 });
   });
 
+
   // ---- The speedboat ---------------------------------------------------------
   const speedboat = new THREE.Group();
   {
@@ -396,7 +462,7 @@ export function buildMarina(opts: { boxes: WorldBox[]; z: number; lowDetail: boo
     speedboat.add(cowl);
     const name = new THREE.Mesh(
       keep(new THREE.PlaneGeometry(1.4, 0.3)),
-      keep(new THREE.MeshStandardMaterial({ map: keep(signTexture([{ text: "VIBE RUNNER", size: 120, color: "#1d3557" }], "#fafafa", 1024, 200)), transparent: false })),
+      keep(new THREE.MeshStandardMaterial({ map: keep(signTexture([{ text: "VIBE RUNNER", size: 120, color: "#1d3557" }], "#fafafa", 1024, 200)) })),
     );
     for (const s of [-1, 1]) {
       const n = name.clone();
@@ -405,62 +471,258 @@ export function buildMarina(opts: { boxes: WorldBox[]; z: number; lowDetail: boo
       speedboat.add(n);
     }
   }
-  group.add(speedboat);
 
-  // Wake: a short trail of foam patches that spread and fade.
-  const WAKE = opts.lowDetail ? 16 : 36;
+  // ---- Hydroplanes -------------------------------------------------------------
+  // A three-point racing hydroplane: a flat planing hull, two sponsons
+  // forward that it rides on with the prop, an open cockpit, a big engine
+  // cowl and a tail wing. Built facing +z like everything else here.
+  const buildHydroplane = (body: number, trim: number, num: string, label: string) => {
+    const g = new THREE.Group();
+    const bodyMat = keep(new THREE.MeshStandardMaterial({ color: body, roughness: 0.3, metalness: 0.1 }));
+    const trimMat = keep(new THREE.MeshStandardMaterial({ color: trim, roughness: 0.35, metalness: 0.2 }));
+    const dark = keep(new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.5 }));
+    const deck = new THREE.Mesh(keep(hullGeometry(7.4, 2.9, 0.38, 0.22)), bodyMat);
+    deck.position.y = -0.1;
+    deck.castShadow = true;
+    g.add(deck);
+    // Sponsons: the two forward runners.
+    for (const sx of [-1.15, 1.15]) {
+      const sp = new THREE.Mesh(keep(new THREE.CapsuleGeometry(0.34, 3.2, 4, 10)), trimMat);
+      sp.rotation.x = Math.PI / 2;
+      sp.position.set(sx, 0.02, 1.5);
+      g.add(sp);
+    }
+    // Cockpit tub and windscreen.
+    const tub = new THREE.Mesh(keep(new THREE.BoxGeometry(0.95, 0.42, 1.5)), dark);
+    tub.position.set(0, 0.42, 0.95);
+    g.add(tub);
+    const screen = new THREE.Mesh(
+      keep(new THREE.SphereGeometry(0.55, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2)),
+      keep(new THREE.MeshStandardMaterial({ color: 0xa8dcff, transparent: true, opacity: 0.5, roughness: 0.05 })),
+    );
+    screen.scale.set(0.95, 0.7, 1.1);
+    screen.position.set(0, 0.6, 1.75);
+    g.add(screen);
+    // Engine cowl with a scoop, behind the driver.
+    const cowl = new THREE.Mesh(keep(new THREE.BoxGeometry(1.1, 0.7, 2.6)), bodyMat);
+    cowl.position.set(0, 0.55, -1.15);
+    g.add(cowl);
+    const scoop = new THREE.Mesh(keep(new THREE.BoxGeometry(0.7, 0.36, 0.6)), dark);
+    scoop.position.set(0, 1.05, -0.25);
+    g.add(scoop);
+    const stripe = new THREE.Mesh(keep(new THREE.BoxGeometry(1.12, 0.12, 2.62)), trimMat);
+    stripe.position.set(0, 0.75, -1.15);
+    g.add(stripe);
+    // Tail: twin fins carrying a wing.
+    const finTex = keep(signTexture([{ text: num, size: 180, color: "#ffffff" }], `#${trim.toString(16).padStart(6, "0")}`, 256, 256));
+    const finMat = keep(new THREE.MeshStandardMaterial({ map: finTex }));
+    for (const sx of [-0.9, 0.9]) {
+      const fin = new THREE.Mesh(keep(new THREE.BoxGeometry(0.08, 1.1, 1)), [finMat, finMat, trimMat, trimMat, trimMat, trimMat]);
+      fin.position.set(sx, 0.85, -3.25);
+      g.add(fin);
+    }
+    const wing = new THREE.Mesh(keep(new THREE.BoxGeometry(2.6, 0.08, 0.75)), bodyMat);
+    wing.position.set(0, 1.42, -3.3);
+    wing.rotation.x = -0.12;
+    g.add(wing);
+    const name = new THREE.Mesh(
+      keep(new THREE.PlaneGeometry(2.2, 0.36)),
+      keep(new THREE.MeshStandardMaterial({ map: keep(signTexture([{ text: label, size: 120, color: "#ffffff" }], `#${body.toString(16).padStart(6, "0")}`, 1024, 168)) })),
+    );
+    for (const s of [-1, 1]) {
+      const n = name.clone();
+      n.position.set(s * 0.56, 0.6, -1.2);
+      n.rotation.y = (s * Math.PI) / 2;
+      g.add(n);
+    }
+    return g;
+  };
+
+  // ---- Boats --------------------------------------------------------------------
+  type Craft = { boat: Boat; obj: THREE.Object3D; pitch: number; roll: number; idle: number; spray: number };
+  const crafts: Craft[] = [];
+  const addCraft = (id: string, spec: CraftSpec, obj: THREE.Object3D, home: { x: number; z: number; yaw: number }) => {
+    group.add(obj);
+    const boat: Boat = { id, spec, x: home.x, z: home.z, yaw: home.yaw, speed: 0, seat: new THREE.Vector3(), home };
+    crafts.push({ boat, obj, pitch: 0, roll: 0, idle: 0, spray: 0 });
+  };
+  addCraft("speedboat", SPEEDBOAT, speedboat, { x: -233.6, z: Z + 6, yaw: 0 });
+  // The hydroplanes sit off the T-head's corners, bows to the course.
+  addCraft("hydro-1", { ...HYDROPLANE, name: "Miss Vibe" }, buildHydroplane(0xd62828, 0xffc300, "1", "MISS VIBE"), { x: -267, z: Z + 13.4, yaw: -Math.PI / 2 });
+  addCraft("hydro-7", { ...HYDROPLANE, name: "Blue Blur" }, buildHydroplane(0x1d4ed8, 0xf1f5f9, "7", "BLUE BLUR"), { x: -267, z: Z - 13.4, yaw: -Math.PI / 2 });
+
+  // Wake: a trail of foam patches that spread and fade, shared by every boat.
+  const WAKE = opts.lowDetail ? 24 : 60;
   const foamMat = keep(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.38, depthWrite: false }));
   const foamGeo = keep(new THREE.CircleGeometry(0.6, 12).rotateX(-Math.PI / 2));
   const foam = new THREE.InstancedMesh(foamGeo, foamMat, WAKE);
   foam.frustumCulled = false;
-  const wake = Array.from({ length: WAKE }, () => ({ x: 0, y: -50, z: 0, age: 9 }));
+  const wake = Array.from({ length: WAKE }, () => ({ x: 0, z: 0, age: 9, size: 1 }));
   let wakeNext = 0;
-  let wakeTimer = 0;
   group.add(foam);
 
-  const home = { x: -233.6, z: Z + 6, yaw: 0 };
-  const boat: Boat = { x: home.x, z: home.z, yaw: home.yaw, speed: 0, seat: new THREE.Vector3(), home };
-  let pitch = 0;
-  let roll = 0;
-  let idle = 0;
+  // Rooster tail: the hydroplane's plume of spray, thrown up and back.
+  const SPRAY = opts.lowDetail ? 90 : 260;
+  const sprayPos = new Float32Array(SPRAY * 3).fill(-999);
+  const sprayVel = new Float32Array(SPRAY * 3);
+  const sprayAge = new Float32Array(SPRAY).fill(9);
+  const sprayGeo = keep(new THREE.BufferGeometry());
+  sprayGeo.setAttribute("position", new THREE.BufferAttribute(sprayPos, 3));
+  const dropTex = (() => {
+    const { c, x } = canvas(64);
+    const g = x.createRadialGradient(32, 32, 2, 32, 32, 30);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.5, "rgba(255,255,255,0.6)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    x.fillStyle = g;
+    x.fillRect(0, 0, 64, 64);
+    return keep(tex(c, false));
+  })();
+  const sprayMat = keep(new THREE.PointsMaterial({ color: 0xf4fbff, size: 1.1, map: dropTex, transparent: true, opacity: 0.8, depthWrite: false }));
+  const spray = new THREE.Points(sprayGeo, sprayMat);
+  spray.frustumCulled = false;
+  let sprayNext = 0;
+  group.add(spray);
+
+  // ---- The course ---------------------------------------------------------------
+  // An oval of buoy gates west of the T-head, run anticlockwise seen from
+  // above. Gate 0, nearest the marina, is start and finish.
+  const C = { x: -352, z: Z };
+  const RX = 56;
+  const RZ = 118;
+  const GATES = 8;
+  const GATE_HALF = 8;
+  const gateAt = (i: number) => {
+    const a = (i / GATES) * Math.PI * 2;
+    const x = C.x + Math.cos(a) * RX;
+    const z = C.z + Math.sin(a) * RZ;
+    // Radial direction (the gate spans across the course) and the way round.
+    const nx = Math.cos(a) / RX;
+    const nz = Math.sin(a) / RZ;
+    const nl = Math.hypot(nx, nz);
+    return { x, z, rx: nx / nl, rz: nz / nl };
+  };
+  const gates = Array.from({ length: GATES }, (_, i) => gateAt(i));
+  const buoyMat = keep(new THREE.MeshStandardMaterial({ color: 0xff7b1c, roughness: 0.5, emissive: 0xff5a00, emissiveIntensity: 0.05 }));
+  const buoyGeo = keep(merge([new THREE.CylinderGeometry(0.55, 0.65, 1.1, 12).translate(0, 0.3, 0), new THREE.ConeGeometry(0.5, 1.2, 12).translate(0, 1.45, 0)]));
+  const flagGeo = keep(new THREE.PlaneGeometry(0.9, 0.55).translate(0.45, 0, 0));
+  const flagMat = keep(new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+  const buoys: Array<{ obj: THREE.Object3D; x: number; z: number; ph: number }> = [];
+  const nextRings: THREE.Mesh[] = [];
+  const ringMat2 = keep(new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
+  gates.forEach((g, i) => {
+    for (const s of [-1, 1]) {
+      const b = new THREE.Group();
+      b.add(new THREE.Mesh(buoyGeo, buoyMat));
+      const pole = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.03, 0.03, 1.4, 5)), metal);
+      pole.position.y = 2.6;
+      b.add(pole);
+      const flag = new THREE.Mesh(flagGeo, i === 0 ? flagMat : buoyMat);
+      flag.position.y = 3.05;
+      b.add(flag);
+      const x = g.x + g.rx * GATE_HALF * s;
+      const z = g.z + g.rz * GATE_HALF * s;
+      b.position.set(x, 0, z);
+      group.add(b);
+      buoys.push({ obj: b, x, z, ph: i + s });
+    }
+    // A ring of light across the gate you are heading for.
+    const ring = new THREE.Mesh(keep(new THREE.TorusGeometry(GATE_HALF, 0.18, 6, 40, Math.PI)), ringMat2);
+    ring.position.set(g.x, 0, g.z);
+    ring.rotation.y = -Math.atan2(g.rz, g.rx);
+    ring.visible = false;
+    group.add(ring);
+    nextRings.push(ring);
+  });
+  // Start and finish: two pylons and a chequered banner over gate 0.
+  {
+    const g = gates[0];
+    const { c, x } = canvas(1024, 160);
+    for (let i = 0; i < 32; i++) for (let j = 0; j < 5; j++) {
+      x.fillStyle = (i + j) % 2 ? "#111" : "#fff";
+      x.fillRect(i * 32, j * 32, 32, 32);
+    }
+    x.fillStyle = "#d62828";
+    x.fillRect(300, 28, 424, 104);
+    x.fillStyle = "#fff";
+    x.font = "bold 76px system-ui, sans-serif";
+    x.textAlign = "center";
+    x.textBaseline = "middle";
+    x.fillText("START · FINISH", 512, 82);
+    const banner = new THREE.Mesh(keep(new THREE.PlaneGeometry(GATE_HALF * 2 + 1, 2.2)), keep(new THREE.MeshStandardMaterial({ map: keep(tex(c, false)), side: THREE.DoubleSide })));
+    banner.position.set(g.x, 7.2, g.z);
+    banner.rotation.y = -Math.atan2(g.rz, g.rx);
+    group.add(banner);
+    const pyl = keep(new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.6 }));
+    for (const s of [-1, 1]) {
+      const p = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.28, 0.4, 9, 10)), pyl);
+      p.position.set(g.x + g.rx * (GATE_HALF + 0.6) * s, 3.8, g.z + g.rz * (GATE_HALF + 0.6) * s);
+      group.add(p);
+    }
+  }
+  const race: RaceState = { next: 0, gates: GATES, lap: null, best: null };
+  try {
+    const v = Number(localStorage.getItem(RACE_KEY));
+    if (v > 0) race.best = v;
+  } catch {
+    /* fine without it */
+  }
+  let lastGateD = Infinity;
 
   const insideDeck = (x: number, z: number, pad: number) => {
     for (const [x0, x1, z0, z1] of decks) if (x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad) return true;
     return false;
   };
-  /** Somewhere a hull of this draught can be. */
-  const water = (x: number, z: number) => waterDepthAt(x, z) > DRAUGHT && !insideDeck(x, z, BOAT_R * 0.75) && x > -1400 && Math.abs(z) < 1400;
+  /** Somewhere a hull of this draught can be, clear of the piers and the other boats. */
+  const water = (c: Craft, x: number, z: number) => {
+    const sp = c.boat.spec;
+    if (!(waterDepthAt(x, z) > sp.draught && !insideDeck(x, z, sp.radius * 0.75) && x > -1400 && Math.abs(z) < 1400)) return false;
+    for (const o of crafts) {
+      if (o === c) continue;
+      if (Math.hypot(o.boat.x - x, o.boat.z - z) < sp.radius + o.boat.spec.radius) {
+        // Moving apart is always allowed, or two boats that touched would stay stuck.
+        if (Math.hypot(o.boat.x - x, o.boat.z - z) < Math.hypot(o.boat.x - c.boat.x, o.boat.z - c.boat.z)) return false;
+      }
+    }
+    return true;
+  };
 
-  const place = (t: number) => {
+  const place = (c: Craft, t: number) => {
+    const { boat } = c;
+    const sp = boat.spec;
     const y = seaSurfaceAt(boat.x, boat.z, t);
     const fx = Math.sin(boat.yaw);
     const fz = Math.cos(boat.yaw);
-    const yf = seaSurfaceAt(boat.x + fx * 2.2, boat.z + fz * 2.2, t);
-    const yb = seaSurfaceAt(boat.x - fx * 2.2, boat.z - fz * 2.2, t);
+    const half = sp.length * 0.4;
+    const yf = seaSurfaceAt(boat.x + fx * half, boat.z + fz * half, t);
+    const yb = seaSurfaceAt(boat.x - fx * half, boat.z - fz * half, t);
     const yl = seaSurfaceAt(boat.x - fz * 1, boat.z + fx * 1, t);
     const yr = seaSurfaceAt(boat.x + fz * 1, boat.z - fx * 1, t);
-    const plane = THREE.MathUtils.clamp(boat.speed / MAX_FWD, 0, 1);
-    const targetPitch = Math.atan2(yf - yb, 4.4) * -1 - plane * 0.09;
-    const targetRoll = Math.atan2(yl - yr, 2) * 0.8;
-    pitch += (targetPitch - pitch) * 0.2;
-    roll += (targetRoll - roll) * 0.2;
-    speedboat.position.set(boat.x, y + 0.05 + plane * 0.18, boat.z);
-    speedboat.rotation.set(0, 0, 0);
-    speedboat.rotateY(boat.yaw);
-    speedboat.rotateX(pitch);
-    speedboat.rotateZ(roll);
-    // The seat: driver's side, in the cockpit, feet on the floor.
-    boat.seat.set(-0.4, 0.52, -0.25).applyEuler(speedboat.rotation).add(speedboat.position);
+    const plane = THREE.MathUtils.clamp(boat.speed / sp.maxFwd, 0, 1);
+    // Up on the plane the hull skims, so the swell moves it less.
+    const ride = 1 - plane * 0.6;
+    const targetPitch = -Math.atan2(yf - yb, half * 2) * ride - plane * sp.rake;
+    const targetRoll = Math.atan2(yl - yr, 2) * 0.8 * ride;
+    c.pitch += (targetPitch - c.pitch) * 0.2;
+    c.roll += (targetRoll - c.roll) * 0.2;
+    c.obj.position.set(boat.x, y + 0.05 + plane * sp.lift, boat.z);
+    c.obj.rotation.set(0, 0, 0);
+    c.obj.rotateY(boat.yaw);
+    c.obj.rotateX(c.pitch);
+    c.obj.rotateZ(c.roll);
+    boat.seat.set(...sp.seat).applyEuler(c.obj.rotation).add(c.obj.position);
   };
-  place(0);
+  for (const c of crafts) place(c, 0);
 
   const landingTmp = new THREE.Vector3();
 
   return {
     group,
     entrance: new THREE.Vector3(-170, 0, Z),
-    boat,
+    boats: crafts.map((c) => c.boat),
     roofs,
+    race: () => race,
+    gates: () => gates.map((g) => [g.x, 0, g.z]),
     landing(x, z, reach) {
       let best: THREE.Vector3 | null = null;
       let bestD = reach;
@@ -475,91 +737,182 @@ export function buildMarina(opts: { boxes: WorldBox[]; z: number; lowDetail: boo
       }
       return best;
     },
-    moor() {
-      boat.x = home.x;
-      boat.z = home.z;
-      boat.yaw = home.yaw;
-      boat.speed = 0;
-    },
     update(dt, now, drive) {
       const t = now * 0.001;
       const step = Math.min(dt, 0.1);
-      if (drive) {
-        idle = 0;
-        const thr = THREE.MathUtils.clamp(drive.throttle, -1, 1);
-        const target = thr >= 0 ? thr * MAX_FWD : thr * MAX_REV;
-        const accel = thr === 0 ? 1.1 : target > boat.speed ? 5.5 : 7;
-        boat.speed += THREE.MathUtils.clamp(target - boat.speed, -accel * step, accel * step);
-        // A boat turns better with way on, and not at all standing still.
-        const grip = THREE.MathUtils.clamp(Math.abs(boat.speed) / 5, 0.15, 1) * Math.sign(boat.speed || 1);
-        boat.yaw -= drive.steer * 1.25 * grip * step;
-      } else {
-        boat.speed *= Math.pow(0.5, step);
-        idle += step;
-      }
-      // Sub-stepped so a fast boat cannot skip over a finger pier.
-      const n = Math.max(1, Math.ceil((Math.abs(boat.speed) * step) / 0.5));
-      for (let k = 0; k < n; k++) {
-        const nx = boat.x + Math.sin(boat.yaw) * boat.speed * (step / n);
-        const nz = boat.z + Math.cos(boat.yaw) * boat.speed * (step / n);
-        if (water(nx, nz)) {
-          boat.x = nx;
-          boat.z = nz;
-        } else if (water(nx, boat.z)) {
-          boat.x = nx;
-          boat.speed *= 0.9;
-        } else if (water(boat.x, nz)) {
-          boat.z = nz;
-          boat.speed *= 0.9;
+      let event: MarinaEvent | null = null;
+      for (const c of crafts) {
+        const { boat } = c;
+        const sp = boat.spec;
+        const helm = drive?.boat === boat ? drive : null;
+        const driving = !!helm;
+        if (helm) {
+          c.idle = 0;
+          const thr = THREE.MathUtils.clamp(helm.throttle, -1, 1);
+          const target = thr >= 0 ? thr * sp.maxFwd : thr * sp.maxRev;
+          const accel = thr === 0 ? 1.1 : target > boat.speed ? sp.accel : sp.accel * 1.3;
+          boat.speed += THREE.MathUtils.clamp(target - boat.speed, -accel * step, accel * step);
+          // A boat turns better with way on, not at all standing still, and a
+          // fast one carves a wider line.
+          const v = Math.abs(boat.speed);
+          const grip = THREE.MathUtils.clamp(v / 5, 0.15, 1) * THREE.MathUtils.lerp(1, sp.turnAtSpeed, THREE.MathUtils.clamp(v / sp.maxFwd, 0, 1));
+          boat.yaw -= THREE.MathUtils.clamp(helm.steer, -1, 1) * sp.turn * grip * Math.sign(boat.speed || 1) * step;
         } else {
-          boat.speed *= -0.25;
-          break;
+          boat.speed *= Math.pow(0.5, step);
+          c.idle += step;
+        }
+        // Sub-stepped so a fast boat cannot skip over a finger pier.
+        const n = Math.max(1, Math.ceil((Math.abs(boat.speed) * step) / 0.5));
+        for (let k = 0; k < n; k++) {
+          const nx = boat.x + Math.sin(boat.yaw) * boat.speed * (step / n);
+          const nz = boat.z + Math.cos(boat.yaw) * boat.speed * (step / n);
+          if (water(c, nx, nz)) {
+            boat.x = nx;
+            boat.z = nz;
+          } else if (water(c, nx, boat.z)) {
+            boat.x = nx;
+            boat.speed *= 0.9;
+          } else if (water(c, boat.x, nz)) {
+            boat.z = nz;
+            boat.speed *= 0.9;
+          } else {
+            boat.speed *= -0.25;
+            break;
+          }
+        }
+        // Left adrift away from the marina for a while: a harbour hand tows it home.
+        if (!driving && c.idle > 40 && Math.hypot(boat.x - boat.home.x, boat.z - boat.home.z) > 25) {
+          boat.x = boat.home.x;
+          boat.z = boat.home.z;
+          boat.yaw = boat.home.yaw;
+          boat.speed = 0;
+        }
+        place(c, t);
+
+        const v = Math.abs(boat.speed);
+        const fx = Math.sin(boat.yaw);
+        const fz = Math.cos(boat.yaw);
+        // Wake.
+        c.spray -= step;
+        if (v > 2 && c.spray <= 0) {
+          c.spray = 0.06;
+          const w = wake[wakeNext];
+          wakeNext = (wakeNext + 1) % WAKE;
+          const back = sp.length * 0.55;
+          w.x = boat.x - fx * back + (Math.random() - 0.5) * 0.6;
+          w.z = boat.z - fz * back + (Math.random() - 0.5) * 0.6;
+          w.age = 0;
+          w.size = sp === SPEEDBOAT ? 1 : 1.5;
+        }
+        // Rooster tail, a hydroplane over about 25 knots.
+        if (sp.maxFwd > 30 && v > 13) {
+          const k = Math.min(1, (v - 13) / 20);
+          const count = Math.ceil(k * (opts.lowDetail ? 4 : 10));
+          const y0 = c.obj.position.y;
+          for (let j = 0; j < count; j++) {
+            const i = sprayNext;
+            sprayNext = (sprayNext + 1) % SPRAY;
+            sprayPos[i * 3] = boat.x - fx * 3.8 + (Math.random() - 0.5) * 0.5;
+            sprayPos[i * 3 + 1] = y0 + 0.1;
+            sprayPos[i * 3 + 2] = boat.z - fz * 3.8 + (Math.random() - 0.5) * 0.5;
+            const back = v * (0.35 + Math.random() * 0.25);
+            const side = (Math.random() - 0.5) * 3;
+            sprayVel[i * 3] = -fx * back + fz * side;
+            sprayVel[i * 3 + 1] = 5 + k * 7 + Math.random() * 3;
+            sprayVel[i * 3 + 2] = -fz * back - fx * side;
+            sprayAge[i] = 0;
+          }
+        }
+
+        // The course, for whoever is driving.
+        if (driving) {
+          const g = gates[race.next];
+          const d = Math.hypot(boat.x - g.x, boat.z - g.z);
+          // Through the gate: inside its span, and past its line.
+          const along = (boat.x - g.x) * g.rx + (boat.z - g.z) * g.rz;
+          if (d < GATE_HALF + 2 && Math.abs(along) < GATE_HALF && d > lastGateD) {
+            if (race.next === 0) {
+              if (race.lap !== null) {
+                const time = race.lap;
+                const best = race.best === null || time < race.best;
+                if (best) {
+                  race.best = time;
+                  try {
+                    localStorage.setItem(RACE_KEY, String(time));
+                  } catch {
+                    /* fine */
+                  }
+                }
+                event = { type: "lap", time, best };
+              } else {
+                event = { type: "start" };
+              }
+              race.lap = 0;
+            } else {
+              event = { type: "gate", n: race.next };
+            }
+            race.next = (race.next + 1) % GATES;
+            lastGateD = Infinity;
+          } else {
+            lastGateD = d < GATE_HALF + 2 ? d : Infinity;
+          }
+          if (race.lap !== null) race.lap += step;
         }
       }
-      // Left adrift far from the marina for a while: a harbour hand tows it home.
-      if (!drive && idle > 40 && Math.hypot(boat.x - home.x, boat.z - home.z) > 25) {
-        boat.x = home.x;
-        boat.z = home.z;
-        boat.yaw = home.yaw;
-        boat.speed = 0;
+      // Off the boat, the lap is abandoned.
+      if (!drive && race.lap !== null) {
+        race.lap = null;
+        race.next = 0;
       }
-      place(t);
+      nextRings.forEach((r, i) => {
+        r.visible = !!drive && i === race.next;
+        if (r.visible) r.position.y = seaSurfaceAt(r.position.x, r.position.z, t);
+      });
 
-      // Wake.
-      wakeTimer -= step;
-      if (Math.abs(boat.speed) > 2 && wakeTimer <= 0) {
-        wakeTimer = 0.06;
-        const w = wake[wakeNext];
-        wakeNext = (wakeNext + 1) % WAKE;
-        w.x = boat.x - Math.sin(boat.yaw) * 3 + (Math.random() - 0.5) * 0.6;
-        w.z = boat.z - Math.cos(boat.yaw) * 3 + (Math.random() - 0.5) * 0.6;
-        w.age = 0;
-      }
       for (let i = 0; i < WAKE; i++) {
         const w = wake[i];
         w.age += step;
-        const life = 2.4;
-        const k = w.age / life;
+        const k = w.age / 2.4;
         if (k >= 1) {
           m4.makeScale(0.0001, 0.0001, 0.0001);
         } else {
           // Spreads and thins out: shrinking the core reads as fading.
-          const s = (0.5 + k * 1.8) * (1 - k * k * 0.6);
+          const s = (0.5 + k * 1.8) * (1 - k * k * 0.6) * w.size;
           m4.makeScale(s, 1, s).setPosition(w.x, seaSurfaceAt(w.x, w.z, t) + 0.06, w.z);
         }
         foam.setMatrixAt(i, m4);
       }
       foam.instanceMatrix.needsUpdate = true;
 
-      // Moored boats ride the swell.
+      for (let i = 0; i < SPRAY; i++) {
+        if (sprayAge[i] > 1.6) {
+          sprayPos[i * 3 + 1] = -999;
+          continue;
+        }
+        sprayAge[i] += step;
+        sprayVel[i * 3 + 1] -= 9.8 * step;
+        sprayPos[i * 3] += sprayVel[i * 3] * step;
+        sprayPos[i * 3 + 1] += sprayVel[i * 3 + 1] * step;
+        sprayPos[i * 3 + 2] += sprayVel[i * 3 + 2] * step;
+        if (sprayPos[i * 3 + 1] < -0.3) sprayAge[i] = 9;
+      }
+      (sprayGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+
+      // Moored boats and buoys ride the swell.
       for (const b of bobbers) {
         const y = seaSurfaceAt(b.x, b.z, t);
         b.obj.position.y = y - 0.25;
         b.obj.rotation.set(Math.sin(t * 0.9 + b.ph) * 0.03, b.yaw + Math.sin(t * 0.3 + b.ph) * 0.04, Math.sin(t * 1.1 + b.ph) * 0.05);
       }
+      for (const b of buoys) {
+        b.obj.position.y = seaSurfaceAt(b.x, b.z, t) - 0.2;
+        b.obj.rotation.set(Math.sin(t * 1.3 + b.ph) * 0.08, t * 0.2 + b.ph, Math.sin(t * 1.1 + b.ph) * 0.08);
+      }
+      return event;
     },
     setNight(night) {
       lampMat.emissiveIntensity = night ? 2.4 : 0.15;
+      buoyMat.emissiveIntensity = night ? 0.9 : 0.05;
       for (const l of lights) l.intensity = night ? 18 : 0;
     },
     dispose() {

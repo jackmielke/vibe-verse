@@ -4428,6 +4428,7 @@ export default function City() {
         act: () => landmarks.act(),
         shot: (s: { eye: number[]; look: number[]; fov?: number } | null) => landmarks.devShot(s),
         ball: (k?: [number, number, number, number]) => landmarks.devBall(k),
+        boat: (at?: [number, number, number]) => landmarks.devBoat(at),
       };
       (window as unknown as Record<string, unknown>).__cityWarp = (
         x: number,

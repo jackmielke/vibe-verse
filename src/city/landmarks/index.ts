@@ -43,7 +43,7 @@ import { buildEmpireState } from "./empireState";
 import { buildSpaceNeedle } from "./spaceNeedle";
 import { buildEiffel } from "./eiffel";
 import { buildPark } from "./park";
-import { buildMarina } from "./marina";
+import { buildMarina, type Boat } from "./marina";
 
 export type { LandmarkKey } from "./common";
 
@@ -69,6 +69,8 @@ export interface LandmarkUi {
   /** The Empire State's express elevator, which the HUD draws. */
   express: { up: boolean; progress: number } | null;
   viewing: boolean;
+  /** At a boat's helm: the HUD shows the touch helm on a phone. */
+  helm: boolean;
 }
 
 export interface LandmarkEvent {
@@ -103,6 +105,8 @@ export interface Landmarks {
   followYaw(): number | null;
   /** Locked to a ride of some kind (an elevator, the boat, the binoculars). */
   holding(): boolean;
+  /** The phone helm's throttle and wheel, added to the keys and the stick. */
+  setTouchHelm(throttle: number, steer: number): void;
   /** E pressed. Returns true if it did something. */
   act(): boolean;
   ui(): LandmarkUi;
@@ -118,6 +122,8 @@ export interface Landmarks {
   devSites(): unknown[];
   /** Dev: hold the camera on a scripted shot (null to release). */
   devShot(shot: { eye: number[]; look: number[]; fov?: number } | null): void;
+  /** Dev: put the boat at the helm somewhere, and read the race. */
+  devBoat(at?: [number, number, number]): { race: unknown; boat: number[] | null };
   /** Dev: the soccer ball. */
   devBall(kick?: [number, number, number, number]): { ball: number[]; score: [number, number] };
   dispose(): void;
@@ -127,7 +133,7 @@ type Ride =
   | { kind: "lift"; e: Elevator; key: LandmarkKey; name: string; up: boolean }
   | { kind: "express"; up: boolean; t: number; dur: number; hold: THREE.Vector3; exit: THREE.Vector3 }
   | { kind: "view"; v: Viewer; hold: THREE.Vector3; yaw0: number | null; pitch0: number }
-  | { kind: "boat" };
+  | { kind: "boat"; b: Boat };
 
 export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDetail: boolean }): Landmarks {
   const { boxes, pitch } = opts;
@@ -302,29 +308,53 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
     stations.push(v.station);
   }
 
-  // The speedboat: board it from a pier or out of the water.
-  const boat = marina.boat;
-  const boatSpot = new THREE.Vector3();
-  stations.push({
-    id: "marina-boat",
-    label: "Take the speedboat out",
-    emoji: "🚤",
-    pos: boatSpot,
-    radius: 3.4,
-    height: 2.6,
-    swim: true,
-    available: () => !ride,
-    act() {
-      ride = { kind: "boat" };
-      emit({
-        type: "depart",
-        key: "marina",
-        title: "🚤 Vibe Runner",
-        description: "W and S for the throttle, A and D to steer. Press E beside a pier to tie up and step off.",
-      });
-    },
-  });
-  const boatLanding = () => marina.landing(boat.x, boat.z, 4.5);
+  // The boats: board one from a pier or out of the water.
+  const boats = marina.boats;
+  const boatSpots = new Map<Boat, THREE.Vector3>();
+  for (const b of boats) {
+    const spot = new THREE.Vector3();
+    boatSpots.set(b, spot);
+    const hydro = b.id.startsWith("hydro");
+    stations.push({
+      id: `marina-${b.id}`,
+      label: hydro ? `Race the hydroplane ${b.spec.name}` : "Take the speedboat out",
+      emoji: hydro ? "🏁" : "🚤",
+      pos: spot,
+      radius: hydro ? 4.2 : 3.4,
+      height: 2.6,
+      swim: true,
+      available: () => !ride,
+      act() {
+        ride = { kind: "boat", b };
+        emit({
+          type: "depart",
+          key: "marina",
+          title: hydro ? `🏁 ${b.spec.name}` : "🚤 Vibe Runner",
+          description: hydro
+            ? "Out past the T-head is a loop of orange buoy gates. Go through the start gate to start the clock, take every gate in order, and come back through the start."
+            : "W and S for the throttle, A and D to steer. Press E beside a pier to tie up and step off.",
+        });
+      },
+    });
+  }
+  let touchThrottle = 0;
+  let touchSteer = 0;
+  const helmBoat = () => (ride?.kind === "boat" ? ride.b : null);
+  const boatLanding = () => {
+    const b = helmBoat();
+    return b ? marina.landing(b.x, b.z, 4.5) : null;
+  };
+  const boatReadout = (b: Boat) => {
+    const kn = `${Math.round(Math.abs(b.speed) * 1.94)} kn`;
+    const r = marina.race();
+    if (r.lap === null) return b.id.startsWith("hydro") ? `${kn} · to the start gate` : kn;
+    return `${kn} · ${clock(r.lap)} · gate ${r.next === 0 ? r.gates : r.next}/${r.gates}`;
+  };
+  const clock = (t: number) => {
+    const m = Math.floor(t / 60);
+    const sec = t - m * 60;
+    return `${m}:${sec < 10 ? "0" : ""}${sec.toFixed(1)}`;
+  };
 
   const nearest = (): Station | null => {
     let best: Station | null = null;
@@ -394,7 +424,7 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
         name: "Vibe Marina",
         entrance: marina.entrance.clone(),
         deck: new THREE.Vector3(-236, 1.5, MARINA_Z + 4),
-        aliases: ["marina", "boat", "speedboat", "pier", "harbour", "harbor", "docks"],
+        aliases: ["marina", "boat", "speedboat", "pier", "harbour", "harbor", "docks", "hydroplane", "boat race"],
       },
     ],
     update(dt, now, ctx) {
@@ -404,8 +434,22 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
       throttle = ctx.throttle ?? 0;
       steer = ctx.steer ?? 0;
       for (const l of lifts) l.e.update(dt);
-      marina.update(dt, now, ride?.kind === "boat" ? { throttle, steer } : null);
-      boatSpot.set(boat.x, boat.seat.y - 0.9, boat.z);
+      const hb = helmBoat();
+      const mev = marina.update(
+        dt,
+        now,
+        hb ? { boat: hb, throttle: THREE.MathUtils.clamp(throttle + touchThrottle, -1, 1), steer: THREE.MathUtils.clamp(steer + touchSteer, -1, 1) } : null,
+      );
+      for (const b of boats) boatSpots.get(b)!.set(b.x, b.seat.y - 0.9, b.z);
+      if (mev?.type === "start") emit({ type: "depart", key: "marina", title: "🏁 The clock is running", description: "Take every buoy gate in order, then back through the start." });
+      else if (mev?.type === "gate") emit({ type: "depart", key: "marina" });
+      else if (mev?.type === "lap")
+        emit({
+          type: "arrive",
+          key: "marina",
+          title: `🏁 Lap ${clock(mev.time)}`,
+          description: mev.best ? "New best lap! The clock is already running on the next one." : `Best ${clock(marina.race().best ?? mev.time)}. Keep going, the next lap has started.`,
+        });
       const kick = park.update(dt, now, ctx.player, busy || !!ride);
       if (kick.goal) {
         const [h, a] = park.score();
@@ -423,7 +467,7 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
       }
       if (!ride) return null;
       if (ride.kind === "lift") return ride.e.floor;
-      if (ride.kind === "boat") return boat.seat;
+      if (ride.kind === "boat") return ride.b.seat;
       if (ride.kind === "express") {
         ride.t += dt;
         if (ride.t >= ride.dur) {
@@ -452,6 +496,7 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
         return true;
       }
       if (ride?.kind === "boat") {
+        const boat = ride.b;
         const land = boatLanding();
         if (land) {
           release = land;
@@ -489,14 +534,19 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
           ride?.kind === "lift"
             ? { name: ride.name, altitude: altitude(), up: ride.up }
             : ride?.kind === "boat"
-              ? { name: "Vibe Runner", altitude: 0, up: boat.speed >= 0, readout: `${Math.round(Math.abs(boat.speed) * 1.94)} kn` }
+              ? { name: ride.b.spec.name, altitude: 0, up: ride.b.speed >= 0, readout: boatReadout(ride.b) }
               : null,
         express: ride?.kind === "express" ? { up: ride.up, progress: Math.min(1, ride.t / ride.dur) } : null,
         viewing: ride?.kind === "view",
+        helm: ride?.kind === "boat",
       };
     },
+    setTouchHelm(t, st) {
+      touchThrottle = t;
+      touchSteer = st;
+    },
     followYaw() {
-      return ride?.kind === "boat" ? boat.yaw + Math.PI : null;
+      return ride?.kind === "boat" ? ride.b.yaw + Math.PI : null;
     },
     holding() {
       return !!ride;
@@ -568,12 +618,24 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
         {
           key: "marina",
           entrance: v(marina.entrance),
-          boat: [boat.x, boat.seat.y, boat.z],
+          boat: [boats[0].x, boats[0].seat.y, boats[0].z],
+          hydro: [boats[1].x, boats[1].seat.y, boats[1].z],
+          tHead: [-266, 1.6, MARINA_Z + 9.6],
+          gates: marina.gates(),
           finger: [-235.9, 1.6, MARINA_Z + 6],
           eye: [-200, 22, MARINA_Z + 45],
           look: [-238, 0, MARINA_Z],
         },
       ];
+    },
+    devBoat(at) {
+      const b = helmBoat();
+      if (b && at) {
+        b.x = at[0];
+        b.z = at[1];
+        b.yaw = at[2];
+      }
+      return { race: { ...marina.race() }, boat: b ? [b.x, b.z, b.yaw, b.speed] : null };
     },
     devBall(k) {
       if (k) park.kick(...k);

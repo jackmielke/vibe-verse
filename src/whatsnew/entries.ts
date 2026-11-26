@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-hydroplanes",
+    date: "2026-11-26",
+    emoji: "🏁",
+    title: "Hydroplane racing at Vibe Marina",
+    body: "Two racing hydroplanes, Miss Vibe and Blue Blur, are tied up at the end of the pier. Take one out past the T-head, go through the start gate and race the loop of orange buoys against the clock, with a rooster tail of spray behind you. On a phone, every boat now has a steering wheel and a GO button.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "city-vibe-arms",
     date: "2026-11-26",
     emoji: "🔫",
