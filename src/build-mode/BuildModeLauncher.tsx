@@ -38,7 +38,7 @@ export default function BuildModeLauncher() {
 
   // B with a modifier toggles it, so it can be opened mid-flight.
   useEffect(() => {
-    if (!admin || !scope) return;
+    if ((!admin && !(import.meta.env.DEV && window.location.search.includes("buildmode"))) || !scope) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
@@ -50,7 +50,10 @@ export default function BuildModeLauncher() {
     return () => window.removeEventListener("keydown", onKey);
   }, [admin, scope]);
 
-  if (!scope || !user || !admin) return null;
+  // Dev only: `?buildmode` shows the panel without an admin session, so a
+  // headless browser can look at its layout. Stripped from production builds.
+  const devForce = import.meta.env.DEV && new URLSearchParams(window.location.search).has("buildmode");
+  if (!scope || ((!user || !admin) && !devForce)) return null;
 
   return (
     <>
