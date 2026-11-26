@@ -176,6 +176,9 @@ export interface MayhemOpts {
   onBadDown?(left: number): void;
   /** The bad guys' roof pad, if the city built one: [x, y, z]. */
   hideout?: [number, number, number];
+  /** Where a summoned bad guy starts, behind the wheel: [x, z, yaw]. Inside
+   *  the warehouse, facing its door. */
+  lair?: [number, number, number];
   /** Where cruisers roll out of the police station: [x, z, yaw]. */
   garage?: [number, number, number];
   /** Cruisers parked outside the station: [x, z, yaw] each. */
@@ -622,11 +625,12 @@ interface Bomb {
 
 interface Bad extends Driver {
   id: number;
-  /** The traffic car he took. */
-  car: number;
+  /** His own car: the city's commonest saloon, painted prison orange. */
+  car: CityCar;
   hp: number;
   roofY: number;
-  /** Seconds into the jump off the roof; past `JUMP_T` he is driving. */
+  /** Legacy boarding clock. Bad guys now start in the driver's seat inside
+   *  the warehouse, so this is set to `JUMP_T` at spawn and never runs. */
   jump: number;
   from: THREE.Vector3;
   /** The junction he last left, so he does not double straight back. */
@@ -640,12 +644,22 @@ interface Bad extends Driver {
 /** Seconds from the roof to the driver's seat. */
 const JUMP_T = 1.6;
 
-/** A man in black with a red mask. Feet at the origin, facing +Z. */
+type CityCar = ReturnType<typeof buildCityCar>;
+
+/** Prison orange, for the jumpsuit and the getaway car alike. */
+const JUMPSUIT = 0xff7a1a;
+
+/** The getaway car: traffic's white saloon (model 0), resprayed orange. */
+function buildBadCar(): CityCar {
+  return buildCityCar({ body: 0xff6a10, accent: 0xd25400, trim: 0x2a2c30 }, 0);
+}
+
+/** A man in an orange jumpsuit. Feet at the origin, facing +Z. */
 function buildBadGuy(): THREE.Group {
   const g = new THREE.Group();
-  const black = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.7 });
+  const suit = new THREE.MeshStandardMaterial({ color: JUMPSUIT, roughness: 0.75 });
   const skin = new THREE.MeshStandardMaterial({ color: 0xd9a77e, roughness: 0.8 });
-  const red = new THREE.MeshStandardMaterial({ color: 0xd7262e, roughness: 0.5 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x1b1a19, roughness: 0.8 });
   const add = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => {
     const mesh = new THREE.Mesh(geo, m);
     mesh.position.set(x, y, z);
@@ -653,13 +667,16 @@ function buildBadGuy(): THREE.Group {
     g.add(mesh);
     return mesh;
   };
-  add(new THREE.BoxGeometry(0.5, 0.65, 0.3), black, 0, 1.05, 0);
-  for (const sx of [-0.13, 0.13]) add(new THREE.BoxGeometry(0.18, 0.7, 0.22), black, sx, 0.36, 0);
-  for (const sx of [-0.33, 0.33]) add(new THREE.BoxGeometry(0.14, 0.58, 0.16), black, sx, 1.06, 0);
+  // One piece, neck to ankle, with the inmate number stencilled on the back.
+  add(new THREE.BoxGeometry(0.5, 0.65, 0.3), suit, 0, 1.05, 0);
+  for (const sx of [-0.13, 0.13]) add(new THREE.BoxGeometry(0.18, 0.62, 0.22), suit, sx, 0.4, 0);
+  for (const sx of [-0.13, 0.13]) add(new THREE.BoxGeometry(0.2, 0.1, 0.28), black, sx, 0.05, 0.03);
+  for (const sx of [-0.33, 0.33]) add(new THREE.BoxGeometry(0.14, 0.5, 0.16), suit, sx, 1.1, 0);
+  for (const sx of [-0.33, 0.33]) add(new THREE.BoxGeometry(0.12, 0.1, 0.13), skin, sx, 0.8, 0);
+  add(new THREE.BoxGeometry(0.3, 0.2, 0.02), black, 0, 1.15, -0.16);
   add(new THREE.SphereGeometry(0.2, 14, 10), skin, 0, 1.58, 0);
-  add(new THREE.BoxGeometry(0.43, 0.1, 0.43), red, 0, 1.6, 0.01);
-  add(new THREE.CylinderGeometry(0.24, 0.24, 0.06, 14), black, 0, 1.74, 0);
-  add(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 14), black, 0, 1.86, 0);
+  // Buzz cut.
+  add(new THREE.SphereGeometry(0.205, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), black, 0, 1.6, -0.01);
   return g;
 }
 
@@ -669,7 +686,7 @@ function badTag(): THREE.Sprite {
   c.width = 256;
   c.height = 96;
   const x = c.getContext("2d")!;
-  x.fillStyle = "rgba(160,16,24,0.88)";
+  x.fillStyle = "rgba(214,92,8,0.92)";
   x.beginPath();
   x.roundRect(8, 14, 240, 68, 30);
   x.fill();
@@ -832,9 +849,11 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     if (opts.hideout) {
       hideoutAt = opts.hideout;
       buildHideout(hideoutAt);
+      lairAt = opts.lair ?? [opts.hideout[0], opts.hideout[2] + 16, 0];
     } else if (hq) {
       hideoutAt = [(hq.minX + hq.maxX) / 2, hq.base + hq.height, (hq.minZ + hq.maxZ) / 2];
       buildHideout(hideoutAt);
+      lairAt = [hideoutAt[0], hq.maxZ + 6, 0];
     }
     // Vibe Arms goes where the free Glock used to lie.
     for (const s of opts.stallSpots) {
@@ -1220,6 +1239,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
    * Nobody arrests him. The only way out is up.
    */
   let hideoutAt: [number, number, number] | null = null;
+  let lairAt: [number, number, number] | null = null;
   const hideoutGroup = new THREE.Group();
   group.add(hideoutGroup);
   const hideoutGeos: THREE.BufferGeometry[] = [];
@@ -1260,7 +1280,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     const i = bads.indexOf(b);
     if (i < 0) return;
     bads.splice(i, 1);
-    group.remove(b.figure, b.tag);
+    group.remove(b.figure, b.tag, b.car.group);
+    b.car.dispose();
     b.figure.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) {
@@ -1271,13 +1292,34 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     b.tag.material.map?.dispose();
     b.tag.material.dispose();
   };
+  /** Burnt-out getaway cars, left to smoulder where they went up. */
+  const badWrecks: Array<{ car: CityCar; x: number; z: number; t: number }> = [];
   const blowBad = (b: Bad) => {
-    if (b.jump >= JUMP_T) traffic.detonate(b.car, b.yaw + Math.PI);
-    else traffic.release(b.car);
     boom(b.x, 1, b.z, 1.4, false);
-    crashFx.debris(b.x, 1.4, b.z, 12, 0x2b2d31, 9);
+    crashFx.debris(b.x, 1.4, b.z, 12, 0xd25400, 9);
+    // The car stays as a black shell; he does not.
+    const car = b.car;
+    b.car = { group: new THREE.Group(), roofY: 0, halfLong: 0, dispose() {} };
+    car.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) m.material = CHARRED;
+    });
+    car.group.rotation.z = (Math.random() - 0.5) * 0.25;
+    badWrecks.push({ car, x: b.x, z: b.z, t: 0 });
     removeBad(b);
     opts.onBadDown?.(bads.length);
+  };
+  const updateBadWrecks = (dt: number) => {
+    for (let i = badWrecks.length - 1; i >= 0; i--) {
+      const w = badWrecks[i];
+      w.t += dt;
+      crashFx.smoulder(dt, w.x, 1.2, w.z, 1, w.t < 8 ? 1 : 0.2);
+      if (w.t > 16) {
+        group.remove(w.car.group);
+        w.car.dispose();
+        badWrecks.splice(i, 1);
+      }
+    }
   };
 
   /** Which way to run next: the junction that is ahead, clear, and furthest from the police. */
@@ -1314,53 +1356,33 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
 
   const summon = (): "ok" | "full" | "nocar" => {
     if (bads.length >= MAX_BAD) return "full";
-    if (!hideoutAt) return "nocar";
-    const [hx, hy, hz] = hideoutAt;
-    const near = traffic
-      .debugNear(hx, hz, 90)
-      .filter((c) => !c.wreck && !c.hit && !c.crushed && !bads.some((b) => b.car === c.id))
-      .sort((a, b) => Math.hypot(a.x - hx, a.z - hz) - Math.hypot(b.x - hx, b.z - hz));
-    for (const c of near) {
-      const ride = traffic.claim(c.id);
-      if (!ride) continue;
-      const figure = buildBadGuy();
-      const tag = badTag();
-      figure.position.set(hx, hy, hz);
-      group.add(figure, tag);
-      const yaw = ride.yaw - Math.PI;
-      bads.push({
-        id: nextBadId++, car: c.id, hp: BAD_HP, roofY: ride.roofY,
-        x: ride.x, z: ride.z, yaw, speed: 0,
-        wpX: ride.x + Math.sin(yaw) * 20, wpZ: ride.z + Math.cos(yaw) * 20,
-        repath: 0, stuck: 0, reverse: 0,
-        jump: 0, from: new THREE.Vector3(hx, hy, hz),
-        prevX: Infinity, prevZ: Infinity, ramCool: 0, figure, tag,
-      });
-      return "ok";
-    }
-    return "nocar";
+    if (!lairAt) return "nocar";
+    // He starts behind the wheel inside the warehouse and drives out of the
+    // door. Three bays side by side, so a full house does not start stacked.
+    const [lx, lz, lyaw] = lairAt;
+    const taken = (z: number) => bads.some((b) => Math.abs(b.x - lx) < 5 && Math.abs(b.z - z) < 1.6);
+    const slot = [0, 2.8, -2.8].map((dz) => lz + dz).find((z) => !taken(z));
+    if (slot === undefined) return "nocar";
+    const car = buildBadCar();
+    const figure = buildBadGuy();
+    const tag = badTag();
+    group.add(car.group, figure, tag);
+    const ex = lx + Math.sin(lyaw) * 24;
+    bads.push({
+      id: nextBadId++, car, hp: BAD_HP, roofY: car.roofY,
+      x: lx, z: slot, yaw: lyaw, speed: 0,
+      wpX: ex, wpZ: lz + (slot - lz) * 0.3,
+      repath: 3, stuck: 0, reverse: 0,
+      jump: JUMP_T, from: new THREE.Vector3(lx, 0, slot),
+      prevX: Infinity, prevZ: Infinity, ramCool: 0, figure, tag,
+    });
+    return "ok";
   };
 
   const updateBads = (dt: number, blocked: (x: number, z: number, y: number) => boolean, ctx: MayhemCtx) => {
     const me = ctx.driving ?? ctx.player;
     for (const b of bads) {
       b.ramCool = Math.max(0, b.ramCool - dt);
-      if (b.jump < JUMP_T) {
-        // Off the roof in one arc, into the car, which waits for him.
-        b.jump += dt;
-        const k = Math.min(1, b.jump / JUMP_T);
-        const tx = b.x + Math.cos(b.yaw) * -0.4;
-        const tz = b.z - Math.sin(b.yaw) * -0.4;
-        b.figure.position.set(
-          b.from.x + (tx - b.from.x) * k,
-          b.from.y + (0.6 - b.from.y) * k + Math.sin(k * Math.PI) * 5,
-          b.from.z + (tz - b.from.z) * k,
-        );
-        b.figure.rotation.set(k * Math.PI * 2, Math.atan2(tx - b.from.x, tz - b.from.z), 0);
-        traffic.drive(b.car, b.x, 0, b.z, b.yaw + Math.PI);
-        b.tag.position.set(b.figure.position.x, b.figure.position.y + 2.6, b.figure.position.z);
-        continue;
-      }
       // Driving. Pick the next junction when this one is reached or lost.
       b.repath -= dt;
       if (b.repath <= 0 || Math.hypot(b.wpX - b.x, b.wpZ - b.z) < 6) {
@@ -1368,7 +1390,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         if (Math.hypot(b.wpX - b.x, b.wpZ - b.z) < 6 || !clear(blocked, b.x, b.z, b.wpX, b.wpZ)) flee(blocked, b);
       }
       steer(blocked, b, dt, BAD_TOP, (d) => hurtBad(b, d * 0.6));
-      traffic.drive(b.car, b.x, 0, b.z, b.yaw + Math.PI);
+      b.car.group.position.set(b.x, 0, b.z);
+      b.car.group.rotation.y = b.yaw;
       // He sits in the driver's seat; the label floats over the roof.
       const lx = Math.cos(b.yaw) * 0.38;
       const lz = -Math.sin(b.yaw) * 0.38;
@@ -1408,6 +1431,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       }
     }
     while (deadBads.length) blowBad(deadBads.pop()!);
+    updateBadWrecks(dt);
   };
 
   const seatOf = (b: Bad): BadSeat => ({
@@ -2110,10 +2134,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     dispose() {
       while (cops.length) removeCop(cops.length - 1);
       for (const m of parkedMeshes) m.dispose();
-      while (bads.length) {
-        const b = bads[0];
-        traffic.release(b.car);
-        removeBad(b);
+      while (bads.length) removeBad(bads[0]);
+      for (const w of badWrecks.splice(0)) {
+        group.remove(w.car.group);
+        w.car.dispose();
       }
       hideoutGeos.forEach((g) => g.dispose());
       hideoutMats.forEach((m) => m.dispose());

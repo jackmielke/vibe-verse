@@ -19,6 +19,9 @@ export interface Hideouts {
   boxes: WorldBox[];
   /** The middle of the warehouse roof, where bad guys are summoned: [x, y, z]. */
   hideout: [number, number, number];
+  /** Inside the warehouse, facing its west door, where a bad guy's car
+   *  starts: [x, z, yaw]. */
+  lair: [number, number, number];
   /** Just outside the station's garage, where a cruiser rolls out: [x, z, yaw]. */
   garage: [number, number, number];
   /** Where the two parked cruisers sit: [x, z, yaw] each. */
@@ -261,6 +264,7 @@ export function buildHideouts(): Hideouts {
     group,
     boxes,
     hideout: [WAREHOUSE_AT[0], 12, WAREHOUSE_AT[1]],
+    lair: [WAREHOUSE_AT[0] + 3, WAREHOUSE_AT[1], -Math.PI / 2],
     garage: [px + 12.5, pz, Math.PI / 2],
     parked: [[px + 12.2, pz - 6.5, Math.PI], [px + 12.2, pz + 6.5, 0]],
     dispose() {
