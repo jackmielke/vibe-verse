@@ -47,6 +47,7 @@ export type SplashProps = {
   onDuo: () => void;
   onHost: () => void;
   onGarage: () => void;
+  onStory: () => void;
   onAurora: () => void;
   onThanks: () => void;
 };
@@ -77,7 +78,7 @@ function useShots(aurora: boolean, thanks: boolean): Shot[] {
       { src: imgFlying, tag: "WRECK HIM", line: "Wreck his rides for cash. He comes back bigger." },
       { src: imgTrain, tag: "THE TRAIN", line: "He runs out of trucks. So he steals a train." },
       { src: imgTwoTrains, tag: "TWO PLAYERS", line: "Bring a friend and there are two trains." },
-      { src: imgSunrise, tag: "DOT'S DINER", line: "It all ends at Dot's Diner. With pie." },
+      { src: imgSunrise, tag: "DOT'S DINER", line: "Dot's Diner never closes, and neither does the chase." },
     ];
     const lead: Shot[] = [];
     if (thanks) lead.push({ src: imgThanks, tag: "THANKSGIVING", line: "Pilgrim hats for everybody. Even the henchmen." });
@@ -159,6 +160,7 @@ function Reel(p: SplashProps) {
             <button className={item} onClick={p.onGarage}>
               <span className="w-6 text-center">🔧</span><span className="flex-1">Garage</span><span className="text-[#4de0a8]" style={{ fontFamily: MONO }}>${p.bank.toLocaleString()}</span>
             </button>
+            <button className={item} onClick={p.onStory}><span className="w-6 text-center">📖</span><span className="flex-1">Read the story</span></button>
             <Link to="/" className={`${item} text-white/60`}><span className="w-6 text-center">←</span><span className="flex-1">Back to the hub</span></Link>
           </div>
 
@@ -258,6 +260,7 @@ function News(p: SplashProps) {
           {!p.phone ? <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onDuo}>Two trucks, one screen <span className="text-white/40">2P</span></button> : null}
           <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onHost}>Play with a friend's phone <span className="text-white/40">📱</span></button>
           <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onGarage}>Garage <span className="text-[#4de0a8]" style={{ fontFamily: MONO }}>${p.bank.toLocaleString()}</span></button>
+          <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onStory}>Read the story <span className="text-white/40">📖</span></button>
           <div className="grid grid-cols-2 border-t border-white/10">
             <button className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide ${p.aurora ? "bg-[#1f6b55] text-[#cfffe8]" : "text-white/55 hover:bg-white/10"}`} onClick={p.onAurora}>✦ Aurora {p.aurora ? "on" : "off"}</button>
             <button className={`border-l border-white/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wide ${p.thanks ? "bg-[#8a3a12] text-[#ffe2c0]" : "text-white/55 hover:bg-white/10"}`} onClick={p.onThanks}>🦃 Thanks {p.thanks ? "on" : "off"}</button>
@@ -355,6 +358,7 @@ function Wanted(p: SplashProps) {
               <button onClick={p.onThanks} className="border-2 border-dashed px-2.5 py-1" style={{ borderColor: ink, background: p.thanks ? "#8a3a12" : "transparent", color: p.thanks ? "#ffe2c0" : ink }}>🦃 Thanksgiving {p.thanks ? "on" : "off"}</button>
             </div>
             <div className="mt-3 flex justify-center gap-4 text-[13px] font-semibold underline decoration-dotted underline-offset-4">
+              <button onClick={p.onStory}>Read the story</button>
               <button onClick={p.onGarage}>Garage (${p.bank.toLocaleString()})</button>
               <Link to="/">Hub</Link>
             </div>
@@ -375,7 +379,7 @@ function ComicBook(p: SplashProps) {
     { src: imgComicCall },
     { src: p.aurora ? imgAuroraTrain : p.thanks ? imgThanks : imgLindaRigs, cap: p.aurora ? "UNDER THE NORTHERN LIGHTS..." : p.thanks ? "ON THANKSGIVING, NO LESS..." : "THE RIDES GET BIGGER...", boom: "KA-BLAM!" },
     { src: imgTrain, cap: "...AND BIGGER.", boom: "TOOT TOOT!" },
-    { src: imgShowdown, cap: "UNTIL DOT'S DINER." },
+    { src: imgShowdown, cap: "AND IT NEVER STOPS." },
   ];
   const yellow = "#ffd84a";
   const boxBtn = "border-[3px] border-black px-5 py-2.5 text-[20px] tracking-wide text-black transition hover:-translate-y-0.5";
@@ -439,6 +443,7 @@ function Buttons({ p, yellow, boxBtn }: { p: SplashProps; yellow: string; boxBtn
         <button className={`${boxBtn} text-[14px]`} style={{ background: p.thanks ? "#ffa64a" : "#fff", boxShadow: "3px 3px 0 #000" }} onClick={p.onThanks}>🦃 THANKS {p.thanks ? "ON" : "OFF"}</button>
       </div>
       <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 pt-1 text-[16px] text-black">
+        <button className="underline decoration-2 underline-offset-4" onClick={p.onStory}>STORY</button>
         <button className="underline decoration-2 underline-offset-4" onClick={p.onGarage}>GARAGE ${p.bank.toLocaleString()}</button>
         <Link to="/" className="underline decoration-2 underline-offset-4">HUB</Link>
       </div>

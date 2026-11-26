@@ -376,6 +376,7 @@ export default function CannonRun() {
           onDuo={() => start("duo")}
           onHost={() => { setRoom(""); setScreen("host"); }}
           onGarage={() => setScreen("garage")}
+          onStory={() => setScreen("story")}
           onAurora={toggleAurora}
           onThanks={toggleThanks}
         />
