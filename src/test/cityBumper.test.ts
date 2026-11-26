@@ -95,14 +95,16 @@ describe("hitting one", () => {
   it("asks what was hit before deciding what to do about it", () => {
     // The entire bug: `blockedAt` is true for a wall and for a car, and only
     // one of those should stop you.
-    expect(citySrc).toMatch(/const hitId = blockedAt\(knx, knz, nose\)\s*\n?\s*\? district\.traffic\.carAt/);
+    // Probed from the front bumper (`blockedV`), and asked with a pad wide
+    // enough to match the collision world's, so a car is never scored a wall.
+    expect(citySrc).toMatch(/const hitId = blockedV\(knx, knz\)\s*\n?\s*\? district\.traffic\.carAt\([^)]*, 1\.0\)/);
   });
 
   it("lets you through rather than stopping you", () => {
     // Being stopped dead by a hatchback is the boring outcome this replaces.
     const bump = citySrc.slice(
-      citySrc.indexOf("if (hitId >= 0) {"),
-      citySrc.indexOf("} else if (!blockedAt(knx, knz, nose)) {"),
+      citySrc.indexOf("} else if (hitId >= 0) {"),
+      citySrc.indexOf("} else if (!blockedV(knx, knz)) {"),
     );
     expect(bump.length).toBeGreaterThan(100);
     expect(bump).toContain("kart.x = knx;");

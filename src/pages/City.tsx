@@ -81,6 +81,12 @@ import { buildSplash, evalSwim, strokeRate, PRONE_PITCH } from "@/city/swim";
 import { createSnowCover } from "@/city/snowCover";
 import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
+import { createCrashFx } from "@/city/crashFx";
+import {
+  VEHICLES, MAX_HEALTH, impactDamage, distress, cometSpot,
+  buildMonsterTruck, buildComet, buildBeacon, scorch,
+  type VehicleKind, type ImpactSurface,
+} from "@/city/vehicles";
 import { createWrecks } from "@/city/wrecks";
 import { createTrench } from "@/city/trench";
 import { createHeadMount } from "@/city/headMount";
@@ -193,6 +199,12 @@ function initialCharacter(): string {
 // City plan — tune these and the whole district regenerates.
 // ------------------------------------------------------------------
 const CITY_SEED = "vibe-city-v1";
+/**
+ * What sits in each `kartStates` slot, in order. Module-level so the HUD can
+ * name the vehicle you are standing next to without reaching into the effect.
+ * The last slot is the standing one for a commandeered city car.
+ */
+const VEHICLE_SLOTS: VehicleKind[] = ["kart", "kart", "monster", "comet", "car"];
 const GRID = 9; // city is GRID x GRID cells
 const BLOCK = 28; // buildable block size (m)
 const STREET = 12; // street width between blocks (m)
@@ -757,6 +769,8 @@ export default function City() {
   // (if any) we're driving. The ref mirrors state for the tick loop.
   const [nearKart, setNearKart] = useState(-1);
   const [drivingKart, setDrivingKart] = useState(-1);
+  /** Health of whatever you are driving, 0..100, for the meter. */
+  const [driveHp, setDriveHp] = useState(MAX_HEALTH);
   const drivingKartRef = useRef(-1);
   const enterKartRef = useRef<((i: number) => void) | null>(null);
   const exitKartRef = useRef<(() => void) | null>(null);
@@ -2212,11 +2226,54 @@ export default function City() {
       pitch: number; roll: number;
       /** Parked pose, so a drowned kart can be recovered rather than lost. */
       home: { x: number; y: number; z: number; yaw: number } | null;
-    }> = [
-      { x: 10, y: 0, z: 20, yaw: Math.PI * 0.75, speed: 0, vy: 0, steer: 0, mesh: buildKart("#ff6b6b"), ride: -1, sink: 0, wet: false, pitch: 0, roll: 0, home: null },
-      { x: ISLAND_X + SITE.karts.x, y: ISLAND_TOP, z: ISLAND_Z + SITE.karts.z, yaw: 2.4, speed: 0, vy: 0, steer: 0, mesh: buildKart("#46e88c"), ride: -1, sink: 0, wet: false, pitch: 0, roll: 0, home: null },
-      { x: 0, y: 0, z: 0, yaw: 0, speed: 0, vy: 0, steer: 0, mesh: null, ride: -1, sink: 0, wet: false, pitch: 0, roll: 0, home: null },
-    ];
+      /** Which vehicle this is; its handling and armour come from `VEHICLES`. */
+      kind: VehicleKind;
+      /** 0..100. At zero it explodes. See `src/city/vehicles.ts`. */
+      hp: number;
+      /** Seconds since it exploded, 0 while it is a working vehicle. */
+      wreck: number;
+      /** Seconds before another hit may cost health, so one scrape is one hit. */
+      dmgCool: number;
+      /** End-over-end angle of a wreck, eased toward upside down. */
+      flip: number;
+      /**
+       * How far it has settled into water it is wading through, metres. The
+       * world floors everything at sea level, so without this a car in a
+       * metre of water drives along the surface like a hovercraft.
+       */
+      wade: number;
+    }> = [];
+    const vehicle = (
+      kind: VehicleKind, x: number, y: number, z: number, yaw: number,
+      mesh: ReturnType<typeof buildKart> | null,
+    ) => kartStates.push({
+      x, y, z, yaw, speed: 0, vy: 0, steer: 0, mesh, ride: -1, sink: 0, wet: false,
+      pitch: 0, roll: 0, home: null, kind, hp: MAX_HEALTH, wreck: 0, dmgCool: 0, flip: 0, wade: 0,
+    });
+    vehicle("kart", 10, 0, 20, Math.PI * 0.75, buildKart("#ff6b6b"));
+    vehicle("kart", ISLAND_X + SITE.karts.x, ISLAND_TOP, ISLAND_Z + SITE.karts.z, 2.4, buildKart("#46e88c"));
+    // The monster truck, on the plaza, nose to the street.
+    vehicle("monster", -7, 0, 8, 0, buildMonsterTruck());
+    /*
+     * The Comet. Somewhere different every visit, under a gold beam; `?comet`
+     * parks it on the plaza for a demo or a harness.
+     */
+    const cometHere = (() => {
+      try {
+        return new URLSearchParams(window.location.search).has("comet");
+      } catch {
+        return false;
+      }
+    })();
+    {
+      const spot = cometHere
+        ? { x: 7, z: 8, yaw: 0 }
+        : cometSpot(Math.floor(Math.random() * 1e9), BLOCK + STREET, GRID);
+      vehicle("comet", spot.x, 0, spot.z, spot.yaw, buildComet());
+    }
+    const cometBeacon = buildBeacon();
+    scene.add(cometBeacon);
+    vehicle("car", 0, 0, 0, 0, null);
     for (const k of kartStates) {
       if (k.mesh) k.home = { x: k.x, y: k.y, z: k.z, yaw: k.yaw };
     }
@@ -2233,17 +2290,42 @@ export default function City() {
      * recovered: you crash into the sea, bail out, and swim as nobody.
      */
     const insideACar = () =>
-      kartStates[RIDE_SLOT].ride >= 0 && drivingKartRef.current === RIDE_SLOT;
+      (kartStates[RIDE_SLOT].ride >= 0 && drivingKartRef.current === RIDE_SLOT) ||
+      // The truck and the Comet have closed cabs too.
+      (drivingKartRef.current >= 0 && drivingKartRef.current !== RIDE_SLOT &&
+        VEHICLES[kartStates[drivingKartRef.current].kind].enclosed);
     for (const k of kartStates) {
       if (!k.mesh) continue;
       k.mesh.group.position.set(k.x, k.y, k.z);
       k.mesh.group.rotation.y = k.yaw;
       scene.add(k.mesh.group);
     }
+    /** Each vehicle's how-to is said once a visit, not every time you get in. */
+    const toldAbout = new Set<VehicleKind>();
+    const hintComet = () => {
+      if (toldAbout.has("comet") || cometHere) return;
+      toldAbout.add("car");
+      toast("Hit too many things and it blows up", {
+        description: "Watch the health meter. And somewhere in the city a rare gold car is parked under a beam of light.",
+      });
+    };
     enterKartRef.current = (i) => {
       if (i < 0 || i >= kartStates.length) return;
+      if (kartStates[i].wreck > 0) return;
       drivingKartRef.current = i;
       setDrivingKart(i);
+      setDriveHp(Math.round(kartStates[i].hp));
+      const kind = kartStates[i].kind;
+      if (!toldAbout.has(kind)) {
+        toldAbout.add(kind);
+        if (kind === "comet") {
+          toast("☄️ You found the Vibe Comet", { description: "Hold Shift for the afterburner. It is very fast and not very strong." });
+        } else if (kind === "monster") {
+          toast("🚚 Monster truck", { description: "Drive over cars to crush them. Trees and signs do not stand a chance." });
+        } else {
+          hintComet();
+        }
+      }
       soundsRef.current?.chime(4);
     };
     /**
@@ -2267,8 +2349,12 @@ export default function City() {
       k.speed = 0;
       k.vy = 0;
       k.steer = 0;
+      k.hp = MAX_HEALTH;
+      k.wreck = 0;
       drivingKartRef.current = RIDE_SLOT;
       setDrivingKart(RIDE_SLOT);
+      setDriveHp(MAX_HEALTH);
+      if (!toldAbout.has("car")) hintComet();
       setNearRide(-1);
       soundsRef.current?.chime(4);
     };
@@ -2887,6 +2973,10 @@ export default function City() {
     // both ends up being neither.
     const carSink = createCarSink();
     scene.add(carSink.group);
+    // And the dry-land version: explosions, sparks, leaves, smoke off a hurt
+    // engine. See `src/city/crashFx.ts`.
+    const crashFx = createCrashFx();
+    scene.add(crashFx.group);
     // Something to find down there, so the dive has a point beyond the view.
     const wrecks = createWrecks();
     scene.add(wrecks.group);
@@ -4029,6 +4119,55 @@ export default function City() {
         wrecks.sites.map((s) => ({ ...s }));
       (window as unknown as Record<string, unknown>).__cityWrecksReset = () => wrecks.reset();
       (window as unknown as Record<string, unknown>).__cityVibe = () => vibeBalanceRef.current;
+      /**
+       * Crashes, for harnesses. `drive(slot, x, z, yaw, speed, throttle)` puts
+       * any vehicle somewhere at speed and gets in (slot 2 is the monster
+       * truck, 3 the Comet); `state()` is what has gone wrong so far.
+       */
+      (window as unknown as Record<string, unknown>).__cityCrash = {
+        drive: (slot: number, x: number, z: number, yaw: number, speed: number, throttle: number | null = null) => {
+          const k = kartStates[slot];
+          if (!k || !k.mesh) return false;
+          k.x = x; k.y = supportHeightAt(x, z, 50); k.z = z; k.yaw = yaw;
+          k.speed = speed; k.vy = 0; k.steer = 0; k.sink = 0; k.wet = false;
+          k.wreck = 0; k.flip = 0;
+          if (k.mesh) scorch(k.mesh.group, false);
+          kartPitchNow[slot] = 0;
+          devThrottle = throttle;
+          enterKartRef.current?.(slot);
+          return true;
+        },
+        throttle: (t: number | null) => { devThrottle = t; },
+        /** Stop drawing (false) so the world steps quickly in software GL; true to resume. */
+        render: (on: boolean) => { devSkipRender = !on; },
+        hurt: (amount: number) => {
+          const i = drivingKartRef.current;
+          if (i >= 0) hurtVehicle(i, "blast", amount, true);
+        },
+        skid: () => district.traffic.loseControl(player.position),
+        /** Which collision boxes would stop a vehicle probe at this point. */
+        probe: (x: number, z: number, y: number) =>
+          boxes
+            .filter((b) => y < b.height - 0.4 && y + 1.7 > b.base &&
+              x >= b.minX - PLAYER_RADIUS && x <= b.maxX + PLAYER_RADIUS &&
+              z >= b.minZ - PLAYER_RADIUS && z <= b.maxZ + PLAYER_RADIUS)
+            .map((b) => ({ ...b, i: boxes.indexOf(b) })),
+        state: () => {
+          const i = drivingKartRef.current;
+          const k = i >= 0 ? kartStates[i] : null;
+          return {
+            driving: i,
+            kind: k?.kind ?? null,
+            hp: k?.hp ?? null,
+            x: k?.x ?? player.position.x, z: k?.z ?? player.position.z, speed: k?.speed ?? 0,
+            vehicles: kartStates.map((v) => ({ kind: v.kind, hp: v.hp, wreck: v.wreck, x: v.x, y: v.y, z: v.z })),
+            traffic: district.traffic.stats(),
+            propsDown: district.smash.downCount(),
+            props: district.smash.count(),
+            fxExplosions: crashFx.explosions(),
+          };
+        },
+      };
       (window as unknown as Record<string, unknown>).__cityKartState = () => {
         const k = kartStates[0];
         return {
@@ -4404,16 +4543,25 @@ export default function City() {
             carSink.impact(k.x, seaTop, k.z, touch * 0.35);
             soundsRef.current?.splash?.(Math.min(0.6, 0.12 + touch / 55), earshot(k.x, k.z));
           }
-          carSink.wake(dt, k.x, seaTop, k.z, k.yaw, Math.abs(k.speed), deep);
+          const truck = k.kind === "monster";
+          // Eased, so rolling into the shallows is a settle and not a step.
+          const wantWade = Math.min(deep, truck ? 2.4 : 1.2) * 0.5;
+          k.wade += (wantWade - k.wade) * (1 - Math.pow(0.02, dt));
+          carSink.wake(dt, k.x, seaTop, k.z, k.yaw, Math.abs(k.speed), deep, truck ? 1.45 : 0.55, truck ? 1.9 : 1);
           // Water is heavy. Wading scrubs speed off well before the depth
           // does anything, which is what makes the shallows feel like water
-          // rather than like slightly damp road.
-          k.speed *= Math.pow(Math.max(0.25, 1 - deep * 0.5), dt);
+          // rather than like slightly damp road. Less so on 2 m tyres.
+          k.speed *= Math.pow(Math.max(0.25, 1 - (deep / (truck ? 2.6 : 1)) * 0.5), dt);
         } else if (k.wet) {
           k.wet = false;
         }
-        if (deep <= SINK_DEPTH || !atSeaLevel) return;
+        if (!k.wet && k.wade > 0) k.wade = Math.max(0, k.wade - dt * 1.5);
+        // The monster truck fords: its axles are higher than a kart's roof.
+        if (deep <= SINK_DEPTH * (k.kind === "monster" ? 1.8 : 1) || !atSeaLevel) return;
         k.sink = 1e-6;
+        // Hand the settle over to the sink, which owns `y` from here.
+        k.y -= k.wade;
+        k.wade = 0;
         // Arriving fast is the whole joke, so the impact reads off the speed
         // it actually arrived with — forward and downward together, since
         // launching off a sea wall is mostly the second one.
@@ -4583,6 +4731,80 @@ export default function City() {
       }
     };
 
+    // ---- Damage ---------------------------------------------------------
+    /**
+     * One hit on one of our vehicles. `surface` and `speed` decide the cost
+     * (`impactDamage`); a short cooldown makes one scrape one hit rather than
+     * one hit per frame of contact. Furniture passes `ignoreCool`, because
+     * ploughing a row of three trees is three trees.
+     */
+    const hurtVehicle = (i: number, surface: ImpactSurface, speed: number, ignoreCool = false) => {
+      if (i < 0) return;
+      const k = kartStates[i];
+      if (k.wreck > 0 || k.sink > 0) return;
+      if (!ignoreCool && k.dmgCool > 0) return;
+      const d = impactDamage(k.kind, surface, speed);
+      if (d <= 0) return;
+      k.hp = Math.max(0, k.hp - d);
+      if (!ignoreCool) k.dmgCool = 0.25;
+      if (i === drivingKartRef.current) setDriveHp(Math.round(k.hp));
+      if (k.hp <= 0) blowUp(i);
+    };
+    const wallHit = (k: (typeof kartStates)[number], impact: number) => {
+      if (impact > 5) {
+        const fx = Math.sin(k.yaw);
+        const fz = Math.cos(k.yaw);
+        crashFx.sparks(k.x + fx * 1.2, k.y + 0.6, k.z + fz * 1.2, -fx, -fz, 6 + Math.round(impact / 2));
+        crashFx.kick(Math.min(0.6, impact / 40));
+        soundsRef.current?.thud?.(Math.min(1, 0.3 + impact / 30));
+      }
+      hurtVehicle(kartStates.indexOf(k), "wall", impact);
+    };
+    /**
+     * Out of health: it goes up, you go flying, and so does everything near it.
+     *
+     * A city car stays behind as a burnt-out wreck in the fleet until it is
+     * towed; the go-karts, the truck and the Comet lie upside down and
+     * smoking where they landed, then reappear at their spot once you are out
+     * of sight of them.
+     */
+    function blowUp(i: number) {
+      const k = kartStates[i];
+      if (k.wreck > 0) return;
+      const spec = VEHICLES[k.kind];
+      const { x, y, z } = k;
+      crashFx.explode(x, y + 0.8, z, k.kind === "monster" ? 1.7 : 1.3, spec.paint);
+      soundsRef.current?.boom?.(1, earshot(x, z, 160));
+      district.traffic.blast(x, z, 11, 18);
+      district.smash.blast(x, z, 9, 16);
+      if (drivingKartRef.current === i) {
+        drivingKartRef.current = -1;
+        setDrivingKart(-1);
+        player.position.set(x - Math.cos(k.yaw) * 1.8, y + 1.2, z + Math.sin(k.yaw) * 1.8);
+        const a = Math.random() * Math.PI * 2;
+        bowlOver(Math.cos(a), Math.sin(a), 15);
+        toast("💥 Wrecked!", {
+          description: k.ride >= 0
+            ? "That car is toast. Grab another one."
+            : `Your ${spec.label} exploded. It will be back at its spot soon.`,
+        });
+      }
+      if (k.ride >= 0) {
+        // Handed to the fleet as a burning wreck, right where it stands.
+        district.traffic.detonate(k.ride, k.yaw + Math.PI);
+        k.ride = -1;
+        k.hp = MAX_HEALTH;
+        k.speed = 0;
+        return;
+      }
+      k.wreck = 1e-3;
+      k.hp = 0;
+      k.flip = 0;
+      k.vy = 9;
+      k.speed *= 0.3;
+      if (k.mesh) scorch(k.mesh.group, true);
+    }
+
     // ---- Simulation state ---------------------------------------------
     const vel = new THREE.Vector3();
     let onGround = true;
@@ -4613,6 +4835,10 @@ export default function City() {
       // driving because that car got rear-ended is a different feature and a
       // much more annoying one.
       if (drivingKartRef.current >= 0 || riding || swinging) return;
+      bowlOver(dx, dz, speed);
+    });
+    /** Sent flying: by a car, or by your own car exploding under you. */
+    function bowlOver(dx: number, dz: number, speed: number) {
       const k = Math.min(1, speed / 13);
       // Sent the way the car was going, mostly, plus enough lift to leave the
       // ground — a pedestrian who slides along the tarmac reads as a physics
@@ -4630,6 +4856,49 @@ export default function City() {
       knockAxis = Math.abs(dx) > Math.abs(dz) ? 1 : 0;
       soundsRef.current?.thud?.(Math.min(1, 0.5 + speed / 26));
       setDance(null);
+    }
+    /*
+     * Bots crashing on their own: into buildings, furniture, each other, and
+     * sometimes all the way to an explosion. The fleet only reports it; what
+     * it looks and sounds like is decided here.
+     */
+    district.traffic.onCrash((e) => {
+      const near = earshot(e.x, e.z, 70);
+      switch (e.kind) {
+        case "explode": {
+          crashFx.explode(e.x, e.y, e.z, 1.1, 0x9aa2ab);
+          soundsRef.current?.boom?.(0.9, earshot(e.x, e.z, 160));
+          crashFx.kick(0.7 * earshot(e.x, e.z, 60));
+          // Standing next to one is a bad idea.
+          const d = Math.hypot(player.position.x - e.x, player.position.z - e.z);
+          if (d < 7 && drivingKartRef.current < 0 && Math.abs(player.position.y - e.y) < 4) {
+            bowlOver((player.position.x - e.x) / (d || 1), (player.position.z - e.z) / (d || 1), 14 * (1 - d / 7) + 4);
+          } else if (d < 9 && drivingKartRef.current >= 0) {
+            hurtVehicle(drivingKartRef.current, "blast", 30 * (1 - d / 9), true);
+          }
+          break;
+        }
+        case "car":
+        case "wall":
+          if (near > 0) {
+            crashFx.sparks(e.x, e.y, e.z, 0, 0, 6 + Math.round(e.strength / 2));
+            if (e.strength > 9) crashFx.debris(e.x, e.y, e.z, 3, 0x9aa2ab, 5);
+            soundsRef.current?.thud?.(Math.min(1, 0.25 + e.strength / 30) * near);
+          }
+          break;
+        case "prop":
+          if (near > 0) {
+            if (e.prop === "tree") crashFx.leaves(e.x, 3.5, e.z, 18);
+            else crashFx.sparks(e.x, 1, e.z, 0, 0, 8);
+            soundsRef.current?.thud?.(0.35 * near);
+          }
+          break;
+        case "crush":
+          crashFx.debris(e.x, e.y, e.z, 6, 0x9aa2ab, 4);
+          break;
+        case "skid":
+          break;
+      }
     });
     let ridingZeppelin = false; // standing on the circling zeppelin's deck
     let zeppelinToastShown = false;
@@ -4718,6 +4987,8 @@ export default function City() {
      * was broken was the measurement.
      */
     let devThrottle: number | null = null;
+    /** Dev only: skip drawing so a harness can step the simulation at speed. */
+    let devSkipRender = false;
     let swimKickTimer = 0;
     /**
      * Stroke phase, in cycles, ACCUMULATED — never derived from the clock.
@@ -4874,6 +5145,7 @@ export default function City() {
           for (let i = 0; i < kartStates.length; i++) {
             const k = kartStates[i];
             if (!k.mesh) continue; // the ride slot has no parked model
+            if (k.wreck > 0) continue; // burning on its roof: not a ride
             if (
               Math.hypot(player.position.x - k.x, player.position.z - k.z) < 5 &&
               Math.abs(player.position.y - k.y) < 4
@@ -5743,16 +6015,21 @@ export default function City() {
             (touchLen > 0.12 ? tm.x : 0),
           -1, 1,
         );
+        const spec = VEHICLES[kart.kind];
+        if (kart.dmgCool > 0) kart.dmgCool -= dt;
         if (!drowning) {
         // Throttle + rolling drag (heavier drag when coasting).
-        const KART_MAX = running ? 32 : 23;
-        kart.speed += thIn * 28 * dt;
+        const KART_MAX = running ? spec.boost : spec.max;
+        kart.speed += thIn * spec.accel * dt;
         kart.speed -= kart.speed * (thIn === 0 ? 1.5 : 0.22) * dt;
-        kart.speed = THREE.MathUtils.clamp(kart.speed, -9, KART_MAX);
+        // Over the limit (the afterburner just let go) bleeds off rather than
+        // snapping down, so letting go of Shift is a coast, not a wall.
+        if (kart.speed > KART_MAX) kart.speed = Math.max(KART_MAX, kart.speed - 30 * dt);
+        kart.speed = THREE.MathUtils.clamp(kart.speed, -9, Math.max(KART_MAX, kart.speed));
         // Steering strength scales up with speed, flips in reverse.
         kart.steer += (stIn - kart.steer) * Math.min(1, dt * 10);
-        const grip = THREE.MathUtils.clamp(Math.abs(kart.speed) / 8, 0, 1);
-        kart.yaw -= kart.steer * 1.85 * grip * Math.sign(kart.speed || 1) * dt;
+        const grip = THREE.MathUtils.clamp(Math.abs(kart.speed) / spec.gripSpeed, 0, 1);
+        kart.yaw -= kart.steer * spec.steer * grip * Math.sign(kart.speed || 1) * dt;
         // Integrate with the same axis-separated wall sliding players use.
         const kdx = Math.sin(kart.yaw) * kart.speed * dt;
         const kdz = Math.cos(kart.yaw) * kart.speed * dt;
@@ -5773,11 +6050,61 @@ export default function City() {
          * again. You keep most of your speed, because the whole point is that
          * you can plough through a junction.
          */
-        const nose = kart.y + 0.5;
-        const hitId = blockedAt(knx, knz, nose)
-          ? district.traffic.carAt(knx, knz, nose)
+        const nose = kart.y + spec.nose;
+        /*
+         * Street furniture first: it is not in the collision world at all, so
+         * nothing below would ever notice it. Down it goes, and it costs a
+         * little each time — which is what makes "hit too many things and it
+         * blows up" true without any one tree being lethal.
+         */
+        if (kart.y < 2 && Math.abs(kart.speed) > 3) {
+          const fwdX = Math.sin(kart.yaw) * Math.sign(kart.speed);
+          const fwdZ = Math.cos(kart.yaw) * Math.sign(kart.speed);
+          const fell = district.smash.hit(
+            knx + fwdX * 0.9, knz + fwdZ * 0.9, spec.crushes ? 1.7 : 1.0,
+            fwdX, fwdZ, Math.abs(kart.speed),
+          );
+          for (const f of fell) {
+            hurtVehicle(drivingKartRef.current, f.kind as ImpactSurface, Math.abs(kart.speed), true);
+            if (f.kind === "tree") crashFx.leaves(f.x, 3.5, f.z, 22);
+            else crashFx.sparks(f.x, 0.8, f.z, fwdX, fwdZ, 10);
+            kart.speed *= spec.crushes ? 0.97 : 0.86;
+            soundsRef.current?.thud?.(Math.min(0.7, 0.2 + Math.abs(kart.speed) / 50));
+            crashFx.kick(spec.crushes ? 0.04 : 0.1);
+          }
+        }
+        /*
+         * Probe from the front bumper, not the middle. A four-metre car probed
+         * at its centre has buried half its bonnet in whatever it hits before
+         * anything notices, and a monster truck its whole front axle.
+         */
+        const dirSign = Math.sign(kart.speed || 1);
+        const rx = Math.sin(kart.yaw) * spec.reach * dirSign;
+        const rz = Math.cos(kart.yaw) * spec.reach * dirSign;
+        const blockedV = (x: number, z: number) => blockedAt(x + rx, z + rz, nose);
+        // Generous on purpose: the collision world pads every box by the
+        // player's radius, and a car found by `blockedAt` but missed here by a
+        // few centimetres used to be scored as a wall.
+        const hitId = blockedV(knx, knz)
+          ? district.traffic.carAt(knx + rx, knz + rz, nose, 1.0)
           : -1;
-        if (hitId >= 0) {
+        if (hitId >= 0 && spec.crushes) {
+          /*
+           * The monster truck does not shove cars, it goes over them. The car
+           * is flattened where it stands and stays a wreck you can drive on;
+           * the truck lurches up onto it.
+           */
+          district.traffic.crush(hitId);
+          kart.x = knx;
+          kart.z = knz;
+          kart.vy = Math.max(kart.vy, 3.5);
+          kart.y += 0.15;
+          kart.speed *= 0.9;
+          crashFx.debris(knx, 0.8, knz, 8, 0x9aa2ab, 5);
+          crashFx.sparks(knx, 0.6, knz, 0, 0, 16);
+          crashFx.kick(0.25);
+          soundsRef.current?.thud?.(0.9);
+        } else if (hitId >= 0) {
           const impactSpeed = Math.abs(kart.speed);
           // Scaled off how hard you arrived, and always worth SOMETHING —
           // nudging a car at walking pace should still shift it, or the rule
@@ -5795,16 +6122,28 @@ export default function City() {
           kart.z = knz;
           kart.speed *= 0.66;
           soundsRef.current?.thud?.(Math.min(1, 0.3 + impactSpeed / 34));
-        } else if (!blockedAt(knx, knz, nose)) {
+          // Both of you pay. Hard enough and the other car goes up.
+          district.traffic.damage(hitId, impactSpeed * 3.4);
+          hurtVehicle(drivingKartRef.current, "car", impactSpeed);
+          crashFx.sparks(knx, 0.7, knz, Math.sin(kart.yaw), Math.cos(kart.yaw), 8 + Math.round(impactSpeed / 2));
+          crashFx.kick(Math.min(0.5, impactSpeed / 60));
+        } else if (!blockedV(knx, knz)) {
           kart.x = knx;
           kart.z = knz;
-        } else if (!blockedAt(knx, kart.z, nose)) {
+        } else if (!blockedV(knx, kart.z)) {
+          // A glancing scrape along a wall: costs the part of the speed that
+          // went into the wall, which is less than all of it.
+          const scrape = Math.abs(kart.speed * Math.cos(kart.yaw));
           kart.x = knx;
           kart.speed *= 0.6;
-        } else if (!blockedAt(kart.x, knz, nose)) {
+          wallHit(kart, scrape);
+        } else if (!blockedV(kart.x, knz)) {
+          const scrape = Math.abs(kart.speed * Math.sin(kart.yaw));
           kart.z = knz;
           kart.speed *= 0.6;
+          wallHit(kart, scrape);
         } else {
+          wallHit(kart, Math.abs(kart.speed));
           kart.speed *= -0.25; // soft bounce off a dead-on wall
           soundsRef.current?.thud?.(0.3);
         }
@@ -5824,7 +6163,7 @@ export default function City() {
         }
         // Stand the driver on the rear deck; velocity mirrors the kart
         // so the run animation + exit momentum feel right.
-        pos.set(kart.x, kart.y + 0.72, kart.z);
+        pos.set(kart.x, kart.y - kart.wade + spec.seat, kart.z);
         vel.set(Math.sin(kart.yaw) * kart.speed, 0, Math.cos(kart.yaw) * kart.speed);
         // Not standing on anything, once it is under: `onGround` gates the
         // jump, the landing thud and the walk animation, and a driver riding a
@@ -6729,6 +7068,103 @@ export default function City() {
        */
       for (let i = 0; i < kartStates.length; i++) sinkTick(kartStates[i], i, dt);
 
+      /*
+       * Wrecks and hurt engines.
+       *
+       * A wreck has nobody driving it, so the driving physics above never
+       * touch it: it gets its own gravity here, flips over onto its roof,
+       * burns, and once you are out of sight of it goes home good as new. A
+       * working vehicle that has taken a beating smokes, and then burns,
+       * from the engine — which is the warning that the next hit is the one.
+       */
+      for (let i = 0; i < kartStates.length; i++) {
+        const k = kartStates[i];
+        if (k.ride >= 0 && k.wreck === 0) {
+          const ds = distress(k.hp);
+          if (ds.smoke > 0) {
+            crashFx.smoulder(dt, k.x + Math.sin(k.yaw) * 1.6, k.y + 1.3, k.z + Math.cos(k.yaw) * 1.6, ds.smoke, ds.fire);
+          }
+          continue;
+        }
+        if (!k.mesh) continue;
+        if (k.wreck > 0) {
+          k.wreck += dt;
+          if (k.sink === 0) {
+            const sup = supportHeightAt(k.x, k.z, k.y + 1.2);
+            k.x += Math.sin(k.yaw) * k.speed * dt;
+            k.z += Math.cos(k.yaw) * k.speed * dt;
+            if (k.y <= sup + 0.05 && k.vy <= 0) {
+              k.y = sup;
+              k.vy = 0;
+              k.speed *= Math.pow(0.02, dt);
+            } else {
+              k.vy = Math.max(k.vy - GRAVITY * dt, -MAX_FALL);
+              k.y += k.vy * dt;
+              if (k.y < sup) {
+                k.y = sup;
+                k.vy = k.vy < -4 ? -k.vy * 0.25 : 0;
+              }
+            }
+          }
+          // End over end in the air, settling onto its roof.
+          k.flip += (Math.PI - k.flip) * (1 - Math.pow(k.vy !== 0 ? 0.25 : 0.01, dt));
+          if (k.wreck < 20) {
+            crashFx.smoulder(dt, k.x, k.y + 0.6, k.z, k.wreck < 10 ? 1 : 0.5, k.wreck < 9 ? 0.9 : 0);
+          }
+          const watcher = Math.hypot(player.position.x - k.x, player.position.z - k.z);
+          if (k.wreck > 9 && (watcher > 28 || k.wreck > 30) && k.home) {
+            k.wreck = 0;
+            k.hp = MAX_HEALTH;
+            k.flip = 0;
+            k.speed = 0;
+            k.vy = 0;
+            k.sink = 0;
+            k.wet = false;
+            kartPitchNow[i] = 0;
+            k.x = k.home.x;
+            k.y = k.home.y;
+            k.z = k.home.z;
+            k.yaw = k.home.yaw;
+            scorch(k.mesh.group, false);
+          }
+        } else {
+          const ds = distress(k.hp);
+          if (ds.smoke > 0) {
+            const up = k.kind === "monster" ? 2.6 : k.kind === "comet" ? 0.8 : 0.9;
+            const fwd = k.kind === "monster" ? 1.6 : k.kind === "comet" ? -1.6 : 1.0;
+            crashFx.smoulder(
+              dt, k.x + Math.sin(k.yaw) * fwd, k.y + up, k.z + Math.cos(k.yaw) * fwd,
+              ds.smoke, ds.fire,
+            );
+          }
+          // The Comet's afterburner, on Shift at speed.
+          if (k.kind === "comet" && drivingKartRef.current === i && k.speed > 26 &&
+            (keys.has("ShiftLeft") || keys.has("ShiftRight"))) {
+            const fx = Math.sin(k.yaw);
+            const fz = Math.cos(k.yaw);
+            for (const side of [-0.35, 0.35]) {
+              crashFx.afterburn(
+                dt, k.x - fx * 2.45 + fz * side, k.y + 0.42, k.z - fz * 2.45 - fx * side,
+                fx, fz, 45,
+              );
+            }
+          }
+        }
+        if (k.kind === "comet") {
+          cometBeacon.position.set(k.x, k.y, k.z);
+          cometBeacon.visible = k.wreck === 0 && drivingKartRef.current !== i;
+        }
+      }
+
+      // Bots' wrecks burn, and a bot that has lost it lays down tyre smoke.
+      for (const b of district.traffic.burning()) {
+        if (Math.hypot(b.x - player.position.x, b.z - player.position.z) > 140) continue;
+        crashFx.smoulder(dt, b.x, b.y + 1.1, b.z, b.age < 8 ? 0.9 : 0.45, b.age < 6 ? 0.8 : 0);
+      }
+      for (const sk of district.traffic.skidding()) {
+        if (sk.speed > 4) crashFx.tyreSmoke(dt, sk.x, sk.z, 26);
+      }
+
       // Sync kart meshes; spin wheels + steer the front axle on the
       // driven one. Parked karts idle with a faint underglow.
       for (let i = 0; i < kartStates.length; i++) {
@@ -6743,7 +7179,7 @@ export default function City() {
            * the raw yaw and the car drives perfectly, backwards.
            */
           district.traffic.drive(
-            k.ride, k.x, k.y, k.z, k.yaw + Math.PI,
+            k.ride, k.x, k.y - k.wade, k.z, k.yaw + Math.PI,
             // Sign flips with the `+ π`: the car model faces the other way, so
             // the nose-down it needs is the tail-down of the kart convention.
             -kartPitchNow[i], k.sink > 0 ? k.roll : 0,
@@ -6751,13 +7187,16 @@ export default function City() {
           continue;
         }
         if (!k.mesh) continue;
-        k.mesh.group.position.set(k.x, k.y, k.z);
+        // A wreck on its roof is lifted by its own height, or it would be
+        // upside down half under the road.
+        const lift = k.flip ? (1 - Math.cos(k.flip)) * 0.5 * (VEHICLES[k.kind].seat + 0.55) : 0;
+        k.mesh.group.position.set(k.x, k.y + lift - k.wade, k.z);
         // YXZ so the yaw stays a heading and the pitch tips the nose, rather
         // than the default XYZ applying the roll before the pitch and turning
         // a listing car into a corkscrew.
-        k.mesh.group.rotation.set(kartPitchNow[i], k.yaw, k.sink > 0 ? k.roll : 0, "YXZ");
+        k.mesh.group.rotation.set(kartPitchNow[i] + k.flip, k.yaw, k.sink > 0 ? k.roll : 0, "YXZ");
         if (drivingKartRef.current === i) {
-          for (const w of k.mesh.wheels) w.rotateY((k.speed * dt) / 0.32);
+          for (const w of k.mesh.wheels) w.rotateY((k.speed * dt) / VEHICLES[k.kind].wheelR);
           for (const p of k.mesh.frontPivots) p.rotation.y = -k.steer * 0.42;
           (k.mesh.glow.material as THREE.MeshBasicMaterial).opacity =
             0.3 + Math.min(0.25, Math.abs(k.speed) / 60);
@@ -7289,6 +7728,14 @@ export default function City() {
         camera.position.lerp(eye, camSnap || arrivalStart > 0 ? 1 : 1 - Math.pow(0.0008, dt));
         camSnap = false;
         camera.lookAt(pos.x, pos.y + 1.5, pos.z);
+        // Crash shake. A rotation after the look-at, so it never accumulates.
+        {
+          const sh = crashFx.shake();
+          if (sh > 0.01) {
+            camera.rotateX((Math.random() - 0.5) * sh * 0.06);
+            camera.rotateY((Math.random() - 0.5) * sh * 0.06);
+          }
+        }
 
         // Zoomed way out, the fog backs off so the diorama stays visible.
         const fogNow = scene.fog as THREE.Fog;
@@ -7444,6 +7891,7 @@ export default function City() {
       // shearing whenever you swing the view — during a crash, which is the
       // only time you ever see it, and exactly when the view is swinging.
       carSink.update(dt, camera);
+      crashFx.update(dt, camera);
 
       // Project world positions onto floating in-world bubbles (DOM overlays).
       {
@@ -7506,7 +7954,7 @@ export default function City() {
         );
       }
 
-      renderer.render(scene, camera);
+      if (!devSkipRender) renderer.render(scene, camera);
     };
     renderer.setAnimationLoop(tick);
 
@@ -9268,8 +9716,25 @@ export default function City() {
           )}
           {drivingKart >= 0 && (
             <div className="flex items-center gap-2 animate-fade-in">
+              <span
+                className="glass-panel rounded-full px-3 py-2 text-xs flex items-center gap-2"
+                title="Vehicle health. At zero it explodes."
+                data-testid="vehicle-health"
+              >
+                <span className={driveHp < 25 ? "animate-pulse" : ""}>{driveHp < 25 ? "🔥" : driveHp < 55 ? "💨" : "🛡️"}</span>
+                <span className="relative block h-2 w-20 rounded-full bg-white/15 overflow-hidden">
+                  <span
+                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, driveHp))}%`,
+                      background: driveHp < 25 ? "#ef4444" : driveHp < 55 ? "#f59e0b" : "#34d399",
+                    }}
+                  />
+                </span>
+                <span className="tabular-nums text-muted-foreground w-7 text-right">{Math.max(0, driveHp)}</span>
+              </span>
               <span className="glass-panel rounded-full px-4 py-2 text-xs text-muted-foreground">
-                {isTouch ? "joystick = drive + steer" : "W/S drive · A/D steer"}
+                {isTouch ? "joystick = drive + steer" : VEHICLE_SLOTS[drivingKart] === "comet" ? "W/S drive · A/D steer · Shift afterburner" : "W/S drive · A/D steer · Shift boost"}
               </span>
               <button
                 onClick={(e) => {
@@ -9603,7 +10068,12 @@ export default function City() {
               }}
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
             >
-              🏎️ Drive the vibe kart{isTouch ? "" : " (F)"}
+              {VEHICLE_SLOTS[nearKart] === "monster"
+                ? "🚚 Drive the monster truck"
+                : VEHICLE_SLOTS[nearKart] === "comet"
+                  ? "☄️ Drive the Vibe Comet"
+                  : "🏎️ Drive the vibe kart"}
+              {isTouch ? "" : " (F)"}
             </button>
           )}
           {nearRide >= 0 && nearKart < 0 && drivingKart < 0 && (

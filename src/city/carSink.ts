@@ -118,6 +118,10 @@ export interface CarSink {
   wake(
     dt: number, x: number, y: number, z: number,
     yaw: number, speed: number, depth: number,
+    /** Half the distance between the wheels, metres. */
+    track?: number,
+    /** How much vehicle is shoving the water: 1 for a car, ~2 for a monster truck. */
+    heft?: number,
   ): void;
   /**
    * The car does not survive the landing. Fire, then smoke, then nothing —
@@ -132,7 +136,7 @@ export interface CarSink {
   dispose(): void;
 }
 
-const SPRAY = 260;
+const SPRAY = 420;
 const BUBBLES = 200;
 const RINGS = 5;
 const FIRE = 150;
@@ -393,7 +397,7 @@ export function createCarSink(): CarSink {
       }
     },
 
-    wake(dt, x, y, z, yaw, speed, depth) {
+    wake(dt, x, y, z, yaw, speed, depth, track = 0.55, heft = 1) {
       if (speed < 1.2 || depth < 0.08) return;
       // How much water is actually being shifted: fast through deep-ish water
       // throws a lot, a crawl through an inch throws nothing.
@@ -417,17 +421,38 @@ export function createCarSink(): CarSink {
         // is where a car actually picks the water up.
         for (const side of [-1, 1]) {
           const p = sprayP[sprayNext++ % SPRAY];
-          p.x = x + fx * 0.9 - fz * side * 0.55;
+          p.x = x + fx * 0.9 * heft - fz * side * track;
           p.y = y + 0.08;
-          p.z = z + fz * 0.9 + fx * side * 0.55;
-          const out = (1.6 + Math.random() * 2.6) * (0.4 + bite);
+          p.z = z + fz * 0.9 * heft + fx * side * track;
+          const out = (1.6 + Math.random() * 2.6) * (0.4 + bite) * Math.sqrt(heft);
           p.vx = -fz * side * out + fx * speed * 0.18;
           p.vz = fx * side * out + fz * speed * 0.18;
           p.vy = (1.8 + Math.random() * 3.4) * (0.35 + bite);
           p.life = p.t = 0.4 + Math.random() * 0.45;
-          p.size = (0.14 + Math.random() * 0.2) * (0.5 + bite);
+          p.size = (0.14 + Math.random() * 0.2) * (0.5 + bite) * heft;
           p.grow = 2.0;
           p.wob = 0;
+          /*
+           * Rooster tails. At speed the rear wheels throw a plume up and back,
+           * which is the single thing that says "that car is going fast
+           * through water" from a hundred metres away. The bow sheets alone
+           * read as a boat.
+           */
+          if (speed > 8) {
+            const q = sprayP[sprayNext++ % SPRAY];
+            const k = Math.min(1, (speed - 8) / 16);
+            q.x = x - fx * 1.1 * heft - fz * side * track;
+            q.y = y + 0.15;
+            q.z = z - fz * 1.1 * heft + fx * side * track;
+            const back = speed * (0.22 + Math.random() * 0.18);
+            q.vx = -fx * back - fz * side * (0.6 + Math.random());
+            q.vz = -fz * back + fx * side * (0.6 + Math.random());
+            q.vy = (3.5 + Math.random() * 4.5) * (0.5 + k) * Math.sqrt(heft);
+            q.life = q.t = 0.55 + Math.random() * 0.5;
+            q.size = (0.2 + Math.random() * 0.25) * (0.6 + k) * heft;
+            q.grow = 2.6;
+            q.wob = 0;
+          }
         }
       }
     },
