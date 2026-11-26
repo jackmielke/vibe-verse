@@ -90,6 +90,8 @@ import { createCarSink } from "@/city/carSink";
 import { createCrashFx } from "@/city/crashFx";
 import { createMayhem, GUNS, type Mayhem, type MayhemHud } from "@/city/mayhem";
 import { buildHideouts } from "@/city/hideouts";
+import { createBodyguards, squadEnabled, type Bodyguards } from "@/city/bodyguards";
+import { SquadPanel } from "@/components/city/SquadPanel";
 import {
   VEHICLES, MAX_HEALTH, impactDamage, distress, cometSpot,
   buildMonsterTruck, buildComet, buildMower, buildBeacon, scorch,
@@ -595,6 +597,7 @@ export default function City() {
   /** The on-screen fire button, held. */
   const touchFireRef = useRef(false);
   /** GTA Junior: stars, cops and the gun in your hand. */
+  const [squad, setSquad] = useState<Bodyguards | null>(null);
   const [mayhemHud, setMayhemHud] = useState<MayhemHud>({ stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bads: 0 });
   const mayhemCycleRef = useRef<(() => void) | null>(null);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
@@ -4675,6 +4678,24 @@ export default function City() {
     mayhemCycleRef.current = () => mayhem.cycle();
     (window as unknown as Record<string, unknown>).__cityMayhem = mayhem;
 
+    // ---- Samurai bodyguards: see `src/city/bodyguards.ts` -----------------
+    // Ordered about by the squad HUD, typed words and, when somebody presses
+    // Talk, the Magician's voice session with the squad's own tool list.
+    // Behind a switch while Jack tries it: `?squad` turns it on for this
+    // device (and remembers), `?squad=off` turns it back off.
+    const squadApi: Bodyguards | null = squadEnabled() ? createBodyguards({
+      scene,
+      mayhem,
+      crashFx,
+      ground: (x, z, y) => collision.supportAt(x, z, y).height,
+      blocked: blockedAt,
+      sound: (kind) => {
+        if (kind === "slash") soundsRef.current?.thud?.(0.25);
+      },
+    }) : null;
+    setSquad(squadApi);
+    (window as unknown as Record<string, unknown>).__citySquad = squadApi;
+
     // ---- Driving into the sea ------------------------------------------
     /**
      * Deep enough to drown a car. Below this you are fording a puddle at the
@@ -7377,6 +7398,12 @@ export default function City() {
               }
             }
           }
+          squadApi?.update(dt, {
+            player: player.position,
+            yaw: modelYaw,
+            driving: dk ? { x: dk.x, y: dk.y, z: dk.z, yaw: dk.yaw, speed: dk.speed } : null,
+            airborne: !onGround || Boolean(activeMountRef.current),
+          });
         }
         const mowing = drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].kind === "mower";
         const chaseEv = heistChase.update(dt, now, player.position, mowing);
@@ -8453,6 +8480,8 @@ export default function City() {
       resetRunRef.current = null;
       vibeyExciteRef.current = null;
       mountActionRef.current=null; activeMountRef.current=null; skyTagRef.current=false;
+      squadApi?.dispose();
+      setSquad(null);
       pegasus.dispose(); dragon.dispose(); turkey.dispose(); thanks.dispose(); setThanksRef.current = null;
       danceFloor.dispose();
       club.dispose();
@@ -10156,6 +10185,9 @@ export default function City() {
           </button>
         </div>
       )}
+
+      {/* Samurai bodyguards: hire, order, type or talk. */}
+      <SquadPanel squad={squad} hidden={!entered || underground || Boolean(gameHud) || Boolean(rebelHud?.active)} />
 
       {/* GTA Junior: wanted stars, the gun in hand, and a fire button on touch. */}
       {entered && !gameHud && !rebelHud?.active && (mayhemHud.stars > 0 || mayhemHud.gun) && (
