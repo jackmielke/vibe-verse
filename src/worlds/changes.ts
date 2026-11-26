@@ -89,12 +89,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
   ],
   "cannon-run": [
-    { sha: "8db93f6b", iso: "2026-11-26T06:43:50+00:00", subject: "Cannon Chase: train finale, 18-wheeler after the cement truck, aurora sky" },
-    { sha: "db2f4e42", iso: "2026-11-26T06:19:44+00:00", subject: "Cannon Run is now Cannon Chase" },
+    { sha: "78583a05", iso: "2026-11-26T07:09:28+00:00", subject: "Cannon Chase: comic out of the game, Thanksgiving mode, Linda grinds her teeth" },
+    { sha: "771b53db", iso: "2026-11-26T06:53:05+00:00", subject: "Cannon Chase: Lunatic Linda joins two-player; junkyard henchmen" },
+    { sha: "68ed9c02", iso: "2026-11-26T06:43:53+00:00", subject: "Cannon Chase: train finale, 18-wheeler after the cement truck, aurora sky" },
+    { sha: "45b45535", iso: "2026-11-26T06:43:53+00:00", subject: "Cannon Run is now Cannon Chase" },
     { sha: "fec5dbed", iso: "2026-11-26T06:17:21+00:00", subject: "Cannon Run: Mort only throws at civilians in his way" },
     { sha: "529ca5f7", iso: "2026-11-26T06:06:53+00:00", subject: "Cannon Run: angrier Mort, quicker backup, throws that miss you" },
-    { sha: "8caa2468", iso: "2026-11-26T05:50:24+00:00", subject: "Cannon Run: two trucks, Mort's backup, and a garage" },
-    { sha: "4da138f8", iso: "2026-11-26T04:43:52+00:00", subject: "Cannon Run: a night chase with a ship's cannon in the back of your pickup" },
   ],
   "characters": [
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
@@ -106,12 +106,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "1456de8e", iso: "2026-11-26T06:32:54+00:00", subject: "Vibe Island on phones: controls clear of the joystick; ride Pegasus by walking up and pressing F" },
     { sha: "2015a8ac", iso: "2026-11-26T05:35:30+00:00", subject: "Vibe Island driving: crashes, damage, explosions, a monster truck and a rare Comet" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
     { sha: "a2573c5a", iso: "2026-11-25T19:28:36+00:00", subject: "Vibe Island character button opens the picture grid of all characters" },
     { sha: "6479738c", iso: "2026-11-25T19:15:35+00:00", subject: "Add rideable sky mounts, aerial tag, and fix multiplayer identities" },
     { sha: "1286e73b", iso: "2026-11-25T18:20:32+00:00", subject: "Add Pegasus flying over Vibe Island; fix typecheck errors" },
-    { sha: "2c812ab4", iso: "2026-11-25T18:18:18+00:00", subject: "Updated session expiry and auth" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
