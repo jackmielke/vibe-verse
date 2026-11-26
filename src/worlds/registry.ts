@@ -562,6 +562,24 @@ const WORLDS_RAW: WorldEntry[] = [
     chromeless: true,
   },
   {
+    key: "cannon-run",
+    route: "/cannon-run",
+    aliases: ["/cannonrun", "/car-chase", "/chase"],
+    name: "Cannon Run",
+    emoji: "💣",
+    kind: "game",
+    blurb:
+      "Midnight on a desert highway, an old ship's cannon bolted into the bed of your pickup, and Mad Mort's headlights filling the rear view. Swerve, hit the nitro, and lob iron at him until his truck gives up. Then he comes back in a bigger one.",
+    status: "New: outrun him, out-shoot him",
+    accent: "#ffb43a",
+    backdrop: "#0b0f1c",
+    featured: true,
+    source: "src/cannonrun + src/pages/CannonRun.tsx",
+    nav: true,
+    /* No passport stamp: the cockpit panel is full (see fogcity). */
+    chromeless: true,
+  },
+  {
     key: "fogcity",
     route: "/fogcity",
     aliases: ["/fog-city"],
