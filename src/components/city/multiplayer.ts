@@ -637,7 +637,7 @@ export function createMultiplayer(opts: {
           setGhostName(g, name);
           g.target = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, scale };
           g.heardAt = performance.now(); g.air = !!p.air;
-          g.mountKind = p.mount === "dragon" || p.mount === "pegasus" ? p.mount : null;
+          g.mountKind = p.mount === "dragon" || p.mount === "pegasus" || p.mount === "turkey" ? p.mount : null;
           g.flap = !!p.flap; g.skyTag = !!p.skyTag && !!g.mountKind;
           g.dance = typeof p.dance === "string" ? p.dance : null;
           g.stickers = sanitizeStickers(p.stickers);

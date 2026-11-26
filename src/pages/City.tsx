@@ -39,7 +39,7 @@ import { buildMoon } from "@/components/city/moon";
 import { buildMars } from "@/components/city/mars";
 import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
-import { buildPegasus } from "@/components/city/pegasus";
+import { buildPegasus, type PegasusWorld } from "@/components/city/pegasus";
 import { createRiderPose } from "@/components/city/riderPose";
 import { stepMount, MOUNT_SEAT, type MountKind, type FlightState } from "@/components/city/mountFlight";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,8 @@ import {
 } from "@/lib/worldPhysics";
 import { CollisionWorld } from "@/city/player/collision";
 import { buildDistrict } from "@/city/district";
+import { buildThanksgiving, thanksgivingOn, saveThanksgiving, TURKEY_REST } from "@/city/thanksgiving";
+import { buildTurkey } from "@/city/turkey";
 import {
   buildOcean,
   beachHeightAt,
@@ -538,7 +540,7 @@ export default function City() {
    * a pair of "Ride" buttons shown anywhere within 100 m of the island, which
    * on a phone sat on top of the joystick.
    */
-  const [nearMount, setNearMount] = useState<"pegasus" | "dragon" | null>(null);
+  const [nearMount, setNearMount] = useState<MountKind | null>(null);
   const [skyTagOn, setSkyTagOn] = useState(false);
   const skyTagRef = useRef(false);
   const diveMountRef = useRef(false);
@@ -918,6 +920,11 @@ export default function City() {
   }, [stickers]);
   const charRef = useRef(charName);
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
+  // Thanksgiving dress-up: on by itself in Thanksgiving week, unless switched
+  // off (per device). See src/city/thanksgiving.ts.
+  const [thanksOn, setThanksOn] = useState<boolean>(() => thanksgivingOn());
+  const thanksRef = useRef(thanksOn);
+  const setThanksRef = useRef<((on: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
   // Avatar portal holo preview — when the player is near the avatar
   // portal we mount a holographic clone of the previewed character
@@ -2142,6 +2149,31 @@ export default function City() {
     const PEGASUS_REST = { x: ISLAND_X - 12, y: ISLAND_TOP + 2.5, z: ISLAND_Z + 8, yaw: Math.PI, bank: 0, flap: false };
     pegasus.pose = { ...PEGASUS_REST };
     scene.add(dragon.group);
+    // The Thanksgiving turkey: a third mount, on the north lawn facing the
+    // plaza, there only while Thanksgiving is on.
+    const turkey = buildTurkey(new THREE.Vector3(ISLAND_X + TURKEY_REST.x, ISLAND_TOP + 2.5, ISLAND_Z + TURKEY_REST.z), TURKEY_REST.yaw);
+    scene.add(turkey.group);
+    const thanks = buildThanksgiving({
+      island: new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z),
+      lowDetail: smallScreen,
+      balloon: buildTurkey(new THREE.Vector3(0, 2.5, 0), 0),
+    });
+    scene.add(thanks.group);
+    const applyThanks = (on: boolean) => {
+      thanksRef.current = on;
+      thanks.setOn(on);
+      turkey.group.visible = on || activeMountRef.current === "turkey";
+    };
+    applyThanks(thanksRef.current);
+    setThanksRef.current = applyThanks;
+    /** The mounts you can get on right now: the turkey only while it is out. */
+    const mountsInReach = (): Array<[MountKind, PegasusWorld]> =>
+      thanksRef.current ? [["pegasus", pegasus], ["dragon", dragon], ["turkey", turkey]] : [["pegasus", pegasus], ["dragon", dragon]];
+    const nearestMount = (p: THREE.Vector3): MountKind | null => {
+      for (const [k, c] of mountsInReach()) if (p.distanceTo(c.body.position) < 7) return k;
+      return null;
+    };
+    const creatureOf = (k: MountKind) => (k === "dragon" ? dragon : k === "turkey" ? turkey : pegasus);
     let mountFlight: FlightState | null = null;
 
     // ---- Sky-island mini games: one per island, paid in $VIBE --------
@@ -4253,6 +4285,8 @@ export default function City() {
       (window as unknown as Record<string, unknown>).__cityMounts = () => ({
         pegasus: pegasus.body.position.toArray(),
         dragon: dragon.body.position.toArray(),
+        turkey: turkey.body.position.toArray(),
+        parade: thanks.float.getWorldPosition(new THREE.Vector3()).toArray(),
       });
       (window as unknown as Record<string, unknown>).__cityWarp = (
         x: number,
@@ -4323,7 +4357,7 @@ export default function City() {
       if (e.code === "KeyF" && !e.repeat) {
         if (activeMountRef.current) { mountActionRef.current?.(null); return; }
         const p = player.position;
-        const nearest = p.distanceTo(pegasus.body.position) < 7 ? "pegasus" : p.distanceTo(dragon.body.position) < 7 ? "dragon" : null;
+        const nearest = nearestMount(p);
         if (nearest) { mountActionRef.current?.(nearest); return; }
         if (drivingKartRef.current >= 0) exitKartRef.current?.();
         else if (nearKartNow >= 0) enterKartRef.current?.(nearKartNow);
@@ -4940,6 +4974,21 @@ export default function City() {
     mountActionRef.current = (kind) => {
       if (kind && (drivingKartRef.current >= 0 || undergroundActiveRef.current || riding || swinging)) return;
       if (kind === null) {
+        const was = activeMountRef.current;
+        if (was === "turkey" && mountFlight) {
+          // The turkey stays where you get off it, like a car, rather than
+          // flying home: hop off in the town and it waits for you there.
+          const f = mountFlight;
+          const floor = Math.max(0, supportHeightAt(f.x, f.z, f.y));
+          activeMountRef.current = null; setMountKind(null);
+          mountFlight = null; skyTagRef.current = false; setSkyTagOn(false);
+          turkey.pose = { x: f.x, y: floor + 2.5, z: f.z, yaw: f.yaw, bank: 0, flap: false };
+          turkey.group.visible = thanksRef.current;
+          vel.set(0, 0, 0);
+          player.position.set(f.x + Math.cos(f.yaw) * 3, floor + 0.1, f.z - Math.sin(f.yaw) * 3);
+          peakY = player.position.y; camSnap = true;
+          return;
+        }
         activeMountRef.current = null; setMountKind(null);
         mountFlight = null; skyTagRef.current = false; setSkyTagOn(false);
         pegasus.pose = { ...PEGASUS_REST };
@@ -4950,10 +4999,14 @@ export default function City() {
         return;
       }
       arrivalStart=0; setZepPilotMode(false); setDance(null);
-      const creature = kind === "pegasus" ? pegasus : dragon;
+      const creature = creatureOf(kind);
       const near = player.position.distanceTo(creature.body.position) < 7;
       const base = near ? creature.body.position : player.position;
-      mountFlight={x:base.x,y:Math.max(base.y,ISLAND_TOP+2.5),z:base.z,yaw:camYaw+Math.PI,speed:22,lift:0,bank:0};
+      // The turkey can be left anywhere, so it takes off from where it stands;
+      // the other two only ever wait on the island.
+      const startY = kind === "turkey" ? base.y : Math.max(base.y, ISLAND_TOP + 2.5);
+      mountFlight={x:base.x,y:startY,z:base.z,yaw:camYaw+Math.PI,speed:kind === "turkey" ? 10 : 22,lift:0,bank:0};
+      if (kind === "turkey") soundsRef.current?.gobble();
       activeMountRef.current=kind; setMountKind(kind);
       player.position.set(mountFlight.x,mountFlight.y+MOUNT_SEAT,mountFlight.z);
       camDist=Math.max(camDist,12); camPitch=0.18; camSnap=true; vel.set(0,0,0);
@@ -5200,9 +5253,7 @@ export default function City() {
       // Same reach as the F key, so the prompt and the key always agree.
       setNearMount(
         activeMountRef.current || drivingKartRef.current >= 0 ? null
-          : player.position.distanceTo(pegasus.body.position) < 7 ? "pegasus"
-          : player.position.distanceTo(dragon.body.position) < 7 ? "dragon"
-          : null,
+          : nearestMount(player.position),
       );
       if (skyTagRef.current) {
         const sky=mp.skyState();
@@ -5981,11 +6032,11 @@ export default function City() {
           dive:keys.has("KeyC") || diveMountRef.current,
         };
         const floor=supportHeightAt(mountFlight.x,mountFlight.z,mountFlight.y);
-        stepMount(mountFlight,control,dt,Math.max(0,floor));
+        stepMount(mountFlight,control,dt,Math.max(0,floor),activeMountRef.current);
         pos.set(mountFlight.x,mountFlight.y+MOUNT_SEAT,mountFlight.z);
         vel.set(Math.sin(mountFlight.yaw)*mountFlight.speed,mountFlight.lift,Math.cos(mountFlight.yaw)*mountFlight.speed);
         onGround=false; peakY=pos.y;
-        const creature=activeMountRef.current==="dragon" ? dragon : pegasus;
+        const creature=creatureOf(activeMountRef.current);
         creature.pose={x:mountFlight.x,y:mountFlight.y,z:mountFlight.z,yaw:mountFlight.yaw,bank:mountFlight.bank,flap:control.flap};
         let turn=mountFlight.yaw+Math.PI-camYaw;
         turn=Math.atan2(Math.sin(turn),Math.cos(turn));
@@ -6834,8 +6885,10 @@ export default function City() {
       skyIslands.update(dt, now);
       pegasus.update(dt, now);
       dragon.update(dt, now);
+      if (turkey.group.visible) turkey.update(dt, now);
+      thanks.update(dt, now, camera);
       if (!activeMountRef.current && enteredRef.current && vel.y <= 0 && drivingKartRef.current < 0 && !riding && !swinging) {
-        for (const [kind, creature] of [["pegasus",pegasus],["dragon",dragon]] as const) {
+        for (const [kind, creature] of mountsInReach()) {
           const bp=creature.body.position;
           if (Math.hypot(pos.x-bp.x,pos.z-bp.z)<2.4 && pos.y>=bp.y+MOUNT_SEAT-0.7 && pos.y<=bp.y+MOUNT_SEAT+1.5) {
             mountActionRef.current?.(kind); break;
@@ -8006,7 +8059,7 @@ export default function City() {
       resetRunRef.current = null;
       vibeyExciteRef.current = null;
       mountActionRef.current=null; activeMountRef.current=null; skyTagRef.current=false;
-      pegasus.dispose(); dragon.dispose();
+      pegasus.dispose(); dragon.dispose(); turkey.dispose(); thanks.dispose(); setThanksRef.current = null;
       danceFloor.dispose();
       club.dispose();
       stairPad.geometry.dispose();
@@ -8595,6 +8648,21 @@ export default function City() {
               title={dayMode ? "Switch the whole lobby to night" : "Switch the whole lobby to day"}
             >
               {dayMode ? "🌙 Night" : "☀️ Day"}
+            </button>
+            <button
+              onClick={(e) => {
+                const next = !thanksOn;
+                setThanksOn(next);
+                saveThanksgiving(next);
+                setThanksRef.current?.(next);
+                e.currentTarget.blur();
+              }}
+              className={`glass-panel rounded-full px-3.5 py-2 text-xs transition-colors ${thanksOn ? "text-amber-300" : "hover:bg-muted/50 text-muted-foreground"}`}
+              title={thanksOn ? "Turn the Thanksgiving decorations off" : "Turn the Thanksgiving decorations on"}
+              data-testid="thanksgiving-toggle"
+              aria-pressed={thanksOn}
+            >
+              {thanksOn ? "🦃 Thanksgiving" : "🦃 Off"}
             </button>
             {/* GOD MODE — summon weather. Opens a little palette rather
                 than cycling, so you can go straight to the storm. */}
@@ -9739,7 +9807,7 @@ export default function City() {
               onClick={(e) => { mountActionRef.current?.(nearMount); e.currentTarget.blur(); }}
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
             >
-              {nearMount === "dragon" ? "🐉 Ride the dragon" : "🦄 Ride Pegasus"}{isTouch ? "" : " (F)"}
+              {nearMount === "dragon" ? "🐉 Ride the dragon" : nearMount === "turkey" ? "🦃 Ride the turkey" : "🦄 Ride Pegasus"}{isTouch ? "" : " (F)"}
             </button>
           )}
           {mountKind && drivingKart < 0 && (
@@ -9747,7 +9815,7 @@ export default function City() {
               isTouch ? "gap-1 px-2 w-[min(36rem,calc(100vw-2rem))] landscape:w-[calc(100vw-22rem)]" : "w-[min(36rem,calc(100vw-2rem))]"
             }`}>
               <>
-                <span className="text-xs text-primary">{mountKind === "dragon" ? "🐉 Dragon" : "🦄 Pegasus"}</span>
+                <span className="text-xs text-primary">{mountKind === "dragon" ? "🐉 Dragon" : mountKind === "turkey" ? "🦃 Turkey" : "🦄 Pegasus"}</span>
                 {!isTouch && <Button size="sm" variant="ghost" className="text-primary touch-none" aria-label="Flap wings" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);touchJetRef.current=true;}} onPointerUp={()=>{touchJetRef.current=false;}} onPointerCancel={()=>{touchJetRef.current=false;}}>Flap{isTouch ? "" : " · Space"}</Button>}
                 <Button size="sm" variant="ghost" className="text-primary touch-none" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);diveMountRef.current=true;}} onPointerUp={()=>{diveMountRef.current=false;}} onPointerCancel={()=>{diveMountRef.current=false;}}>Dive{isTouch ? "" : " · C"}</Button>
                 <Button size="sm" variant={skyTagOn ? "default" : "ghost"} onClick={(e)=>{skyTagRef.current=!skyTagRef.current;setSkyTagOn(skyTagRef.current);e.currentTarget.blur();}}>{skyTagOn ? "Stop sky tag" : "Play sky tag"}</Button>

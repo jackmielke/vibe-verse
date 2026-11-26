@@ -5,6 +5,7 @@
  */
 import * as THREE from "three";
 import type { MountKind } from "./mountFlight";
+import { buildTurkey } from "@/city/turkey";
 
 export interface PegasusWorld {
   group: THREE.Group;
@@ -15,6 +16,7 @@ export interface PegasusWorld {
 }
 
 export function buildPegasus(center: THREE.Vector3, kind: MountKind = "pegasus"): PegasusWorld {
+  if (kind === "turkey") return buildTurkey(center);
   const dragon = kind === "dragon";
   const group = new THREE.Group();
   group.name = kind;

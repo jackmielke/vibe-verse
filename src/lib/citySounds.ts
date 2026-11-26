@@ -10,6 +10,8 @@
  * start an AudioContext). All levels are set via setTargetAtTime so
  * there are no clicks.
  */
+import { gobble as gobbleSound } from "@/city/turkey";
+
 export interface CitySounds {
   /** Per-frame: ramp thruster + wind beds toward their targets. */
   update(thrusting: boolean, speed: number, airborne: boolean): void;
@@ -21,6 +23,8 @@ export interface CitySounds {
   fanfare(): void;
   /** A comedy moo for the cow Easter egg. */
   moo(): void;
+  /** A turkey's gobble, for the Thanksgiving mount. */
+  gobble(): void;
   /** Thunder, for GOD MODE storms: a crack, then a long rolling tail. */
   thunder(): void;
   /**
@@ -177,6 +181,9 @@ export function createCitySounds(): CitySounds | null {
       src.connect(lp).connect(g).connect(master);
       src.start(t);
       src.stop(t + dur);
+    },
+    gobble() {
+      gobbleSound(ctx, master, 0.35);
     },
     moo() {
       const t = ctx.currentTime;
