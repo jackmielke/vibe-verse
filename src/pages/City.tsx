@@ -41,6 +41,7 @@ import { buildTradersGalaxy } from "@/components/city/tradersGalaxy";
 import { buildSkyIslands } from "@/components/city/skyIslands";
 import { buildPegasus, type PegasusWorld } from "@/components/city/pegasus";
 import { createRiderPose } from "@/components/city/riderPose";
+import { buildHelicopter } from "@/components/city/helicopter";
 import { stepMount, MOUNT_SEAT, type MountKind, type FlightState } from "@/components/city/mountFlight";
 import { Button } from "@/components/ui/button";
 import { buildSkyGames, type SkyGamesWorld, type SkyGameKey } from "@/components/city/skyGames";
@@ -578,7 +579,7 @@ export default function City() {
   /** The on-screen fire button, held. */
   const touchFireRef = useRef(false);
   /** GTA Junior: stars, cops and the gun in your hand. */
-  const [mayhemHud, setMayhemHud] = useState<MayhemHud>({ stars: 0, cops: 0, gun: null, owned: [] });
+  const [mayhemHud, setMayhemHud] = useState<MayhemHud>({ stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [] });
   const mayhemCycleRef = useRef<(() => void) | null>(null);
   // Whimsical fall-damage respawn — set to a timestamp; UI shows splat for ~1.6s.
   const [respawnFx, setRespawnFx] = useState(0);
@@ -2173,14 +2174,28 @@ export default function City() {
     applyThanks(thanksRef.current);
     setThanksRef.current = applyThanks;
     /** The mounts you can get on right now: the turkey only while it is out. */
-    const mountsInReach = (): Array<[MountKind, PegasusWorld]> =>
-      thanksRef.current ? [["pegasus", pegasus], ["dragon", dragon], ["turkey", turkey]] : [["pegasus", pegasus], ["dragon", dragon]];
+    /*
+     * The helicopter: on a helipad at the corner of the plaza, down in the
+     * city, because a thing that flies is most fun where there is something
+     * to fly between. It is a mount, so it flies on `stepMount`.
+     */
+    const HELI_REST = { x: -9, y: 0.6, z: -9, yaw: Math.PI / 4 };
+    const heli = buildHelicopter(HELI_REST);
+    scene.add(heli.group);
+    const mountsInReach = (): Array<[MountKind, PegasusWorld]> => [
+      ["pegasus", pegasus], ["dragon", dragon], ["helicopter", heli],
+      ...(thanksRef.current ? [["turkey", turkey] as [MountKind, PegasusWorld]] : []),
+    ];
     const nearestMount = (p: THREE.Vector3): MountKind | null => {
       for (const [k, c] of mountsInReach()) if (p.distanceTo(c.body.position) < 7) return k;
       return null;
     };
-    const creatureOf = (k: MountKind) => (k === "dragon" ? dragon : k === "turkey" ? turkey : pegasus);
+    const creatureOf = (k: MountKind) =>
+      k === "dragon" ? dragon : k === "turkey" ? turkey : k === "helicopter" ? heli : pegasus;
     let mountFlight: FlightState | null = null;
+    /** The helicopter has been landed away from its pad and holds that pose. */
+    let parkedHeli = false;
+    let toldHeli = false;
 
     // ---- Sky-island mini games: one per island, paid in $VIBE --------
     const skyGames = buildSkyGames();
@@ -4312,6 +4327,7 @@ export default function City() {
         pegasus: pegasus.body.position.toArray(),
         dragon: dragon.body.position.toArray(),
         turkey: turkey.body.position.toArray(),
+        helicopter: heli.body.position.toArray(),
         parade: thanks.float.getWorldPosition(new THREE.Vector3()).toArray(),
       });
       (window as unknown as Record<string, unknown>).__cityWarp = (
@@ -5081,6 +5097,19 @@ export default function City() {
       if (kind && (drivingKartRef.current >= 0 || undergroundActiveRef.current || riding || swinging)) return;
       if (kind === null) {
         const was = activeMountRef.current;
+        if (was === "helicopter" && mountFlight) {
+          // It sets down where you are and waits there, rotor winding down.
+          const f = mountFlight;
+          const floor = Math.max(0, supportHeightAt(f.x, f.z, f.y));
+          activeMountRef.current = null; setMountKind(null);
+          mountFlight = null; skyTagRef.current = false; setSkyTagOn(false);
+          heli.pose = { x: f.x, y: floor + 0.6, z: f.z, yaw: f.yaw, bank: 0, flap: false };
+          parkedHeli = true;
+          vel.set(0, 0, 0);
+          player.position.set(f.x + Math.cos(f.yaw) * 2.6, floor + 0.1, f.z - Math.sin(f.yaw) * 2.6);
+          peakY = player.position.y; camSnap = true;
+          return;
+        }
         if (was === "turkey" && mountFlight) {
           // The turkey stays where you get off it, like a car, rather than
           // flying home: hop off in the town and it waits for you there.
@@ -5110,8 +5139,13 @@ export default function City() {
       const base = near ? creature.body.position : player.position;
       // The turkey can be left anywhere, so it takes off from where it stands;
       // the other two only ever wait on the island.
-      const startY = kind === "turkey" ? base.y : Math.max(base.y, ISLAND_TOP + 2.5);
-      mountFlight={x:base.x,y:startY,z:base.z,yaw:camYaw+Math.PI,speed:kind === "turkey" ? 10 : 22,lift:0,bank:0};
+      const startY = kind === "turkey" || kind === "helicopter" ? base.y : Math.max(base.y, ISLAND_TOP + 2.5);
+      const startYaw = kind === "helicopter" ? (heli.pose?.yaw ?? HELI_REST.yaw) : camYaw + Math.PI;
+      mountFlight={x:base.x,y:startY,z:base.z,yaw:startYaw,speed:kind === "turkey" ? 10 : kind === "helicopter" ? 0 : 22,lift:0,bank:0};
+      if (kind === "helicopter" && !toldHeli) {
+        toldHeli = true;
+        toast("🚁 Helicopter", { description: "W/S forward and back, A/D turn, Space to climb, C to come down. F to land and hop out." });
+      }
       if (kind === "turkey") soundsRef.current?.gobble();
       activeMountRef.current=kind; setMountKind(kind);
       player.position.set(mountFlight.x,mountFlight.y+MOUNT_SEAT,mountFlight.z);
@@ -7000,6 +7034,8 @@ export default function City() {
       skyIslands.update(dt, now);
       pegasus.update(dt, now);
       dragon.update(dt, now);
+      if (activeMountRef.current !== "helicopter" && !parkedHeli) heli.pose = null;
+      heli.update(dt, now);
       if (turkey.group.visible) turkey.update(dt, now);
       thanks.update(dt, now, camera);
       if (!activeMountRef.current && enteredRef.current && vel.y <= 0 && drivingKartRef.current < 0 && !riding && !swinging) {
@@ -7153,6 +7189,7 @@ export default function City() {
             inCity,
             heist: heistChase.isActive() ? heistChase.pos() : null,
             firing: enteredRef.current && (keys.has("KeyR") || keys.has("KeyQ") || touchFireRef.current),
+            grounded: onGround && knockdown <= 0 && !activeMountRef.current,
           });
         }
         const mowing = drivingKartRef.current >= 0 && kartStates[drivingKartRef.current].kind === "mower";
@@ -8629,7 +8666,7 @@ export default function City() {
               className={`w-3.5 h-3.5 ${hud.jet ? "text-primary animate-pulse" : "text-muted-foreground"}`}
             />
             <span className={hud.jet ? "text-primary" : "text-muted-foreground"}>
-              {mountKind ? "WINGS" : "JETPACK"} {hud.jet ? (mountKind ? "FLAPPING" : "FIRING") : (mountKind ? "GLIDING" : "READY")}
+              {mountKind === "helicopter" ? "ROTOR" : mountKind ? "WINGS" : "JETPACK"} {hud.jet ? (mountKind === "helicopter" ? "CLIMBING" : mountKind ? "FLAPPING" : "FIRING") : (mountKind === "helicopter" ? "HOVERING" : mountKind ? "GLIDING" : "READY")}
             </span>
           </div>
           <div className="text-muted-foreground">
@@ -9910,6 +9947,11 @@ export default function City() {
               {mayhemHud.cops > 0 ? `🚓 ${mayhemHud.cops} on your tail` : "🚨 Police on the way"}
             </span>
           )}
+          {mayhemHud.stars > 0 && mayhemHud.forgiveIn !== null && (
+            <span className="text-muted-foreground tabular-nums">
+              Lie low {Math.floor(mayhemHud.forgiveIn / 60)}:{String(mayhemHud.forgiveIn % 60).padStart(2, "0")} and they let it go
+            </span>
+          )}
           {mayhemHud.gun && (
             <span className="text-foreground/90">
               {GUNS[mayhemHud.gun].emoji} {GUNS[mayhemHud.gun].label}
@@ -10006,7 +10048,7 @@ export default function City() {
               onClick={(e) => { mountActionRef.current?.(nearMount); e.currentTarget.blur(); }}
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary animate-pulse"
             >
-              {nearMount === "dragon" ? "🐉 Ride the dragon" : nearMount === "turkey" ? "🦃 Ride the turkey" : "🦄 Ride Pegasus"}{isTouch ? "" : " (F)"}
+              {nearMount === "dragon" ? "🐉 Ride the dragon" : nearMount === "turkey" ? "🦃 Ride the turkey" : nearMount === "helicopter" ? "🚁 Fly the helicopter" : "🦄 Ride Pegasus"}{isTouch ? "" : " (F)"}
             </button>
           )}
           {mountKind && drivingKart < 0 && (
@@ -10014,9 +10056,9 @@ export default function City() {
               isTouch ? "gap-1 px-2 w-[min(36rem,calc(100vw-2rem))] landscape:w-[calc(100vw-22rem)]" : "w-[min(36rem,calc(100vw-2rem))]"
             }`}>
               <>
-                <span className="text-xs text-primary">{mountKind === "dragon" ? "🐉 Dragon" : mountKind === "turkey" ? "🦃 Turkey" : "🦄 Pegasus"}</span>
-                {!isTouch && <Button size="sm" variant="ghost" className="text-primary touch-none" aria-label="Flap wings" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);touchJetRef.current=true;}} onPointerUp={()=>{touchJetRef.current=false;}} onPointerCancel={()=>{touchJetRef.current=false;}}>Flap{isTouch ? "" : " · Space"}</Button>}
-                <Button size="sm" variant="ghost" className="text-primary touch-none" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);diveMountRef.current=true;}} onPointerUp={()=>{diveMountRef.current=false;}} onPointerCancel={()=>{diveMountRef.current=false;}}>Dive{isTouch ? "" : " · C"}</Button>
+                <span className="text-xs text-primary">{mountKind === "dragon" ? "🐉 Dragon" : mountKind === "turkey" ? "🦃 Turkey" : mountKind === "helicopter" ? "🚁 Helicopter" : "🦄 Pegasus"}</span>
+                {!isTouch && <Button size="sm" variant="ghost" className="text-primary touch-none" aria-label="Flap wings" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);touchJetRef.current=true;}} onPointerUp={()=>{touchJetRef.current=false;}} onPointerCancel={()=>{touchJetRef.current=false;}}>{mountKind === "helicopter" ? "Climb" : "Flap"}{isTouch ? "" : " · Space"}</Button>}
+                <Button size="sm" variant="ghost" className="text-primary touch-none" onPointerDown={(e)=>{e.currentTarget.setPointerCapture(e.pointerId);diveMountRef.current=true;}} onPointerUp={()=>{diveMountRef.current=false;}} onPointerCancel={()=>{diveMountRef.current=false;}}>{mountKind === "helicopter" ? "Descend" : "Dive"}{isTouch ? "" : " · C"}</Button>
                 <Button size="sm" variant={skyTagOn ? "default" : "ghost"} onClick={(e)=>{skyTagRef.current=!skyTagRef.current;setSkyTagOn(skyTagRef.current);e.currentTarget.blur();}}>{skyTagOn ? "Stop sky tag" : "Play sky tag"}</Button>
                 <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={async()=>{const url=new URL(window.location.href);url.searchParams.set("spawn","island");url.searchParams.delete("net");try {await navigator.clipboard.writeText(url.toString());toast("Riding link copied");} catch {toast("Share this page's address with your friend");}}}>Invite</Button>
                 <Button size="sm" variant="ghost" className="text-primary touch-none" onClick={(e)=>{mountActionRef.current?.(null);e.currentTarget.blur();}}>Land & hop off</Button>

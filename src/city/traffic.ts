@@ -462,6 +462,59 @@ export interface Traffic {
   dispose(): void;
 }
 
+/**
+ * One city car as an ordinary group rather than an instance, in whatever
+ * paint you like. The police use it: their cruisers are the same saloon as
+ * everybody else, in black, so they read as part of the street until the
+ * lights come on. Forward is +Z here (the fleet's own model faces −Z, so it
+ * is turned round once inside), and y = 0 is the road.
+ */
+export function buildCityCar(paint: { body: number; accent: number; trim: number }, modelIndex = 2): {
+  group: THREE.Group;
+  roofY: number;
+  halfLong: number;
+  dispose(): void;
+} {
+  const model = { ...MODELS[modelIndex % MODELS.length], ...paint };
+  const { kit, rig, owned } = cityCarMaterials(model);
+  const asm = buildKart({ style: model.style, kit, rig, quality: CAR_QUALITY });
+  const bodyBounds = new THREE.Box3();
+  {
+    const v = new THREE.Vector3();
+    const src = asm.meshes.find((m) => m.name === "kart.body") ?? asm.meshes[0];
+    const pos = src.geometry.getAttribute("position");
+    for (let i = 0; i < pos.count; i++) bodyBounds.expandByPoint(v.fromBufferAttribute(pos, i));
+  }
+  // No roll hoop on a saloon; see the note where the fleet is built.
+  for (const m of asm.meshes) if (m.name === "kart.chrome") m.removeFromParent();
+  const cabin = buildCabin(bodyBounds);
+  const glassMat = kit.glass as THREE.MeshStandardMaterial;
+  glassMat.transparent = true;
+  glassMat.opacity = 0.72;
+  glassMat.color.set(0x1e2a33);
+  asm.group.add(new THREE.Mesh(cabin.shell, kit.paint), new THREE.Mesh(cabin.glass, glassMat));
+  asm.group.rotation.y = Math.PI;
+  asm.group.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+  });
+  const group = new THREE.Group();
+  group.add(asm.group);
+  return {
+    group,
+    roofY: cabin.roofY,
+    halfLong: asm.footprint.z + 0.2,
+    dispose() {
+      for (const g of asm.geometries) g.dispose();
+      cabin.shell.dispose();
+      cabin.glass.dispose();
+      asm.tyres.dispose();
+      asm.rims.dispose();
+      asm.hubs?.dispose();
+      for (const m of owned) m.dispose();
+    },
+  };
+}
+
 /** Signal cycle, seconds: axis 0 gets the first half, axis 1 the second. */
 const CYCLE = 18;
 const AMBER = 2.2;

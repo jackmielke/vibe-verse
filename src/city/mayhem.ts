@@ -9,7 +9,7 @@
  * ## Heat
  *
  * One number, 0 to 5, shown as stars. Crashing into things, blowing things up
- * and shooting all add to it; it cools off once you stop. At one star a
+ * and shooting all add to it; the police forgive you 63 seconds after the last thing you did. At one star a
  * police car comes looking for you, and each star past that adds another, up
  * to five. Police do not arrest, they ram: a cruiser drives straight at
  * whatever you are standing in and keeps doing it. Police also go after the
@@ -41,7 +41,7 @@ import * as THREE from "three";
 import type { WorldBox } from "@/components/city/cardboardIsland";
 import type { CrashFx } from "@/city/crashFx";
 import type { Smashables } from "@/city/smash";
-import type { Traffic } from "@/city/traffic";
+import { buildCityCar, type Traffic } from "@/city/traffic";
 
 export type GunKind = "rifle" | "glock";
 
@@ -63,6 +63,8 @@ export const GUNS: Record<GunKind, GunSpec> = {
 
 export interface MayhemHud {
   stars: number;
+  /** Whole seconds until the police forgive you, while you are wanted. */
+  forgiveIn: number | null;
   cops: number;
   gun: GunKind | null;
   owned: GunKind[];
@@ -81,6 +83,12 @@ export interface MayhemCtx {
   heist: THREE.Vector3 | null;
   /** Trigger held. */
   firing: boolean;
+  /**
+   * On your feet on the ground, not flying, falling or already knocked over.
+   * A cruiser only knocks you down on a real bump at street level: being
+   * batted out of the air the moment you jump out of a car is not a chase.
+   */
+  grounded: boolean;
 }
 
 export interface MayhemOpts {
@@ -146,6 +154,11 @@ const MAX_STARS = 5;
 const MAX_COPS = 5;
 const MAX_FIRES = 18;
 const COP_HP = 100;
+/**
+ * Seconds after your last bad act that the police let it go. Jack's number:
+ * "about one minute and three seconds". They still go after the getaway kart.
+ */
+export const FORGIVE_AFTER = 63;
 const COP_TOP = 27;
 const COP_ACCEL = 15;
 
@@ -186,44 +199,56 @@ function buildGlock(): THREE.Group {
 
 interface CopMesh {
   group: THREE.Group;
-  wheels: THREE.Mesh[];
-  red: THREE.MeshBasicMaterial;
-  blue: THREE.MeshBasicMaterial;
-  body: THREE.MeshStandardMaterial;
+  /** The two halves of the light bar, both blue, strobing in turn. */
+  a: THREE.MeshBasicMaterial;
+  b: THREE.MeshBasicMaterial;
+  /** Burnt out: every panel goes dark. */
+  char(): void;
+  dispose(): void;
 }
 
+const CHARRED = new THREE.MeshStandardMaterial({ color: 0x1f1d1b, roughness: 0.9 });
+
+/**
+ * A police cruiser: the city's own dark saloon, in black, with a blue light
+ * bar on the roof. Nothing else marks it, which is the point: it looks like
+ * any other car on the street until you notice the lights.
+ */
 function buildCruiser(): CopMesh {
-  const group = new THREE.Group();
-  const body = new THREE.MeshStandardMaterial({ color: 0xf4f5f7, roughness: 0.45, metalness: 0.2 });
-  const black = new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.6 });
-  const glass = new THREE.MeshStandardMaterial({ color: 0x1d2a38, roughness: 0.15, metalness: 0.5 });
-  const red = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
-  const blue = new THREE.MeshBasicMaterial({ color: 0x2a6bff });
-  const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    group.add(m);
-    return m;
+  const car = buildCityCar({ body: 0x0c0d0f, accent: 0x15171a, trim: 0xd9dde2 });
+  const a = new THREE.MeshBasicMaterial({ color: 0x2a6bff });
+  const b = new THREE.MeshBasicMaterial({ color: 0x2a6bff });
+  const base = new THREE.MeshStandardMaterial({ color: 0x1a1c20, roughness: 0.5 });
+  const barGeo = new THREE.BoxGeometry(1.3, 0.08, 0.32);
+  const lampGeo = new THREE.BoxGeometry(0.55, 0.16, 0.3);
+  const bar = new THREE.Mesh(barGeo, base);
+  bar.position.set(0, car.roofY + 0.05, 0);
+  const la = new THREE.Mesh(lampGeo, a);
+  la.position.set(-0.33, car.roofY + 0.16, 0);
+  const lb = new THREE.Mesh(lampGeo, b);
+  lb.position.set(0.33, car.roofY + 0.16, 0);
+  car.group.add(bar, la, lb);
+  return {
+    group: car.group,
+    a,
+    b,
+    char() {
+      car.group.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m !== la && m !== lb) m.material = CHARRED;
+      });
+      a.color.set(0x050a18);
+      b.color.set(0x050a18);
+    },
+    dispose() {
+      car.dispose();
+      barGeo.dispose();
+      lampGeo.dispose();
+      base.dispose();
+      a.dispose();
+      b.dispose();
+    },
   };
-  mesh(new THREE.BoxGeometry(1.9, 0.5, 4.3), black, 0, 0.55, 0); // lower body, black
-  mesh(new THREE.BoxGeometry(1.92, 0.28, 2.0), body, 0, 0.92, 0.15); // white doors band
-  mesh(new THREE.BoxGeometry(1.86, 0.3, 1.1), body, 0, 0.82, 1.6); // bonnet
-  mesh(new THREE.BoxGeometry(1.86, 0.3, 0.9), body, 0, 0.82, -1.7); // boot
-  mesh(new THREE.BoxGeometry(1.7, 0.55, 2.1), glass, 0, 1.32, -0.15); // cabin
-  mesh(new THREE.BoxGeometry(1.72, 0.08, 1.9), body, 0, 1.63, -0.15); // roof
-  mesh(new THREE.BoxGeometry(0.62, 0.14, 0.32), red, -0.34, 1.74, -0.1); // light bar
-  mesh(new THREE.BoxGeometry(0.62, 0.14, 0.32), blue, 0.34, 1.74, -0.1);
-  mesh(new THREE.BoxGeometry(1.95, 0.22, 0.12), black, 0, 0.5, 2.18); // push bar
-  const lamp = new THREE.MeshBasicMaterial({ color: 0xfff6d8 });
-  mesh(new THREE.BoxGeometry(0.36, 0.14, 0.05), lamp, -0.62, 0.78, 2.16);
-  mesh(new THREE.BoxGeometry(0.36, 0.14, 0.05), lamp, 0.62, 0.78, 2.16);
-  const wheels: THREE.Mesh[] = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 14).rotateZ(Math.PI / 2);
-  for (const [x, z] of [[-0.95, 1.35], [0.95, 1.35], [-0.95, -1.35], [0.95, -1.35]] as const) {
-    wheels.push(mesh(wheelGeo, black, x, 0.4, z));
-  }
-  return { group, wheels, red, blue, body };
 }
 
 function glintSprite(color: string): THREE.Sprite {
@@ -351,6 +376,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   let spawnCool = 0;
   let wallCool = 0;
   let fireCool = 0;
+  /** Seconds before a cruiser may knock you over on foot again. */
+  let footCool = 0;
 
   // ---- Guns ----------------------------------------------------------
   const owned = new Set<GunKind>();
@@ -504,6 +531,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   const hud = () => {
     const h: MayhemHud = {
       stars: starsFor(heat),
+      forgiveIn: starsFor(heat) > 0 ? Math.max(0, Math.ceil(FORGIVE_AFTER - quiet)) : null,
       cops: cops.filter((c) => c.dead === 0).length,
       gun,
       owned: (["rifle", "glock"] as const).filter((k) => owned.has(k)),
@@ -546,17 +574,16 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   };
 
   // ---- Cops --------------------------------------------------------------
-  const hurtCop = (c: Cop, dmg: number) => {
+  const hurtCop = (c: Cop, dmg: number, byPlayer = true) => {
     if (c.dead > 0) return;
     c.hp -= dmg;
     if (c.hp > 0) return;
     c.dead = 1e-3;
     c.speed *= 0.3;
-    c.mesh.body.color.set(0x2b2b2b);
-    c.mesh.red.color.set(0x220000);
-    c.mesh.blue.color.set(0x000822);
-    crime(0.8);
-    boom(c.x, 0.9, c.z, 1.3);
+    c.mesh.char();
+    if (byPlayer) crime(0.8);
+    boom(c.x, 0.9, c.z, 1.6);
+    crashFx.debris(c.x, 1.2, c.z, 10, 0xf4f5f7, 8);
   };
 
   const streets = () => {
@@ -601,9 +628,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     c.mesh.group.traverse((o) => {
       if (o instanceof THREE.Mesh) o.geometry.dispose();
     });
-    c.mesh.body.dispose();
-    c.mesh.red.dispose();
-    c.mesh.blue.dispose();
+    c.mesh.dispose();
     cops.splice(i, 1);
   };
 
@@ -687,6 +712,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (id >= 0) {
         traffic.shove(id, fx * sign, fz * sign, 4 + Math.abs(c.speed) * 0.7);
         traffic.damage(id, Math.abs(c.speed) * 1.5);
+        hurtCop(c, Math.abs(c.speed) * 0.5, false);
         crashFx.sparks(nx, 0.7, nz, fx, fz, 8);
         c.x = nx;
         c.z = nz;
@@ -698,7 +724,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         c.z = nz;
         c.speed *= 0.9;
       } else {
-        if (Math.abs(c.speed) > 10) crashFx.sparks(c.x + fx * 2, 0.7, c.z + fz * 2, -fx, -fz, 6);
+        if (Math.abs(c.speed) > 10) {
+          crashFx.sparks(c.x + fx * 2, 0.7, c.z + fz * 2, -fx, -fz, 6);
+          hurtCop(c, Math.abs(c.speed) * 1.1, false);
+        }
         c.speed *= -0.2;
         c.stuck += dt * 2;
       }
@@ -859,6 +888,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (!blocked) return;
       if (!placed) place(blocked);
       wallCool = Math.max(0, wallCool - dt);
+      footCool = Math.max(0, footCool - dt);
 
       // Pickups spin, bob, and get collected.
       for (const k of ["rifle", "glock"] as const) {
@@ -901,10 +931,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       flashT += dt;
       flash.visible = flashT < 0.05;
 
-      // Heat cools once you stop.
+      // Keep your nose clean for FORGIVE_AFTER seconds and it is forgotten.
       quiet += dt;
-      const watching = cops.some((c) => c.dead === 0 && Math.hypot(c.x - ctx.player.x, c.z - ctx.player.z) < 55);
-      if (quiet > 14) heat = Math.max(0, heat - dt * (watching ? 0.025 : 0.08));
+      if (quiet >= FORGIVE_AFTER) heat = Math.max(0, heat - dt * 4);
       if (!ctx.inCity) heat = Math.max(0, heat - dt * 0.5);
 
       // Who should be out there.
@@ -942,6 +971,11 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         const tx = c.target === "heist" ? ctx.heist!.x : me.x;
         const tz = c.target === "heist" ? ctx.heist!.z : me.z;
         driveCop(blocked, c, dt, tx, tz);
+        if (c.dead > 0) continue;
+        if (c.hp < 65) {
+          const hurt = (65 - c.hp) / 65;
+          crashFx.smoulder(dt, c.x + Math.sin(c.yaw) * 1.5, 1.1, c.z + Math.cos(c.yaw) * 1.5, hurt, c.hp < 30 ? hurt : 0);
+        }
         c.ramCool = Math.max(0, c.ramCool - dt);
         if (c.target === "leave") {
           c.idle += dt;
@@ -958,7 +992,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         if (c.target === "heist" && dHeist < 2.8) {
           opts.onBust();
           c.speed *= 0.2;
-        } else if (dMe < (ctx.driving ? 2.9 : 2.4) && c.ramCool <= 0) {
+        } else if (
+          dMe < (ctx.driving ? 2.9 : 2.4) && c.ramCool <= 0 &&
+          (ctx.driving || (ctx.grounded && footCool <= 0 && ctx.player.y < 1.2))
+        ) {
           const nx = (me.x - c.x) / (dMe || 1);
           const nz = (me.z - c.z) / (dMe || 1);
           const copInto = Math.max(0, c.speed * (Math.sin(c.yaw) * nx + Math.cos(c.yaw) * nz));
@@ -973,6 +1010,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
             crime(0.3);
           } else if (copInto > 3 && c.target === "player") {
             opts.onContact(nx, nz, copInto + 4, true);
+            if (!ctx.driving) footCool = 3;
+            // Ramming is not free for the ram either.
+            hurtCop(c, copInto * 0.9, false);
             c.speed *= 0.3;
           }
           crashFx.sparks((me.x + c.x) / 2, 0.8, (me.z + c.z) / 2, nx, nz, 10);
@@ -1005,10 +1045,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       for (const c of cops) {
         c.mesh.group.position.set(c.x, 0, c.z);
         c.mesh.group.rotation.y = c.yaw;
-        for (const w of c.mesh.wheels) w.rotation.x += c.speed * dt / 0.4;
         if (c.dead === 0) {
-          c.mesh.red.color.set(strobe ? 0xff2a2a : 0x3a0606);
-          c.mesh.blue.color.set(strobe ? 0x071533 : 0x2a6bff);
+          c.mesh.a.color.set(strobe ? 0x3d7bff : 0x061230);
+          c.mesh.b.color.set(strobe ? 0x061230 : 0x3d7bff);
         }
       }
       sirenTo(nearest < 120 ? (1 - nearest / 120) : 0, clock);

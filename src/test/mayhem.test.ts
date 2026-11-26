@@ -32,3 +32,10 @@ describe("GTA Junior rules", () => {
     expect(pickTarget(0, 0, 0, 10, 0.3, cands)).toBe(-1);
   });
 });
+
+describe("forgiveness", () => {
+  it("is Jack's minute and three seconds", async () => {
+    const { FORGIVE_AFTER } = await import("@/city/mayhem");
+    expect(FORGIVE_AFTER).toBe(63);
+  });
+});
