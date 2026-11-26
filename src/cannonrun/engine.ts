@@ -102,6 +102,8 @@ const RIDER_LOOK = [
 ];
 const NET_HZ = 15;
 const RESPAWN = 10;
+/** Jack, Nov 2026: Mort only ever throws at civilians in his way, never at you. */
+const THROW_AT_PLAYER = false;
 
 interface Rider {
   idx: number;
@@ -1482,8 +1484,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         if (en.throwT <= 0) {
           en.throwT = Math.max(1.6, 4.2 - en.level * 0.55) + Math.random() * 1.5;
           const it = thrown.find((x) => !x.live);
-          // seven times in ten it is a civilian in his way, to clear the road
-          const civ = Math.random() < 0.7 ? traffic.filter((t) => t.mode === 0 && t.swerve <= 0 && t.s - en.s > 6 && t.s - en.s < 55).sort((a, b) => a.s - b.s)[0] : undefined;
+          // only ever at civilians in his way, to clear the road; never at you
+          const civ = traffic.filter((t) => t.mode === 0 && t.swerve <= 0 && t.s - en.s > 6 && t.s - en.s < 55).sort((a, b) => a.s - b.s)[0];
           if (it && civ) {
             const d = civ.s - en.s;
             const T = 0.7 + d / 45;
@@ -1497,9 +1499,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
               vy: (1.1 - y0 + 0.5 * G * T * T) / T,
               age: 0, spin: 0, live: true, targetLat: civ.lat, passed: false, rider: -1, car: civ,
             });
-            shout(["OUTTA MY WAY!", "MOVE IT, GRANDMA!", "SHIFT IT!", "THIS IS A CHASE, PAL!"][Math.floor(Math.random() * 4)], 1.4);
+            shout(["GET OUT!", "GET OUT OF THE WAY!", "SWERVE TO THE RIGHT OR LEFT, BUDDY!"][Math.floor(Math.random() * 3)], 1.6);
             emit("whoosh", s0, en.lat, y0);
-          } else if (it) {
+          } else if (it && THROW_AT_PLAYER) {
             const T = 1.25 + gap / 90;
             const s0 = en.s + foe.len / 2 - 0.6;
             const y0 = foe.tall + 0.3;
