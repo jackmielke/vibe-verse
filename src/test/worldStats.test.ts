@@ -31,3 +31,10 @@ describe("worldStats", () => {
     expect(formatHours(5400)).toBe("1.5h");
   });
 });
+
+describe("scoreboard featured worlds", () => {
+  it("every featured key is a playable world", async () => {
+    const { FEATURED_KEYS } = await import("@/pages/Scores");
+    for (const k of FEATURED_KEYS) expect(PLAYABLE.some((w) => w.key === k), k).toBe(true);
+  });
+});

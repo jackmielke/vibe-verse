@@ -22,6 +22,12 @@ import {
   type WorldStatsRow,
 } from "@/lib/worldStats";
 
+/**
+ * Pinned to the top of the board whatever the sort, in this order. Jack's
+ * call (Nov 2026): these are the two flagship worlds right now. Edit here.
+ */
+export const FEATURED_KEYS = ["cannon-run", "island"];
+
 type SortKey = "overall" | "lore" | "fun" | "smooth" | "fps" | "hours" | "players" | "sessions" | "name";
 
 const EMPTY = (key: string): WorldStatsRow => ({
@@ -88,7 +94,14 @@ export default function Scores() {
       };
     });
     const k = sort.key;
+    const pin = (key: string) => {
+      const i = FEATURED_KEYS.indexOf(key);
+      return i === -1 ? FEATURED_KEYS.length : i;
+    };
     return list.sort((a, b) => {
+      const pa = pin(a.w.key);
+      const pb = pin(b.w.key);
+      if (pa !== pb) return pa - pb;
       if (k === "name") return a.w.name.localeCompare(b.w.name) * sort.dir;
       const av = a[k] ?? -1;
       const bv = b[k] ?? -1;
@@ -169,12 +182,21 @@ export default function Scores() {
                   const canRate = hasPlayed(r.w.key) && !hasRated(r.w.key);
                   return (
                     <Fragment key={r.w.key}>
-                      <tr className="border-t border-white/5 hover:bg-white/[0.03]">
+                      <tr
+                        className={`border-t border-white/5 hover:bg-white/[0.03] ${
+                          FEATURED_KEYS.includes(r.w.key) ? "bg-amber-300/[0.06]" : ""
+                        }`}
+                      >
                         <td className="whitespace-nowrap px-3 py-2">
                           <Link to={r.w.route} className="hover:underline">
                             <span className="mr-1.5">{r.w.emoji}</span>
                             {r.w.name}
                           </Link>
+                          {FEATURED_KEYS.includes(r.w.key) && (
+                            <span className="ml-2 rounded-full border border-amber-300/40 px-1.5 py-px text-[10px] uppercase tracking-wide text-amber-200">
+                              Featured
+                            </span>
+                          )}
                         </td>
                         <td className="px-2 font-semibold">
                           <Score v={r.overall} />
