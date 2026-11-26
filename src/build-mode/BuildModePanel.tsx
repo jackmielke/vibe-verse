@@ -18,9 +18,13 @@ import {
   buildStatus,
   createBuild,
   discardBuild,
+  cancelBuild,
   listBuilds,
+  retryBuild,
+  undoBuild,
   shipBuild,
   type Build,
+  type BuildBilling,
   type BuildMode,
   type BuildScope,
 } from "./api";
@@ -48,6 +52,7 @@ const STATUS_TONE: Record<Build["status"], string> = {
 
 const MODE_KEY = "vibe.buildMode.mode";
 const SHIP_KEY = "vibe.buildMode.ship";
+const BILLING_KEY = "vibe.buildMode.billing";
 
 function readPref(key: string, fallback: string): string {
   try {
@@ -88,6 +93,9 @@ export default function BuildModePanel({
     readPref(MODE_KEY, "fast") === "smart" ? "smart" : "fast",
   );
   const [ship, setShip] = useState(() => readPref(SHIP_KEY, "true") !== "false");
+  const [billing, setBilling] = useState<BuildBilling>(() =>
+    readPref(BILLING_KEY, "api") === "plan" ? "plan" : "api",
+  );
   const [builds, setBuilds] = useState<Build[]>([]);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,10 +110,15 @@ export default function BuildModePanel({
   const usedVoice = useRef(false);
   const canListen = dictationSupported();
 
+  /** How much history is on screen; Show more raises it. */
+  const [shown, setShown] = useState(20);
+  const [total, setTotal] = useState(0);
+
   const refresh = useCallback(async () => {
     try {
-      const { builds } = await listBuilds();
+      const { builds, total } = await listBuilds(shown);
       setBuilds(builds);
+      setTotal(total);
       const shipped = new Set(builds.filter((b) => b.status === "shipped").map((b) => b.id));
       if (seenShipped.current === null) seenShipped.current = shipped;
       else if ([...shipped].some((id) => !seenShipped.current!.has(id))) {
@@ -116,7 +129,7 @@ export default function BuildModePanel({
     } catch (e) {
       setError((e as Error).message);
     }
-  }, []);
+  }, [shown]);
 
   useEffect(() => {
     buildStatus()
@@ -142,6 +155,7 @@ export default function BuildModePanel({
         prompt: text,
         mode,
         ship,
+        billing,
         scope,
         route: location.pathname + location.search,
       });
@@ -188,11 +202,19 @@ export default function BuildModePanel({
     say("Okay, not building that.");
   };
 
-  const act = async (b: Build, what: "ship" | "discard") => {
+  const act = async (b: Build, what: "ship" | "discard" | "cancel" | "retry" | "undo") => {
+    if (what === "undo" && !window.confirm(`Undo "${b.prompt.slice(0, 80)}"? This ships a revert to main.`)) return;
+    if (what === "cancel" && !window.confirm("Stop this build?")) return;
     setBusyId(b.id);
     setError(null);
     try {
-      const { build } = what === "ship" ? await shipBuild(b.id) : await discardBuild(b.id);
+      if (what === "retry" || what === "undo") {
+        const { build } = what === "retry" ? await retryBuild(b.id, billing) : await undoBuild(b.id);
+        setBuilds((bs) => [build, ...bs]);
+        return;
+      }
+      const run = { ship: shipBuild, discard: discardBuild, cancel: cancelBuild }[what];
+      const { build } = await run(b.id);
       setBuilds((bs) => bs.map((x) => (x.id === build.id ? build : x)));
       if (what === "ship") setShippedSinceOpen(true);
     } catch (e) {
@@ -312,6 +334,28 @@ export default function BuildModePanel({
           </label>
         </div>
 
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-white/50">Pays with</span>
+          <div className="flex rounded-md border border-white/15 p-0.5" role="radiogroup" aria-label="Pays with">
+            {(["api", "plan"] as const).map((b) => (
+              <button
+                key={b}
+                type="button"
+                role="radio"
+                aria-checked={billing === b}
+                onClick={() => {
+                  setBilling(b);
+                  writePref(BILLING_KEY, b);
+                }}
+                title={b === "api" ? "Anthropic console credits (ANTHROPIC_API_KEY)" : "Your Claude plan (CLAUDE_CODE_OAUTH_TOKEN)"}
+                className={`rounded px-3 py-1 ${billing === b ? "bg-white text-black" : "text-white/70 hover:text-white"}`}
+              >
+                {b === "api" ? "💳 API credits" : "✳️ Claude plan"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
           type="button"
           onClick={() => void send()}
@@ -338,6 +382,7 @@ export default function BuildModePanel({
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
+        {total > 0 && <div className="text-[10px] uppercase tracking-wide text-white/35">History · {total} builds</div>}
         {builds.length === 0 && <div className="text-xs text-white/40">Nothing built yet.</div>}
         {builds.map((b) => (
           <div key={b.id} className="rounded-md border border-white/10 bg-white/[0.03] p-3">
@@ -352,6 +397,11 @@ export default function BuildModePanel({
               </span>
             </div>
             <div className="text-xs text-white/85">{b.prompt}</div>
+            {(b.status === "running" || b.status === "queued") && (
+              <div className="mt-1 text-[11px] text-amber-200/80">
+                {b.step ?? (b.status === "queued" ? "Waiting its turn" : "Starting")}…
+              </div>
+            )}
             {b.summary && b.status !== "queued" && b.status !== "running" && (
               <div className="mt-1.5 whitespace-pre-line text-[11px] leading-snug text-white/55">{b.summary}</div>
             )}
@@ -391,9 +441,60 @@ export default function BuildModePanel({
                   </button>
                 </>
               )}
+              {(b.status === "running" || b.status === "queued") && (
+                <button
+                  type="button"
+                  disabled={busyId === b.id}
+                  onClick={() => void act(b, "cancel")}
+                  className="text-rose-200/80 underline hover:text-rose-100 disabled:opacity-40"
+                >
+                  Stop
+                </button>
+              )}
+              {b.status === "shipped" && b.head_sha && !b.prompt.startsWith("Undo:") && (
+                <button
+                  type="button"
+                  disabled={busyId === b.id}
+                  onClick={() => void act(b, "undo")}
+                  className="text-white/50 underline hover:text-white disabled:opacity-40"
+                >
+                  Undo
+                </button>
+              )}
+              {b.status !== "running" && b.status !== "queued" && !b.prompt.startsWith("Undo:") && (
+                <>
+                  <button
+                    type="button"
+                    disabled={busyId === b.id}
+                    onClick={() => void act(b, "retry")}
+                    className="text-white/50 underline hover:text-white disabled:opacity-40"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrompt(b.prompt);
+                      textRef.current?.focus();
+                    }}
+                    className="text-white/50 underline hover:text-white"
+                  >
+                    Edit
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ))}
+        {total > builds.length && (
+          <button
+            type="button"
+            onClick={() => setShown((n) => n + 20)}
+            className="w-full rounded-md border border-white/10 py-2 text-xs text-white/60 hover:bg-white/5"
+          >
+            Show more ({total - builds.length} older)
+          </button>
+        )}
       </div>
     </div>
   );

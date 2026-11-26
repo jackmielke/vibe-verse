@@ -12,10 +12,13 @@
 //
 // Actions (all admin only):
 //   status   {}                                   -> { admin, configured }
-//   create   { prompt, mode, ship, route, scope } -> { build }
+//   create   { prompt, mode, ship, billing, route, scope } -> { build }
 //   list     { limit? }                           -> { builds }  (refreshes live ones)
 //   ship     { id }                               -> merge a held branch into main
 //   discard  { id }                               -> delete a held branch
+//   cancel   { id }                               -> stop a queued or running build
+//   retry    { id, prompt? }                      -> the same ask again (optionally edited)
+//   undo     { id }                               -> a checked revert of a shipped build
 //
 // Secrets: BUILD_GITHUB_TOKEN, a fine-grained token on the repo with
 // Actions: read and write, Contents: read and write. It never leaves here.
@@ -59,6 +62,8 @@ interface Build {
   requester_name: string | null;
   created_at: string;
   updated_at: string;
+  /** Not stored: what a live run is doing right now. */
+  step?: string | null;
 }
 
 const LIVE = new Set(["queued", "running"]);
@@ -126,6 +131,7 @@ async function refresh(supabase: Supa, build: Build): Promise<Build> {
     patch.run_url = run.html_url;
     if (run.status !== "completed") {
       patch.status = run.status === "queued" || run.status === "waiting" ? "queued" : "running";
+      build.step = await currentStep(run.id).catch(() => null);
     } else {
       const branch = await ghJson<{ commit: { sha: string; commit: { message: string } } }>(
         `/repos/${REPO}/branches/${encodeURIComponent(build.branch)}`,
@@ -162,8 +168,33 @@ async function refresh(supabase: Supa, build: Build): Promise<Build> {
   patch.updated_at = new Date().toISOString();
   const { data } = await supabase.from("vibe_builds").update(patch).eq("id", build.id)
     .select("*").single();
-  return (data as Build) ?? { ...build, ...patch };
+  return data ? { ...(data as Build), step: build.step } : { ...build, ...patch };
 }
+
+/** The name of the step a live run is on, in words a person can read. */
+async function currentStep(runId: number): Promise<string | null> {
+  const jobs = await ghJson<{ jobs: { steps?: { name: string; status: string }[] }[] }>(
+    `/repos/${REPO}/actions/runs/${runId}/jobs`,
+  );
+  const steps = jobs?.jobs?.[0]?.steps ?? [];
+  const live = steps.find((s) => s.status === "in_progress");
+  const name = live?.name ?? null;
+  if (!name) return null;
+  return STEP_WORDS[name] ?? name;
+}
+
+const STEP_WORDS: Record<string, string> = {
+  "Install": "Installing",
+  "Pick the fence": "Getting ready",
+  "Install Claude Code": "Getting ready",
+  "Make the change": "Claude is coding",
+  "Undo an earlier build": "Undoing",
+  "Stay inside the fence": "Checking what changed",
+  "Typecheck": "Typechecking",
+  "Build": "Building the site",
+  "Commit to the build branch": "Committing",
+  "Ship to main": "Shipping to main",
+};
 
 async function onMain(sha: string): Promise<boolean> {
   const cmp = await ghJson<{ status: string }>(`/repos/${REPO}/compare/${sha}...main`);
@@ -190,7 +221,12 @@ async function mustBeAdmin(supabase: Supa, req: Request) {
 // Actions
 // ---------------------------------------------------------------------------
 
-async function create(supabase: Supa, who: { id: string; name: string }, body: Record<string, unknown>) {
+async function create(
+  supabase: Supa,
+  who: { id: string; name: string },
+  body: Record<string, unknown>,
+  revertSha = "",
+) {
   const prompt = String(body.prompt ?? "").trim();
   if (prompt.length < 3) throw new Error("Say what to change.");
   if (prompt.length > 4000) throw new Error("Keep it under 4,000 characters.");
@@ -198,6 +234,7 @@ async function create(supabase: Supa, who: { id: string; name: string }, body: R
   if (!SCOPES.has(scope)) throw new Error(`Build mode does not cover "${scope}" yet.`);
   const mode = body.mode === "smart" ? "smart" : "fast";
   const ship = body.ship !== false;
+  const billing = body.billing === "plan" ? "plan" : "api";
   const route = typeof body.route === "string" ? body.route.slice(0, 300) : null;
 
   const since = new Date(Date.now() - 24 * 3600_000).toISOString();
@@ -225,6 +262,8 @@ async function create(supabase: Supa, who: { id: string; name: string }, body: R
         ship: ship ? "true" : "false",
         route: route ?? "",
         requested_by: who.name,
+        billing,
+        revert_sha: revertSha,
       },
     }),
   });
@@ -238,14 +277,15 @@ async function create(supabase: Supa, who: { id: string; name: string }, body: R
 }
 
 async function list(supabase: Supa, body: Record<string, unknown>) {
-  const limit = Math.min(Number(body.limit) || 12, 50);
-  const { data, error } = await supabase.from("vibe_builds").select("*")
-    .order("created_at", { ascending: false }).limit(limit);
+  const limit = Math.min(Number(body.limit) || 20, 100);
+  const offset = Math.max(0, Number(body.offset) || 0);
+  const { data, error, count } = await supabase.from("vibe_builds").select("*", { count: "exact" })
+    .order("created_at", { ascending: false }).range(offset, offset + limit - 1);
   if (error) throw new Error(error.message);
   const builds = await Promise.all(
     (data as Build[]).map((b) => refresh(supabase, b).catch(() => b)),
   );
-  return { builds };
+  return { builds, total: count ?? builds.length };
 }
 
 async function load(supabase: Supa, id: unknown): Promise<Build> {
@@ -283,6 +323,37 @@ async function discard(supabase: Supa, body: Record<string, unknown>) {
   return { build: data };
 }
 
+async function cancel(supabase: Supa, body: Record<string, unknown>) {
+  let build = await load(supabase, body.id);
+  if (!LIVE.has(build.status)) throw new Error(`That build is already ${build.status}.`);
+  if (!build.run_id) build = await refresh(supabase, build);
+  if (!build.run_id) throw new Error("GitHub has not started it yet. Try again in a few seconds.");
+  const r = await gh(`/repos/${REPO}/actions/runs/${build.run_id}/cancel`, { method: "POST" });
+  if (!r.ok && r.status !== 409) throw new Error(`GitHub refused to stop it (${r.status}).`);
+  const { data } = await supabase.from("vibe_builds")
+    .update({ status: "failed", summary: "Stopped.", updated_at: new Date().toISOString() })
+    .eq("id", build.id).select("*").single();
+  return { build: data };
+}
+
+async function retry(supabase: Supa, who: { id: string; name: string }, body: Record<string, unknown>) {
+  const old = await load(supabase, body.id);
+  const prompt = typeof body.prompt === "string" && body.prompt.trim() ? body.prompt : old.prompt;
+  return await create(supabase, who, {
+    prompt, mode: body.mode ?? old.mode, ship: body.ship ?? old.ship,
+    billing: body.billing, scope: old.scope, route: old.route,
+  });
+}
+
+async function undo(supabase: Supa, who: { id: string; name: string }, body: Record<string, unknown>) {
+  const old = await load(supabase, body.id);
+  if (old.status !== "shipped" || !old.head_sha) throw new Error("Only a build that shipped can be undone.");
+  return await create(supabase, who, {
+    prompt: `Undo: ${old.prompt}`.slice(0, 4000), mode: "fast", ship: true,
+    scope: old.scope, route: old.route,
+  }, old.head_sha);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -299,6 +370,9 @@ Deno.serve(async (req) => {
     else if (action === "list") data = await list(supabase, body);
     else if (action === "ship") data = await ship(supabase, body);
     else if (action === "discard") data = await discard(supabase, body);
+    else if (action === "cancel") data = await cancel(supabase, body);
+    else if (action === "retry") data = await retry(supabase, who, body);
+    else if (action === "undo") data = await undo(supabase, who, body);
     else throw new Error(`Unknown action ${action}`);
     return reply({ ok: true, data });
   } catch (e) {

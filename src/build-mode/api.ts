@@ -9,6 +9,9 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type BuildMode = "fast" | "smart";
 
+/** Who pays for the agent: console API credits, or the Claude plan. */
+export type BuildBilling = "api" | "plan";
+
 export type BuildStatus =
   | "queued"
   | "running"
@@ -34,6 +37,8 @@ export interface Build {
   requester_name: string | null;
   created_at: string;
   updated_at: string;
+  /** What a live build is doing right now ("Claude is coding"). Not stored. */
+  step?: string | null;
 }
 
 /** The worlds build mode can change, and the routes that count as each. */
@@ -81,12 +86,21 @@ export const createBuild = (input: {
   prompt: string;
   mode: BuildMode;
   ship: boolean;
+  billing: BuildBilling;
   scope: BuildScope;
   route: string;
 }) => call<{ build: Build }>("create", input);
 
-export const listBuilds = (limit = 12) => call<{ builds: Build[] }>("list", { limit });
+export const listBuilds = (limit = 20, offset = 0) =>
+  call<{ builds: Build[]; total: number }>("list", { limit, offset });
 
 export const shipBuild = (id: string) => call<{ build: Build }>("ship", { id });
 
 export const discardBuild = (id: string) => call<{ build: Build }>("discard", { id });
+
+export const cancelBuild = (id: string) => call<{ build: Build }>("cancel", { id });
+
+export const retryBuild = (id: string, billing: BuildBilling) =>
+  call<{ build: Build }>("retry", { id, billing });
+
+export const undoBuild = (id: string) => call<{ build: Build }>("undo", { id });

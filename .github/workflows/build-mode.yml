@@ -36,6 +36,14 @@ on:
         description: "Push to main when checks pass"
         required: true
         default: "true"
+      billing:
+        description: "api (console credits) or plan (Claude subscription)"
+        required: false
+        default: api
+      revert_sha:
+        description: "Undo this earlier build commit instead of asking the agent"
+        required: false
+        default: ""
       route:
         description: "Where the person was standing when they asked"
         required: false
@@ -66,6 +74,8 @@ jobs:
       BUILD_SHIP: ${{ inputs.ship }}
       BUILD_ROUTE: ${{ inputs.route }}
       BUILD_BY: ${{ inputs.requested_by }}
+      BUILD_BILLING: ${{ inputs.billing }}
+      REVERT_SHA: ${{ inputs.revert_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,10 +106,25 @@ jobs:
           echo "branch=build/$SHORT" >> "$GITHUB_OUTPUT"
           git checkout -b "build/$SHORT"
 
+      # Undo is a revert, not a prompt: no agent, no cost, but the same fence,
+      # typecheck and build as anything else before it lands.
+      - name: Undo an earlier build
+        if: inputs.revert_sha != ''
+        run: |
+          SUBJECT="$(git log -1 --format=%s "$REVERT_SHA")"
+          git revert --no-commit "$REVERT_SHA"
+          {
+            echo "Undo: $SUBJECT" | cut -c1-72
+            echo ""
+            echo "Reverts $REVERT_SHA from build mode."
+          } > "$RUNNER_TEMP/message.txt"
+
       - name: Install Claude Code
+        if: inputs.revert_sha == ''
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Make the change
+        if: inputs.revert_sha == ''
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -120,13 +145,18 @@ jobs:
             ANTHROPIC_API_KEY="$(printf '%s' "$ANTHROPIC_API_KEY" | tr -d '[:space:]')"
             export ANTHROPIC_API_KEY
           fi
-          # An API key, when there is one, is what pays: it bills the console's
-          # prepaid credits instead of the Claude plan's usage limits.
-          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+          # The panel picks who pays: "api" bills the console's prepaid
+          # credits, "plan" the Claude subscription. If the chosen one is not
+          # set, fall back to the other rather than fail.
+          if [ "${BUILD_BILLING:-api}" = "plan" ] && [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            unset ANTHROPIC_API_KEY
+          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
             unset CLAUDE_CODE_OAUTH_TOKEN
-            echo "Paying with: ANTHROPIC_API_KEY (console credits)"
+          fi
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "Paying with: ANTHROPIC_API_KEY (console credits)" | tee -a "$GITHUB_STEP_SUMMARY"
           elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            echo "Paying with: CLAUDE_CODE_OAUTH_TOKEN (Claude plan)"
+            echo "Paying with: CLAUDE_CODE_OAUTH_TOKEN (Claude plan)" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           if [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
             echo "::error::Build mode needs CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in the repo's Actions secrets."
