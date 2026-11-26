@@ -179,6 +179,9 @@ jobs:
           else
             jq -r '.result // ""' "$RUNNER_TEMP/claude.json" > "$RUNNER_TEMP/message.txt"
           fi
+          COST="$(jq -r '.total_cost_usd // 0' "$RUNNER_TEMP/claude.json")"
+          TURNS_USED="$(jq -r '.num_turns // 0' "$RUNNER_TEMP/claude.json")"
+          echo "Agent cost: USD $COST over $TURNS_USED turns" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "--- agent summary ---"; cat "$RUNNER_TEMP/message.txt"
 
       - name: Stay inside the fence
