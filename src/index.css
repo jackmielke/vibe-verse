@@ -502,3 +502,19 @@
   /* Things you click. Paper does not click. */
   .no-print { display: none !important; }
 }
+
+/*
+ * Build mode, docked: the page shrinks to the left of the sidebar instead of
+ * sitting under it. The transform makes #root the containing block for every
+ * position: fixed element inside it, so each world's canvas and HUD fit the
+ * narrower box on their own. See src/build-mode/BuildModePanel.tsx.
+ */
+html.vb-docked #root {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: var(--vb-dock, 380px);
+  transform: translateZ(0);
+  overflow: hidden;
+}
