@@ -77,6 +77,21 @@ export interface DistrictOpts {
   snow?: { patch(m: THREE.Material | THREE.Material[] | null | undefined): void };
   /** Thin the traffic out and drop its shadows. */
   lowDetail?: boolean;
+  /**
+   * Blocks handed to somebody else — the landmarks in `src/city/landmarks/`.
+   *
+   * A reserved cell keeps its kerb and its street, and gets no buildings, no
+   * rooftop pads and (with `trees: false`) no sidewalk trees, so whatever is
+   * built there owns the whole block. Its ground is a park lawn or ordinary
+   * pavement.
+   *
+   * The rest of the city does NOT move. Everything here is drawn from one
+   * seeded stream, so simply skipping a block would hand every later block a
+   * different set of numbers and reshuffle the whole skyline. A reserved block
+   * is therefore built exactly as before and then thrown away, which keeps the
+   * stream, and so every other building, where it was.
+   */
+  reserve?: Array<{ gx: number; gz: number; ground: "park" | "pave"; trees: boolean }>;
 }
 
 export interface District {
@@ -709,9 +724,26 @@ export function buildDistrict(opts: DistrictOpts): District {
   };
 
   // ---- Lay out the blocks ----------------------------------------------
+  const reservedAt = (gx: number, gz: number) =>
+    opts.reserve?.find((c) => c.gx === gx && c.gz === gz) ?? null;
   for (let gx = 0; gx < grid; gx++) {
     for (let gz = 0; gz < grid; gz++) {
       if (gx === Math.floor(center) && gz === Math.floor(center)) continue; // plaza
+
+      // A reserved block is built and then truncated away; see `reserve`.
+      const keep = reservedAt(gx, gz)
+        ? {
+            walls: wallsByVariant.map((l) => l.length),
+            roofs: roofGeos.length,
+            concrete: concrete.length,
+            plant: plant.length,
+            tanks: tanks.length,
+            vents: vents.length,
+            boxes: boxes.length,
+            pads: pads.length,
+            beacons: beaconAt.length,
+          }
+        : null;
 
       const cellX = (gx - center) * pitch;
       const cellZ = (gz - center) * pitch;
@@ -771,6 +803,18 @@ export function buildDistrict(opts: DistrictOpts): District {
         // Anything an aircraft could hit gets a beacon, which above 60 m is
         // most of the skyline's tallest fifth.
         if (height > 60) beaconAt.push({ x: lx, y: height, z: lz });
+      }
+
+      if (keep) {
+        wallsByVariant.forEach((l, i) => l.splice(keep.walls[i]).forEach((g) => g.dispose()));
+        roofGeos.splice(keep.roofs).forEach((g) => g.dispose());
+        concrete.length = keep.concrete;
+        plant.length = keep.plant;
+        tanks.length = keep.tanks;
+        vents.length = keep.vents;
+        boxes.length = keep.boxes;
+        pads.length = keep.pads;
+        beaconAt.length = keep.beacons;
       }
     }
   }
@@ -866,8 +910,10 @@ export function buildDistrict(opts: DistrictOpts): District {
       const plaza = gx === Math.floor(center) && gz === Math.floor(center);
       const park = !plaza && r() < 0.09;
       isPark[gx][gz] = park;
-      const q = flatQuad(block, block, cx, 0.012, cz, park || plaza ? 0 : 8);
-      (plaza ? plazaGeos : park ? parkGeos : walkGeos).push(q);
+      const held = reservedAt(gx, gz);
+      const lawn = held ? held.ground === "park" : park;
+      const q = flatQuad(block, block, cx, 0.012, cz, lawn || plaza ? 0 : 8);
+      (plaza ? plazaGeos : lawn ? parkGeos : walkGeos).push(q);
 
       // The kerb: a rim, 36 cm wide, standing 14 cm proud of the asphalt.
       const t = 0.36;
@@ -958,6 +1004,9 @@ export function buildDistrict(opts: DistrictOpts): District {
       const cx = (gx - center) * pitch;
       const cz = (gz - center) * pitch;
       const inPark = isPark[gx][gz];
+      // Same stream either way (see `reserve`); a treeless reserved block just
+      // does not plant what it drew.
+      const bare = reservedAt(gx, gz)?.trees === false;
       for (let side = 0; side < 4; side++) {
         for (let k = -1; k <= 1; k++) {
           if (!inPark && r() < 0.4) continue;
@@ -965,6 +1014,10 @@ export function buildDistrict(opts: DistrictOpts): District {
           const x = side === 0 || side === 1 ? cx + along : cx + (side === 2 ? EDGE : -EDGE);
           const z = side === 0 ? cz + EDGE : side === 1 ? cz - EDGE : cz + along;
           const h = 3.4 + r() * 2.4;
+          if (bare) {
+            r(); r(); r(); // the crown's size, squash and spin
+            continue;
+          }
           treeSpots.push(x, z);
           cyl(trunks, x, KERB, z, h);
           const cr = 1.25 + r() * 0.75;

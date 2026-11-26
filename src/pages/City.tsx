@@ -70,6 +70,8 @@ import {
 } from "@/lib/worldPhysics";
 import { CollisionWorld } from "@/city/player/collision";
 import { buildDistrict } from "@/city/district";
+import { buildLandmarks, LANDMARK_RESERVE, type Landmarks } from "@/city/landmarks";
+import { LandmarkHud } from "@/city/landmarks/LandmarkHud";
 import { buildThanksgiving, thanksgivingOn, saveThanksgiving, TURKEY_REST } from "@/city/thanksgiving";
 import { buildTurkey } from "@/city/turkey";
 import {
@@ -890,6 +892,7 @@ export default function City() {
   const mutedRef = useRef(false);
   mutedRef.current = muted;
   const soundsRef = useRef<CitySounds | null>(null);
+  const landmarksRef = useRef<Landmarks | null>(null);
   /** The dance track. Created on the same gesture the sound effects are. */
   const musicRef = useRef<CityMusic | null>(null);
   /**
@@ -1577,8 +1580,24 @@ export default function City() {
       padMinHeight: PAD_MIN_HEIGHT,
       snow: snowCover,
       lowDetail: smallScreen,
+      reserve: LANDMARK_RESERVE,
     });
     scene.add(district.group);
+    // The Space Needle, the Empire State and the Eiffel Tower, on the blocks
+    // `LANDMARK_RESERVE` kept empty. See src/city/landmarks/index.ts.
+    const landmarks = buildLandmarks({ boxes: district.boxes, pitch: BLOCK + STREET, lowDetail: smallScreen });
+    scene.add(landmarks.group);
+    snowCover.patch(landmarks.snowMaterials);
+    landmarksRef.current = landmarks;
+    landmarks.onEvent((ev) => {
+      const snd = soundsRef.current;
+      if (ev.type === "depart") snd?.chime(1);
+      else {
+        snd?.chime(4);
+        window.setTimeout(() => soundsRef.current?.chime(2), 160);
+      }
+      if (ev.title) toast(ev.title, { description: ev.description });
+    });
     // Held live by reference — every world that loads after this pushes its
     // own collision into the same array. See CollisionWorld's constructor.
     const boxes = district.boxes;
@@ -2475,6 +2494,7 @@ export default function City() {
         aliases: string[] = [],
       ) => registerPOI({ key, name, region, position: pos, kind: "landmark", aliases });
       reg("plaza", "Plaza Spawn", "Plaza", new THREE.Vector3(0, 0, 0), ["spawn", "lobby", "start"]);
+      for (const site of landmarks.sites) reg(site.key, site.name, "Vibe City", site.entrance.clone(), site.aliases);
       reg("cardboard-island", "Vibe Island", "Vibe Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard", "edge island", "cardboard island"]);
       reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
       reg("arcade", "Esmeralda Jump Arcade", "Cardboard Island", island.arcade, ["arcade", "esmeralda jump", "jump cabinet", "cabinet"]);
@@ -3277,6 +3297,7 @@ export default function City() {
       skyUniforms.uSunColor.value.set(day ? "#ffe6b0" : "#8fb4e8");
       skyUniforms.uSunPower.value = day ? 0.9 : 0.22;
       district.setDay(day);
+      landmarks.setDay(day);
       ocean.setPalette(day ? OCEAN_DAY : OCEAN_NIGHT);
       // The sand is lit geometry, not a shader, so it needs the same knock-down
       // the facades get at night or the beach glows like a runway.
@@ -4330,6 +4351,16 @@ export default function City() {
         helicopter: heli.body.position.toArray(),
         parade: thanks.float.getWorldPosition(new THREE.Vector3()).toArray(),
       });
+      (window as unknown as Record<string, unknown>).__cityLandmarks = {
+        sites: () => landmarks.devSites(),
+        near: () => landmarks.ui(),
+        state: () => {
+          const u = landmarks.ui();
+          return { riding: !!(u.ride || u.express), ui: u, player: player.position.toArray() };
+        },
+        act: () => landmarks.act(),
+        shot: (s: { eye: number[]; look: number[]; fov?: number } | null) => landmarks.devShot(s),
+      };
       (window as unknown as Record<string, unknown>).__cityWarp = (
         x: number,
         y: number,
@@ -4396,6 +4427,10 @@ export default function City() {
        * on the keyboard, and taking them off to aim a mouse at a pill-shaped
        * target is the wrong ask.
        */
+      // E: the landmarks' elevators and binoculars.
+      if (e.code === "KeyE" && !e.repeat && enteredRef.current) {
+        if (landmarksRef.current?.act()) e.preventDefault();
+      }
       if (e.code === "KeyF" && !e.repeat) {
         if (activeMountRef.current) { mountActionRef.current?.(null); return; }
         const p = player.position;
@@ -7111,6 +7146,24 @@ export default function City() {
         }
       }
 
+      // ---- Landmarks: elevators, binoculars, the turning Loupe -------------
+      // A rider is locked to the car rather than carried by physics; see
+      // src/city/landmarks/index.ts.
+      {
+        const lock = landmarks.update(dt, now, {
+          player: player.position,
+          grounded: onGround,
+          busy: drivingKartRef.current >= 0 || !!activeMountRef.current || swimming || ridingZeppelin,
+        });
+        if (lock) {
+          player.position.copy(lock);
+          vel.set(0, 0, 0);
+          onGround = true;
+          wallJumpUsed = false;
+          peakY = lock.y;
+        }
+      }
+
       // Zeppelin Heist: spawn the sky coin on schedule, ride it around
       // on the deck, and pay out when someone grabs it.
       {
@@ -7954,7 +8007,7 @@ export default function City() {
            it is what a player standing in the club would see. Clamping to
            something that fits inside the room is the fix, and it is the same
            trick the dive camera above already uses. */
-        const camDistNow = club.contains(pos)
+        const camDistNow = club.contains(pos) || landmarks.indoors(pos)
           ? Math.min(camDist, 5.2)
           : THREE.MathUtils.lerp(camDist, Math.min(camDist, 4.6), diveEased);
         const camLift = THREE.MathUtils.lerp(1.4, 0.25, diveEased);
@@ -7999,6 +8052,20 @@ export default function City() {
         camera.position.lerp(eye, camSnap || arrivalStart > 0 ? 1 : 1 - Math.pow(0.0008, dt));
         camSnap = false;
         camera.lookAt(pos.x, pos.y + 1.5, pos.z);
+        // Binoculars (and dev shots): the landmarks take the camera.
+        {
+          const shot = landmarks.cameraShot(camYaw, camPitch);
+          const fov = shot ? shot.fov : 60;
+          if (shot) {
+            camera.position.copy(shot.eye);
+            camera.lookAt(shot.look);
+            modelHolder.visible = false;
+          }
+          if (camera.fov !== fov) {
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+          }
+        }
         // Crash shake. A rotation after the look-at, so it never accumulates.
         {
           const sh = crashFx.shake();
@@ -8276,6 +8343,8 @@ export default function City() {
       unsubRoster();
       rosterBoard.dispose();
       district.dispose();
+      landmarks.dispose();
+      landmarksRef.current = null;
       ocean.dispose();
       underwater.dispose();
       splash.dispose();
@@ -10099,6 +10168,7 @@ export default function City() {
               </button>
             </div>
           )}
+          <LandmarkHud system={landmarksRef} compact={isTouch} />
           {nearGamePrompt && !gameHud && (
             <button
               onClick={(e) => {
