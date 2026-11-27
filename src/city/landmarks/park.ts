@@ -12,14 +12,30 @@
 import * as THREE from "three";
 import type { WorldBox } from "@/components/city/cardboardIsland";
 import { canvas, merge, rng, signTexture, solid, tex } from "./common";
+import { buildMatch, MATCH_RUN_CAP, type MatchEvent, type MatchHuman, type MatchUi } from "./match";
 
 export interface Park {
   group: THREE.Group;
   /** The pitch's centre, for "take me to the soccer field". */
   pitch: THREE.Vector3;
   garden: THREE.Vector3;
-  update(dt: number, now: number, player: THREE.Vector3, busy: boolean): { goal: "home" | "away" | null };
+  update(
+    dt: number,
+    now: number,
+    player: THREE.Vector3,
+    busy: boolean,
+  ): { goal: "home" | "away" | null; place: THREE.Vector3 | null; events: MatchEvent[] };
   score(): [number, number];
+  /** Where E starts a match: beside the scoreboard. */
+  matchSpot: THREE.Vector3;
+  startMatch(): MatchEvent;
+  matchUi(): MatchUi | null;
+  /** E during a match. */
+  shoot(): boolean;
+  canShoot(): boolean;
+  /** A match is on and you are in it: your top speed, m/s. */
+  speedCap(): number | null;
+  devMatch(op?: string, arg?: number): unknown;
   /** Dev: put the ball somewhere with a velocity. */
   kick(x: number, z: number, vx: number, vz: number): void;
   ball(): number[];
@@ -184,7 +200,7 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
   // Scoreboard on the north side, facing the pitch.
   const board = canvas(512, 192);
   const boardTex = keep(tex(board.c, false));
-  const drawBoard = (h: number, a: number) => {
+  const drawBoard = (h: number, a: number, sub?: string) => {
     const x = board.x;
     x.fillStyle = "#0b1a12";
     x.fillRect(0, 0, 512, 192);
@@ -194,10 +210,15 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
     x.fillStyle = "#7dfce0";
     x.font = "700 30px Georgia, serif";
     x.textAlign = "center";
-    x.fillText("VIBE COMMONS FC", 256, 44);
-    x.font = "700 96px ui-monospace, monospace";
+    x.fillText(sub ? "COMMONS  v  ROVERS" : "VIBE COMMONS FC", 256, 44);
+    x.font = `700 ${sub ? 80 : 96}px ui-monospace, monospace`;
     x.fillStyle = "#ffd27a";
-    x.fillText(`${h} – ${a}`, 256, 150);
+    x.fillText(`${h} – ${a}`, 256, sub ? 128 : 150);
+    if (sub) {
+      x.font = "700 34px ui-monospace, monospace";
+      x.fillStyle = "#7dfce0";
+      x.fillText(sub, 256, 172);
+    }
     boardTex.needsUpdate = true;
   };
   drawBoard(0, 0);
@@ -270,6 +291,19 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
   let score: [number, number] = [0, 0];
   let resetIn = 0;
   const lastPlayer = new THREE.Vector3(1e9, 0, 0);
+
+  // ---- The match -----------------------------------------------------------------
+  const match = buildMatch({ parent: pitch, dims: { PL, PW, GOAL_W, BALL_R }, keep });
+  const human: MatchHuman = { x: 0, z: 0, vx: 0, vz: 0, present: false };
+  let boardKey = "";
+  const refreshBoard = () => {
+    const u = match.ui();
+    const key = u ? `${u.home}-${u.away}-${u.clock}-${u.phase}` : `free-${score[0]}-${score[1]}`;
+    if (key === boardKey) return;
+    boardKey = key;
+    if (u) drawBoard(u.home, u.away, u.phase === "over" ? "FULL TIME" : u.clock);
+    else drawBoard(score[0], score[1]);
+  };
 
   // ---- The garden --------------------------------------------------------------------
   const garden = new THREE.Group();
@@ -453,6 +487,23 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
     garden: new THREE.Vector3(G.x, 0, G.z + 11),
     score: () => score,
     ball: ballWorld,
+    // By the scoreboard, just inside the fence.
+    matchSpot: new THREE.Vector3(P.x, 0, P.z - FENCE_Z + 1.2),
+    startMatch: () => {
+      resetIn = 0;
+      return match.start(b);
+    },
+    matchUi: () => match.ui(),
+    shoot: () => match.shoot(b, human),
+    canShoot: () => match.canShoot(b, human),
+    speedCap: () => (match.live() && human.present ? MATCH_RUN_CAP : null),
+    devMatch(op, arg) {
+      if (op === "start") match.start(b);
+      else if (op === "stop") match.stop();
+      else if (op === "clock") match.devClock(arg ?? 0);
+      else if (op === "shoot") return match.shoot(b, human);
+      return { ...match.dev(), ball: ballWorld(), human: { ...human } };
+    },
     kick(x, z, vx, vz) {
       b.x = x - P.x;
       b.z = z - P.z;
@@ -485,7 +536,13 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
       const pvx = lastPlayer.x < 1e8 ? (player.x - lastPlayer.x) / Math.max(dt, 1e-3) : 0;
       const pvz = lastPlayer.x < 1e8 ? (player.z - lastPlayer.z) / Math.max(dt, 1e-3) : 0;
       lastPlayer.copy(player);
-      if (resetIn > 0) {
+      const live = match.live();
+      human.x = px;
+      human.z = pz;
+      human.vx = pvx;
+      human.vz = pvz;
+      human.present = !busy && player.y < 1.2 && player.y > -0.5 && Math.abs(px) < FENCE_X + 1 && Math.abs(pz) < FENCE_Z + 1;
+      if (resetIn > 0 && !live) {
         resetIn -= dt;
         if (resetIn <= 0) Object.assign(b, { x: 0, y: BALL_R + 2, z: 0, vx: 0, vy: 0, vz: 0 });
       }
@@ -497,16 +554,22 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
         const nx = d > 1e-4 ? dx / d : 1;
         const nz = d > 1e-4 ? dz / d : 0;
         // Toward the way you were going, a little toward where it was hit.
-        const kick = 3.5 + pv * 1.15;
+        // In a match it is a dribble: the ball stays a stride ahead of you.
+        const kick = live ? 1.4 + pv * 1.12 : 3.5 + pv * 1.15;
+        if (live) match.touched();
         const dirx = pv > 0.5 ? (pvx / pv) * 0.7 + nx * 0.3 : nx;
         const dirz = pv > 0.5 ? (pvz / pv) * 0.7 + nz * 0.3 : nz;
         const l = Math.hypot(dirx, dirz) || 1;
         b.vx = (dirx / l) * kick;
         b.vz = (dirz / l) * kick;
-        b.vy = 1.2 + pv * 0.35;
+        b.vy = live ? 0.4 : 1.2 + pv * 0.35;
         b.x = px + nx * 0.72;
         b.z = pz + nz * 0.72;
       }
+      const m = match.update(step, b, human, Math.hypot(px, pz) > 26 || busy);
+      const events = m.events;
+      const place = m.place ? new THREE.Vector3(P.x + m.place.x, 0.05, P.z + m.place.z) : null;
+      if (m.hold) Object.assign(b, { x: 0, y: BALL_R, z: 0, vx: 0, vy: 0, vz: 0 });
       b.vy -= 9.8 * step;
       b.x += b.vx * step;
       b.y += b.vy * step;
@@ -520,11 +583,16 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
       }
       // Goal: over the line, between the posts, under the bar.
       if (resetIn <= 0 && Math.abs(b.x) > PL / 2 + BALL_R && Math.abs(b.z) < GOAL_W / 2 && b.y < GOAL_H) {
-        goal = b.x > 0 ? "home" : "away";
-        score = goal === "home" ? [score[0] + 1, score[1]] : [score[0], score[1] + 1];
-        drawBoard(score[0], score[1]);
-        resetIn = 2.5;
+        if (match.live()) {
+          const e = match.goal(b.x > 0 ? "home" : "away");
+          if (e) events.push(e);
+        } else {
+          goal = b.x > 0 ? "home" : "away";
+          score = goal === "home" ? [score[0] + 1, score[1]] : [score[0], score[1] + 1];
+          resetIn = 2.5;
+        }
       }
+      refreshBoard();
       // The back of the net stops it.
       if (Math.abs(b.x) > PL / 2 + 1.2 && Math.abs(b.z) < GOAL_W / 2) {
         b.x = Math.sign(b.x) * (PL / 2 + 1.2);
@@ -564,7 +632,7 @@ export function buildPark(opts: { boxes: WorldBox[]; pitchAt: { x: number; z: nu
         spin.setFromAxisAngle(axis, (sp * step) / BALL_R);
         ball.quaternion.premultiply(spin);
       }
-      return { goal };
+      return { goal, place, events };
     },
     dispose() {
       trash.forEach((x) => x.dispose());
