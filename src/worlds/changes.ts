@@ -89,12 +89,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
   ],
   "cannon-run": [
+    { sha: "4cbb3f55", iso: "2026-11-27T00:53:48+00:00", subject: "Cannon Chase: outer space mode" },
     { sha: "79d312f8", iso: "2026-11-26T21:10:46+00:00", subject: "Cannon Chase: one-tap shareable Gatch News clips" },
     { sha: "70a89924", iso: "2026-11-26T19:00:40+00:00", subject: "Cannon Chase: the highlight reel is now the start screen" },
     { sha: "8b08c5a1", iso: "2026-11-26T18:46:28+00:00", subject: "Cannon Chase start-screen looks: add Read the story, drop the copy that promised an ending" },
     { sha: "f11f9fbd", iso: "2026-11-26T18:42:00+00:00", subject: "Cannon Chase: endless chase, Gatch News replay, read-the-story book" },
     { sha: "3206e3c6", iso: "2026-11-26T16:45:22+00:00", subject: "Cannon Chase: three new face styles for Mort and Linda, behind ?face=" },
-    { sha: "872d5baf", iso: "2026-11-26T16:25:31+00:00", subject: "Cannon Chase: four start-screen designs to preview with ?look=" },
   ],
   "characters": [
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
@@ -106,12 +106,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "7f95528e", iso: "2026-11-27T02:46:03+00:00", subject: "Vibe City: the Super Soaker leaves slippery puddles" },
+    { sha: "483accc4", iso: "2026-11-27T00:44:31+00:00", subject: "City: red button in Warehouse 13 puts you in a bad guy's back seat as gunner" },
     { sha: "95a571f5", iso: "2026-11-26T22:43:09+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
     { sha: "8c552400", iso: "2026-11-26T22:43:04+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
     { sha: "4f9ab17d", iso: "2026-11-26T22:41:52+00:00", subject: "City marina: racing hydroplanes on a buoy course, and a phone helm for every boat" },
     { sha: "0dd8c9f0", iso: "2026-11-26T22:40:29+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
-    { sha: "bfe36185", iso: "2026-11-26T22:40:28+00:00", subject: "Vibe City: weapon bar so bought guns can be drawn on a phone" },
-    { sha: "ceefaf5e", iso: "2026-11-26T22:31:19+00:00", subject: "City: bad guys in orange jumpsuits drive their own orange car out of the warehouse" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -318,6 +318,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
   ],
+  "mort-maze": [
+    { sha: "d06b0315", iso: "2026-11-27T03:19:48+00:00", subject: "Mort's Maze: a maze chase on Vibe Island" },
+  ],
   "museum": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "f4e5d7cd", iso: "2026-05-14T04:35:45+00:00", subject: "Changes" },
@@ -474,12 +477,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
   ],
   "vibeverse": [
+    { sha: "d06b0315", iso: "2026-11-27T03:19:48+00:00", subject: "Mort's Maze: a maze chase on Vibe Island" },
     { sha: "fc206f2a", iso: "2026-09-30T20:54:00+00:00", subject: "Vibeverse: Venus reads as a pearl from orbit; number keys go to 6" },
     { sha: "d9f2363b", iso: "2026-09-30T20:01:15+00:00", subject: "Venus Rising: walk the deck, neighbours on the wind, and a gauntlet of fixes" },
     { sha: "cae1ead5", iso: "2026-09-09T12:01:53+00:00", subject: "Beck Road: the five elements merged, card art, passport cap" },
     { sha: "da791439", iso: "2026-09-03T19:20:24+00:00", subject: "Card art, stamped dates and a wider passport panel for the four new worlds" },
     { sha: "207af005", iso: "2026-08-18T22:36:55+00:00", subject: "Passport rows to forty-two, and stop raising it one world at a time" },
-    { sha: "a86765f9", iso: "2026-08-18T22:28:16+00:00", subject: "First Light — a lake at dawn, and one quality ladder for everybody" },
   ],
   "village": [
     { sha: "fbba2b4f", iso: "2026-06-12T04:25:29+00:00", subject: "Nav and flow reorganization: hero chips, full gallery, island spawn" },
