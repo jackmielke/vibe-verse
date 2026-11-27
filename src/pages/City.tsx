@@ -4453,6 +4453,7 @@ export default function City() {
         act: () => landmarks.act(),
         shot: (s: { eye: number[]; look: number[]; fov?: number } | null) => landmarks.devShot(s),
         ball: (k?: [number, number, number, number]) => landmarks.devBall(k),
+        match: (op?: string, arg?: number) => landmarks.devMatch(op, arg),
         boat: (at?: [number, number, number]) => landmarks.devBoat(at),
       };
       (window as unknown as Record<string, unknown>).__cityWarp = (
@@ -6425,9 +6426,15 @@ export default function City() {
       // is what turns the whole thing from a consequence into a bump.
       if (knockdown > 0) intent.set(0, 0, 0);
       if (intent.lengthSq() > 0) intent.normalize();
-      const targetSpeed = onGround
-        ? running ? RUN_SPEED : WALK_SPEED
-        : running ? FLY_RUN_SPEED : FLY_SPEED;
+      const matchCap = landmarksRef.current?.speedCap() ?? null;
+      const targetSpeed = Math.min(
+        onGround
+          ? running ? RUN_SPEED : WALK_SPEED
+          : running ? FLY_RUN_SPEED : FLY_SPEED,
+        // On the pitch in a Vibe Commons Cup match you run at a footballer's
+        // pace, not a superhero's: 16 m/s crosses the pitch in a second and a half.
+        matchCap ?? Infinity,
+      );
 
       const pos = player.position;
       if (mountFlight && activeMountRef.current) {

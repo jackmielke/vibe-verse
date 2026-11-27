@@ -40,6 +40,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "thalassa",            // the harbour from the painting: walk it, swim it, VR
   "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
+  "vibe-cup",            // new: five-a-side arcade soccer, one player or two
   "mort-maze",           // new: the maze chase, Vibey against Mad Mort's crew
   "bots",                // …then the thirty-second loop: your handle becomes a bot that fights
   "oni",                 // the room game: everybody's phone, one square, zombie tag
@@ -456,6 +457,23 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#ff6ad5",
     featured: true,
     source: "src/coil",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "vibe-cup",
+    route: "/vibe-cup",
+    aliases: ["/soccer", "/football", "/futbol", "/kickabout"],
+    name: "Vibe Cup",
+    emoji: "⚽",
+    kind: "game",
+    blurb:
+      "Five-a-side arcade soccer in a floodlit cage. Pick a club from around the Vibe Verse, ping passes about, slide in for the ball and hold shoot for a flaming SUPER SHOT. Two and a half minutes, golden goal if it is level. Play the computer, or a friend on the same keyboard or two gamepads.",
+    status: "Playable on phone (thumb stick) and desktop, 1 or 2 players",
+    accent: "#1fd1b0",
+    featured: true,
+    source: "src/vibecup",
     nav: true,
     passport: true,
     chromeless: true,

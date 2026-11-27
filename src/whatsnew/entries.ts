@@ -38,6 +38,26 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "vibe-cup",
+    date: "2026-11-27",
+    emoji: "⚽",
+    title: "New game: Vibe Cup",
+    body: "Five-a-side arcade soccer in a floodlit cage. Pick a club from around the Vibe Verse, pass it about, slide in for the ball, and hold shoot until the bar flashes for a flaming super shot. Play the computer on easy, normal or hard, or a friend on the same keyboard or with two gamepads. On a phone you get a thumb stick and two buttons.",
+    tag: "new",
+    route: "/vibe-cup",
+    world: "Vibe Cup",
+  },
+  {
+    id: "city-commons-cup",
+    date: "2026-11-27",
+    emoji: "🏆",
+    title: "Play a real match at Vibe Commons",
+    body: "The soccer pitch in Vibe City's park now has two teams. Press E by the scoreboard and you line up for Vibe Commons FC, with a keeper and a teammate, against the Harbour Rovers. Run into the ball to dribble, press E to shoot, and beat their keeper before the two minutes are up.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "mort-maze",
     date: "2026-11-27",
     emoji: "🎈",

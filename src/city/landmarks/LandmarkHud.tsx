@@ -47,6 +47,21 @@ export function LandmarkHud({ system, compact }: { system: MutableRefObject<Land
           </span>
         </div>
       )}
+      {ui.match && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-20 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full border border-emerald-300/30 bg-black/65 px-4 py-1.5 text-sm text-white backdrop-blur"
+          data-testid="landmark-match"
+        >
+          <span className="font-semibold text-emerald-300">{compact ? "Commons" : ui.match.homeName}</span>
+          <span className="font-mono text-lg font-bold tabular-nums text-amber-200">
+            {ui.match.home} – {ui.match.away}
+          </span>
+          <span className="font-semibold text-orange-300">{compact ? "Rovers" : ui.match.awayName}</span>
+          <span className="rounded bg-white/15 px-2 py-0.5 font-mono text-xs tabular-nums">
+            {ui.match.phase === "over" ? "FT" : ui.match.phase === "goal" ? "GOAL!" : ui.match.clock}
+          </span>
+        </div>
+      )}
       {ui.helm && compact && <Helm system={system} label={ui.prompt?.label ?? "Step off"} onExit={act} />}
       {ui.prompt && !ui.express && !(ui.helm && compact) && (
         <button
