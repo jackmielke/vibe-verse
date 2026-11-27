@@ -38,6 +38,17 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-27-vibe-summit",
+    date: "2026-11-27",
+    emoji: "🏔️",
+    title: "Vibe Summit: a 5,000 ft mountain and a rainbow road",
+    body:
+      "A huge new snowy mountain with a forest at its feet. Stand on the summit and pick your way down to the village at 300 ft: skis, a snowboard with spins off the kickers, a wingsuit through the rings, or a paraglider on the thermals. Then ride the rainbow beam up past the clouds and race the Prism Skyway. Fall off an edge and you will find out what the wingsuit is for.",
+    tag: "new",
+    route: "/summit",
+    world: "Vibe Summit",
+  },
+  {
     id: "vibe-hoops",
     date: "2026-11-27",
     emoji: "🏀",

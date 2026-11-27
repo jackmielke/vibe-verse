@@ -10191,6 +10191,9 @@ export default function City() {
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs">
           <span className="text-primary font-heading font-semibold">⛷ POWDER PEAK</span>
           <span className="text-muted-foreground"> · carve with A/D · Space hops · jetpack = ski lift</span>
+          <Link to="/summit" className="ml-3 rounded-full bg-sky-400/90 px-3 py-1 font-semibold text-slate-900 hover:bg-sky-300">
+            🏔 Big mountain: Vibe Summit →
+          </Link>
         </div>
       )}
 
