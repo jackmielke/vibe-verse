@@ -45,6 +45,8 @@ export interface Quests {
   act(): boolean;
   /** A dialog option tapped. */
   choose(id: string): void;
+  /** Take the sticky shoes off (ends a Sky Sprint). */
+  quitSprint(): void;
   /** The on-screen hold button (the reel on a phone). */
   setHold(on: boolean): void;
   holding(): boolean;
@@ -123,6 +125,9 @@ export function buildQuests(host: QuestHost, opts: { pitch: number }): Quests {
     },
     choose(id) {
       for (const o of owners) if (o.dialog()) return o.choose(id);
+    },
+    quitSprint() {
+      sprint.quit();
     },
     setHold(on) {
       holdButton = on;
