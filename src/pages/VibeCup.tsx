@@ -2,9 +2,11 @@
  * VIBE CUP — the page.
  *
  * Five-a-side arcade soccer in a cage: pass, shoot, slide, golden goal.
- * One player against the computer or two people on one keyboard (or two
- * gamepads, or a pad and a keyboard). Phones get a thumb stick and two
- * buttons.
+ * One player against the computer, two people on one keyboard (or two
+ * gamepads, or a pad and a keyboard), or up to four online, each on their own
+ * device (`src/vibecup/net.ts`: the room maker referees, `?room=CODE` joins,
+ * `?net=local` swaps Supabase for a BroadcastChannel so two tabs can play).
+ * Phones get a thumb stick and two buttons.
  *
  * Thin, like every world here: the rules are `src/vibecup/game.ts` (pure,
  * tested in `src/test/vibeCup.test.ts`), the drawing is `render.ts`, the
@@ -15,20 +17,45 @@
  * draws a frame a second and nothing can be played at that speed.
  */
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type PointerEvent as RPointerEvent } from "react";
-import { Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { Copy, Pause, Play, Share2, Volume2, VolumeX } from "lucide-react";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
 import {
-  autopilot, clockLabel, CLUBS, clubById, newGame, setInput, step, type Difficulty, type Game, type Input, type TeamId,
+  autopilot, clockLabel, CLUBS, clubById, newGame, setInput, step, type Difficulty, type Game, type GameEvent, type Input, type TeamId,
 } from "@/vibecup/game";
 import { drawFrame, feedFx, fitView, newFx, PAD_COLORS, screenToWorld, type Fx, type View } from "@/vibecup/render";
 import { CupAudio } from "@/vibecup/audio";
+import { applySnap, BOARD, cleanCode, CupRoom, matchGame, MAX_PER_SIDE, openTransport, RoomBoard, roomCode, type Member, type NetMode, type OpenRoom, type Wire } from "@/vibecup/net";
+import { QrCode } from "@/oni/ui/QrCode";
 
 const MUTE_KEY = "vibecup.muted";
 const PREFS_KEY = "vibecup.prefs";
 const RECORD_KEY = "vibecup.record";
+const NAME_KEY = "vibecup.name";
 
-type Mode = "cpu" | "versus";
-type Screen = "title" | "playing" | "paused" | "over";
+type Mode = "cpu" | "versus" | "online";
+type Screen = "title" | "lobby" | "playing" | "paused" | "over";
+
+/** What the lobby and the online screens show, copied out of the room on every change. */
+interface NetUi {
+  status: "connecting" | "ready" | "failed";
+  code: string;
+  host: boolean;
+  me: string;
+  hostName: string;
+  members: Member[];
+  clubs: [string, string];
+  lost: boolean;
+}
+
+const urlParam = (k: string) => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(k));
+const netMode = (): NetMode => (urlParam("net") === "local" ? "local" : "online");
+const inviteLink = (code: string) => {
+  const u = new URL(window.location.origin + window.location.pathname);
+  u.searchParams.set("room", code);
+  if (netMode() === "local") u.searchParams.set("net", "local");
+  return u.toString();
+};
+const defaultName = () => `Player ${10 + Math.floor(Math.random() * 90)}`;
 interface Prefs {
   mode: Mode;
   club: string;
@@ -74,6 +101,25 @@ const SOLO_KEYS = {
 };
 type KeyMap = typeof P1_KEYS;
 
+/** Every body's position in one flat list, for easing out a guest's corrections. */
+function bodies(g: Game): number[] {
+  const out: number[] = [];
+  for (const p of g.players) out.push(p.x, p.y);
+  out.push(g.ball.x, g.ball.y, g.ball.z);
+  return out;
+}
+function shift(g: Game, off: number[], sign: 1 | -1) {
+  if (!off.length) return;
+  g.players.forEach((p, n) => {
+    p.x += (off[n * 2] ?? 0) * sign;
+    p.y += (off[n * 2 + 1] ?? 0) * sign;
+  });
+  const k = g.players.length * 2;
+  g.ball.x += (off[k] ?? 0) * sign;
+  g.ball.y += (off[k + 1] ?? 0) * sign;
+  g.ball.z += (off[k + 2] ?? 0) * sign;
+}
+
 interface Hud {
   score: [number, number];
   clock: string;
@@ -96,6 +142,10 @@ export default function VibeCup() {
   /** Keys pressed since the last frame: a tap quicker than a frame still counts as one frame held. */
   const tapped = useRef(new Set<string>());
   const touch = useRef({ mx: 0, my: 0, a: false, b: false, on: false, tapA: false, tapB: false });
+  /** The online room, when there is one. */
+  const roomRef = useRef<CupRoom | null>(null);
+  /** Guest side of a match: states not yet applied, and how far each body was pulled by the last correction. */
+  const netRef = useRef<{ inbox: Array<Extract<Wire, { t: "st" }>>; off: number[]; labels: string[]; ended: number }>({ inbox: [], off: [], labels: [], ended: 0 });
 
   const [screen, setScreenState] = useState<Screen>("title");
   const [prefs, setPrefsState] = useState<Prefs>(prefsRef.current);
@@ -104,6 +154,9 @@ export default function VibeCup() {
   const [record, setRecord] = useState<Record3>(() => read<Record3>(RECORD_KEY, { w: 0, d: 0, l: 0 }));
   const [touchUi] = useState(coarse);
   const [result, setResult] = useState<{ score: [number, number]; winner: TeamId | null; stats: Game["stats"] } | null>(null);
+  const [net, setNet] = useState<NetUi | null>(null);
+  const [name, setNameState] = useState<string>(() => read(NAME_KEY, { n: "" }).n || defaultName());
+  const [openRooms, setOpenRooms] = useState<OpenRoom[]>([]);
 
   const setScreen = useCallback((s: Screen) => {
     screenRef.current = s;
@@ -135,7 +188,164 @@ export default function VibeCup() {
     [setScreen],
   );
 
+  /** Copy the room into React state for the lobby. */
+  const syncNet = useCallback(() => {
+    const r = roomRef.current;
+    if (!r) return;
+    const host = r.members.find((m) => m.id === r.hostId);
+    setNet((n) => ({
+      status: n?.status ?? "ready",
+      code: r.code,
+      host: r.isHost,
+      me: r.id,
+      hostName: host?.name ?? "the host",
+      members: r.members.map((m) => ({ ...m })),
+      clubs: [...r.clubs] as [string, string],
+      lost: r.hostLost,
+    }));
+  }, []);
+
+  /** Begin (or restart) the online match: the referee's half. */
+  const startOnline = useCallback(() => {
+    const r = roomRef.current;
+    if (!r || !r.isHost) return;
+    audioRef.current.unlock();
+    r.setClubs([prefsRef.current.club, prefsRef.current.rival]);
+    const setup = r.startMatch((Date.now() & 0xffff) + 1);
+    beginMatch(setup);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Both halves: build the match everybody agreed on. */
+  const beginMatch = (setup: { roster: string[]; seed: number; clubs: [string, string]; sides: TeamId[] }) => {
+    const r = roomRef.current;
+    const g = matchGame(setup);
+    gameRef.current = g;
+    fxRef.current = newFx(g.clubs);
+    netRef.current = {
+      inbox: [],
+      off: [],
+      ended: 0,
+      labels: setup.roster.map((id) => (id === r?.id ? "YOU" : (r?.members.find((m) => m.id === id)?.name ?? "?").slice(0, 10).toUpperCase())),
+    };
+    setResult(null);
+    setScreen("playing");
+  };
+
+  const openRoom = useCallback(
+    async (host: boolean, code: string) => {
+      roomRef.current?.leave();
+      roomRef.current = null;
+      setNet({ status: "connecting", code, host, me: "", hostName: "", members: [], clubs: [prefsRef.current.club, prefsRef.current.rival], lost: false });
+      setScreen("lobby");
+      const u = new URL(window.location.href);
+      u.searchParams.set("room", code);
+      window.history.replaceState(null, "", u.toString());
+      const tx = await openTransport(netMode(), code);
+      if (!tx) {
+        setNet((n) => (n ? { ...n, status: "failed" } : n));
+        return;
+      }
+      const r = new CupRoom({ transport: tx, code, host, name: read(NAME_KEY, { n: "" }).n || name });
+      roomRef.current = r;
+      if (host) r.setClubs([prefsRef.current.club, prefsRef.current.rival]);
+      r.onChange = () => {
+        syncNet();
+        if (!r.isHost && !r.live && (screenRef.current === "playing" || screenRef.current === "over")) setScreen("lobby");
+      };
+      r.onStart = (m) => {
+        audioRef.current.unlock();
+        beginMatch(m);
+      };
+      r.onState = (m) => netRef.current.inbox.push(m);
+      setNet((n) => (n ? { ...n, status: "ready" } : n));
+      syncNet();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [name, setScreen, syncNet],
+  );
+
+  const leaveRoom = useCallback(() => {
+    if (roomRef.current?.isHost) withdrawRoom(roomRef.current.code);
+    roomRef.current?.leave();
+    roomRef.current = null;
+    setNet(null);
+    const u = new URL(window.location.href);
+    u.searchParams.delete("room");
+    window.history.replaceState(null, "", u.toString());
+    gameRef.current = newGame({ seed: 5, clubs: [prefsRef.current.club, prefsRef.current.rival], humans: [] });
+    fxRef.current = newFx(gameRef.current.clubs);
+    setScreen("title");
+  }, [setScreen]);
+
+  const setName = (n: string) => {
+    const v = n.slice(0, 16);
+    setNameState(v);
+    write(NAME_KEY, { n: v });
+    roomRef.current?.rename(v.trim() || "Player");
+    syncNet();
+  };
+
+  // The open-rooms board: listened to from the Online menu, shouted on by a room maker.
+  const boardWanted = (screen === "title" && prefs.mode === "online") || (!!net?.host && net.status === "ready");
+  useEffect(() => {
+    if (!boardWanted || isShot()) return;
+    let board: RoomBoard | null = null;
+    let dead = false;
+    let advertised = "";
+    const refresh = () => setOpenRooms(board ? board.list(roomRef.current?.code) : []);
+    const beat = () => {
+      const r = roomRef.current;
+      if (board && r?.isHost) {
+        const host = r.members.find((m) => m.id === r.id)?.name ?? "Player";
+        board.advertise(r.code, host, r.members.length, r.live);
+        advertised = r.code;
+      }
+      refresh();
+    };
+    void openTransport(netMode(), BOARD).then((tx) => {
+      if (!tx) return;
+      if (dead) {
+        tx.close();
+        return;
+      }
+      board = new RoomBoard(tx);
+      board.onChange = refresh;
+      beat();
+    });
+    const timer = window.setInterval(beat, 2000);
+    return () => {
+      dead = true;
+      window.clearInterval(timer);
+      if (board && advertised && !roomRef.current?.isHost) board.withdraw(advertised);
+      board?.close();
+    };
+  }, [boardWanted]);
+  // A room maker who leaves takes their room off the board.
+  const withdrawRoom = (code: string) => {
+    void openTransport(netMode(), BOARD).then((tx) => {
+      if (!tx) return;
+      tx.send({ t: "gone", i: code });
+      window.setTimeout(() => tx.close(), 500);
+    });
+  };
+
+  // Opened from an invite link: straight into the room.
+  useEffect(() => {
+    const code = urlParam("room");
+    if (code && !isShot()) void openRoom(false, cleanCode(code));
+    const bye = () => roomRef.current?.leave();
+    window.addEventListener("pagehide", bye);
+    return () => {
+      window.removeEventListener("pagehide", bye);
+      roomRef.current?.leave();
+      roomRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const togglePause = useCallback(() => {
+    if (roomRef.current) return; // nobody pauses an online match
     const s = screenRef.current;
     if (s === "playing") setScreen("paused");
     else if (s === "paused") setScreen("playing");
@@ -202,14 +412,12 @@ export default function VibeCup() {
     const fromTouch: Input = { mx: tw.x, my: tw.y, a: t.a || t.tapA, b: t.b || t.tapB, sprint: Math.hypot(t.mx, t.my) > 0.85 };
     t.tapA = t.tapB = false;
     tap.clear();
-    if (versus) {
-      setInput(g, 0, merge(merge(fromKeys(P1_KEYS), fromPad(pads[0])), fromTouch));
-      setInput(g, 1, merge(fromKeys(P2_KEYS), fromPad(pads[1])));
-    } else {
-      let inp = merge(fromKeys(SOLO_KEYS), fromTouch);
-      for (const p of pads) inp = merge(inp, fromPad(p));
-      setInput(g, 0, inp);
+    if (versus && !roomRef.current) {
+      return [merge(merge(fromKeys(P1_KEYS), fromPad(pads[0])), fromTouch), merge(fromKeys(P2_KEYS), fromPad(pads[1]))];
     }
+    let inp = merge(fromKeys(SOLO_KEYS), fromTouch);
+    for (const p of pads) inp = merge(inp, fromPad(p));
+    return [inp];
   }, []);
 
   // The loop.
@@ -220,23 +428,81 @@ export default function VibeCup() {
     let raf = 0;
     let last = performance.now();
     let shown = "";
+    let lostShown = false;
     const frame = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       const g = gameRef.current;
-      const playing = screenRef.current === "playing" || (screenRef.current === "title" && !isShot());
-      if (playing) {
-        if (screenRef.current === "playing") {
-          gather(g);
-          if (autoRef.current) g.ctrls.forEach((_, i) => setInput(g, i, autopilot(g, i)));
+      const room = roomRef.current;
+      const online = !!room && !!room.match && (screenRef.current === "playing" || screenRef.current === "over");
+      let evs: GameEvent[] = g.events;
+      if (online && room.isHost) {
+        // The referee: everybody's controls in, the match forward, the state out.
+        const mine = room.myCtrl;
+        if (screenRef.current === "playing" && mine >= 0) setInput(g, mine, autoRef.current ? autopilot(g, mine) : gather(g)[0]);
+        room.match!.roster.forEach((id, n) => {
+          if (n !== mine) setInput(g, n, room.remoteInput(id) ?? autopilot(g, n));
+        });
+        step(g, dt / 2);
+        step(g, dt / 2);
+        room.sendState(g, g.events);
+      } else if (online) {
+        // A guest: send the controls, take the referee's word, and fill the gaps by playing the same rules.
+        const mine = room.myCtrl;
+        const live = screenRef.current === "playing" ? (autoRef.current && mine >= 0 ? autopilot(g, mine) : gather(g)[0]) : null;
+        if (live && mine >= 0) room.sendInput(live);
+        const steer = () => {
+          if (live && mine >= 0) setInput(g, mine, { mx: live.mx, my: live.my, sprint: live.sprint });
+        };
+        const nr = netRef.current;
+        const inbox = nr.inbox.splice(0);
+        evs = inbox.flatMap((m) => m.e);
+        const latest = inbox[inbox.length - 1];
+        if (latest) {
+          const before = bodies(g);
+          applySnap(g, latest.s);
+          steer();
+          const lag = Math.min(0.15, room.rtt / 2000);
+          for (let t = 0; t < lag; t += 1 / 60) step(g, Math.min(1 / 60, lag - t));
+          const after = bodies(g);
+          before.forEach((v, n) => {
+            let o = (nr.off[n] ?? 0) + v - after[n];
+            if (Math.abs(o) > 4) o = 0; // a reset to kickoff is a jump, not a correction
+            nr.off[n] = o;
+          });
+        } else {
+          steer();
+          step(g, dt / 2);
+          step(g, dt / 2);
         }
-        // Two half-steps: smoother for fast balls on a slow frame.
-        step(g, dt / 2);
-        step(g, dt / 2);
+        g.events.length = 0;
+        const k = Math.exp(-dt * 12);
+        for (let n = 0; n < nr.off.length; n++) nr.off[n] *= k;
+        // A lost full-time packet must not leave anybody on the pitch for ever.
+        if (g.phase === "over" && nr.ended !== room.match!.k && !evs.some((e) => e.type === "fulltime")) {
+          evs = [...evs, { type: "fulltime", winner: g.score[0] > g.score[1] ? 0 : g.score[1] > g.score[0] ? 1 : null }];
+        }
+      } else {
+        const playing = screenRef.current === "playing" || ((screenRef.current === "title" || screenRef.current === "lobby") && !isShot());
+        if (playing) {
+          if (screenRef.current === "playing") {
+            gather(g).forEach((inp, i) => setInput(g, i, inp));
+            if (autoRef.current) g.ctrls.forEach((_, i) => setInput(g, i, autopilot(g, i)));
+          }
+          // Two half-steps: smoother for fast balls on a slow frame.
+          step(g, dt / 2);
+          step(g, dt / 2);
+        }
       }
-      if (screenRef.current === "playing") for (const e of g.events) audioRef.current.play(e);
-      feedFx(fxRef.current, g, g.events);
-      const ended = g.events.find((e) => e.type === "fulltime");
+      room?.tick();
+      if (room && !room.isHost && room.hostLost && !lostShown) {
+        lostShown = true;
+        syncNet();
+      }
+      if (screenRef.current === "playing") for (const e of evs) audioRef.current.play(e);
+      feedFx(fxRef.current, g, evs);
+      const ended = evs.find((e) => e.type === "fulltime");
+      if (ended && room?.match) netRef.current.ended = room.match.k;
       g.events.length = 0;
       // The title screen plays a computer match behind the menu; start a new one when it ends.
       if (screenRef.current === "title" && g.phase === "over" && g.phaseT > 4) {
@@ -262,20 +528,28 @@ export default function VibeCup() {
           }
         }, 2600);
       }
-      const c0 = g.ctrls[0];
-      const has = !!c0 && g.ball.owner === c0.active;
+      const c0 = g.ctrls[room?.match ? Math.max(0, room.myCtrl) : 0];
+      const has = !!c0 && g.ball.owner === c0.active && (!room?.match || room.myCtrl >= 0);
       const key = `${g.score[0]}-${g.score[1]}-${clockLabel(g)}-${has}`;
       if (key !== shown) {
         shown = key;
         setHud({ score: [...g.score] as [number, number], clock: clockLabel(g), has });
       }
-      const labels = g.ctrls.length > 1 ? ["P1", "P2"] : ["YOU"];
-      drawFrame(ctx, g, viewRef.current, fxRef.current, dt, labels);
+      if (online && !room.isHost) {
+        // Draw where the bodies were heading, easing out the referee's corrections.
+        const off = netRef.current.off;
+        shift(g, off, 1);
+        drawFrame(ctx, g, viewRef.current, fxRef.current, dt, netRef.current.labels);
+        shift(g, off, -1);
+      } else {
+        const labels = online ? netRef.current.labels : g.ctrls.length > 1 ? ["P1", "P2"] : ["YOU"];
+        drawFrame(ctx, g, viewRef.current, fxRef.current, dt, labels);
+      }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [gather, setScreen]);
+  }, [gather, setScreen, syncNet]);
 
   // Keys.
   useEffect(() => {
@@ -287,7 +561,7 @@ export default function VibeCup() {
       audioRef.current.unlock();
       if (e.code === "Escape" || e.code === "KeyP") togglePause();
       else if (e.code === "KeyM") setMuted((m) => !m);
-      else if (e.code === "Enter" && (screenRef.current === "title" || screenRef.current === "over")) start();
+      else if (e.code === "Enter" && !roomRef.current && prefsRef.current.mode !== "online" && (screenRef.current === "title" || screenRef.current === "over")) start();
     };
     const up = (e: KeyboardEvent) => keys.current.delete(e.code);
     const blur = () => keys.current.clear();
@@ -304,7 +578,7 @@ export default function VibeCup() {
   // Leaving the tab pauses.
   useEffect(() => {
     const onVis = () => {
-      if (document.hidden && screenRef.current === "playing") setScreen("paused");
+      if (document.hidden && screenRef.current === "playing" && !roomRef.current) setScreen("paused");
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
@@ -363,6 +637,23 @@ export default function VibeCup() {
           ctrls: g.ctrls.map((c) => ({ team: c.team, active: c.active, charge: c.charge })),
           stats: g.stats,
           view: { portrait: viewRef.current.portrait, s: viewRef.current.s },
+          net: roomRef.current
+            ? {
+                code: roomRef.current.code,
+                host: roomRef.current.isHost,
+                members: roomRef.current.members.map((m) => ({ ...m })),
+                myCtrl: roomRef.current.myCtrl,
+                k: roomRef.current.match?.k ?? 0,
+                rtt: Math.round(roomRef.current.rtt),
+                lost: roomRef.current.hostLost,
+              }
+            : null,
+          me: (() => {
+            const r = roomRef.current;
+            const c = g.ctrls[r?.match ? r.myCtrl : 0];
+            const p = c ? g.players[c.active] : null;
+            return p ? { i: p.i, x: p.x, y: p.y } : null;
+          })(),
         };
       },
       start: (o?: Partial<Prefs> & { seed?: number }) => {
@@ -415,14 +706,14 @@ export default function VibeCup() {
             <span>{c0.emoji}</span>
             <span className="hidden sm:inline">{c0.short}</span>
           </div>
-          <div className="flex items-center px-3 font-mono text-xl tabular-nums" data-testid="vibecup-score">
+          <div className="flex items-center whitespace-nowrap px-3 font-mono text-xl tabular-nums" data-testid="vibecup-score">
             {hud.score[0]}–{hud.score[1]}
           </div>
           <div className="flex items-center gap-1.5 px-2.5 py-1.5" style={{ background: c1.shirt, color: c1.ink }}>
             <span className="hidden sm:inline">{c1.short}</span>
             <span>{c1.emoji}</span>
           </div>
-          <div className="flex items-center bg-white/10 px-2.5 font-mono text-xs tabular-nums text-amber-200">{hud.clock}</div>
+          <div className="flex max-w-[5.5rem] items-center bg-white/10 px-2.5 text-center font-mono text-xs leading-tight tabular-nums text-amber-200">{hud.clock}</div>
         </div>
       )}
 
@@ -436,7 +727,7 @@ export default function VibeCup() {
         >
           {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
-        {playingUi && !shot && (
+        {playingUi && !shot && !net && (
           <button
             type="button"
             onClick={togglePause}
@@ -454,7 +745,7 @@ export default function VibeCup() {
       {/* Keyboard hint */}
       {!touchUi && screen === "playing" && (
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-black/45 px-2.5 py-1.5 text-[11px] leading-snug text-white/75">
-          {versus ? (
+          {versus && !net ? (
             <>
               <span style={{ color: PAD_COLORS[0] }}>P1</span> WASD · F pass · G shoot · L-Shift sprint
               <br />
@@ -466,7 +757,62 @@ export default function VibeCup() {
         </div>
       )}
 
-      {screen === "title" && <TitleCard prefs={prefs} setPrefs={setPrefs} onStart={() => start()} record={record} touchUi={touchUi} />}
+      {screen === "title" && (
+        <TitleCard
+          prefs={prefs}
+          setPrefs={setPrefs}
+          onStart={() => start()}
+          onHost={() => void openRoom(true, roomCode())}
+          onJoin={(code) => void openRoom(false, cleanCode(code))}
+          openRooms={openRooms}
+          record={record}
+          touchUi={touchUi}
+        />
+      )}
+
+      {screen === "lobby" && net && (
+        <Lobby
+          net={net}
+          name={name}
+          setName={setName}
+          prefs={prefs}
+          setPrefs={(p) => {
+            setPrefs(p);
+            const r = roomRef.current;
+            if (r?.isHost) r.setClubs([prefsRef.current.club, prefsRef.current.rival]);
+          }}
+          onSide={(side) => {
+            const r = roomRef.current;
+            if (r) r.setSide(r.id, side);
+            syncNet();
+          }}
+          onKickoff={startOnline}
+          onLeave={leaveRoom}
+          onRetry={() => void openRoom(net.host, net.code)}
+        />
+      )}
+
+      {/* Online, mid-match: a way out (under the sound button), and word if the referee vanished. */}
+      {net && playingUi && !shot && (
+        <button
+          type="button"
+          onClick={leaveRoom}
+          className="absolute right-3 top-[calc(max(env(safe-area-inset-top),10px)+44px)] rounded-full bg-black/45 px-3 py-1 text-[11px] font-bold text-white/70"
+        >
+          Leave
+        </button>
+      )}
+      {net?.lost && screen !== "title" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60 p-3">
+          <div className="w-full max-w-sm rounded-3xl bg-[#0b1726]/95 p-6 text-center">
+            <div className="text-2xl font-black">The host left</div>
+            <p className="mt-2 text-sm text-white/70">{net.hostName} closed the room or lost their connection.</p>
+            <button type="button" onClick={leaveRoom} className="mt-4 w-full rounded-2xl bg-emerald-400 py-2.5 font-black text-[#002016]">
+              Back to the menu
+            </button>
+          </div>
+        </div>
+      )}
 
       {screen === "paused" && !shot && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/40">
@@ -496,7 +842,9 @@ export default function VibeCup() {
             <div className="mt-2 text-lg font-black" style={{ color: result.winner === null ? "#fff" : g.clubs[result.winner].shirt }}>
               {result.winner === null
                 ? "Honours even"
-                : !versus
+                : net
+                  ? onlineWinLine(net, result.winner, g.clubs[result.winner].name)
+                  : !versus
                   ? result.winner === 0
                     ? "You win the Vibe Cup! 🏆"
                     : `${g.clubs[1].name} win it`
@@ -510,22 +858,43 @@ export default function VibeCup() {
                 <Row key={k} label={k} a={result.stats[k][0]} b={result.stats[k][1]} />
               ))}
             </div>
-            {!versus && (
+            {!versus && !net && (
               <div className="mt-3 text-xs text-white/60">
                 Your record: {record.w} won · {record.d} drawn · {record.l} lost
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => start()}
-              className="mt-5 w-full rounded-2xl py-3 text-lg font-black text-[#002016] shadow-lg active:scale-[0.98]"
-              style={{ background: "linear-gradient(180deg,#6ff7d2,#1fd1b0)" }}
-            >
-              Rematch
-            </button>
-            <button type="button" onClick={() => setScreen("title")} className="mt-2 w-full rounded-2xl bg-white/10 py-2 text-sm font-bold">
-              Change teams
-            </button>
+            {net && !net.host ? (
+              <>
+                <div className="mt-5 rounded-2xl bg-white/10 py-3 text-sm font-bold text-white/75">Waiting for {net.hostName} to start the rematch</div>
+                <button type="button" onClick={leaveRoom} className="mt-2 w-full rounded-2xl bg-white/10 py-2 text-sm font-bold">
+                  Leave the room
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => (net ? startOnline() : start())}
+                  data-testid="vibecup-rematch"
+                  className="mt-5 w-full rounded-2xl py-3 text-lg font-black text-[#002016] shadow-lg active:scale-[0.98]"
+                  style={{ background: "linear-gradient(180deg,#6ff7d2,#1fd1b0)" }}
+                >
+                  Rematch
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (net) {
+                      roomRef.current?.endMatch();
+                      setScreen("lobby");
+                    } else setScreen("title");
+                  }}
+                  className="mt-2 w-full rounded-2xl bg-white/10 py-2 text-sm font-bold"
+                >
+                  {net ? "Back to the room" : "Change teams"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -543,20 +912,15 @@ function Row({ label, a, b }: { label: string; a: number; b: number }) {
   );
 }
 
-function TitleCard({
-  prefs,
-  setPrefs,
-  onStart,
-  record,
-  touchUi,
-}: {
-  prefs: Prefs;
-  setPrefs: (p: Partial<Prefs>) => void;
-  onStart: () => void;
-  record: Record3;
-  touchUi: boolean;
-}) {
-  const ClubPick = ({ value, other, onPick, label }: { value: string; other: string; onPick: (id: string) => void; label: string }) => (
+function onlineWinLine(net: NetUi, winner: TeamId, club: string) {
+  const side = net.members.filter((m) => m.side === winner);
+  if (side.some((m) => m.id === net.me)) return `You win it with ${club}! 🏆`;
+  const names = side.map((m) => m.name);
+  return names.length ? `${names.join(" and ")} ${names.length > 1 ? "win" : "wins"} it with ${club}! 🏆` : `${club} win it`;
+}
+
+function ClubPick({ value, other, onPick, label, locked }: { value: string; other: string; onPick: (id: string) => void; label: string; locked?: boolean }) {
+  return (
     <div>
       <div className="mb-1 text-left text-[10px] font-bold tracking-[0.2em] text-white/55">{label}</div>
       <div className="flex gap-1.5">
@@ -564,7 +928,7 @@ function TitleCard({
           <button
             key={c.id}
             type="button"
-            disabled={c.id === other}
+            disabled={c.id === other || locked}
             onClick={() => onPick(c.id)}
             title={c.name}
             className={`flex h-11 flex-1 items-center justify-center rounded-xl text-lg transition ${c.id === value ? "ring-2 ring-white" : "opacity-70 hover:opacity-100"} disabled:opacity-20`}
@@ -579,6 +943,28 @@ function TitleCard({
       </div>
     </div>
   );
+}
+
+function TitleCard({
+  prefs,
+  setPrefs,
+  onStart,
+  onHost,
+  onJoin,
+  openRooms,
+  record,
+  touchUi,
+}: {
+  prefs: Prefs;
+  setPrefs: (p: Partial<Prefs>) => void;
+  onStart: () => void;
+  onHost: () => void;
+  onJoin: (code: string) => void;
+  openRooms: OpenRoom[];
+  record: Record3;
+  touchUi: boolean;
+}) {
+  const [code, setCode] = useState("");
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black/35 p-3">
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b1726]/92 p-5 text-center shadow-2xl backdrop-blur">
@@ -588,17 +974,19 @@ function TitleCard({
         </h1>
         <p className="mt-1 text-sm text-white/75">Five-a-side in the cage. Pass it about, slide in, and hold shoot for a SUPER SHOT.</p>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-4 grid grid-cols-3 gap-2">
           {(
             [
               ["cpu", "1 player", "You against the computer"],
-              ["versus", "2 players", touchUi ? "Plug in two pads or share a keyboard" : "One keyboard, or two pads"],
+              ["versus", "2 players", touchUi ? "Two pads on one screen" : "One keyboard, or two pads"],
+              ["online", "Online", "Friends on their own phones"],
             ] as const
           ).map(([m, t, sub]) => (
             <button
               key={m}
               type="button"
               onClick={() => setPrefs({ mode: m })}
+              data-testid={`vibecup-mode-${m}`}
               className={`rounded-2xl px-3 py-2.5 text-left transition ${prefs.mode === m ? "bg-emerald-400 text-[#002016]" : "bg-white/8 hover:bg-white/15"}`}
               style={prefs.mode === m ? undefined : { background: "rgba(255,255,255,0.08)" }}
             >
@@ -608,6 +996,73 @@ function TitleCard({
           ))}
         </div>
 
+        {prefs.mode === "online" ? (
+          <div className="mt-4 space-y-3 text-left">
+            <button
+              type="button"
+              onClick={onHost}
+              data-testid="vibecup-host"
+              className="w-full rounded-2xl py-3 text-lg font-black text-[#002016] shadow-lg active:scale-[0.98]"
+              style={{ background: "linear-gradient(180deg,#6ff7d2,#1fd1b0)" }}
+            >
+              Make a room
+            </button>
+            <div>
+              <div className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/55">OPEN ROOMS</div>
+              {openRooms.length ? (
+                <div className="space-y-1.5" data-testid="vibecup-open-rooms">
+                  {openRooms.slice(0, 5).map((r) => {
+                    const full = r.players >= MAX_PER_SIDE * 2;
+                    return (
+                      <button
+                        key={r.code}
+                        type="button"
+                        onClick={() => onJoin(r.code)}
+                        className="flex w-full items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-left hover:bg-white/15"
+                        data-testid="vibecup-open-room"
+                      >
+                        <span className="text-lg">⚽</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-black">{r.host}'s room</span>
+                          <span className="block text-[11px] text-white/55">
+                            {r.players} of {MAX_PER_SIDE * 2} in{r.live ? " · match on, you can watch and join the next" : ""}
+                          </span>
+                        </span>
+                        <span className={`rounded-xl px-3 py-1 text-xs font-black ${full ? "bg-white/10 text-white/60" : "bg-emerald-400 text-[#002016]"}`}>{full ? "Watch" : "Join"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-white/5 px-3 py-2.5 text-xs text-white/50">No open rooms right now. Make one and send your friends the link.</div>
+              )}
+            </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (cleanCode(code).length >= 4) onJoin(code);
+              }}
+            >
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Got a code? NUTMEG-4B2"
+                className="min-w-0 flex-1 rounded-2xl border border-white/15 bg-white/5 px-3 py-2.5 font-mono text-sm uppercase text-white placeholder:normal-case placeholder:text-white/35"
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button type="submit" className="rounded-2xl bg-white/15 px-4 font-black">
+                Join
+              </button>
+            </form>
+            <p className="text-xs leading-relaxed text-white/55">
+              Make a room and send the link. Up to four of you, two a side, each on your own phone or laptop. The computer plays the rest of both teams.
+            </p>
+          </div>
+        ) : (
+        <>
         <div className="mt-4 space-y-3">
           <ClubPick label={prefs.mode === "versus" ? "PLAYER 1" : "YOUR CLUB"} value={prefs.club} other={prefs.rival} onPick={(id) => setPrefs({ club: id })} />
           <ClubPick label={prefs.mode === "versus" ? "PLAYER 2" : "OPPONENTS"} value={prefs.rival} other={prefs.club} onPick={(id) => setPrefs({ rival: id })} />
@@ -638,6 +1093,8 @@ function TitleCard({
         >
           Kick off
         </button>
+        </>
+        )}
         <p className="mt-3 text-xs leading-relaxed text-white/55">
           {touchUi
             ? "Left thumb runs (push to the edge to sprint). PASS passes, or switches player when you are defending. SHOOT shoots (hold it to power up), or slide tackles."
@@ -648,6 +1105,154 @@ function TitleCard({
             Record: {record.w}W {record.d}D {record.l}L
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** The online room: the invite, who is in, which side, and the referee's kick off. */
+function Lobby({
+  net,
+  name,
+  setName,
+  prefs,
+  setPrefs,
+  onSide,
+  onKickoff,
+  onLeave,
+  onRetry,
+}: {
+  net: NetUi;
+  name: string;
+  setName: (n: string) => void;
+  prefs: Prefs;
+  setPrefs: (p: Partial<Prefs>) => void;
+  onSide: (s: TeamId) => void;
+  onKickoff: () => void;
+  onLeave: () => void;
+  onRetry: () => void;
+}) {
+  const link = inviteLink(net.code);
+  const [copied, setCopied] = useState(false);
+  const share = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Vibe Cup", text: "Come and play soccer with me in Vibe Cup", url: link });
+        return;
+      }
+    } catch {
+      /* cancelled, fall through to copy */
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* no clipboard: the link is on screen */
+    }
+  };
+  const clubs = net.host ? ([prefs.club, prefs.rival] as [string, string]) : net.clubs;
+  const mySide = net.members.find((m) => m.id === net.me)?.side;
+  const enough = net.members.length >= 2;
+  return (
+    <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black/45 p-3">
+      <div className="my-auto w-full max-w-md rounded-3xl border border-white/10 bg-[#0b1726]/95 p-5 text-center shadow-2xl backdrop-blur" data-testid="vibecup-lobby">
+        <div className="text-[10px] font-bold tracking-[0.3em] text-white/55">ONLINE ROOM</div>
+        <div className="mt-1 font-mono text-3xl font-black tracking-wider text-[#6ff7d2]" data-testid="vibecup-code">
+          {net.code}
+        </div>
+
+        {net.status === "connecting" && <p className="mt-4 text-sm text-white/70">Opening the room…</p>}
+        {net.status === "failed" && (
+          <div className="mt-4">
+            <p className="text-sm text-rose-300">Could not reach the room. Check the connection and try again.</p>
+            <button type="button" onClick={onRetry} className="mt-3 w-full rounded-2xl bg-emerald-400 py-2.5 font-black text-[#002016]">
+              Try again
+            </button>
+          </div>
+        )}
+
+        {net.status === "ready" && (
+          <>
+            <div className="mt-3 flex items-center gap-2">
+              <button type="button" onClick={share} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/15 py-2.5 text-sm font-black" data-testid="vibecup-share">
+                {navigator.share ? <Share2 size={15} /> : <Copy size={15} />}
+                {copied ? "Link copied" : "Invite friends"}
+              </button>
+            </div>
+            <div className="mt-3 hidden items-center gap-3 text-left sm:flex">
+              <QrCode text={link} size={96} />
+              <p className="text-xs leading-relaxed text-white/60">Scan with a phone to join, or send the link. Anybody with the code can join from the Online menu.</p>
+            </div>
+
+            <label className="mt-4 block text-left text-[10px] font-bold tracking-[0.2em] text-white/55">
+              YOUR NAME
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={16}
+                className="mt-1 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-bold tracking-normal text-white"
+                data-testid="vibecup-name"
+              />
+            </label>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {([0, 1] as TeamId[]).map((side) => {
+                const club = clubById(clubs[side]);
+                const here = net.members.filter((m) => m.side === side);
+                const full = here.length >= MAX_PER_SIDE;
+                return (
+                  <div key={side} className="rounded-2xl border border-white/10 p-2" style={{ background: `${club.shirt}22` }}>
+                    <div className="flex items-center justify-center gap-1.5 rounded-xl py-1.5 text-sm font-black" style={{ background: club.shirt, color: club.ink }}>
+                      <span>{club.emoji}</span>
+                      <span className="truncate">{club.short}</span>
+                    </div>
+                    <div className="mt-2 min-h-[52px] space-y-1">
+                      {here.map((m) => (
+                        <div key={m.id} className={`truncate rounded-lg px-2 py-1 text-sm font-bold ${m.id === net.me ? "bg-white/20" : "bg-white/5"}`}>
+                          {m.name}
+                          {m.id === net.me ? " (you)" : ""}
+                        </div>
+                      ))}
+                    </div>
+                    {mySide !== side && !full && (
+                      <button type="button" onClick={() => onSide(side)} className="mt-1 w-full rounded-lg bg-white/10 py-1 text-xs font-bold" data-testid={`vibecup-side-${side}`}>
+                        Play for {club.short}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {net.host && (
+              <div className="mt-4 space-y-3">
+                <ClubPick label="LEFT" value={prefs.club} other={prefs.rival} onPick={(id) => setPrefs({ club: id })} />
+                <ClubPick label="RIGHT" value={prefs.rival} other={prefs.club} onPick={(id) => setPrefs({ rival: id })} />
+              </div>
+            )}
+
+            {net.host ? (
+              <button
+                type="button"
+                onClick={onKickoff}
+                disabled={!enough}
+                data-testid="vibecup-online-kickoff"
+                className="mt-5 w-full rounded-2xl py-3 text-lg font-black text-[#002016] shadow-lg active:scale-[0.98] disabled:opacity-40"
+                style={{ background: "linear-gradient(180deg,#6ff7d2,#1fd1b0)" }}
+              >
+                {enough ? "Kick off" : "Waiting for a friend to join…"}
+              </button>
+            ) : (
+              <div className="mt-5 rounded-2xl bg-white/10 py-3 text-sm font-bold text-white/75">
+                {net.members.length ? `Waiting for ${net.hostName} to kick off` : "Looking for the room…"}
+              </div>
+            )}
+          </>
+        )}
+        <button type="button" onClick={onLeave} className="mt-2 w-full rounded-2xl bg-white/5 py-2 text-sm font-bold text-white/70">
+          Leave
+        </button>
       </div>
     </div>
   );

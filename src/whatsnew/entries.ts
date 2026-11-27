@@ -68,6 +68,16 @@ export const ENTRIES: WhatsNewEntry[] = [
     world: "Vibe City",
   },
   {
+    id: "vibe-cup-online",
+    date: "2026-11-27",
+    emoji: "📲",
+    title: "Vibe Cup online: play soccer with your friends",
+    body: "Pick Online in Vibe Cup and make a room, or tap a friend's room on the Open rooms list. Up to four of you play, two a side, each on your own phone or laptop, and the computer fills in the rest of both teams. If play leaves you behind, you take over the team-mate nearest the ball, and the computer players now find space, mark runners and pick their shots.",
+    tag: "new",
+    route: "/vibe-cup",
+    world: "Vibe Cup",
+  },
+  {
     id: "vibe-cup",
     date: "2026-11-27",
     emoji: "⚽",
