@@ -40,6 +40,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "thalassa",            // the harbour from the painting: walk it, swim it, VR
   "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
+  "hoops",               // new: three-on-three in the Vibe Dome, solo, couch or online
   "pool",                // new: 8-ball with real spin, vs the computer or a friend by link
   "solitaire",           // new: Klondike and FreeCell, five looks, made for a phone
   "vibe-cup",            // new: five-a-side arcade soccer, solo, couch or online
@@ -460,6 +461,23 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#ff6ad5",
     featured: true,
     source: "src/coil",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "hoops",
+    route: "/hoops",
+    aliases: ["/basketball", "/vibe-hoops", "/bball", "/vibe-dome"],
+    name: "Vibe Hoops",
+    emoji: "🏀",
+    kind: "game",
+    blurb:
+      "Three-on-three basketball in the Vibe Dome, a sold-out arena with a four-sided jumbotron, sweeping spotlights and a crowd that roars when somebody throws one down. Play as Vibey, Mad Mort's junkyard crew, the samurai, the pirates, the wizards or your own My Vibe character. Hold shoot and let go at the top of the meter for a perfect shot, sprint in for a dunk, or lob it up for an alley-oop. Play the computer, a friend on the same keyboard, or friends online on their own phones.",
+    status: "Playable on phone (thumb stick) and desktop, 1 to 6 players, online rooms",
+    accent: "#ff7a1a",
+    featured: true,
+    source: "src/hoops",
     nav: true,
     passport: true,
     chromeless: true,

@@ -132,6 +132,7 @@ const Solitaire = lazy(() => import("./pages/Solitaire.tsx"));
 const Pool = lazy(() => import("./pages/Pool.tsx"));
 const MortsMaze = lazy(() => import("./pages/MortsMaze.tsx"));
 const VibeCup = lazy(() => import("./pages/VibeCup.tsx"));
+const Hoops = lazy(() => import("./pages/Hoops.tsx"));
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 const Empyrean = lazy(() => import("./pages/Empyrean.tsx"));
 const Dipsea = lazy(() => import("./pages/Dipsea.tsx"));
@@ -566,6 +567,9 @@ const App = () => (
             <Route key={path} path={path} element={<Solitaire />} />
           ))}
           {/* VIBE CUP: five-a-side arcade soccer in a cage. One player or two. */}
+          {["/hoops", "/basketball", "/vibe-hoops", "/bball", "/vibe-dome"].map((path) => (
+            <Route key={path} path={path} element={<Hoops />} />
+          ))}
           {["/vibe-cup", "/soccer", "/football", "/futbol", "/kickabout"].map((path) => (
             <Route key={path} path={path} element={<VibeCup />} />
           ))}

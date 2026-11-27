@@ -92,12 +92,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "34300b82", iso: "2026-11-27T03:25:04+00:00", subject: "Haymaker: a camera boxing game where the opponent stands in your room" },
   ],
   "cannon-run": [
+    { sha: "3c4b121a", iso: "2026-11-27T06:09:42+00:00", subject: "Cannon Chase: take the Chopper 7 helicopter out of the sky" },
+    { sha: "ffd3c567", iso: "2026-11-27T05:43:35+00:00", subject: "Cannon Chase: Gatch News films from Chopper 7" },
     { sha: "1da6f4b5", iso: "2026-11-27T04:21:27+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
     { sha: "d71f0449", iso: "2026-11-27T04:21:26+00:00", subject: "Cannon Chase space: starfighter squadrons, ball fighters, Mort's flagship and the old moon" },
     { sha: "c1bb3750", iso: "2026-11-27T03:58:48+00:00", subject: "Cannon Chase: tidy two-player phone HUD, add a zoom out button" },
     { sha: "4cbb3f55", iso: "2026-11-27T00:53:48+00:00", subject: "Cannon Chase: outer space mode" },
-    { sha: "79d312f8", iso: "2026-11-26T21:10:46+00:00", subject: "Cannon Chase: one-tap shareable Gatch News clips" },
-    { sha: "70a89924", iso: "2026-11-26T19:00:40+00:00", subject: "Cannon Chase: the highlight reel is now the start screen" },
   ],
   "characters": [
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },

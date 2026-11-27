@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "vibe-hoops",
+    date: "2026-11-27",
+    emoji: "🏀",
+    title: "Vibe Hoops: three-on-three in the Vibe Dome",
+    body: "A brand new basketball game in a packed arena with a giant jumbotron, spotlights and instant replays of every big dunk. Pick a club of real Vibe Verse characters, from Vibey to Mad Mort's crew to the samurai, or play as your own character. Take on the computer, a friend on the same keyboard, or friends online with a QR code.",
+    tag: "new",
+    route: "/hoops",
+    world: "Vibe Hoops",
+  },
+  {
     id: "cannon-chase-chopper-7",
     date: "2026-11-27",
     emoji: "🚁",
