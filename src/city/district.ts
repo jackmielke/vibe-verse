@@ -94,6 +94,18 @@ export interface DistrictOpts {
   reserve?: Array<{ gx: number; gz: number; ground: "park" | "pave"; trees: boolean }>;
 }
 
+export interface Footprint {
+  cx: number;
+  cz: number;
+  w: number;
+  d: number;
+  /** Top of the ground-floor mass. */
+  y1: number;
+  /** Centre of the city block it stands on. */
+  cellX: number;
+  cellZ: number;
+}
+
 export interface District {
   group: THREE.Group;
   /** Collision, in the shape the player's `CollisionWorld` already takes. */
@@ -102,6 +114,13 @@ export interface District {
   pads: Array<{ x: number; z: number; y: number }>;
   /** Flip the whole district between day and night. */
   setDay(day: boolean): void;
+  /**
+   * Every building's ground-floor mass, with the cell it stands in, for
+   * things hung on facades (the neon signs in `src/city/neon.ts`).
+   */
+  footprints: Footprint[];
+  /** The asphalt and the pavement, for the wet-street look (`src/city/wet.ts`). */
+  ground: { road: THREE.MeshStandardMaterial; pave: THREE.MeshStandardMaterial };
   /** The cars, for anyone who wants to get into one. See `src/city/traffic.ts`. */
   traffic: Traffic;
   /** Trees, lamp posts, stop signs and signals a car can knock over. See `src/city/smash.ts`. */
@@ -619,6 +638,7 @@ export function buildDistrict(opts: DistrictOpts): District {
   const vents: THREE.Matrix4[] = [];
   /** Roof tops tall enough to warrant an aviation warning light. */
   const beaconAt: Array<{ x: number; y: number; z: number }> = [];
+  const footprints: Footprint[] = [];
 
   const M = new THREE.Matrix4();
   const S3 = new THREE.Vector3();
@@ -742,6 +762,7 @@ export function buildDistrict(opts: DistrictOpts): District {
             boxes: boxes.length,
             pads: pads.length,
             beacons: beaconAt.length,
+            footprints: footprints.length,
           }
         : null;
 
@@ -798,6 +819,7 @@ export function buildDistrict(opts: DistrictOpts): District {
           });
         }
 
+        footprints.push({ cx: masses[0].cx, cz: masses[0].cz, w: masses[0].w, d: masses[0].d, y1: masses[0].y1, cellX, cellZ });
         dressRoof(masses[masses.length - 1], hasPad);
         if (hasPad) pads.push({ x: lx, z: lz, y: height });
         // Anything an aircraft could hit gets a beacon, which above 60 m is
@@ -815,6 +837,7 @@ export function buildDistrict(opts: DistrictOpts): District {
         boxes.length = keep.boxes;
         pads.length = keep.pads;
         beaconAt.length = keep.beacons;
+        footprints.length = keep.footprints;
       }
     }
   }
@@ -1119,7 +1142,20 @@ export function buildDistrict(opts: DistrictOpts): District {
   const tankGeo = new THREE.CylinderGeometry(1.05, 1.05, 1, 12);
   const ventGeo = new THREE.CylinderGeometry(0.32, 0.38, 1, 8);
   const trunkGeo = new THREE.CylinderGeometry(0.17, 0.26, 1, 6);
-  const crownGeo = new THREE.IcosahedronGeometry(1, 0);
+  // Three lumps of leaves rather than one twenty-sided die: reads as a tree
+  // from the pavement and still costs one instanced draw call.
+  const crownGeo = (() => {
+    const parts = [
+      new THREE.IcosahedronGeometry(1, 1),
+      new THREE.IcosahedronGeometry(0.72, 1).translate(0.55, 0.3, 0.12),
+      new THREE.IcosahedronGeometry(0.66, 1).translate(-0.46, 0.22, -0.3),
+      new THREE.IcosahedronGeometry(0.58, 1).translate(0.05, 0.62, -0.1),
+    ].map((g) => g.toNonIndexed());
+    const merged = mergeGeometries(parts, false)!;
+    parts.forEach((g) => g.dispose());
+    merged.computeVertexNormals();
+    return merged;
+  })();
 
   const concreteMat = new THREE.MeshStandardMaterial({ color: "#39414c", roughness: 0.92 });
   const plantMat = new THREE.MeshStandardMaterial({ color: "#3d454f", roughness: 0.7, metalness: 0.25 });
@@ -1143,6 +1179,18 @@ export function buildDistrict(opts: DistrictOpts): District {
   instance(ventGeo, plantMat, vents);
   const trunkMesh = instance(trunkGeo, trunkMat, trunks);
   const crownMesh = instance(crownGeo, leafMat, crowns);
+  // Not every tree the same green: a seeded spread of greens, a few autumn.
+  if (crownMesh) {
+    const tint = new THREE.Color();
+    const tr = rng(seed + "-leaves");
+    for (let i = 0; i < crowns.length; i++) {
+      const roll = tr();
+      if (roll < 0.1) tint.setHSL(0.07 + tr() * 0.04, 0.55, 0.62);
+      else tint.setHSL(0.27 + tr() * 0.08, 0.3 + tr() * 0.25, 0.75 + tr() * 0.35);
+      crownMesh.setColorAt(i, tint);
+    }
+    if (crownMesh.instanceColor) crownMesh.instanceColor.needsUpdate = true;
+  }
   opts.snow?.patch([leafMat, concreteMat, tankMat]);
 
   const lampPostGeo = new THREE.CylinderGeometry(0.09, 0.13, 1, 6);
@@ -1347,6 +1395,8 @@ export function buildDistrict(opts: DistrictOpts): District {
     traffic,
     smash,
     setDay,
+    footprints,
+    ground: { road: roadMat, pave: paveMat },
     update,
     dispose() {
       traffic.dispose();
