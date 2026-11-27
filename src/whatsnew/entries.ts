@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "vibe-hoops-replays-controls",
+    date: "2026-11-27",
+    emoji: "🎥",
+    title: "Vibe Hoops: clearer replays and a How to play card",
+    body: "Instant replays in Vibe Hoops are now filmed from the floor, so you actually see the dunk instead of a dark corner. Tap How to play on the title screen, or pause, to see every control for keyboard, phone and gamepad.",
+    tag: "fix",
+    route: "/hoops",
+    world: "Vibe Hoops",
+  },
+  {
     id: "vibe-cup-highlights",
     date: "2026-11-27",
     emoji: "🎬",
