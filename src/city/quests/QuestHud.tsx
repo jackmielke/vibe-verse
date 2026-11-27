@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { createPortal } from "react-dom";
 import type { QuestUi, Quests } from "./index";
 
-const EMPTY: QuestUi = { prompt: null, dialog: null, tracker: null, fishing: null, race: null, hold: false };
+const EMPTY: QuestUi = { prompt: null, dialog: null, tracker: null, fishing: null, race: null, sprint: null, hold: false };
 
 export function QuestHud({
   system,
@@ -32,6 +32,7 @@ export function QuestHud({
       const next = system.current?.ui() ?? EMPTY;
       const key = JSON.stringify({
         ...next,
+        sprint: next.sprint ? { ...next.sprint, time: next.sprint.run ? Math.round(next.sprint.run.time * 10) : null } : null,
         race: next.race ? { ...next.race, time: Math.round(next.race.time * 10), arrow: Math.round(next.race.arrow * 20) } : null,
         tracker: next.tracker ? { ...next.tracker, arrow: next.tracker.arrow != null ? Math.round(next.tracker.arrow * 20) : null } : null,
         fishing: next.fishing?.reel
@@ -130,7 +131,7 @@ export function QuestHud({
         </div>
       )}
 
-      {ui.tracker && !ui.race && (
+      {ui.tracker && !ui.race && !ui.sprint && (
         <div
           className={`pointer-events-none fixed left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-amber-200/25 bg-black/60 px-4 py-2 text-white backdrop-blur ${
             compact ? "top-28" : "top-32"
@@ -189,6 +190,31 @@ export function QuestHud({
       )}
 
       {ui.race && <RaceBoard race={ui.race} compact={compact} />}
+      {ui.sprint && !ui.race && (
+        <div
+          className={`pointer-events-none fixed left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-lime-300/40 bg-black/65 px-4 py-2 text-white backdrop-blur ${
+            compact ? "top-28" : "top-32"
+          }`}
+          data-testid="quest-sprint"
+        >
+          <span className="text-lg">🦎</span>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold">
+              {ui.sprint.run ? `Sky Sprint ${ui.sprint.run.time.toFixed(1)} s` : ui.sprint.climbing ? "Climbing" : "Sticky shoes on"}
+              <span className="ml-2 font-mono text-xs text-lime-200">{ui.sprint.altitude} m</span>
+            </div>
+            <div className="text-xs text-white/65">
+              {ui.sprint.run
+                ? ui.sprint.run.split ?? `Orbs ${ui.sprint.run.orbs}/${ui.sprint.run.orbsTotal}${ui.sprint.best ? ` · best ${ui.sprint.best} s` : ""}`
+                : ui.sprint.climbing
+                  ? compact
+                    ? "Stick up to climb, jet to kick off"
+                    : "W climb · Shift faster · A/D sideways · Space kick off"
+                  : "Walk into the Empire State and hold W"}
+            </div>
+          </div>
+        </div>
+      )}
       {ui.fishing?.reel && <Reel reel={ui.fishing.reel} compact={compact} />}
       {ui.fishing?.caught && (
         <div className="pointer-events-none fixed left-1/2 top-1/3 z-30 -translate-x-1/2 rounded-2xl border border-amber-200/40 bg-black/70 px-6 py-3 text-center text-white backdrop-blur">

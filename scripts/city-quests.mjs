@@ -155,5 +155,48 @@ if (want("race")) {
   console.log("log:", JSON.stringify((await Q("log")).quests[2]));
 }
 
+if (want("sprint")) {
+  const S = (op) => page.evaluate((op) => window.__cityQuests.dev().sprint(op), op);
+  // Gail at the Empire State's south doors: (-31.5, -65.8).
+  await warp(-31.5, 0.2, -63.5);
+  await settle(3000);
+  console.log("near gail:", await ui());
+  await Q("act");
+  await settle(500);
+  console.log("dialog:", JSON.stringify((await Q("ui")).dialog?.options));
+  await Q("choose", "sprint");
+  // Face the podium's south face (z = -68) and hold W.
+  await warp(-46, 0.2, -66.8);
+  await page.evaluate(() => window.__cityCam(9, 0.2, 0));
+  await settle(1500);
+  await page.keyboard.down("KeyW");
+  await settle(2500);
+  console.log("cling:", JSON.stringify(await S()).slice(0, 300));
+  await settle(3000);
+  await page.evaluate(() => window.__cityCam(9, 0.15, 0));
+  await settle(1500);
+  await snap("sprint-climb");
+  await S("y:11.97");
+  await settle(1500);
+  console.log("ledge:", JSON.stringify((await Q("ui")).sprint), JSON.stringify((await Q("dev")).last));
+  // Up on the crown, against the mast's south face (z = cz + 2.2 = -77.8).
+  await page.keyboard.up("KeyW");
+  await warp(-40, 133.3, -77.0);
+  await settle(1500);
+  await page.keyboard.down("KeyW");
+  await settle(2500);
+  console.log("crown:", JSON.stringify(await S()).slice(0, 200));
+  await S("y:150");
+  await settle(1200);
+  await page.evaluate(() => window.__cityCam(10, 0.3, 0.3));
+  await settle(1500);
+  await snap("sprint-mast");
+  await S("y:152.97");
+  await settle(2500);
+  await page.keyboard.up("KeyW");
+  console.log("top:", JSON.stringify((await Q("ui")).sprint), JSON.stringify((await Q("dev")).last));
+  console.log("log:", JSON.stringify((await Q("log")).quests[3]));
+}
+
 console.log("errors:", errors.length);
 await browser.close();

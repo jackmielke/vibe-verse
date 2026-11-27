@@ -721,6 +721,9 @@ export default function Hoops() {
       {showUi && screen === "paused" && (
         <Panel>
           <div className="text-3xl font-black">Timeout</div>
+          <div className="mt-3">
+            <Controls touchUi={touchUi} couch={g.ctrls.length > 1 && mode !== "online"} />
+          </div>
           <button type="button" onClick={togglePause} className="mt-5 w-full rounded-2xl bg-amber-400 py-3 text-lg font-black text-black">
             Back on the floor
           </button>
@@ -905,6 +908,19 @@ function Title({
 }) {
   const [code, setCode] = useState("");
   const [online, setOnline] = useState(false);
+  const [help, setHelp] = useState(false);
+  if (help)
+    return (
+      <Panel>
+        <div className="text-2xl font-black">How to play</div>
+        <div className="mt-3">
+          <Controls touchUi={touchUi} />
+        </div>
+        <button type="button" onClick={() => setHelp(false)} className="mt-4 w-full rounded-2xl bg-amber-400 py-3 font-black text-black">
+          Got it
+        </button>
+      </Panel>
+    );
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-end overflow-y-auto bg-gradient-to-t from-black/85 via-black/30 to-transparent p-4 pb-[max(env(safe-area-inset-bottom),20px)]" data-testid="hoops-title">
       <div className="text-center">
@@ -928,6 +944,9 @@ function Title({
             )}
             <button type="button" onClick={() => setOnline(true)} className="w-full rounded-2xl bg-white/15 py-3 font-black" data-testid="hoops-online">
               🌐 Online with friends
+            </button>
+            <button type="button" onClick={() => setHelp(true)} className="w-full py-1.5 text-sm font-bold text-white/75 underline-offset-4 hover:underline" data-testid="hoops-help">
+              ❓ How to play
             </button>
           </>
         ) : (
@@ -960,6 +979,45 @@ function Title({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** How to play, in plain words: on the title screen and in a timeout. */
+function Controls({ touchUi, couch }: { touchUi: boolean; couch?: boolean }) {
+  const Row = ({ k, v }: { k: string; v: string }) => (
+    <div className="flex items-start gap-3 py-1 text-left text-sm">
+      <span className="w-24 shrink-0 rounded-md bg-white/10 px-2 py-0.5 text-center text-xs font-black">{k}</span>
+      <span className="text-white/80">{v}</span>
+    </div>
+  );
+  if (touchUi)
+    return (
+      <div data-testid="hoops-controls">
+        <Row k="Left thumb" v="Move. Push it all the way for turbo." />
+        <Row k="SHOOT" v="Hold, and let go when the meter hits the green band. Near the rim it is a dunk." />
+        <Row k="PASS" v="Tap to pass. Hold a moment for a lob, and a lob to a teammate by the rim is an alley-oop." />
+        <Row k="On defence" v="The buttons become STEAL and BLOCK." />
+      </div>
+    );
+  if (couch)
+    return (
+      <div data-testid="hoops-controls">
+        <Row k="Player 1" v="WASD to move, F pass, G shoot, left Shift turbo" />
+        <Row k="Player 2" v="Arrows to move, K pass, L shoot, right Shift turbo" />
+        <Row k="Shooting" v="Hold shoot and let go on the green band. Near the rim, or on turbo, it is a dunk." />
+        <Row k="Defence" v="Pass steals, shoot jumps to block." />
+      </div>
+    );
+  return (
+    <div data-testid="hoops-controls">
+      <Row k="WASD / arrows" v="Move" />
+      <Row k="Shift" v="Turbo. Run faster, and dunk from further out." />
+      <Row k="K or Space" v="Shoot. Hold it and let go when the meter over you hits the green band. Near the rim it is a dunk." />
+      <Row k="J" v="Pass. Hold a moment for a lob, and a lob to a teammate by the rim is an alley-oop." />
+      <Row k="Defence" v="J tries a steal, K jumps to block." />
+      <Row k="Esc" v="Timeout" />
+      <div className="mt-1 text-left text-xs text-white/50">A gamepad works too: stick, A pass, B shoot, a trigger for turbo.</div>
     </div>
   );
 }

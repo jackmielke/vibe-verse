@@ -99,6 +99,8 @@ import { buildArcade, ARCADE_RESERVE, type ArcadeStation } from "@/city/arcade";
 import { ArcadeCabinet, type CabinetGame } from "@/components/city/ArcadeCabinet";
 import { buildKartRace, type RaceUi } from "@/city/kartRace";
 import { KartRaceHud } from "@/components/city/KartRaceHud";
+import { buildMiniGolf, type GolfUi, type MiniGolf } from "@/city/miniGolf";
+import { MiniGolfHud } from "@/components/city/MiniGolfHud";
 import { createBodyguards, squadEnabled, type Bodyguards } from "@/city/bodyguards";
 import { SquadPanel } from "@/components/city/SquadPanel";
 import {
@@ -1096,6 +1098,12 @@ export default function City() {
   const [raceLobby, setRaceLobby] = useState(false);
   const nearRaceKioskRef = useRef(false);
   const raceStartRef = useRef<((bet: number) => void) | null>(null);
+  // Vibe Links, the mini golf islet off Vibe Island (src/city/miniGolf.ts).
+  const golfRef = useRef<MiniGolf | null>(null);
+  const golfHoldRef = useRef(false);
+  const golfActRef = useRef<(() => boolean) | null>(null);
+  const [golfUi, setGolfUi] = useState<GolfUi | null>(null);
+  const [golfCardOpen, setGolfCardOpen] = useState(false);
   const closeCabinet = useCallback(() => {
     cabinetOpenRef.current = false;
     setCabinetGame(null);
@@ -1818,7 +1826,7 @@ export default function City() {
         else snd.chime(n ?? 3);
       },
       wearHat: (id) => questHatRef.current?.(id),
-    });
+    }, { pitch: BLOCK + STREET });
     scene.add(quests.group);
     questsRef.current = quests;
     const hideouts = buildHideouts();
@@ -1878,6 +1886,13 @@ export default function City() {
     // Let React drive the SnackFe kiosk board; paint the opening state.
     islandSnackRef.current = (g, o, jb) => island.setSnackMenu(g, o, jb);
     island.setSnackMenu(Math.max(0, Math.round(vibeBalanceRef.current)), {});
+    // Vibe Links: six holes of mini golf on a green off the island's east
+    // rim, over a rope bridge behind Ninja's Palace.
+    const golf = buildMiniGolf({ cx: ISLAND_X + 100, cz: ISLAND_Z, top: ISLAND_TOP, lowDetail: smallScreen });
+    scene.add(golf.group);
+    district.boxes.push(...golf.boxes);
+    golfRef.current = golf;
+    golfActRef.current = () => golf.act(player.position);
 
     // ---- VIBE FM boomboxes: the radio lives in the world now ---------
     // One on the island's hangout corner by SnackFe, one at the city
@@ -2759,6 +2774,7 @@ export default function City() {
       ) => registerPOI({ key, name, region, position: pos, kind: "landmark", aliases });
       reg("plaza", "Plaza Spawn", "Plaza", new THREE.Vector3(0, 0, 0), ["spawn", "lobby", "start"]);
       for (const site of landmarks.sites) reg(site.key, site.name, "Vibe City", site.entrance.clone(), site.aliases);
+      reg("vibe-links", "Vibe Links mini golf", "Vibe Island", golf.entrance.clone(), ["mini golf", "minigolf", "golf", "putt putt", "vibe links", "putting"]);
       reg("vibe-arcade", "Vibe Arcade", "Vibe City", arcade.entrance.clone(), ["vibe arcade", "the arcade", "game room", "arcade hall", "pool hall", "pool table", "foosball"]);
       reg("cardboard-island", "Vibe Island", "Vibe Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard", "edge island", "cardboard island"]);
       reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
@@ -4701,6 +4717,14 @@ export default function City() {
         helicopter: heli.body.position.toArray(),
         parade: thanks.float.getWorldPosition(new THREE.Vector3()).toArray(),
       });
+      (window as unknown as Record<string, unknown>).__cityGolf = {
+        state: () => golf.devState(),
+        start: () => golf.act(player.position),
+        putt: (a: number, p: number) => golf.devPutt(a, p),
+        settle: () => golf.devSettle(),
+        quit: () => golf.quit(),
+        entrance: () => golf.entrance.toArray(),
+      };
       (window as unknown as Record<string, unknown>).__cityRace = {
         ui: () => race.ui(),
         start: (bet = 0) => raceStartRef.current?.(bet),
@@ -4812,7 +4836,10 @@ export default function City() {
       if (e.code === "KeyE" && !e.repeat && enteredRef.current) {
         questEHeld = true;
         if (landmarksRef.current?.act()) e.preventDefault();
-        else if (questsRef.current?.act()) e.preventDefault();
+        else if (golfRef.current?.act(player.position)) {
+          e.preventDefault();
+          setGolfCardOpen(false);
+        } else if (questsRef.current?.act()) e.preventDefault();
       }
       if (e.code === "KeyF" && !e.repeat) {
         if (activeMountRef.current) { mountActionRef.current?.(null); return; }
@@ -7789,6 +7816,39 @@ export default function City() {
           wallJumpUsed = false;
           peakY = lock.y;
         }
+        {
+          // Vibe Links: on the green the golf owns where you stand.
+          const glock = golf.update(dt, now, {
+            player: player.position,
+            steer:
+              (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
+              (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) +
+              (tmLen > 0.12 ? tmL.x : 0),
+            charge: keys.has("KeyW") || keys.has("ArrowUp") || golfHoldRef.current,
+          });
+          if (glock && !lock) {
+            player.position.copy(glock);
+            vel.set(0, 0, 0);
+            onGround = true;
+            peakY = glock.y;
+          }
+          for (const ev of golf.events()) {
+            if (ev.type === "putt") soundsRef.current?.thud?.(0.25);
+            else if (ev.type === "bump") soundsRef.current?.chime(1);
+            else if (ev.type === "sink") {
+              soundsRef.current?.chime(4);
+              const d = ev.strokes - ev.par;
+              const word = ev.strokes === 1 ? "Hole in one!" : d <= -2 ? "Eagle!" : d === -1 ? "Birdie!" : d === 0 ? "Par." : d === 1 ? "Bogey." : `${ev.strokes} strokes.`;
+              toast(`⛳ Hole ${ev.hole}: ${word}`);
+            } else if (ev.type === "round") {
+              vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + ev.coins;
+              setVibeBalanceTick((n) => n + 1);
+              persistVibeBalanceRef.current?.();
+              soundsRef.current?.fanfare?.();
+              setGolfCardOpen(true);
+            }
+          }
+        }
         // At the helm the camera swings in behind the bow, like a kart's.
         const fy = landmarks.followYaw();
         if (fy !== null) {
@@ -7837,6 +7897,12 @@ export default function City() {
         if (qs?.face != null) {
           modelYaw = qs.face;
           modelHolder.rotation.y = modelYaw;
+        }
+        if (qs?.cam != null) {
+          let dyaw = qs.cam - camYaw;
+          while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+          while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+          camYaw += dyaw * Math.min(1, dt * 2);
         }
       }
 
@@ -7970,6 +8036,16 @@ export default function City() {
             Math.hypot(pp.x - hq[0], pp.z - hq[2]) < 3.2 && Math.abs(pp.y - hq[1]) < 2.5;
           nearRideButton = ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current &&
             Math.hypot(pp.x - RIDE_BUTTON[0], pp.z - RIDE_BUTTON[2]) < 2.6 && pp.y < 3;
+          {
+            const gu = golf.ui(pp);
+            setGolfUi((prev) =>
+              prev && prev.playing === gu.playing && prev.hole === gu.hole && prev.strokes === gu.strokes &&
+              Math.abs(prev.power - gu.power) < 0.02 && prev.rolling === gu.rolling && prev.done === gu.done &&
+              prev.tee?.hole === gu.tee?.hole
+                ? prev
+                : gu,
+            );
+          }
           {
             const nk = drivingKartRef.current < 0 && !activeMountRef.current && race.nearKiosk(pp);
             if (nk !== nearRaceKioskRef.current) {
@@ -8816,12 +8892,14 @@ export default function City() {
         camera.lookAt(pos.x, pos.y + 1.5, pos.z);
         // Binoculars (and dev shots): the landmarks take the camera.
         {
-          const shot = landmarks.cameraShot(camYaw, camPitch);
+          const golfShot = golf.cameraShot();
+          const shot = golfShot ?? landmarks.cameraShot(camYaw, camPitch);
           const fov = shot ? shot.fov : 60;
           if (shot) {
             camera.position.copy(shot.eye);
             camera.lookAt(shot.look);
-            modelHolder.visible = false;
+            // On the green you can see yourself holding the putter.
+            if (!golfShot) modelHolder.visible = false;
           } else if (ridingBad !== null && gunner) {
             // First person from the back seat, looking where you aim.
             const dx = -Math.sin(camYaw);
@@ -9141,6 +9219,8 @@ export default function City() {
       hideouts.dispose();
       arcade.dispose();
       race.dispose();
+      golf.dispose();
+      golfRef.current = null;
       ocean.dispose();
       underwater.dispose();
       splash.dispose();
@@ -10291,6 +10371,13 @@ export default function City() {
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
       <ArcadeCabinet game={cabinetGame} onClose={closeCabinet} />
+      <MiniGolfHud
+        ui={golfUi && (golfUi.playing || golfCardOpen) ? golfUi : null}
+        touch={isTouch}
+        onHold={(on) => { golfHoldRef.current = on; }}
+        onQuit={() => golfRef.current?.quit()}
+        onCloseCard={() => setGolfCardOpen(false)}
+      />
       <KartRaceHud
         ui={raceUi}
         lobby={raceLobby}
@@ -11067,6 +11154,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               ✨ Open Vibe Maker
+            </button>
+          )}
+          {golfUi?.tee && !golfUi.playing && (
+            <button
+              onClick={(e) => {
+                if (golfActRef.current?.()) setGolfCardOpen(false);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-white border-2 border-emerald-300/70 backdrop-blur-md shadow-[0_0_24px_rgba(110,231,160,0.5)] hover:bg-white/10"
+            >
+              ⛳ Play Vibe Links from hole {golfUi.tee.hole}{isTouch ? "" : " (E)"}
             </button>
           )}
           {nearRaceKiosk && !raceLobby && (

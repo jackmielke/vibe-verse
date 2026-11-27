@@ -109,12 +109,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "86ad7815", iso: "2026-11-27T17:25:02+00:00", subject: "Add Vibe Summit: a 5,000 ft mountain with four ways down and a rainbow road" },
-    { sha: "bb4c4ad1", iso: "2026-11-27T04:07:48+00:00", subject: "Merge origin/main" },
-    { sha: "3304a557", iso: "2026-11-27T04:06:26+00:00", subject: "Vibe City: Paintball Marker in Vibe Arms" },
-    { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
-    { sha: "7f95528e", iso: "2026-11-27T02:46:03+00:00", subject: "Vibe City: the Super Soaker leaves slippery puddles" },
-    { sha: "483accc4", iso: "2026-11-27T00:44:31+00:00", subject: "City: red button in Warehouse 13 puts you in a bad guy's back seat as gunner" },
+    { sha: "534f6570", iso: "2026-11-27T18:25:26+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "e0fc9ae6", iso: "2026-11-27T18:18:47+00:00", subject: "Vibe City: the Sky Sprint, sticky shoes up the Empire State" },
+    { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
+    { sha: "e91d969d", iso: "2026-11-27T18:09:07+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "37dd6d40", iso: "2026-11-27T18:00:29+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "250ad5bb", iso: "2026-11-27T18:00:09+00:00", subject: "Vibe City: Vinnie's Street Races with Vibe coin bets" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -248,6 +248,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e65cc93f", iso: "2026-08-02T09:25:58+00:00", subject: "Home Alone: the stairs no longer eat the camera" },
   ],
   "hoops": [
+    { sha: "1dedfa9a", iso: "2026-11-27T18:50:54+00:00", subject: "Vibe Hoops: replays filmed from the floor, and a How to play card" },
     { sha: "9c61a2f9", iso: "2026-11-27T08:09:15+00:00", subject: "Vibe Hoops: three-on-three basketball in the Vibe Dome" },
   ],
   "horizon": [
@@ -267,12 +268,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ee1f96cf", iso: "2026-08-02T21:05:51+00:00", subject: "Nothing is spawned. It is drawn." },
   ],
   "island": [
+    { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
+    { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
+    { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
-    { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
-    { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
-    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
   ],
   "island-2": [
     { sha: "0779cb94", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -317,12 +318,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "f4715e0e", iso: "2026-09-04T09:28:00+00:00", subject: "Mars College: ten weeks in the desert on one wheel, at /mars" },
   ],
   "moon": [
+    { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
+    { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
+    { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
-    { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
-    { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
-    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
   ],
   "mort-maze": [
     { sha: "d06b0315", iso: "2026-11-27T03:19:48+00:00", subject: "Mort's Maze: a maze chase on Vibe Island" },
@@ -407,12 +408,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e8", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
+    { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
+    { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
-    { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
-    { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
-    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
   ],
   "solitaire": [
     { sha: "03961c07", iso: "2026-11-27T04:21:58+00:00", subject: "Solitaire: Klondike and FreeCell, five looks, made for a phone" },
@@ -445,6 +446,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "1a0094c6", iso: "2026-06-15T22:23:49+00:00", subject: "Changes" },
   ],
   "summit": [
+    { sha: "1988a39c", iso: "2026-11-27T17:39:57+00:00", subject: "Vibe Summit: rivals on the Skyway, trees you can hit, birds" },
     { sha: "86ad7815", iso: "2026-11-27T17:25:02+00:00", subject: "Add Vibe Summit: a 5,000 ft mountain with four ways down and a rainbow road" },
   ],
   "terminal": [
@@ -491,12 +493,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
   ],
   "vibestar": [
+    { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
+    { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
+    { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
     { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
-    { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
-    { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
-    { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
   ],
   "vibeverse": [
     { sha: "d06b0315", iso: "2026-11-27T03:19:48+00:00", subject: "Mort's Maze: a maze chase on Vibe Island" },

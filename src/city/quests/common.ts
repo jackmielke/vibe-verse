@@ -45,6 +45,8 @@ export interface QuestStep {
   kick?: THREE.Vector3 | null;
   /** Turn the avatar to this yaw. */
   face?: number | null;
+  /** Ease the chase camera's yaw toward this (behind a climber, off the wall). */
+  cam?: number | null;
 }
 
 export interface Prompt {

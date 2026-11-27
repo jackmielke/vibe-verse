@@ -81,7 +81,7 @@ export class HoopsView {
   private lastDribble = 0;
   private history: Rec[] = [];
   private attractShot = -1;
-  private replay: { from: number; to: number; at: number; speed: number; side: number; kind: string } | null = null;
+  private replay: { from: number; to: number; at: number; speed: number; side: number; kind: string; zSide: number } | null = null;
   private dunkCam: { until: number; side: number; sx: number; sy: number } | null = null;
   private shake = 0;
   private camPos = new THREE.Vector3(0, 8, 18);
@@ -333,7 +333,10 @@ export class HoopsView {
           if (e.big) {
             // Replay the last couple of seconds once the shouting starts.
             const len = e.kind === "dunk" ? 1.9 : 2.3;
-            this.replay = { from: g.t - len, to: g.t + 0.35, at: -1.1, speed: 0.5, side, kind: e.kind };
+            // Always the TV side: the far sideline has the scorer's table glow
+            // and a show beam right in front of the lens, which blooms to white.
+            const zSide = 1;
+            this.replay = { from: g.t - len, to: g.t + 0.35, at: -1.1, speed: 0.5, side, kind: e.kind, zSide };
           }
           break;
         }
@@ -598,9 +601,22 @@ export class HoopsView {
       const k = this.replay.kind === "dunk";
       const bx = rec.b[0];
       const bz = rec.b[1];
-      want.set(s * (HALF_L + (k ? 1.2 : 3.5)), k ? 1.4 : 2.6, (bz > 0 ? -1 : 1) * (k ? 3.6 : 5.5));
-      look.set((bx + s * HOOP_X) / 2 + s * 1.5, k ? RIM_H - 0.6 : 2.2, bz * 0.5);
-      fovH = portrait ? 62 : 54;
+      // Always on the floor, inside the lines: anywhere past the baseline is
+      // the stanchion, the ad boards or the front rows, which render black.
+      const rimX = s * HOOP_X;
+      if (k) {
+        // A dunk: low from the corner, looking up at the rim with the dunker coming in.
+        const side = this.replay.zSide;
+        want.set(s * (HALF_L - 1.3), 1.25, side * 5.4);
+        look.set(bx * 0.35 + rimX * 0.65, RIM_H - 0.5, bz * 0.35);
+        fovH = portrait ? 74 : 64;
+      } else {
+        // A jumper: low on the sideline, between shooter and rim, the arc in frame.
+        const side = this.replay.zSide;
+        want.set(bx * 0.45 + rimX * 0.55 - s * 1.5, 3.6, side * 7.2);
+        look.set(bx * 0.45 + rimX * 0.55, 1.9, bz * 0.3);
+        fovH = portrait ? 80 : 70;
+      }
       snap = this.replay.at < 0.05;
     } else if (g.phase === "over") {
       const a = t * 0.12;
