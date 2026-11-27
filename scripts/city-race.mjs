@@ -31,7 +31,7 @@ await page.waitForTimeout(3000);
 const pill = await page.$("text=Race the Vibe Kart GP");
 console.log("kiosk pill:", !!pill);
 await page.keyboard.press("KeyE");
-await page.waitForSelector("text=VIBE KART GP", { timeout: 15000 });
+await page.waitForSelector("text=VIBE KART GP", { timeout: 60000 });
 await page.screenshot({ path: `${OUT}/board.png` });
 await page.click("button:has-text('Free')");
 await page.evaluate(() => window.__cityCrash.throttle(1));

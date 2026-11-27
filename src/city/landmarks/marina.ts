@@ -229,16 +229,46 @@ export function buildMarina(opts: { boxes: WorldBox[]; z: number; lowDetail: boo
       }
     }
   }
-  // A stepped ramp from the coast road up onto the boards: four 0.375 m steps,
-  // each under the 0.4 m the walker can climb.
-  for (let i = 0; i < 4; i++) {
-    const x1 = -172 - i * 1.75;
-    const x0 = x1 - 1.75;
-    const top = DECK * ((i + 1) / 4);
-    boxes.push({ minX: x0, maxX: i === 3 ? -179 : x1, minZ: Z - MAIN_W / 2, maxZ: Z + MAIN_W / 2, base: -1, height: top });
-    const g = new THREE.BoxGeometry(x1 - x0, top + 1, MAIN_W);
-    g.translate((x0 + x1) / 2, top / 2 - 0.5, Z);
-    deckParts.push(g);
+  // A ramp from the coast road up onto the boards. It used to be four 0.375 m
+  // steps, and the last of them had a zero-width collision box (its maxX was
+  // its own minX), so a walker dropped into a slot in front of the deck and a
+  // car met the deck's edge as a wall: the only way on was the jetpack.
+  //
+  // Now it is a slab drawn as a slope over ten thin collision steps. Each step
+  // is 0.15 m, well under the 0.4 m a walker or a car steps up, and they
+  // overlap the deck so there is no gap anywhere along it.
+  {
+    const RAMP_X0 = -179; // meets the deck
+    const RAMP_X1 = -170.5; // meets the road
+    const N = 10;
+    const run = RAMP_X1 - RAMP_X0;
+    for (let i = 0; i < N; i++) {
+      // Step i sits nearest the road at i = 0.
+      const top = DECK * ((i + 1) / N);
+      const xHi = RAMP_X1 - (i * run) / N;
+      boxes.push({ minX: RAMP_X0 - 0.5, maxX: xHi, minZ: Z - MAIN_W / 2, maxZ: Z + MAIN_W / 2, base: -1, height: top });
+    }
+    const len = Math.hypot(run, DECK);
+    const slab = new THREE.BoxGeometry(len, 0.3, MAIN_W);
+    slab.rotateZ(Math.atan2(DECK, run));
+    slab.translate((RAMP_X0 + RAMP_X1) / 2, DECK / 2 - 0.12, Z);
+    deckParts.push(slab);
+    // Low side cheeks so the slope does not float.
+    const cheek = new THREE.BoxGeometry(run, 1, 0.2);
+    for (const s of [-1, 1]) {
+      const c = cheek.clone();
+      const pos = c.attributes.position as THREE.BufferAttribute;
+      for (let k = 0; k < pos.count; k++) {
+        if (pos.getY(k) > 0) {
+          const xw = pos.getX(k) + (RAMP_X0 + RAMP_X1) / 2;
+          pos.setY(k, DECK * ((RAMP_X1 - xw) / run) - 0.28);
+        } else pos.setY(k, -0.6);
+      }
+      c.computeVertexNormals();
+      c.translate((RAMP_X0 + RAMP_X1) / 2, 0, Z + s * (MAIN_W / 2 + 0.05));
+      deckParts.push(c);
+    }
+    cheek.dispose();
   }
   const deckMesh = new THREE.Mesh(keep(merge(deckParts)), wood);
   deckMesh.castShadow = deckMesh.receiveShadow = true;

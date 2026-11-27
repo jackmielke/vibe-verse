@@ -109,12 +109,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "86ad7815", iso: "2026-11-27T17:25:02+00:00", subject: "Add Vibe Summit: a 5,000 ft mountain with four ways down and a rainbow road" },
     { sha: "bb4c4ad1", iso: "2026-11-27T04:07:48+00:00", subject: "Merge origin/main" },
     { sha: "3304a557", iso: "2026-11-27T04:06:26+00:00", subject: "Vibe City: Paintball Marker in Vibe Arms" },
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
     { sha: "7f95528e", iso: "2026-11-27T02:46:03+00:00", subject: "Vibe City: the Super Soaker leaves slippery puddles" },
     { sha: "483accc4", iso: "2026-11-27T00:44:31+00:00", subject: "City: red button in Warehouse 13 puts you in a bad guy's back seat as gunner" },
-    { sha: "95a571f5", iso: "2026-11-26T22:43:09+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -443,6 +443,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   ],
   "submit-world": [
     { sha: "1a0094c6", iso: "2026-06-15T22:23:49+00:00", subject: "Changes" },
+  ],
+  "summit": [
+    { sha: "86ad7815", iso: "2026-11-27T17:25:02+00:00", subject: "Add Vibe Summit: a 5,000 ft mountain with four ways down and a rainbow road" },
   ],
   "terminal": [
     { sha: "e7f01015", iso: "2026-08-17T15:57:50+00:00", subject: "Changes" },
