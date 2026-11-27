@@ -47,6 +47,7 @@ import type { WorldBox } from "@/components/city/cardboardIsland";
 import type { CrashFx } from "@/city/crashFx";
 import type { Smashables } from "@/city/smash";
 import { buildCityCar, type Traffic } from "@/city/traffic";
+import { createChopper } from "@/city/chopper";
 
 export type GunKind = "rifle" | "glock" | "water" | "blaster" | "paint";
 /** Guns you buy rather than find. Ids match `weapon:<id>` in the inventory. */
@@ -118,6 +119,13 @@ export interface MayhemHud {
   atStall: boolean;
   /** Bad guys on the loose right now, out of `MAX_BAD`. */
   bads: number;
+  /**
+   * Your own health, 0 to 100. Only the police chopper hurts it; it grows
+   * back after a few quiet seconds, and at zero you are taken down.
+   */
+  hp: number;
+  /** The police chopper's health, percent, while one is up. */
+  chopper: number | null;
 }
 
 export interface MayhemCtx {
@@ -185,6 +193,15 @@ export interface MayhemOpts {
   onBlast(x: number, z: number, r: number): void;
   /** Police reached the getaway kart. */
   onBust(): void;
+  /** The chopper's door gun hit the car you are driving. */
+  onShot?(dmg: number): void;
+  /**
+   * The chopper took you down on foot. Heat is already cleared; the city
+   * decides where you wake up.
+   */
+  onDown?(): void;
+  /** The police chopper came out ("up") or was shot down ("down"). */
+  onChopper?(e: "up" | "down"): void;
   onHud(h: MayhemHud): void;
   onPickup(kind: GunKind): void;
   /**
@@ -237,6 +254,9 @@ export interface Mayhem {
   /** For harnesses. */
   debug(): {
     heat: number;
+    hp: number;
+    downs: number;
+    chopper: ReturnType<import("@/city/chopper").Chopper["debug"]>;
     cops: Array<{ x: number; z: number; hp: number; target: string; speed: number }>;
     fires: number;
     gun: GunKind | null;
@@ -253,6 +273,10 @@ export interface Mayhem {
     bads: Array<{ id: number; x: number; z: number; hp: number; speed: number; boarding: boolean; chasers: number }>;
   };
   setHeat(h: number): void;
+  /** For harnesses: put the police chopper up over (x, z) right now. */
+  spawnChopper(x: number, z: number): void;
+  /** For harnesses: shoot the chopper for `dmg`. */
+  hurtChopper(dmg: number): void;
   give(kind: GunKind): void;
   /** For harnesses: leave a puddle here. */
   puddleAt(x: number, z: number): void;
@@ -1083,6 +1107,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       bads: bads.length,
       bombs: hasBombs ? bombsInHand : null,
       atStall,
+      hp: Math.round(playerHp),
+      chopper: chopper?.hud()?.hp ?? null,
     };
     const key = JSON.stringify(h);
     if (key !== lastHud) {
@@ -1546,7 +1572,72 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
 
   // ---- Shooting ----------------------------------------------------------
   let shotCool = 0;
-  const cands: Array<{ x: number; z: number; weight: number; kind: "cop" | "car" | "tree" | "bad"; ref: number }> = [];
+  const cands: Array<{ x: number; z: number; weight: number; kind: "cop" | "car" | "tree" | "bad" | "chopper"; ref: number }> = [];
+
+  // ---- The police chopper, at five stars: see `chopper.ts` -------------
+  let playerHp = 100;
+  /** Seconds since the chopper last hit you; health grows back after a few. */
+  let hpQuiet = 99;
+  let downs = 0;
+  /** Something the chopper fired hit you, or whatever you are in. */
+  const hitPlayer = (dmg: number) => {
+    const ctx = lastCtx;
+    if (!ctx) return;
+    if (ctx.riding !== null) {
+      const b = bads.find((o) => o.id === ctx.riding);
+      if (b) hurtBad(b, dmg * 1.5);
+      return;
+    }
+    if (ctx.driving) {
+      opts.onShot?.(dmg);
+      return;
+    }
+    playerHp -= dmg;
+    hpQuiet = 0;
+    if (playerHp <= 0) {
+      playerHp = 100;
+      heat = 0;
+      quiet = 0;
+      downs++;
+      opts.onDown?.();
+    }
+    hud();
+  };
+  let chopperWas = false;
+  const chopperLast = new THREE.Vector3(NaN, 0, 0);
+  const chopper = createChopper({
+    group,
+    crashFx,
+    boxes: opts.boxes,
+    home: opts.garage ? [opts.garage[0], opts.garage[1]] : [-80, 0],
+    blocked: opts.blocked,
+    audio,
+    onRound: (dmg) => hitPlayer(dmg),
+    onRocket: (x, y, z, r) => {
+      traffic.blast(x, z, r, 16);
+      smash.blast(x, z, r * 0.8, 14);
+      ignite(x, z, r);
+      opts.boom?.(x, z);
+      opts.onBlast(x, z, r);
+      const ctx = lastCtx;
+      if (!ctx) return;
+      const me = ctx.driving ?? ctx.player;
+      const d = Math.hypot(me.x - x, me.z - z);
+      if (d < r && Math.abs(me.y - y) < 6) {
+        // On foot that is most of your health; a car's own damage is
+        // `onBlast`'s, so only the bad guy's car needs it here.
+        if (ctx.riding !== null) hitPlayer(30 * (1 - d / r) + 10);
+        else if (!ctx.driving) hitPlayer(45 * (1 - d / r) + 12);
+      }
+    },
+    onCrash: (x, z) => {
+      traffic.blast(x, z, 10, 18);
+      smash.blast(x, z, 8, 16);
+      ignite(x, z, 12);
+      opts.boom?.(x, z);
+      opts.onBlast(x, z, 9);
+    },
+  });
   /** The bad guy you are riding with, so you do not shoot your own ride. */
   let riding: number | null = null;
   // ---- Paint splats ----------------------------------------------------
@@ -1711,6 +1802,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     for (const car of traffic.debugNear(ox, oz, spec.range)) {
       if (!car.wreck) cands.push({ x: car.x, z: car.z, weight: 0.1, kind: "car", ref: car.id });
     }
+    {
+      const hc = chopper.aimPoint();
+      if (hc) cands.push({ x: hc.x, z: hc.z, weight: 0.5, kind: "chopper", ref: 0 });
+    }
     for (const t of smash.standing(ox, oz, Math.min(spec.range, 40), "tree")) {
       cands.push({ x: t.x, z: t.z, weight: 0, kind: "tree", ref: -1 });
     }
@@ -1724,7 +1819,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       len = Math.hypot(t.x - ox, t.z - oz);
       ax = (t.x - ox) / len;
       az = (t.z - oz) / len;
-      ty = t.kind === "tree" ? 2.6 : 0.9;
+      ty = t.kind === "tree" ? 2.6 : t.kind === "chopper" ? (chopper.aimPoint()?.y ?? 0.9) : 0.9;
     }
     // Walk the line; the first wall stops the round.
     let end = len;
@@ -1787,6 +1882,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         hurtCop(c, spec.damage);
         crime(spec.soak ? 0.05 : 0.3);
         if (!spec.soak && kind !== "paint") crashFx.sparks(ex, 1, ez, -ax, -az, 8);
+      } else if (t.kind === "chopper") {
+        if (chopper.hurt(spec.damage)) opts.onChopper?.("down");
+        crime(0.1);
       } else if (t.kind === "bad") {
         hurtBad(bads[t.ref], spec.damage);
         if (kind !== "paint") crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
@@ -2410,6 +2508,28 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         }
       }
       sirenTo(nearest < 120 ? (1 - nearest / 120) : 0, clock);
+
+      // The police chopper, at five stars.
+      {
+        const me = ctx.driving ?? ctx.player;
+        let tvx = 0;
+        let tvz = 0;
+        if (Number.isFinite(chopperLast.x) && dt > 0) {
+          tvx = (me.x - chopperLast.x) / dt;
+          tvz = (me.z - chopperLast.z) / dt;
+          // A teleport is not a velocity.
+          if (Math.hypot(tvx, tvz) > 80) tvx = tvz = 0;
+        }
+        chopperLast.set(me.x, me.y, me.z);
+        chopper.update(dt, starsFor(heat) >= MAX_STARS && ctx.inCity, ctx.inCity
+          ? { x: me.x, y: me.y, z: me.z, vx: tvx, vz: tvz, driving: !!ctx.driving || ctx.riding !== null }
+          : null);
+        const up = chopper.aimPoint() !== null;
+        if (up && !chopperWas && chopper.debug().state === "hunt") opts.onChopper?.("up");
+        chopperWas = up;
+        hpQuiet += dt;
+        if (hpQuiet > 5 && playerHp < 100) playerHp = Math.min(100, playerHp + dt * 14);
+      }
       if (hideoutBeacon) (hideoutBeacon.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.sin(clock * 2.5) * 0.08;
 
       // Fire.
@@ -2447,6 +2567,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     debug() {
       return {
         heat,
+        hp: playerHp,
+        downs,
+        chopper: chopper.debug(),
         cops: cops.map((c) => ({ x: c.x, z: c.z, hp: c.hp, target: c.dead > 0 ? "wreck" : c.target, speed: c.speed })),
         fires: fires.length,
         gun,
@@ -2475,6 +2598,12 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     setHeat(h) {
       heat = THREE.MathUtils.clamp(h, 0, MAX_STARS);
       quiet = 0;
+    },
+    spawnChopper(x, z) {
+      chopper.spawnAt(x, z);
+    },
+    hurtChopper(dmg) {
+      if (chopper.hurt(dmg)) opts.onChopper?.("down");
     },
     summon,
     board(x, z) {
@@ -2562,6 +2691,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       });
     },
     dispose() {
+      chopper.dispose();
       while (cops.length) removeCop(cops.length - 1);
       for (const m of parkedMeshes) m.dispose();
       while (bads.length) removeBad(bads[0]);
