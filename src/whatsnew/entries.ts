@@ -58,6 +58,16 @@ export const ENTRIES: WhatsNewEntry[] = [
     world: "Vibe City",
   },
   {
+    id: "haymaker-boxing",
+    date: "2026-11-27",
+    emoji: "🥊",
+    title: "Haymaker: boxing in your living room",
+    body: "A new boxing game where the opponent stands in your room. Prop your phone or laptop up, step back, and throw real punches at the camera. Lean away from a glowing glove to slip it and hit back for double damage, or put your fists up to cover. Four fighters to beat, and it also plays with thumbs or keys.",
+    tag: "new",
+    route: "/boxing",
+    world: "Haymaker",
+  },
+  {
     id: "mort-maze",
     date: "2026-11-27",
     emoji: "🎈",

@@ -44,6 +44,7 @@ const ORDER: string[] = [
   "mort-maze",           // new: the maze chase, Vibey against Mad Mort's crew
   "bots",                // …then the thirty-second loop: your handle becomes a bot that fights
   "oni",                 // the room game: everybody's phone, one square, zombie tag
+  "boxing",              // the other room game: your phone is the ring
   "magician",            // …then the valley you talk to, which rebuilds itself as you speak
   "better-fortnite",     // …then the battle royale with everything in it
   "splash-royale",       // …and the water fight, which is the one you send to a friend
@@ -597,6 +598,23 @@ const WORLDS_RAW: WorldEntry[] = [
     source: "src/terminal",
     nav: true,
     passport: true,
+    chromeless: true,
+  },
+  {
+    key: "boxing",
+    route: "/boxing",
+    aliases: ["/box", "/haymaker", "/punch"],
+    name: "Haymaker",
+    emoji: "🥊",
+    kind: "game",
+    blurb:
+      "Boxing in your own living room. Prop your phone up, step back, and the camera watches you: throw real punches, lean away from a glowing glove to slip it, put your fists up to cover. The opponent stands in your room and your gloves are drawn on your own hands. Four fighters, from a rattling soup can to a thundercloud that is technically the champ. No camera? Same fight in a ring, with thumbs or keys.",
+    status: "New: camera boxing on a phone or laptop, or thumbs and keys",
+    accent: "#ffc23a",
+    backdrop: "#07070d",
+    source: "src/boxing + src/pages/Boxing.tsx",
+    nav: true,
+    /* No passport stamp: the cockpit panel is full (see fogcity). */
     chromeless: true,
   },
   {
