@@ -95,6 +95,8 @@ const GUN_SLOTS: readonly GunKind[] = ["glock", "water", "paint", "blaster", "ri
 import { buildHideouts } from "@/city/hideouts";
 import { buildArcade, ARCADE_RESERVE, type ArcadeStation } from "@/city/arcade";
 import { ArcadeCabinet, type CabinetGame } from "@/components/city/ArcadeCabinet";
+import { buildKartRace, type RaceUi } from "@/city/kartRace";
+import { KartRaceHud } from "@/components/city/KartRaceHud";
 import { createBodyguards, squadEnabled, type Bodyguards } from "@/city/bodyguards";
 import { SquadPanel } from "@/components/city/SquadPanel";
 import {
@@ -1049,6 +1051,13 @@ export default function City() {
   const [cabinetGame, setCabinetGame] = useState<CabinetGame | null>(null);
   const cabinetOpenRef = useRef(false);
   const arcadeStationRef = useRef<ArcadeStation | null>(null);
+  // The Vibe Kart GP (src/city/kartRace.ts): its readout, the board at the
+  // kiosk, and the page's hook to start a race with a stake.
+  const [raceUi, setRaceUi] = useState<RaceUi | null>(null);
+  const [nearRaceKiosk, setNearRaceKiosk] = useState(false);
+  const [raceLobby, setRaceLobby] = useState(false);
+  const nearRaceKioskRef = useRef(false);
+  const raceStartRef = useRef<((bet: number) => void) | null>(null);
   const closeCabinet = useCallback(() => {
     cabinetOpenRef.current = false;
     setCabinetGame(null);
@@ -1692,6 +1701,9 @@ export default function City() {
     const arcade = buildArcade({ lowDetail: smallScreen });
     scene.add(arcade.group);
     district.boxes.push(...arcade.boxes);
+    // The Vibe Kart GP: gates on the streets, a kiosk on the plaza's east edge.
+    const race = buildKartRace({ lowDetail: smallScreen });
+    scene.add(race.group);
     // Held live by reference — every world that loads after this pushes its
     // own collision into the same array. See CollisionWorld's constructor.
     const boxes = district.boxes;
@@ -2502,6 +2514,35 @@ export default function City() {
       toast("Hit too many things and it blows up", {
         description: "Watch the health meter. And somewhere in the city a rare gold car is parked under a beam of light.",
       });
+    };
+    raceStartRef.current = (bet) => {
+      if (race.active()) return;
+      const k = kartStates[0];
+      if (bet > Math.max(0, vibeBalanceRef.current)) bet = 0;
+      if (bet > 0) {
+        vibeBalanceRef.current -= bet;
+        setVibeBalanceTick((n) => n + 1);
+        persistVibeBalanceRef.current?.();
+      }
+      if (drivingKartRef.current >= 0 && drivingKartRef.current !== 0) exitKartRef.current?.();
+      const [gx, gz, gyaw] = race.grid;
+      k.x = gx;
+      k.z = gz;
+      k.y = 0;
+      k.yaw = gyaw;
+      k.speed = 0;
+      k.vy = 0;
+      k.steer = 0;
+      k.sink = 0;
+      k.wet = false;
+      k.wade = 0;
+      k.hp = MAX_HEALTH;
+      k.wreck = 0;
+      k.flip = 0;
+      if (drivingKartRef.current !== 0) enterKartRef.current?.(0);
+      race.start(bet);
+      setRaceLobby(false);
+      toast("🏁 Vibe Kart GP", { description: "Three laps. Follow the beam of light to the next gate. W to go, Shift for boost." });
     };
     enterKartRef.current = (i) => {
       if (i < 0 || i >= kartStates.length) return;
@@ -4044,6 +4085,10 @@ export default function City() {
         rideButtonRef.current?.();
         return;
       }
+      if (e.code === "KeyE" && !e.repeat && nearRaceKioskRef.current) {
+        setRaceLobby(true);
+        return;
+      }
       if (e.code === "KeyE" && !e.repeat && arcadeStationRef.current && !cabinetOpenRef.current) {
         openCabinet(arcadeStationRef.current);
         return;
@@ -4469,6 +4514,14 @@ export default function City() {
         helicopter: heli.body.position.toArray(),
         parade: thanks.float.getWorldPosition(new THREE.Vector3()).toArray(),
       });
+      (window as unknown as Record<string, unknown>).__cityRace = {
+        ui: () => race.ui(),
+        start: (bet = 0) => raceStartRef.current?.(bet),
+        finish: () => race.devFinish(),
+        gates: () => race.devGates(),
+        kiosk: () => race.kiosk.toArray(),
+        grid: () => race.grid,
+      };
       (window as unknown as Record<string, unknown>).__cityArcade = {
         stations: () => arcade.stations.map((s) => ({ key: s.key, route: s.route, at: s.at.toArray() })),
         near: () => arcadeStationRef.current?.key ?? null,
@@ -6553,7 +6606,10 @@ export default function City() {
          * able to drive it around down there would undo the whole point.
          */
         const drowning = kart.sink > 0;
-        const thIn = drowning ? 0 : devThrottle ?? THREE.MathUtils.clamp(
+        // On the Kart GP grid during the countdown: engine revs, kart stays.
+        const gridHold = drivingKartRef.current === 0 && race.holding();
+        if (gridHold) kart.speed = 0;
+        const thIn = drowning || gridHold ? 0 : devThrottle ?? THREE.MathUtils.clamp(
           ((keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
             (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0)) +
             (touchLen > 0.12 ? -tm.y : 0),
@@ -7462,6 +7518,29 @@ export default function City() {
         const tmL = touchMoveRef.current;
         const tmLen = Math.hypot(tmL.x, tmL.y);
         arcade.update(dt, now, player.position);
+        {
+          // The Kart GP rides kart 0, the red one on the plaza.
+          const k0 = kartStates[0];
+          const inRaceKart = drivingKartRef.current === 0 && k0.wreck <= 0;
+          if (race.active() && !inRaceKart) {
+            race.abort();
+            toast("🏁 Out of the race", { description: k0.wreck > 0 ? "The kart is wrecked. Walk back to the kiosk on the plaza to try again." : "You got out of the kart. The kiosk on the plaza starts another one." });
+          }
+          const ev = race.update(dt, now, inRaceKart ? k0 : null);
+          if (ev?.type === "go") soundsRef.current?.chime(4);
+          else if (ev?.type === "gate") soundsRef.current?.chime(2);
+          else if (ev?.type === "lap") {
+            soundsRef.current?.chime(4);
+            toast(ev.lap === 3 ? "🏁 Final lap!" : `🏁 Lap ${ev.lap}`);
+          } else if (ev?.type === "finish") {
+            if (ev.payout > 0) {
+              vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + ev.payout;
+              setVibeBalanceTick((n) => n + 1);
+              persistVibeBalanceRef.current?.();
+            }
+            soundsRef.current?.fanfare?.();
+          }
+        }
         const lock = landmarks.update(dt, now, {
           player: player.position,
           grounded: onGround,
@@ -7597,6 +7676,20 @@ export default function City() {
             Math.hypot(pp.x - hq[0], pp.z - hq[2]) < 3.2 && Math.abs(pp.y - hq[1]) < 2.5;
           nearRideButton = ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current &&
             Math.hypot(pp.x - RIDE_BUTTON[0], pp.z - RIDE_BUTTON[2]) < 2.6 && pp.y < 3;
+          {
+            const nk = drivingKartRef.current < 0 && !activeMountRef.current && race.nearKiosk(pp);
+            if (nk !== nearRaceKioskRef.current) {
+              nearRaceKioskRef.current = nk;
+              setNearRaceKiosk(nk);
+            }
+            const ru = race.ui();
+            setRaceUi((prev) =>
+              prev && prev.phase === ru.phase && prev.count === ru.count && prev.lap === ru.lap && prev.place === ru.place &&
+              Math.abs(prev.time - ru.time) < 0.05 && Math.abs(prev.nextGateDist - ru.nextGateDist) < 1 && prev.result === ru.result
+                ? prev
+                : ru,
+            );
+          }
           {
             const st = drivingKartRef.current < 0 && !activeMountRef.current ? arcade.nearest(pp) : null;
             if (st !== arcadeStationRef.current) {
@@ -8739,6 +8832,7 @@ export default function City() {
       mayhem.dispose();
       hideouts.dispose();
       arcade.dispose();
+      race.dispose();
       ocean.dispose();
       underwater.dispose();
       splash.dispose();
@@ -9863,6 +9957,13 @@ export default function City() {
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
       <ArcadeCabinet game={cabinetGame} onClose={closeCabinet} />
+      <KartRaceHud
+        ui={raceUi}
+        lobby={raceLobby}
+        balance={vibeBalanceRef.current}
+        onStart={(b) => raceStartRef.current?.(b)}
+        onClose={() => setRaceLobby(false)}
+      />
       {!IOS_APP && <RockPaperScissors open={rpsOpen} onClose={() => setRpsOpen(false)} />}
       {!IOS_APP && <RpsDevHook onOpen={() => setRpsOpen(true)} />}
       <PhotoGalleryModal
@@ -10614,6 +10715,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               ✨ Open Vibe Maker
+            </button>
+          )}
+          {nearRaceKiosk && !raceLobby && (
+            <button
+              onClick={(e) => {
+                setRaceLobby(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-white border-2 border-cyan-300/70 backdrop-blur-md shadow-[0_0_24px_rgba(56,232,255,0.5)] hover:bg-white/10"
+            >
+              🏁 Race the Vibe Kart GP{isTouch ? "" : " (E)"}
             </button>
           )}
           {arcadeStation && !cabinetGame && (

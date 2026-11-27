@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-27-kart-gp",
+    date: "2026-11-27",
+    emoji: "🏁",
+    title: "Vibe Kart GP: race Mad Mort through the city",
+    body: "Walk up to the Kart GP kiosk on the east edge of the plaza in Vibe City. Three laps of real streets against Mad Mort, Linda and Vibey, through glowing gates, with traffic that does not stop for you. Race for free or put up to 100 Vibey Coins on yourself: a win pays three times your stake.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "2026-11-27-vibe-arcade",
     date: "2026-11-27",
     emoji: "🕹️",
