@@ -478,6 +478,8 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
   ],
   "vibe-cup": [
+    { sha: "619caaa4", iso: "2026-11-27T05:37:16+00:00", subject: "Vibe Cup: the tournament, one player all match, and the Paint Pads" },
+    { sha: "951de74d", iso: "2026-11-27T05:17:11+00:00", subject: "Vibe Cup: slides knock over anybody in the way, team-mates too" },
     { sha: "c62f0704", iso: "2026-11-27T05:01:51+00:00", subject: "Vibe Cup: open rooms list, off-screen switching, smarter computer players" },
     { sha: "91dbe0b9", iso: "2026-11-27T04:46:12+00:00", subject: "Vibe Cup: online rooms, up to two a side on your own devices" },
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
