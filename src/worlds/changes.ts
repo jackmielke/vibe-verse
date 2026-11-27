@@ -475,6 +475,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
   ],
   "vibe-cup": [
+    { sha: "91dbe0b9", iso: "2026-11-27T04:46:12+00:00", subject: "Vibe Cup: online rooms, up to two a side on your own devices" },
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
   ],
   "vibestar": [
