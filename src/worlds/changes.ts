@@ -237,12 +237,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "9aa36c8d", iso: "2026-07-30T19:43:20+00:00", subject: "Vibe Golf: art direction, grading, audio, and portrait framing" },
   ],
   "home-alone": [
+    { sha: "429cdc32", iso: "2026-11-27T00:11:18+00:00", subject: "House Rules: BB gun, honey trap, traps on the stairs, and the holes closed" },
     { sha: "de534cee", iso: "2026-11-26T22:17:00+00:00", subject: "House Rules: the trap game, rebuilt around laying traps" },
     { sha: "04452764", iso: "2026-08-02T18:22:49+00:00", subject: "Home Alone: infinite bricks" },
     { sha: "0ab21791", iso: "2026-08-02T14:42:55+00:00", subject: "Home Alone: nobody is made of boxes any more" },
     { sha: "d6c8aeea", iso: "2026-08-02T14:17:18+00:00", subject: "Home Alone: the controls were lying about which way is forward" },
     { sha: "e65cc93f", iso: "2026-08-02T09:25:58+00:00", subject: "Home Alone: the stairs no longer eat the camera" },
-    { sha: "eef0d16d", iso: "2026-08-02T09:14:33+00:00", subject: "Home Alone: put the lights up, and let them talk" },
   ],
   "horizon": [
     { sha: "3b7e9af8", iso: "2026-10-09T09:22:41-07:00", subject: "Horizon Garden: retire Ten Sports a Year, 22 frontiers" },
