@@ -199,7 +199,7 @@ function tickFx(fx: Fx, g: Game, dt: number) {
 // ---------------------------------------------------------------------------
 
 const KEEPER_SHIRT = ["#a3e635", "#f472b6"];
-export const PAD_COLORS = ["#38bdf8", "#fb7185"];
+export const PAD_COLORS = ["#38bdf8", "#fb7185", "#facc15", "#a3e635"];
 
 export function drawFrame(ctx: CanvasRenderingContext2D, g: Game, v: View, fx: Fx, dt: number, labels: string[]) {
   tickFx(fx, g, dt);
@@ -239,7 +239,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, g: Game, v: View, fx: F
   g.ctrls.forEach((c, n) => {
     const p = g.players[c.active];
     const q = project(cv, p.x, p.y);
-    ctx.strokeStyle = PAD_COLORS[n % 2];
+    ctx.strokeStyle = PAD_COLORS[n % PAD_COLORS.length];
     ctx.lineWidth = Math.max(2, v.s * 0.09);
     ctx.beginPath();
     ctx.ellipse(q.x, q.y, v.s * 0.62, v.s * 0.62 * TILT, 0, 0, Math.PI * 2);
@@ -280,7 +280,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, g: Game, v: View, fx: F
   g.ctrls.forEach((c, n) => {
     const p = g.players[c.active];
     const q = project(cv, p.x, p.y, 2.2);
-    const col = PAD_COLORS[n % 2];
+    const col = PAD_COLORS[n % PAD_COLORS.length];
     ctx.font = `900 ${Math.max(11, v.s * 0.42)}px ui-sans-serif, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.fillStyle = col;
@@ -702,7 +702,7 @@ function drawRadar(ctx: CanvasRenderingContext2D, v: View, g: Game) {
   for (const p of g.players) {
     const q = map(p.x, p.y);
     const human = g.ctrls.findIndex((c) => c.active === p.i);
-    ctx.fillStyle = human >= 0 ? PAD_COLORS[human % 2] : g.clubs[p.team].shirt;
+    ctx.fillStyle = human >= 0 ? PAD_COLORS[human % PAD_COLORS.length] : g.clubs[p.team].shirt;
     ctx.beginPath();
     ctx.arc(q.x, q.y, human >= 0 ? 3.2 : 2.3, 0, Math.PI * 2);
     ctx.fill();

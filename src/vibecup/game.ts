@@ -310,9 +310,14 @@ function resetKickoff(g: Game, team: TeamId) {
   fw.x = -attackDir(team) * 0.5;
   fw.y = 0;
   Object.assign(g.ball, { x: 0, y: 0, z: BALL_R, vx: 0, vy: 0, vz: 0, spin: 0, owner: fw.i, lastTeam: team, lastPlayer: fw.i, fire: 0, target: -1 });
+  // With two people on a side (online), each gets a different player.
+  const order = (t: TeamId) => (t === team ? ["fw", "mf", "df", "df"] : ["mf", "fw", "df", "df"]) as Role[];
+  const taken = new Set<number>();
   for (const c of g.ctrls) {
-    if (c.team === team) c.active = fw.i;
-    else c.active = g.players.find((p) => p.team === c.team && p.role === "mf")!.i;
+    const roles = order(c.team);
+    const pick = roles.map((r) => g.players.find((p) => p.team === c.team && p.role === r && !taken.has(p.i))).find(Boolean) ?? g.players.find((p) => p.team === c.team && p.role !== "gk")!;
+    c.active = pick.i;
+    taken.add(pick.i);
     c.charge = 0;
   }
   g.phase = "kickoff";
@@ -429,7 +434,7 @@ function doPass(g: Game, p: Player, aim: number | null, lofted: number) {
   b.target = q ? q.i : -1;
   g.events.push({ type: "pass" });
   // Control follows the ball to whoever it was meant for.
-  if (q) for (const c of g.ctrls) if (c.team === p.team && c.active === p.i) c.active = q.i;
+  if (q && !humanOf(g, q.i)) for (const c of g.ctrls) if (c.team === p.team && c.active === p.i) c.active = q.i;
 }
 
 function doShoot(g: Game, p: Player, charge: number, aimY: number | null, curve: number) {
@@ -504,8 +509,22 @@ function gain(g: Game, p: Player) {
   b.fire = 0;
   b.vz = 0;
   b.z = BALL_R;
-  // The person on that team is now driving whoever has it.
-  for (const c of g.ctrls) if (c.team === p.team && p.role !== "gk") c.active = p.i;
+  // The person on that team is now driving whoever has it. With two people on
+  // a side, it is whichever of them was nearer, and only if nobody drives it already.
+  if (p.role !== "gk" && !humanOf(g, p.i)) {
+    let best: Controller | null = null;
+    let bd = Infinity;
+    for (const c of g.ctrls) {
+      if (c.team !== p.team) continue;
+      const q = g.players[c.active];
+      const d = dist(q.x, q.y, p.x, p.y);
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    if (best) best.active = p.i;
+  }
   void had;
 }
 
@@ -618,7 +637,7 @@ function readControllers(g: Game, dt: number, kickoff: boolean) {
         let best = -1;
         let bd = Infinity;
         for (const q of g.players) {
-          if (q.team !== c.team || q.i === c.active || q.role === "gk") continue;
+          if (q.team !== c.team || q.i === c.active || q.role === "gk" || humanOf(g, q.i)) continue;
           const d = dist(q.x, q.y, b.x, b.y);
           if (d < bd) {
             bd = d;
@@ -659,13 +678,14 @@ function think(g: Game, dt: number) {
     const outfield = mine.filter((p) => p.role !== "gk" && p.stun <= 0);
     outfield.sort((p, q) => dist(p.x, p.y, bx, by) - dist(q.x, q.y, bx, by));
     let chaser: Player | undefined = outfield[0];
-    if (ctrl && chaser?.i === ctrl.active) chaser = undefined; // the person chases if they want to
-    // A person's team still gets an AI presser when the person is far away.
-    if (ctrl && chaser === undefined && outfield[1]) {
-      const me = g.players[ctrl.active];
-      if (dist(me.x, me.y, b.x, b.y) > 9) chaser = outfield[1];
+    if (chaser && humanOf(g, chaser.i)) chaser = undefined; // the person chases if they want to
+    // A person's team still gets an AI presser when the people are far away.
+    if (ctrl && chaser === undefined) {
+      const free = outfield.find((p) => !humanOf(g, p.i));
+      const near = g.ctrls.some((c) => c.team === t && dist(g.players[c.active].x, g.players[c.active].y, b.x, b.y) <= 9);
+      if (free && !near) chaser = free;
     }
-    const cover = outfield.find((p) => p !== chaser && p.i !== ctrl?.active);
+    const cover = outfield.find((p) => p !== chaser && !humanOf(g, p.i));
 
     for (const p of mine) {
       if (humanOf(g, p.i) || p.stun > 0 || p.slide > 0) continue;
