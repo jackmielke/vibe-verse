@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-ride-shotgun",
+    date: "2026-11-27",
+    emoji: "🔴",
+    title: "Ride shotgun with a bad guy",
+    body: "There is a big red button inside Warehouse 13 in Vibe City. Press it and you land in the back seat of a bad guy's orange getaway car, in first person, with a rifle. Drag to aim out of the back window and hold R to shoot the police off your tail. F hops out.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "house-rules-bb-gun-honey",
     date: "2026-11-27",
     emoji: "🍯",

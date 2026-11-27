@@ -22,6 +22,8 @@ export interface Hideouts {
   /** Inside the warehouse, facing its west door, where a bad guy's car
    *  starts: [x, z, yaw]. */
   lair: [number, number, number];
+  /** The red ride-along button inside the warehouse: [x, y, z] of its top. */
+  rideButton: [number, number, number];
   /** Just outside the station's garage, where a cruiser rolls out: [x, z, yaw]. */
   garage: [number, number, number];
   /** Where the two parked cruisers sit: [x, z, yaw] each. */
@@ -50,6 +52,9 @@ function signTexture(text: string, bg: string, fg: string, w = 1024, h = 256): T
   t.anisotropy = 4;
   return t;
 }
+
+/** The red button inside the warehouse, by the door: [x, y, z] of its top. */
+const rideButton: [number, number, number] = [WAREHOUSE_AT[0] - 9, 1.06, WAREHOUSE_AT[1] - 8];
 
 export function buildHideouts(): Hideouts {
   const group = new THREE.Group();
@@ -162,6 +167,25 @@ export function buildHideouts(): Hideouts {
       boxes.push({ minX: x1 - 2.2, maxX: x1 - 0.5, minZ: z - 1.6, maxZ: z + 1.6, base: 0, height: 6.3 });
       for (const lvl of [0.1, 2, 4]) crate(x1 - 1.35, z + (lvl % 4 ? 0.6 : -0.6), 1.2, lvl);
     }
+    // The red button: ride along with a bad guy, straight into his back seat.
+    {
+      const bx = rideButton[0];
+      const bz = rideButton[2];
+      const post = mat(new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.6, metalness: 0.3 }));
+      const hazard = mat(new THREE.MeshStandardMaterial({ color: 0xf2c418, roughness: 0.7 }));
+      solid(post, bx - 0.35, bx + 0.35, bz - 0.35, bz + 0.35, 0, 1);
+      solid(hazard, bx - 0.4, bx + 0.4, bz - 0.4, bz + 0.4, 1, 1.06, false);
+      const dome = new THREE.SphereGeometry(0.26, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+      geos.push(dome);
+      const red = mat(new THREE.MeshStandardMaterial({ color: 0xff1f2a, emissive: 0xc80010, emissiveIntensity: 0.9, roughness: 0.35 }));
+      const button = new THREE.Mesh(dome, red);
+      button.position.set(bx, 1.06, bz);
+      group.add(button);
+      // A sign on a post above it, readable from the door and from the floor.
+      solid(post, bx - 0.05, bx + 0.05, bz - 0.05, bz + 0.05, 1.06, 2.1, false);
+      sign(signTexture("RIDE ALONG", "#c81e2a", "#ffffff", 800, 180), 2.2, 0.5, bx, 2.4, bz + 0.03, 0);
+      sign(signTexture("RIDE ALONG", "#c81e2a", "#ffffff", 800, 180), 2.2, 0.5, bx, 2.4, bz - 0.03, Math.PI);
+    }
     // A forklift, parked.
     {
       const fx = cx - 2;
@@ -265,6 +289,7 @@ export function buildHideouts(): Hideouts {
     boxes,
     hideout: [WAREHOUSE_AT[0], 12, WAREHOUSE_AT[1]],
     lair: [WAREHOUSE_AT[0] + 3, WAREHOUSE_AT[1], -Math.PI / 2],
+    rideButton,
     garage: [px + 12.5, pz, Math.PI / 2],
     parked: [[px + 12.2, pz - 6.5, Math.PI], [px + 12.2, pz + 6.5, 0]],
     dispose() {
