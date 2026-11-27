@@ -213,6 +213,14 @@ export function QuestHud({
                   : "Walk into the Empire State and hold W"}
             </div>
           </div>
+          <button
+            onClick={() => system.current?.quitSprint()}
+            className="pointer-events-auto ml-1 rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20 active:bg-white/30"
+            data-testid="quest-sprint-quit"
+            title="Take the sticky shoes off"
+          >
+            {ui.sprint.run ? "✕ Quit" : "✕ Shoes off"}
+          </button>
         </div>
       )}
       {ui.fishing?.reel && <Reel reel={ui.fishing.reel} compact={compact} />}

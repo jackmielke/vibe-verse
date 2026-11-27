@@ -68,6 +68,8 @@ export interface SprintQuest {
   dialog(): Dialog | null;
   choose(id: string): void;
   closeDialog(): void;
+  /** Take the shoes off wherever you are: ends a run and lets go of the wall. */
+  quit(): void;
   ui(): SprintUi | null;
   log(): { title: string; status: string };
   dev(op?: string): unknown;
@@ -385,6 +387,16 @@ export function buildSprint(host: QuestHost, opts: { cx: number; cz: number }): 
     },
     closeDialog() {
       dialog = null;
+    },
+    quit() {
+      dialog = null;
+      const wasRun = !!run;
+      run = null;
+      resetOrbs(false);
+      shoes = false;
+      cling = null;
+      host.toast(wasRun ? "Sky Sprint cancelled" : "🦎 Sticky shoes off", "Gail keeps a spare pair by the south doors.");
+      host.sound("thud", 0.3);
     },
     ui() {
       if (!shoes) return null;
