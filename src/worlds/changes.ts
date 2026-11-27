@@ -248,6 +248,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e65cc93f", iso: "2026-08-02T09:25:58+00:00", subject: "Home Alone: the stairs no longer eat the camera" },
   ],
   "hoops": [
+    { sha: "1dedfa9a", iso: "2026-11-27T18:50:54+00:00", subject: "Vibe Hoops: replays filmed from the floor, and a How to play card" },
     { sha: "9c61a2f9", iso: "2026-11-27T08:09:15+00:00", subject: "Vibe Hoops: three-on-three basketball in the Vibe Dome" },
   ],
   "horizon": [
