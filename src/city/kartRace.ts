@@ -126,6 +126,29 @@ function canvasTex(w: number, h: number, draw: (x: CanvasRenderingContext2D) => 
 }
 
 const BEST_KEY = "city.kartgp.best";
+/**
+ * Net winnings a device may take from the GP in a day, the same ceiling as
+ * Vinnie's street races (`src/city/quests/racing.ts`), so neither book is
+ * the one to farm.
+ */
+const DAILY_WIN_CAP = 400;
+const DAY_KEY = "city.kartgp.day";
+const today = () => new Date().toISOString().slice(0, 10);
+function winsLeft(): number {
+  try {
+    const v = JSON.parse(localStorage.getItem(DAY_KEY) ?? "null") as { day: string; won: number } | null;
+    return v && v.day === today() ? Math.max(0, DAILY_WIN_CAP - v.won) : DAILY_WIN_CAP;
+  } catch {
+    return DAILY_WIN_CAP;
+  }
+}
+function addWin(net: number) {
+  try {
+    localStorage.setItem(DAY_KEY, JSON.stringify({ day: today(), won: DAILY_WIN_CAP - winsLeft() + net }));
+  } catch {
+    /* private mode */
+  }
+}
 function readBest(): number | null {
   try {
     const v = Number(localStorage.getItem(BEST_KEY));
@@ -407,6 +430,14 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
     } else {
       beam.visible = false;
     }
+    // Between races only the start arch stands; the course appears with it.
+    const showCourse = phase !== "idle";
+    if (gates[1].bar.visible !== showCourse) {
+      for (let i = 1; i < gates.length; i++) {
+        gates[i].bar.visible = showCourse;
+        gates[i].pylons.forEach((p) => (p.visible = showCourse));
+      }
+    }
 
     if (phase === "idle") return null;
     if (phase === "finished") {
@@ -494,7 +525,15 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
     const time = clock;
     const ahead = rivals.filter((r) => r.finish !== null && r.finish < time).length;
     place = 1 + ahead;
-    const payout = payoutFor(place, bet);
+    // Winnings over the stake are capped per day; the stake itself always
+    // comes back when the place earns it.
+    let payout = payoutFor(place, bet);
+    const net = payout - bet;
+    if (net > 0) {
+      const take = Math.min(net, winsLeft());
+      addWin(take);
+      payout = Math.max(0, bet + take);
+    }
     const isBest = best === null || time < best;
     if (isBest) {
       best = time;

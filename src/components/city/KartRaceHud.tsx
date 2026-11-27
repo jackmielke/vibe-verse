@@ -57,7 +57,7 @@ export function KartRaceHud({
               })}
             </div>
             <p className="mt-3 text-center text-[11px] text-white/50">
-              Win and a stake pays three times over. Second gets it back. Free races still pay a little: {payoutFor(1, 0)} ✦ for a win.
+              Win and a stake pays three times over. Second gets it back. Free races still pay a little: {payoutFor(1, 0)} ✦ for a win. Winnings top out at 400 ✦ a day.
             </p>
             <p className="mt-1 text-center text-[11px] text-white/40">You have {Math.max(0, Math.floor(balance))} ✦</p>
             <button onClick={onClose} className="mt-3 w-full rounded-full border border-white/20 py-2 text-sm text-white/70 hover:bg-white/10">
