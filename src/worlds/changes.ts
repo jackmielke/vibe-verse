@@ -88,6 +88,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "bots": [
     { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
   ],
+  "boxing": [
+    { sha: "34300b82", iso: "2026-11-27T03:25:04+00:00", subject: "Haymaker: a camera boxing game where the opponent stands in your room" },
+  ],
   "cannon-run": [
     { sha: "4cbb3f55", iso: "2026-11-27T00:53:48+00:00", subject: "Cannon Chase: outer space mode" },
     { sha: "79d312f8", iso: "2026-11-26T21:10:46+00:00", subject: "Cannon Chase: one-tap shareable Gatch News clips" },
@@ -106,12 +109,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
     { sha: "7f95528e", iso: "2026-11-27T02:46:03+00:00", subject: "Vibe City: the Super Soaker leaves slippery puddles" },
     { sha: "483accc4", iso: "2026-11-27T00:44:31+00:00", subject: "City: red button in Warehouse 13 puts you in a bad guy's back seat as gunner" },
     { sha: "95a571f5", iso: "2026-11-26T22:43:09+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
     { sha: "8c552400", iso: "2026-11-26T22:43:04+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
     { sha: "4f9ab17d", iso: "2026-11-26T22:41:52+00:00", subject: "City marina: racing hydroplanes on a buoy course, and a phone helm for every boat" },
-    { sha: "0dd8c9f0", iso: "2026-11-26T22:40:29+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -467,6 +470,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "badf8d38", iso: "2026-09-30T20:45:00+00:00", subject: "Venus Rising: softer lanterns at night, lighter keel" },
     { sha: "99192bb2", iso: "2026-09-30T20:42:17+00:00", subject: "Venus Rising: night is a moment, not a stall" },
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
+  ],
+  "vibe-cup": [
+    { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
   ],
   "vibestar": [
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
