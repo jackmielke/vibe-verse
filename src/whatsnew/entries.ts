@@ -38,6 +38,15 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-27-moving-cards",
+    date: "2026-11-27",
+    emoji: "🎬",
+    title: "World cards now play a few seconds of the game",
+    body: "Point at a world on the front page (or scroll it to the middle of your phone screen) and you see it being played: a sunset jetpack flight over Vibe City, a kart race, a hoops game, Zombie Tag, Cannon Chase and more.",
+    tag: "update",
+    route: "/",
+  },
+  {
     id: "city-street-races",
     date: "2026-11-27",
     emoji: "🏁",

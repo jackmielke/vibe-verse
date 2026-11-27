@@ -26,7 +26,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { artFor } from "@/worlds/art";
-import { motionFor } from "@/worlds/motion";
+import { gifFor } from "@/worlds/motion";
 import { WORLDS, type WorldEntry } from "@/worlds/registry";
 import { sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport } from "@/lib/passport";
@@ -100,7 +100,8 @@ export function useHomeData(): HomeData {
       coin: { display: coin.display, balance: coin.balance, signedIn: coin.balance != null },
       issue,
       art: artFor,
-      motion: motionFor,
+      /* GIFs only: the themes draw clips with <img>, which cannot play an MP4. */
+      motion: gifFor,
       freshness: (key: string) => sinceLabel(updatedAt(key)),
     };
   }, [coin.display, coin.balance, issue]);

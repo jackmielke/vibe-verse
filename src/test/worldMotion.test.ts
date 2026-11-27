@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { WORLD_MOTION, motionFor } from "@/worlds/motion";
+import { FILMED, WORLD_MOTION, gifFor, isVideoClip, motionFor } from "@/worlds/motion";
 import { WORLD_ART } from "@/worlds/art";
 import { WORLDS } from "@/worlds/registry";
 
@@ -40,6 +40,25 @@ describe("world motion", () => {
   it("is undefined for anything without a recording", () => {
     expect(motionFor("terminal")).toBeUndefined();
     expect(motionFor("no-such-world")).toBeUndefined();
+  });
+
+  it("filmed loops are MP4s named after a real world that has a still", () => {
+    /* `world-film.mjs` writes `<key>.mp4` and the glob picks it up by name, so
+       a typo in a plan's `out` would be a clip for nobody. */
+    const keys = new Set(WORLDS.map((w) => w.key));
+    for (const [key, src] of Object.entries(FILMED)) {
+      expect(keys, `${key}.mp4 is not a world in the registry`).toContain(key);
+      expect(WORLD_ART[key], `${key} has a filmed clip but no still`).toBeTruthy();
+      expect(isVideoClip(src), `${key} should be an mp4`).toBe(true);
+    }
+  });
+
+  it("prefers the filmed loop, and keeps GIF-only callers on GIFs", () => {
+    for (const key of Object.keys(FILMED)) {
+      expect(motionFor(key)).toBe(FILMED[key]);
+      const gif = gifFor(key);
+      if (gif) expect(isVideoClip(gif)).toBe(false);
+    }
   });
 
   it("has COIL, which is the one world built to play itself", () => {

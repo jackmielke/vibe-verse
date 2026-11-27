@@ -18,12 +18,13 @@
  * slide in one by one on every sort change), and no dash where a number
  * should be.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { WORLDS, type WorldEntry } from "@/worlds/registry";
 import { artFor } from "@/worlds/art";
 import { motionFor } from "@/worlds/motion";
+import { MotionClip, useCentred } from "@/worlds/MotionClip";
 import { SORT_TABS, initialSort, rememberSort, sortWorlds, type WorldSort } from "@/worlds/sorting";
 import { readPassport, type Stamp } from "@/lib/passport";
 import {
@@ -208,13 +209,16 @@ export function CardArt({
   className?: string;
 }) {
   const [ever, setEver] = useState(false);
-  const [ready, setReady] = useState(false);
   /* The still fades in when its bytes land, over the accent tile, so a
      scrolling grid fills in softly instead of popping image by image. */
   const [stillReady, setStillReady] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  /* Phones have no hover: the card in the middle of the screen plays instead. */
+  const centred = useCentred(box);
+  const live = hovering || centred;
   useEffect(() => {
-    if (hovering) setEver(true);
-  }, [hovering]);
+    if (live) setEver(true);
+  }, [live]);
   const still = artFor(world.key);
   const reduce =
     typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -222,6 +226,7 @@ export function CardArt({
 
   return (
     <div
+      ref={box}
       className={`relative w-full overflow-hidden ${className}`}
       style={{ aspectRatio: aspect, background: `${world.accent}33` }}
     >
@@ -244,15 +249,7 @@ export function CardArt({
           {world.emoji}
         </div>
       )}
-      {clip && (
-        <img
-          src={clip}
-          alt=""
-          onLoad={() => setReady(true)}
-          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
-          style={{ opacity: ready && hovering ? 1 : 0 }}
-        />
-      )}
+      {clip && <MotionClip src={clip} visible={live} />}
     </div>
   );
 }

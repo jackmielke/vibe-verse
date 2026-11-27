@@ -11,7 +11,7 @@
  * added to the registry appears here, in the nav, in the picker and in the
  * passport at the same moment, which is the entire reason the registry exists.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ChevronDown, Search, X } from "lucide-react";
@@ -25,6 +25,7 @@ import {
 } from "@/worlds/sorting";
 import { artFor } from "@/worlds/art";
 import { motionFor } from "@/worlds/motion";
+import { MotionClip, useCentred } from "@/worlds/MotionClip";
 import { exactLabel, sinceLabel, updatedAt } from "@/worlds/freshness";
 import { passportProgress, readPassport, type Stamp } from "@/lib/passport";
 import VibeCoinMark from "@/components/VibeCoinMark";
@@ -129,9 +130,15 @@ function Card({
    */
   const [hovering, setHovering] = useState(false);
   const [everHovered, setEverHovered] = useState(false);
-  const [motionReady, setMotionReady] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  /* Phones have no hover: the card in the middle of the screen plays instead. */
+  const centred = useCentred(box);
+  const live = hovering || centred;
   /* Not `motion` — that is framer-motion's, and shadowing it turns every
      `<motion.div>` in this file into a property access on a string. */
+  useEffect(() => {
+    if (centred) setEverHovered(true);
+  }, [centred]);
   const clip = everHovered && !stillPreferred() ? motionFor(world.key) : undefined;
 
   return (
@@ -156,7 +163,7 @@ function Card({
         className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-background/40 transition-colors hover:border-transparent"
         style={{ boxShadow: `inset 0 0 0 1px ${world.accent}22` }}
       >
-        <div className="relative aspect-video shrink-0 overflow-hidden bg-black/50">
+        <div ref={box} className="relative aspect-video shrink-0 overflow-hidden bg-black/50">
           {art ? (
             <img
               src={art}
@@ -171,15 +178,7 @@ function Card({
               Mounted only once a pointer has been on the card, so the grid
               costs exactly what it did before — see `worlds/motion.ts` for why
               these cannot simply replace the stills. */}
-          {clip && (
-            <img
-              src={clip}
-              alt=""
-              onLoad={() => setMotionReady(true)}
-              className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
-              style={{ opacity: motionReady && hovering ? 1 : 0 }}
-            />
-          )}
+          {clip && <MotionClip src={clip} visible={live} />}
           {/* Scrim: the captures are bright, and the status pill has to stay
               readable over a white sky as well as a night city. */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />

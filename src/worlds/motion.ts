@@ -67,5 +67,35 @@ export const WORLD_MOTION: Record<string, string> = {
   run: runMotion,
 };
 
+/**
+ * Filmed loops: `src/assets/worlds/<key>.mp4`, picked up by filename.
+ *
+ * These come from `node scripts/world-film.mjs <key>`, which stops the world's
+ * clock and plays it frame by frame (keys held, camera swung), so even a world
+ * that draws two frames a second on the software renderer comes out as a
+ * smooth 24 fps loop. Unlike the GIFs above, a world does not need an attract
+ * mode to be in here; it needs a plan in `scripts/film/plans.mjs`. Filming a
+ * new one and committing the MP4 is the whole job: nothing to add here.
+ *
+ * About 100 to 300 KB each, so the same rule as the GIFs holds: fetched on
+ * hover (or, on a phone, when the card is in the middle of the screen), never
+ * on scroll.
+ */
+const filmed = import.meta.glob("/src/assets/worlds/*.mp4", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+export const FILMED: Record<string, string> = Object.fromEntries(
+  Object.entries(filmed).map(([path, url]) => [path.split("/").pop()!.replace(/\.mp4$/, ""), url]),
+);
+
 /** The moving version of a world's card, when there is one. */
-export const motionFor = (key: string): string | undefined => WORLD_MOTION[key];
+export const motionFor = (key: string): string | undefined => FILMED[key] ?? WORLD_MOTION[key];
+
+/** True for a filmed MP4 loop, which needs a `<video>`, not an `<img>`. */
+export const isVideoClip = (src: string): boolean => /\.mp4(\?|#|$)/i.test(src);
+
+/** Only the GIFs, for the places that can only draw an `<img>`. */
+export const gifFor = (key: string): string | undefined => WORLD_MOTION[key];
