@@ -22,6 +22,8 @@ import type { ReplayClip } from "@/cannonrun/replay";
 import { shareClip } from "@/cannonrun/share";
 import { openTransport, readBank, roomCode, writeBank, UPGRADES, UPGRADE_COST, type NetMode, type Transport, type Upgrades, type Wire } from "@/cannonrun/net";
 
+const ZOOMS = [1, 1.35, 1.7];
+
 type Screen = "story" | "comic" | "splash" | "garage" | "host" | "join" | "loading" | "playing" | "failed";
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -70,6 +72,10 @@ export default function CannonRun() {
 
   thanksRef.current = thanks;
   const [muted, setMuted] = useState(false);
+  // how far back the camera sits, remembered on this device
+  const [zoom, setZoomState] = useState<number>(() => { try { const z = Number(localStorage.getItem("cannonrun.zoom")); return ZOOMS.includes(z) ? z : window.matchMedia?.("(pointer: coarse)").matches ? 1.35 : 1; } catch { return 1; } });
+  const setZoom = (z: number): void => { setZoomState(z); gameRef.current?.setZoom(z); try { localStorage.setItem("cannonrun.zoom", String(z)); } catch { /* fine */ } };
+  useEffect(() => { if (screen === "playing") gameRef.current?.setZoom(zoom); }, [screen, zoom]);
   const [bank, setBank] = useState(() => readBank());
   const [earned, setEarned] = useState<number | null>(null);
   const [room, setRoom] = useState(hostCode || joinCode);
@@ -234,17 +240,24 @@ export default function CannonRun() {
           {fz ? <FinaleHud f={fz} phone={phone} mode={hud.mode} card={card} onStick={onStick} game={gameRef} /> : null}
 
           {/* Top left: the score, then one card per truck. */}
-          {!fz ? <div className="pointer-events-none absolute flex flex-col gap-2" style={{ left: "max(env(safe-area-inset-left), 12px)", top: "max(env(safe-area-inset-top), 60px)", width: phone ? 150 : 168 }}>
+          {!fz ? <div className={`pointer-events-none absolute flex flex-col ${phone ? "gap-1.5" : "gap-2"}`} style={{ left: "max(env(safe-area-inset-left), 12px)", top: "max(env(safe-area-inset-top), 60px)", width: phone ? (hud.riders.length > 1 ? 128 : 150) : 168 }}>
             <div className={`${card} px-3 py-2`}>
               <div className="flex items-baseline justify-between gap-2">
                 <div className="text-[22px] font-semibold leading-none tracking-tight text-[#ffd36a]" style={{ fontFamily: MONO }}>{hud.score.toLocaleString()}</div>
                 <div className="text-[13px] font-semibold text-[#4de0a8]" style={{ fontFamily: MONO }}>${hud.cash.toLocaleString()}</div>
               </div>
-              <div className="mt-1 text-[10px] text-white/45" style={{ fontFamily: MONO }}>
-                {(hud.meters / 1000).toFixed(1)} km · best {hud.best.toLocaleString()}
-              </div>
+              {phone && hud.riders.length > 1 ? null : (
+                <div className="mt-1 text-[10px] text-white/45" style={{ fontFamily: MONO }}>
+                  {(hud.meters / 1000).toFixed(1)} km · best {hud.best.toLocaleString()}
+                </div>
+              )}
             </div>
-            {hud.riders.map((r, i) => <RiderCard key={i} r={r} many={hud.riders.length > 1} card={card} />)}
+            {phone && hud.riders.length > 1 ? (
+              // two trucks on a phone: one slim card, a line each, so the road stays visible
+              <div className={`${card} px-2.5 py-1.5`}>
+                {hud.riders.map((r, i) => <SlimRider key={i} r={r} />)}
+              </div>
+            ) : hud.riders.map((r, i) => <RiderCard key={i} r={r} many={hud.riders.length > 1} card={card} />)}
           </div> : null}
 
           {/* Top centre: him. */}
@@ -282,7 +295,7 @@ export default function CannonRun() {
               </div>
             ) : null}
             </div>
-            {hud.toast ? <div style={phone ? { position: "fixed", left: 12, right: 12, top: hud.riders.length > 1 ? 330 : 262 } : undefined} className="rounded-full bg-white px-4 py-1.5 text-center text-[13px] font-semibold text-black shadow-lg">{hud.toast}</div> : null}
+            {hud.toast ? <div style={phone ? { position: "fixed", left: 12, right: 12, top: hud.riders.length > 1 ? 206 : 262 } : undefined} className="rounded-full bg-white px-4 py-1.5 text-center text-[13px] font-semibold text-black shadow-lg">{hud.toast}</div> : null}
             {hud.alert && !over ? <div className="animate-pulse rounded-lg bg-[#d8262a] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide shadow-lg ring-2 ring-white/70">{hud.alert}</div> : null}
             {hud.link === "lost" && !over ? <div className="rounded-full bg-[#ff5a4a] px-4 py-1.5 text-[12px] font-semibold">{guest ? "Lost the host. Waiting…" : "Your friend has gone quiet…"}</div> : null}
           </div> : null}
@@ -301,9 +314,12 @@ export default function CannonRun() {
             </div>
           ) : null}
 
-          <div className="absolute flex gap-2" style={{ left: phone ? undefined : "max(env(safe-area-inset-left), 12px)", right: phone ? "max(env(safe-area-inset-right), 12px)" : undefined, bottom: phone ? undefined : "max(env(safe-area-inset-bottom), 16px)", top: phone ? 120 : undefined }}>
+          <div className="absolute z-10 flex gap-2" style={{ left: phone ? undefined : "max(env(safe-area-inset-left), 12px)", right: phone ? "max(env(safe-area-inset-right), 12px)" : undefined, bottom: phone ? undefined : "max(env(safe-area-inset-bottom), 16px)", top: phone ? (hud.linda ? 162 : 120) : undefined }}>
             <button className={`${card} px-2.5 py-1.5 text-[12px]`} onClick={() => { const m = !muted; setMuted(m); gameRef.current?.setMuted(m); }}>
               {muted ? "🔇" : "🔊"}
+            </button>
+            <button className={`${card} px-2.5 py-1.5 text-[12px] font-semibold`} aria-label="Zoom out" onClick={() => setZoom(ZOOMS[(ZOOMS.indexOf(zoom) + 1) % ZOOMS.length])}>
+              🔍 {zoom === 1 ? "Zoom out" : `${zoom}x`}
             </button>
           </div>
 
@@ -666,6 +682,30 @@ function Backdrop({ children }: { children: React.ReactNode }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-y-auto px-6 py-8" style={{ background: "radial-gradient(ellipse at 50% 70%, #3a2a1c 0%, #0b0f1c 65%)" }}>
       <div className="w-full max-w-md text-center">{children}</div>
+    </div>
+  );
+}
+
+/** One truck in one line: name, hull, and three thin bars (truck, nitro, cannon). */
+function SlimRider({ r }: { r: RiderHud }) {
+  const bar = (v: number, c: string) => (
+    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+      <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(1, v)) * 100}%`, background: c }} />
+    </div>
+  );
+  return (
+    <div className="py-0.5">
+      <div className="flex items-center justify-between text-[9px] font-bold tracking-[0.14em]" style={{ color: r.color }}>
+        <span>{r.label}</span>
+        <span className="font-medium tracking-normal text-white/55" style={{ fontFamily: MONO }}>
+          {r.gone ? "gone" : r.out ? (r.respawn > 0 ? `out ${r.respawn}s` : "out") : `${Math.max(0, r.hull)}/${r.max}`}
+        </span>
+      </div>
+      <div className="mt-0.5 flex gap-1">
+        {bar(r.hull / r.max, r.hull / r.max > 0.35 ? "#4de0a8" : "#ff5a4a")}
+        {bar(r.boost, "#5ab4ff")}
+        {bar(r.reload, r.reload >= 1 ? "#ffd36a" : "#8a7a5a")}
+      </div>
     </div>
   );
 }

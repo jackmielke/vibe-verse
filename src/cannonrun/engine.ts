@@ -94,6 +94,8 @@ export interface CannonRun {
   hold(action: "boost", down: boolean): void;
   restart(): void;
   setMuted(m: boolean): void;
+  /** pull the chase camera back: 1 is the normal view, up to 1.8 */
+  setZoom(z: number): void;
   /** the Gatch News reel of this run so far: a clip per bulletin */
   replay(): ReplayClip[];
 }
@@ -2322,6 +2324,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const S3 = new THREE.Vector3();
   const P = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
+  let camZoom = 1;
   const camPos = new THREE.Vector3();
   const camLook = new THREE.Vector3();
   const wantPos = new THREE.Vector3();
@@ -2405,6 +2408,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       toWorld(f.s - 28, f.lat * 0.55, -2.6, wantLook);
       camS = f.s;
     }
+    // zoom out (Jack, Nov 2026, "zoom out option maybe?"): slide back along the line from where we look
+    if (phase !== "takeback" && phase !== "finale" && camZoom !== 1) wantPos.sub(wantLook).multiplyScalar(camZoom).add(wantLook);
     if (!camReady || dt >= 0.5) { camPos.copy(wantPos); camLook.copy(wantLook); camReady = true; }
     else {
       const k = phase === "takeback" ? ease(2.2) : ease(14);
@@ -3035,6 +3040,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       camReady = false;
     },
     setMuted(m) { muted = m; audio.mute(m); },
+    setZoom(z) { camZoom = Math.max(1, Math.min(1.8, z || 1)); },
     replay: () => (replay ? [...replay.clips] : []),
   };
 
