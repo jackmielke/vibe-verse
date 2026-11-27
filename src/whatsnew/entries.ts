@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-27-vibe-links",
+    date: "2026-11-27",
+    emoji: "⛳",
+    title: "Vibe Links: mini golf off Vibe Island",
+    body: "Cross the rope bridge behind Ninja's Palace to a floating green with six holes: a speed bump, a dogleg, a windmill, a bank shot, a volcano and pinball bumpers. Press E at any tee, aim with A and D, hold W and let go to putt. A good round pays Vibey Coins.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe Island",
+  },
+  {
     id: "city-street-races",
     date: "2026-11-27",
     emoji: "🏁",
