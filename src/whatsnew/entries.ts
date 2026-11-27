@@ -71,7 +71,7 @@ export const ENTRIES: WhatsNewEntry[] = [
     date: "2026-11-27",
     emoji: "🚀",
     title: "Cannon Chase goes to outer space",
-    body: "You swiped Mad Mort's blaster, and he boarded a rocket to get it back. Fly a beat-up saucer freighter down a glowing space lane while he chases you in a space wagon, a space tug, a monster rocket, a comet mixer, a star hauler and finally a three-legged Tripod. Switch on 🚀 Outer space on the Cannon Chase start screen.",
+    body: "You swiped Mad Mort's blaster, and he boarded a rocket to get it back. Fly a beat-up saucer freighter down a glowing space lane while he chases you in a space wagon, a space tug, a monster rocket, a comet mixer, a star hauler and finally a three-legged Tripod. Squadrons of four-wing starfighters swoop in on your side, his ball fighters scream up the lane at you, his arrowhead flagship looms behind him, and the old moon watches with a rocket stuck in its eye. Switch on 🚀 Outer space on the Cannon Chase start screen.",
     tag: "new",
     route: "/cannon-chase?space",
     world: "Cannon Chase",

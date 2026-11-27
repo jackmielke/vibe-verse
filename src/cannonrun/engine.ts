@@ -35,6 +35,7 @@ import {
   HOVER, buildFreighter, buildBlaster, buildRocket, spaceTrafficGeometry, asteroidGeometry, laneTexture, planetTexture, nebulaTexture,
   SPACE_TAUNTS, SPACE_L_TAUNTS, SPACE_COMMENTS, SPACE_RADIO, SPACE_IDLE_NEWS,
 } from "./space";
+import { createFleet, type Fleet } from "./fleet";
 import { createFinale, type Finale, type FinaleHud, type FinaleInput, type FinaleStage } from "./finale";
 
 export type Mode = "solo" | "duo" | "host" | "guest";
@@ -325,6 +326,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     nebulae.renderOrder = -9;
     scene.add(nebulae);
   }
+  // Space: starfighters on your side, ball fighters on his, his flagship behind him.
+  const fleet: Fleet | null = space ? createFleet(scene) : null;
   if (thanks && !space) {
     // a big orange harvest moon
     (moonDisc.material as THREE.MeshBasicMaterial).color.set(0xffa64a);
@@ -2418,6 +2421,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     sky.position.copy(camera.position);
     stars.position.copy(camera.position);
     if (space) nebulae.position.copy(camera.position);
+    fleet?.update(camS, time, camera);
     if (aurora) { auroraGroup.position.copy(camera.position); auroraMat.uniforms.uTime.value = time; }
     const h = heading(camS);
     tmp.set(-Math.sin(h) * 700 - 180 * Math.cos(h), 240, -Math.cos(h) * 700 + 180 * Math.sin(h));
@@ -2921,7 +2925,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let hudT = 0;
   let fps = 60;
   let disposed = false;
-  const tick = (dt: number): void => { if (isGuest) guestStep(dt); else step(dt); };
+  const tick = (dt: number): void => { if (isGuest) guestStep(dt); else step(dt); fleet?.advance(dt); };
   const hud = (): ChaseHud => {
     const t = target();
     return {
@@ -2982,6 +2986,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       canvas.removeEventListener("pointerdown", onDown);
       audio.stop();
       fin?.dispose();
+      fleet?.dispose();
       replay?.dispose();
       scene.traverse((x) => {
         const mm = x as THREE.Mesh;
@@ -3088,6 +3093,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     run: (n: number, dt = 1 / 60) => { for (let k = 0; k < n; k++) { tick(dt); draw(dt); } },
     snapshot: () => { draw(1); renderAll(); return canvas.toDataURL("image/jpeg", 0.9); },
     /** take Gatch News and the radio off the air, for clean frames and films */
+    fleet: (side: "ally" | "mort" = "ally", slow = 1) => fleet?.pass(side, slow),
+    fleetInfo: () => ({ cam: camera.position.toArray().map((v) => +v.toFixed(1)), passes: fleet?.info() ?? [] }),
     quiet: () => { news.on = 0; news.cd = 1e9; news.radioT = 0; news.radioCd = 1e9; },
     /** put a Gatch News bulletin on now */
     news: (headline = "BREAKING: STOLEN PIRATE CANNON ON ROUTE 66", sub = "Owner 'Mad Mort' in pursuit") => breaking(headline, sub, 8),
