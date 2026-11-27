@@ -107,8 +107,9 @@ back from the runner: `list` polls the GitHub API and updates rows.
 
 ## The Wizard
 
-A Mage on a rune circle on Vibe Island's lawn, north-west of the plaza (Y or
-the 🧙 pill anywhere on `/city`), who turns spoken or typed wishes into things
+A Mage on a rune circle on Vibe Island's lawn, north-west of the plaza (walk within 6 m
+for a "Talk to the Wizard" prompt, or 🧙 Wizard in the world menu, or Y on a
+keyboard; there is deliberately no always-on button, it cluttered phones), who turns spoken or typed wishes into things
 in the world for everybody, live. All of it is `src/wizard/` plus
 `supabase/functions/vibe-wizard/`.
 
