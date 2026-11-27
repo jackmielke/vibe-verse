@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "the-wizard",
+    date: "2026-11-27",
+    emoji: "🧙",
+    title: "Meet the Wizard of Vibe Island",
+    body: "Walk up to the Wizard on the lawn by the plaza, or press Y anywhere, and wish for something out loud or by typing. He conjures it right in front of you, and everybody on the island sees it appear live. Want a world of your own? Press Remix to copy the island into your own private version and share the link with friends.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe Island",
+  },
+  {
     id: "2026-11-27-vibe-summit",
     date: "2026-11-27",
     emoji: "🏔️",
