@@ -24,7 +24,7 @@ import {
 } from "@/vibecup/game";
 import { drawFrame, feedFx, fitView, newFx, PAD_COLORS, screenToWorld, type Fx, type View } from "@/vibecup/render";
 import { CupAudio } from "@/vibecup/audio";
-import { applySnap, cleanCode, CupRoom, matchGame, MAX_PER_SIDE, openTransport, roomCode, type Member, type NetMode, type Wire } from "@/vibecup/net";
+import { applySnap, BOARD, cleanCode, CupRoom, matchGame, MAX_PER_SIDE, openTransport, RoomBoard, roomCode, type Member, type NetMode, type OpenRoom, type Wire } from "@/vibecup/net";
 import { QrCode } from "@/oni/ui/QrCode";
 
 const MUTE_KEY = "vibecup.muted";
@@ -156,6 +156,7 @@ export default function VibeCup() {
   const [result, setResult] = useState<{ score: [number, number]; winner: TeamId | null; stats: Game["stats"] } | null>(null);
   const [net, setNet] = useState<NetUi | null>(null);
   const [name, setNameState] = useState<string>(() => read(NAME_KEY, { n: "" }).n || defaultName());
+  const [openRooms, setOpenRooms] = useState<OpenRoom[]>([]);
 
   const setScreen = useCallback((s: Screen) => {
     screenRef.current = s;
@@ -265,6 +266,7 @@ export default function VibeCup() {
   );
 
   const leaveRoom = useCallback(() => {
+    if (roomRef.current?.isHost) withdrawRoom(roomRef.current.code);
     roomRef.current?.leave();
     roomRef.current = null;
     setNet(null);
@@ -282,6 +284,50 @@ export default function VibeCup() {
     write(NAME_KEY, { n: v });
     roomRef.current?.rename(v.trim() || "Player");
     syncNet();
+  };
+
+  // The open-rooms board: listened to from the Online menu, shouted on by a room maker.
+  const boardWanted = (screen === "title" && prefs.mode === "online") || (!!net?.host && net.status === "ready");
+  useEffect(() => {
+    if (!boardWanted || isShot()) return;
+    let board: RoomBoard | null = null;
+    let dead = false;
+    let advertised = "";
+    const refresh = () => setOpenRooms(board ? board.list(roomRef.current?.code) : []);
+    const beat = () => {
+      const r = roomRef.current;
+      if (board && r?.isHost) {
+        const host = r.members.find((m) => m.id === r.id)?.name ?? "Player";
+        board.advertise(r.code, host, r.members.length, r.live);
+        advertised = r.code;
+      }
+      refresh();
+    };
+    void openTransport(netMode(), BOARD).then((tx) => {
+      if (!tx) return;
+      if (dead) {
+        tx.close();
+        return;
+      }
+      board = new RoomBoard(tx);
+      board.onChange = refresh;
+      beat();
+    });
+    const timer = window.setInterval(beat, 2000);
+    return () => {
+      dead = true;
+      window.clearInterval(timer);
+      if (board && advertised && !roomRef.current?.isHost) board.withdraw(advertised);
+      board?.close();
+    };
+  }, [boardWanted]);
+  // A room maker who leaves takes their room off the board.
+  const withdrawRoom = (code: string) => {
+    void openTransport(netMode(), BOARD).then((tx) => {
+      if (!tx) return;
+      tx.send({ t: "gone", i: code });
+      window.setTimeout(() => tx.close(), 500);
+    });
   };
 
   // Opened from an invite link: straight into the room.
@@ -718,6 +764,7 @@ export default function VibeCup() {
           onStart={() => start()}
           onHost={() => void openRoom(true, roomCode())}
           onJoin={(code) => void openRoom(false, cleanCode(code))}
+          openRooms={openRooms}
           record={record}
           touchUi={touchUi}
         />
@@ -904,6 +951,7 @@ function TitleCard({
   onStart,
   onHost,
   onJoin,
+  openRooms,
   record,
   touchUi,
 }: {
@@ -912,6 +960,7 @@ function TitleCard({
   onStart: () => void;
   onHost: () => void;
   onJoin: (code: string) => void;
+  openRooms: OpenRoom[];
   record: Record3;
   touchUi: boolean;
 }) {
@@ -958,6 +1007,36 @@ function TitleCard({
             >
               Make a room
             </button>
+            <div>
+              <div className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/55">OPEN ROOMS</div>
+              {openRooms.length ? (
+                <div className="space-y-1.5" data-testid="vibecup-open-rooms">
+                  {openRooms.slice(0, 5).map((r) => {
+                    const full = r.players >= MAX_PER_SIDE * 2;
+                    return (
+                      <button
+                        key={r.code}
+                        type="button"
+                        onClick={() => onJoin(r.code)}
+                        className="flex w-full items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-left hover:bg-white/15"
+                        data-testid="vibecup-open-room"
+                      >
+                        <span className="text-lg">⚽</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-black">{r.host}'s room</span>
+                          <span className="block text-[11px] text-white/55">
+                            {r.players} of {MAX_PER_SIDE * 2} in{r.live ? " · match on, you can watch and join the next" : ""}
+                          </span>
+                        </span>
+                        <span className={`rounded-xl px-3 py-1 text-xs font-black ${full ? "bg-white/10 text-white/60" : "bg-emerald-400 text-[#002016]"}`}>{full ? "Watch" : "Join"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-white/5 px-3 py-2.5 text-xs text-white/50">No open rooms right now. Make one and send your friends the link.</div>
+              )}
+            </div>
             <form
               className="flex gap-2"
               onSubmit={(e) => {

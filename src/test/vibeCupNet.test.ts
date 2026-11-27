@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { autopilot, setInput, step, type Game } from "@/vibecup/game";
-import { applySnap, cleanCode, CupRoom, matchGame, memoryHub, roomCode, snapshot, type MatchSetup, type Wire } from "@/vibecup/net";
+import { applySnap, cleanCode, CupRoom, RoomBoard, matchGame, memoryHub, roomCode, snapshot, type MatchSetup, type Wire } from "@/vibecup/net";
 
 function room(hub: ReturnType<typeof memoryHub>, clock: { t: number }, host: boolean, name: string, id: string) {
   return new CupRoom({ transport: hub.open(), code: "GOAL-ABC", host, name, id, now: () => clock.t });
@@ -32,7 +32,8 @@ describe("Vibe Cup online", () => {
         step(g, 1 / 60);
       }
     }
-    expect(b.players[4].x).toBeCloseTo(a.players[4].x, 1);
+    // Rounded to a millimetre on the wire, so they drift a little: the next state corrects it.
+    expect(Math.abs(b.players[4].x - a.players[4].x)).toBeLessThan(1);
   });
 
   it("guests join a room, get put on the smaller side, and can swap", () => {
@@ -148,5 +149,44 @@ describe("Vibe Cup online", () => {
       expect(g.ctrls[1].active).not.toBe(g.ctrls[3].active);
     }
     expect(goals).toBeGreaterThan(0);
+  });
+
+  it("a player left off the screen hands control to a team-mate near the ball", () => {
+    const g = matchGame({ seed: 4, clubs: ["volts", "rovers"], sides: [0] });
+    for (let i = 0; i < 120; i++) step(g, 1 / 60);
+    const c = g.ctrls[0];
+    // Strand our person in the far corner, with the ball at the other end.
+    const me = g.players[c.active];
+    g.ball.owner = -1;
+    Object.assign(g.ball, { x: 14, y: 0, vx: 0, vy: 0 });
+    Object.assign(me, { x: -22, y: 13, vx: 0, vy: 0 });
+    g.phase = "play";
+    const was = c.active;
+    for (let i = 0; i < 40; i++) {
+      setInput(g, 0, { mx: 0, my: 0, a: false, b: false, sprint: false });
+      step(g, 1 / 60);
+    }
+    expect(c.active).not.toBe(was);
+    const now = g.players[c.active];
+    expect(Math.hypot(now.x - g.ball.x, now.y - g.ball.y)).toBeLessThan(Math.hypot(me.x - g.ball.x, me.y - g.ball.y));
+  });
+
+  it("open rooms are listed on the board, and drop off when they close or go quiet", () => {
+    const hub = memoryHub();
+    const clock = { t: 0 };
+    const menu = new RoomBoard(hub.open(), () => clock.t);
+    const maker = new RoomBoard(hub.open(), () => clock.t);
+    maker.advertise("GOAL-ABC", "Jack", 1, false);
+    maker.advertise("CHIP-XYZ", "Maya", 4, true);
+    hub.flush();
+    expect(menu.list().map((r) => [r.code, r.host, r.players])).toEqual([
+      ["GOAL-ABC", "Jack", 1],
+      ["CHIP-XYZ", "Maya", 4],
+    ]);
+    maker.withdraw("GOAL-ABC");
+    hub.flush();
+    expect(menu.list().map((r) => r.code)).toEqual(["CHIP-XYZ"]);
+    clock.t += 8000;
+    expect(menu.list()).toEqual([]);
   });
 });

@@ -48,11 +48,24 @@ watch(phone, "phone");
 await phone.goto(`${BASE}/vibe-cup?room=${code}&net=local`, { waitUntil: "domcontentloaded" });
 await until(host, () => window.__vibecup.state().net?.members?.length === 2);
 await until(phone, () => window.__vibecup.state().net?.members?.length === 2);
+// A second friend finds the room on the Open rooms list instead of using the link.
+const friend = await ctx.newPage();
+await friend.setViewportSize({ width: 412, height: 860 });
+watch(friend, "friend");
+await friend.goto(`${BASE}/vibe-cup?net=local`, { waitUntil: "domcontentloaded" });
+await until(friend, () => !!window.__vibecup);
+await friend.click('[data-testid="vibecup-mode-online"]');
+await friend.waitForSelector('[data-testid="vibecup-open-room"]', { timeout: 15000 });
+await shot(friend, "0-friend-open-rooms");
+await friend.click('[data-testid="vibecup-open-room"]');
+await until(host, () => window.__vibecup.state().net?.members?.length === 3);
+await friend.fill('[data-testid="vibecup-name"]', "Sam");
 await phone.fill('[data-testid="vibecup-name"]', "Maya");
 await host.fill('[data-testid="vibecup-name"]', "Jack");
 await host.waitForTimeout(1500);
 console.log("host sees", JSON.stringify((await state(host)).net.members));
 console.log("phone sees", JSON.stringify((await state(phone)).net.members));
+console.log("friend sees", JSON.stringify((await state(friend)).net.members));
 await shot(host, "1-host-lobby");
 await shot(phone, "1-phone-lobby");
 
@@ -90,7 +103,10 @@ await shot(host, "2-host-running");
 // Let both play themselves to full time.
 await host.evaluate(() => window.__vibecup.auto(true));
 await phone.evaluate(() => window.__vibecup.auto(true));
+await friend.evaluate(() => window.__vibecup.auto(true));
 await host.waitForTimeout(12000);
+await shot(friend, "3-friend-match");
+console.log("friend", JSON.stringify((await state(friend)).score), "ctrl", (await state(friend)).net.myCtrl);
 const midH = await state(host);
 const midP = await state(phone);
 console.log("mid host", midH.score, midH.clock, "phone", midP.score, midP.clock, "rtt", midP.net.rtt);

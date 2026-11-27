@@ -153,6 +153,8 @@ export interface Controller {
   /** The last way the stick pointed, and how long ago: a tap of A often lands as the thumb lets go. */
   aim: number | null;
   aimAge: number;
+  /** Seconds this controller's player has been off the edge of the screen. */
+  far: number;
 }
 
 export type Phase = "kickoff" | "play" | "goal" | "over";
@@ -278,6 +280,7 @@ export function newGame(o: NewGameOpts = {}): Game {
       charge: 0,
       aim: null,
       aimAge: 0,
+      far: 0,
     })),
     kickoffTeam: 0,
     events: [],
@@ -338,6 +341,10 @@ const DIFF = {
   normal: { speed: 0.95, tackle: 1.6, react: 0.32, shoot: 1, keeper: 1 },
   hard: { speed: 1.07, tackle: 3.2, react: 0.16, shoot: 1.25, keeper: 1.3 },
 };
+
+/** Roughly what a phone shows around the ball, in metres: beyond this ellipse your player is off screen. */
+export const OFFSCREEN_X = 15;
+export const OFFSCREEN_Y = 9.5;
 
 const humanOf = (g: Game, i: number) => g.ctrls.find((c) => c.active === i) ?? null;
 const isHumanTeam = (g: Game, t: TeamId) => g.ctrls.some((c) => c.team === t);
@@ -648,6 +655,27 @@ function readControllers(g: Game, dt: number, kickoff: boolean) {
       }
       if (pressB) startSlide(p, stick ?? p.face);
     }
+    // Never lose your player off the screen: the camera follows the ball, so a
+    // person left behind by play is handed the free team-mate nearest to it.
+    if (!kickoff && !has && c.active === p.i) {
+      const ox = (p.x - b.x) / OFFSCREEN_X;
+      const oy = (p.y - b.y) / OFFSCREEN_Y;
+      c.far = ox * ox + oy * oy > 1 ? c.far + dt : 0;
+      if (c.far > 0.45) {
+        c.far = 0;
+        let best = -1;
+        let bd = dist(p.x, p.y, b.x, b.y);
+        for (const q of g.players) {
+          if (q.team !== c.team || q.role === "gk" || q.stun > 0 || humanOf(g, q.i)) continue;
+          const d = dist(q.x, q.y, b.x, b.y);
+          if (d < bd) {
+            bd = d;
+            best = q.i;
+          }
+        }
+        if (best >= 0) c.active = best;
+      }
+    } else c.far = 0;
     if (!inp.a) c.holdA = 0;
     if (!inp.b) {
       c.holdB = 0;
@@ -686,6 +714,28 @@ function think(g: Game, dt: number) {
       if (free && !near) chaser = free;
     }
     const cover = outfield.find((p) => p !== chaser && !humanOf(g, p.i));
+    // Defending: everybody else picks up a man, most dangerous first, goal side.
+    const marks = new Map<number, Player>();
+    if (!ours) {
+      const own = -goalX(t);
+      const threats = g.players
+        .filter((o) => o.team !== t && o.role !== "gk" && o !== carrier && dist(o.x, o.y, own, 0) < 24 && dist(o.x, o.y, own, 0) < dist(b.x, b.y, own, 0) + 2)
+        .sort((a, z) => dist(a.x, a.y, own, 0) - dist(z.x, z.y, own, 0));
+      const free = mine.filter((p) => p.role !== "gk" && p !== chaser && p !== cover && !humanOf(g, p.i) && (p.role !== "fw" || dist(p.x, p.y, own, 0) < L * 0.45));
+      for (const o of threats.slice(0, 2)) {
+        let best: Player | null = null;
+        let bd = Infinity;
+        for (const p of free) {
+          if (marks.has(p.i)) continue;
+          const d = dist(p.x, p.y, o.x, o.y);
+          if (d < bd) {
+            bd = d;
+            best = p;
+          }
+        }
+        if (best) marks.set(best.i, o);
+      }
+    }
 
     for (const p of mine) {
       if (humanOf(g, p.i) || p.stun > 0 || p.slide > 0) continue;
@@ -722,10 +772,55 @@ function think(g: Game, dt: number) {
           }
         }
       } else if (p === cover && !ours) {
-        // Goal-side of the ball.
+        // Goal-side of the ball, tighter the nearer it is to our goal.
         const own = -goalX(t);
-        tx = b.x + (own - b.x) * 0.35;
-        ty = b.y * 0.6;
+        const danger = clamp(1 - dist(b.x, b.y, own, 0) / 30, 0, 1);
+        if (danger > 0.7) {
+          // Close to goal: stand in the shooting lane, a couple of strides off the ball.
+          const gx = own - b.x;
+          const gy = -b.y;
+          const gl = Math.hypot(gx, gy) || 1;
+          const off = Math.min(gl * 0.5, 3);
+          tx = b.x + (gx / gl) * off;
+          ty = b.y + (gy / gl) * off;
+          speed = SPRINT * D.speed;
+        } else {
+          tx = b.x + (own - b.x) * 0.35;
+          ty = b.y * 0.6;
+        }
+      } else if (marks.has(p.i) && !ours) {
+        // Marking: between the man and our goal, a stride off him, reading where he is going.
+        const o = marks.get(p.i)!;
+        const own = -goalX(t);
+        const mx = o.x + o.vx * 0.3;
+        const my = o.y + o.vy * 0.3;
+        const gx = own - mx;
+        const gy = -my;
+        const gl = Math.hypot(gx, gy) || 1;
+        const gap = clamp(dist(mx, my, b.x, b.y) * 0.12, 1.2, 3.5);
+        tx = mx + (gx / gl) * gap;
+        ty = my + (gy / gl) * gap;
+        // Never so tight on a man that the middle opens up: lean towards the line from the ball to goal.
+        const lx = own - b.x;
+        const ly = -b.y;
+        const ll = Math.hypot(lx, ly) || 1;
+        const along = clamp(((tx - b.x) * lx + (ty - b.y) * ly) / ll, 0, ll);
+        const px = b.x + (lx / ll) * along;
+        const py = b.y + (ly / ll) * along;
+        tx += (px - tx) * 0.45;
+        ty += (py - ty) * 0.45;
+        speed = (dist(p.x, p.y, tx, ty) > 3 ? SPRINT : RUN) * D.speed;
+        if (!carrier && dist(p.x, p.y, b.x, b.y) < 4) {
+          tx = bx;
+          ty = by;
+          speed = SPRINT * D.speed;
+        }
+      } else if (ours && carrier) {
+        // Attacking without the ball: find a pocket of space the carrier can reach.
+        const sp = findSpace(g, p, carrier);
+        tx = sp.x;
+        ty = sp.y;
+        speed = (dist(p.x, p.y, tx, ty) > 4 ? SPRINT * 0.95 : RUN) * D.speed;
       } else {
         // Shape: the formation spot, pushed up or back with the ball, and
         // up the pitch when we have it.
@@ -744,6 +839,72 @@ function think(g: Game, dt: number) {
       steer(p, tx, ty, speed, dt);
     }
   }
+}
+
+/** How far the nearest opponent is from a spot, capped at 6 m. */
+function spaceAt(g: Game, team: TeamId, x: number, y: number) {
+  let m = 6;
+  for (const o of g.players) if (o.team !== team) m = Math.min(m, dist(o.x, o.y, x, y));
+  return m;
+}
+const openness = (g: Game, p: Player) => spaceAt(g, p.team, p.x, p.y);
+
+/** How much the other side gets in the way of a ball from `p` to (tx, ty). */
+function laneBlock(g: Game, p: Player, tx: number, ty: number) {
+  const d = Math.max(1, dist(p.x, p.y, tx, ty));
+  let blocked = 0;
+  for (const o of g.players) {
+    if (o.team === p.team) continue;
+    const t = clamp(((o.x - p.x) * (tx - p.x) + (o.y - p.y) * (ty - p.y)) / (d * d), 0, 1);
+    const od = dist(o.x, o.y, p.x + (tx - p.x) * t, p.y + (ty - p.y) * t);
+    if (od < 1.8) blocked += 1.8 - od;
+  }
+  return blocked;
+}
+
+/**
+ * Where a team-mate without the ball should run: an ideal spot for their
+ * role relative to the carrier, then the best of a handful of nearby spots
+ * by how much space there is, whether the pass is on, and not crowding
+ * anybody. Staying near where they already are keeps it from flickering.
+ */
+function findSpace(g: Game, p: Player, carrier: Player) {
+  const ad = attackDir(p.team);
+  const gx = goalX(p.team);
+  const side = p.fy >= 0 ? 1 : -1;
+  let bx: number;
+  let by: number;
+  if (p.role === "fw") {
+    bx = Math.min((gx - carrier.x) * ad, 13) * ad + carrier.x;
+    bx = clamp(bx, -L / 2 + 5, L / 2 - 5);
+    by = clamp(carrier.y * 0.3 + side * 4, -9, 9);
+  } else if (p.role === "mf") {
+    bx = carrier.x + ad * 5;
+    by = carrier.y + (carrier.y > 0 ? -7 : 7);
+  } else {
+    bx = carrier.x - ad * 7;
+    by = side * 9 + carrier.y * 0.25;
+  }
+  let best = { x: bx, y: by };
+  let bs = -Infinity;
+  for (const [ox, oy] of [[0, 0], [0, 4], [0, -4], [3, 0], [-3, 0], [3, 4], [3, -4], [-3, 4], [-3, -4]]) {
+    const x = clamp(bx + ox * ad, -L / 2 + 2.5, L / 2 - 2.5);
+    const y = clamp(by + oy, -W / 2 + 1.5, W / 2 - 1.5);
+    let crowd = 0;
+    for (const q of g.players) if (q.team === p.team && q !== p) crowd += Math.max(0, 5 - dist(q.x, q.y, x, y));
+    const score =
+      spaceAt(g, p.team, x, y) * 1.0 -
+      laneBlock(g, carrier, x, y) * 1.2 -
+      crowd * 0.5 -
+      dist(x, y, bx, by) * 0.12 -
+      dist(x, y, p.x, p.y) * 0.06 +
+      ((x - carrier.x) * ad > 0 ? 0.6 : 0);
+    if (score > bs) {
+      bs = score;
+      best = { x, y };
+    }
+  }
+  return best;
 }
 
 function carrierThink(g: Game, p: Player, dt: number) {
@@ -765,16 +926,29 @@ function carrierThink(g: Game, p: Player, dt: number) {
   }
   // Decide, a few times a second.
   if (p.cool <= 0 && rnd(g) < dt / D.react) {
-    if (toGoal < 15 * D.shoot + (p.role === "fw" ? 3 : 0) && Math.abs(p.y) < 10) {
-      doShoot(g, p, 0.35 + rnd(g) * 0.55, rnd(g) < 0.5 ? -1 : 1, (rnd(g) - 0.5) * 0.8);
+    const q = passTarget(g, p, null);
+    const lane = laneBlock(g, p, gx, 0);
+    // A real chance, not a hopeful punt that hands the other keeper the ball.
+    const range = 12 + D.shoot * 3 + (p.role === "fw" ? 2 : 0);
+    const inRange = Math.abs(p.y) < 10 && (toGoal < range || (toGoal < 21 && lane < 0.4 && rnd(g) < 0.25));
+    // A team-mate in a better spot: clearly nearer goal, unmarked, and the pass is on.
+    // Running into open grass beats a pass; only look up when somebody closes in.
+    const better =
+      q &&
+      (press > 0.6 || lane > 1) &&
+      dist(q.x, q.y, gx, 0) < toGoal - 5 &&
+      openness(g, q) > 2.5 &&
+      laneBlock(g, p, q.x, q.y) < 0.6;
+    if (inRange && (lane < 1.8 || toGoal < 9 || !better)) {
+      // Aim for the side the keeper is not covering.
+      const keeper = g.players.find((k) => k.team !== p.team && k.role === "gk")!;
+      const side = keeper.y > 0.3 ? -1 : keeper.y < -0.3 ? 1 : rnd(g) < 0.5 ? -1 : 1;
+      doShoot(g, p, 0.45 + rnd(g) * 0.5, side, (rnd(g) - 0.5) * 0.8);
       return;
     }
-    if (press > 2.2 || (press > 0.8 && rnd(g) < 0.5) || (p.role === "df" && rnd(g) < 0.5)) {
-      const q = passTarget(g, p, null);
-      if (q) {
-        doPass(g, p, Math.atan2(q.y - p.y, q.x - p.x), dist(p.x, p.y, q.x, q.y) > 18 ? 0.5 : 0);
-        return;
-      }
+    if (q && (press > 2.2 || (press > 0.8 && rnd(g) < 0.5) || better || (p.role === "df" && rnd(g) < 0.5))) {
+      doPass(g, p, Math.atan2(q.y - p.y, q.x - p.x), dist(p.x, p.y, q.x, q.y) > 18 ? 0.5 : 0);
+      return;
     }
   }
   // Dribble at goal, slipping away from whoever is closing in.

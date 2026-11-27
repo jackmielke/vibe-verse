@@ -47,7 +47,7 @@ export interface Snap {
   p: number[][];
   /** Ball: x, y, z, vx, vy, vz, spin, owner, lastTeam, lastPlayer, fire, target. */
   b: number[];
-  /** Controllers: active, mx, my, a, b, sprint, prevA, prevB, holdA, holdB, charge, aim (NaN = none), aimAge. */
+  /** Controllers: active, mx, my, a, b, sprint, prevA, prevB, holdA, holdB, charge, aim (NaN = none), aimAge, far. */
   c: number[][];
 }
 
@@ -68,7 +68,11 @@ export type Wire =
   | { t: "in"; i: string; k: number; x: number; y: number; f: number; pa: number; pb: number }
   /** The referee's match state, the events since the last one, and when each guest's last input arrived. */
   | { t: "st"; i: string; k: number; s: Snap; e: GameEvent[]; ack: Record<string, number> }
-  | { t: "bye"; i: string };
+  | { t: "bye"; i: string }
+  /** On the shared board: an open room (i is its code), who made it, how many are in, and whether a match is on. */
+  | { t: "ad"; i: string; n: string; c: number; live: boolean }
+  /** On the shared board: that room has closed. */
+  | { t: "gone"; i: string };
 
 const isWire = (m: unknown): m is Wire => !!m && typeof m === "object" && typeof (m as { t?: unknown }).t === "string" && typeof (m as { i?: unknown }).i === "string";
 
@@ -92,7 +96,7 @@ export function snapshot(g: Game): Snap {
     p: g.players.map((p) => [p.x, p.y, p.vx, p.vy, p.face, p.stun, p.slide, p.cool, p.kick, p.stamina, p.hold].map(r3)),
     b: [g.ball.x, g.ball.y, g.ball.z, g.ball.vx, g.ball.vy, g.ball.vz, g.ball.spin, g.ball.owner, g.ball.lastTeam, g.ball.lastPlayer, g.ball.fire, g.ball.target].map(r3),
     c: g.ctrls.map((c) =>
-      [c.active, c.input.mx, c.input.my, +c.input.a, +c.input.b, +c.input.sprint, +c.prevA, +c.prevB, c.holdA, c.holdB, c.charge, c.aim ?? NaN, c.aimAge].map((v) =>
+      [c.active, c.input.mx, c.input.my, +c.input.a, +c.input.b, +c.input.sprint, +c.prevA, +c.prevB, c.holdA, c.holdB, c.charge, c.aim ?? NaN, c.aimAge, c.far].map((v) =>
         Number.isNaN(v) ? -99 : r3(v),
       ),
     ),
@@ -132,6 +136,7 @@ export function applySnap(g: Game, s: Snap) {
     c.charge = v[10];
     c.aim = v[11] === -99 ? null : v[11];
     c.aimAge = v[12];
+    c.far = v[13] ?? 0;
   });
 }
 
@@ -476,6 +481,60 @@ export class CupRoom {
       this.lastHeard = -Infinity;
       this.onChange?.();
     }
+  }
+}
+
+// ---------------------------------------------------------------- the board
+
+export interface OpenRoom {
+  code: string;
+  host: string;
+  players: number;
+  live: boolean;
+  seen: number;
+}
+
+/** The channel every Vibe Cup menu listens on. */
+export const BOARD = "open-rooms";
+const AD_TTL_MS = 7000;
+
+/**
+ * "Open rooms": every room maker shouts its code on one shared channel every
+ * couple of seconds, and every menu lists what it heard lately. So joining a
+ * friend is a tap, and the code is only needed when the list cannot help.
+ */
+export class RoomBoard {
+  private rooms = new Map<string, OpenRoom>();
+  onChange?: () => void;
+  constructor(
+    private tx: Transport,
+    private now: () => number = () => Date.now(),
+  ) {
+    tx.receive((m) => {
+      if (m.t === "ad") {
+        this.rooms.set(m.i, { code: m.i, host: (m.n || "Player").slice(0, 16), players: Math.max(0, Math.min(MAX_PER_SIDE * 2, m.c | 0)), live: !!m.live, seen: this.now() });
+        this.onChange?.();
+      } else if (m.t === "gone") {
+        if (this.rooms.delete(m.i)) this.onChange?.();
+      }
+    });
+  }
+  advertise(code: string, host: string, players: number, live: boolean) {
+    this.tx.send({ t: "ad", i: code, n: host, c: players, live });
+  }
+  withdraw(code: string) {
+    this.tx.send({ t: "gone", i: code });
+  }
+  /** Rooms heard from lately, ones with space first, then the newest. */
+  list(except?: string): OpenRoom[] {
+    const now = this.now();
+    for (const [k, r] of this.rooms) if (now - r.seen > AD_TTL_MS) this.rooms.delete(k);
+    return [...this.rooms.values()]
+      .filter((r) => r.code !== except)
+      .sort((a, z) => +(a.players >= MAX_PER_SIDE * 2) - +(z.players >= MAX_PER_SIDE * 2) || z.seen - a.seen);
+  }
+  close() {
+    this.tx.close();
   }
 }
 
