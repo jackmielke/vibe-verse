@@ -92,12 +92,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "34300b82", iso: "2026-11-27T03:25:04+00:00", subject: "Haymaker: a camera boxing game where the opponent stands in your room" },
   ],
   "cannon-run": [
+    { sha: "1da6f4b5", iso: "2026-11-27T04:21:27+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "d71f0449", iso: "2026-11-27T04:21:26+00:00", subject: "Cannon Chase space: starfighter squadrons, ball fighters, Mort's flagship and the old moon" },
+    { sha: "c1bb3750", iso: "2026-11-27T03:58:48+00:00", subject: "Cannon Chase: tidy two-player phone HUD, add a zoom out button" },
     { sha: "4cbb3f55", iso: "2026-11-27T00:53:48+00:00", subject: "Cannon Chase: outer space mode" },
     { sha: "79d312f8", iso: "2026-11-26T21:10:46+00:00", subject: "Cannon Chase: one-tap shareable Gatch News clips" },
     { sha: "70a89924", iso: "2026-11-26T19:00:40+00:00", subject: "Cannon Chase: the highlight reel is now the start screen" },
-    { sha: "8b08c5a1", iso: "2026-11-26T18:46:28+00:00", subject: "Cannon Chase start-screen looks: add Read the story, drop the copy that promised an ending" },
-    { sha: "f11f9fbd", iso: "2026-11-26T18:42:00+00:00", subject: "Cannon Chase: endless chase, Gatch News replay, read-the-story book" },
-    { sha: "3206e3c6", iso: "2026-11-26T16:45:22+00:00", subject: "Cannon Chase: three new face styles for Mort and Linda, behind ?face=" },
   ],
   "characters": [
     { sha: "991bdec5", iso: "2026-07-09T00:55:22+00:00", subject: "🫂 New arrivals land in the world, near people — not stranded on Vibe Island" },
@@ -109,12 +109,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
+    { sha: "bb4c4ad1", iso: "2026-11-27T04:07:48+00:00", subject: "Merge origin/main" },
+    { sha: "3304a557", iso: "2026-11-27T04:06:26+00:00", subject: "Vibe City: Paintball Marker in Vibe Arms" },
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
     { sha: "7f95528e", iso: "2026-11-27T02:46:03+00:00", subject: "Vibe City: the Super Soaker leaves slippery puddles" },
     { sha: "483accc4", iso: "2026-11-27T00:44:31+00:00", subject: "City: red button in Warehouse 13 puts you in a bad guy's back seat as gunner" },
     { sha: "95a571f5", iso: "2026-11-26T22:43:09+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
-    { sha: "8c552400", iso: "2026-11-26T22:43:04+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
-    { sha: "4f9ab17d", iso: "2026-11-26T22:41:52+00:00", subject: "City marina: racing hydroplanes on a buoy course, and a phone helm for every boat" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -407,6 +407,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "a5284faf", iso: "2026-11-26T17:02:35+00:00", subject: "Added a ride-on lawnmower on the island lawn, next to the go-karts. Type" },
     { sha: "e5000ad1", iso: "2026-11-26T07:52:49+00:00", subject: "Thanksgiving on Vibe Island: a turkey to ride, a parade, harvest dressing and falling leaves" },
     { sha: "09531b8e", iso: "2026-11-25T20:07:55+00:00", subject: "Add body stickers on Vibe Island, visible to other players" },
+  ],
+  "solitaire": [
+    { sha: "03961c07", iso: "2026-11-27T04:21:58+00:00", subject: "Solitaire: Klondike and FreeCell, five looks, made for a phone" },
   ],
   "space": [
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
