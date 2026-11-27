@@ -124,7 +124,25 @@ export const PLANS = {
       if (i >= 0 && i % 24 === 0) await t.eval(() => { window.__chase.aim(); window.__chase.fire(); });
     },
   },
-  airplane: shot("/airplane?shot", { hold: ["w"] }),
+  /* Flight 209: from the cockpit on short final, Chicago and the approach lights ahead. */
+  airplane: {
+    route: "/airplane?shot=1",
+    warmup: 15000,
+    async setup(t) {
+      await t.page.waitForFunction(() => window.__flight209?.ctx?.services, null, { timeout: 120000 });
+      await t.eval(() => {
+        const svc = window.__flight209.ctx.services;
+        const V = svc.flight.state.position.constructor;
+        const FT = 0.3048;
+        svc.flight.place({ position: new V(-3900, 204.8 + 660 * FT, 0), heading: Math.PI / 2, ias: 75, flapIndex: 4, gearDown: true });
+        svc.flight.state.flapAngle = 40;
+        svc.camera.release();
+        svc.camera.setMode("cockpit", { snap: true });
+        // Lightning is random and turns whole frames white; keep it out.
+        svc.sky.strike = () => {};
+      });
+    },
+  },
   /* Mort's Maze: a fresh game on its own autopilot. (Its ?shot mode
      is a paused still, so it is no use here.) */
   "mort-maze": {
@@ -196,7 +214,7 @@ export const PLANS = {
       if (i === 70) await t.hold("w");
     },
   },
-  trek: shot("/trek?shot", { hold: ["w"] }),
+  "trek": walk("/trek?shot"),
   deep: shot("/deep?shot", { hold: ["w"] }),
   golf: shot("/golf?shot"),
   coil: shot("/coil?shot"),
@@ -206,17 +224,83 @@ export const PLANS = {
   fnaf: shot("/fnaf?shot"),
   sf: shot("/sf?shot", { warmup: 40000 }),
   frisco: shot("/frisco?shot", { warmup: 30000 }),
-  "san-palmas": shot("/san-palmas?shot", { warmup: 30000 }),
-  "splash-royale": shot("/splash-royale?shot", { hold: ["w"] }),
-  "drop-zero": shot("/drop-zero?shot", { hold: ["w"] }),
+  /* San Palmas: dropped 180 m over the city in a wingsuit. */
+  "san-palmas": {
+    route: "/san-palmas?shot",
+    warmup: 20000,
+    async setup(t) {
+      await t.page.waitForFunction(() => window.__palmasReady === true, null, { timeout: 180000 });
+      await t.eval(() => {
+        const p = window.__palmas.ctx.services.player;
+        const d = p.camera.getWorldDirection(p.position.clone());
+        d.y = 0; d.normalize();
+        p.teleport(p.position.clone().addScaledVector(d, -60).setY(p.position.y + 180));
+        p.velocity.copy(d.multiplyScalar(45)).setY(-8);
+      });
+      await t.wait(400);
+      await t.press("KeyF");
+    },
+  },
+  "splash-royale": royale("/splash-royale?shot"),
+  "drop-zero": royale("/drop-zero?shot"),
   "home-alone": shot("/house-rules?shot", { hold: ["w"] }),
-  agentocracy: shot("/agentocracy?shot"),
-  phangan: shot("/phangan?shot", { hold: ["w"] }),
-  "beck-road": shot("/beck-road?shot", { hold: ["w"] }),
+  "agentocracy": walk("/agentocracy?shot"),
+  "phangan": walk("/phangan?shot"),
+  "beck-road": walk("/beck-road?shot"),
   dipsea: shot("/dipsea?shot", { hold: ["w"] }),
-  dunes: shot("/dunes?shot", { hold: ["w"] }),
-  goggles: shot("/goggles?shot"),
+  "dunes": walk("/dunes?shot"),
+  "goggles": walk("/goggles?shot"),
 };
+
+/**
+ * A player walking and looking around: W held, the mouse dragged slowly to one
+ * side so the camera pans instead of marching into the first wall.
+ */
+function walk(route, { warmup = 15000, keys = ["w"], turn = 4 } = {}) {
+  return {
+    route,
+    warmup,
+    async setup(t) {
+      await t.click();
+    },
+    async input(t, i) {
+      if (i === -DEFAULTS.preroll) await t.hold(...keys);
+      if (i >= -DEFAULTS.preroll) await t.look(turn, 0, true);
+    },
+  };
+}
+
+/**
+ * Drop Zero and Splash Royale: their ?shot mode is the island from the bus.
+ * Skip to the live match, take the pointer (input is gated on it), then run
+ * and turn, firing now and then.
+ */
+function royale(route) {
+  return {
+    route,
+    warmup: 15000,
+    async setup(t) {
+      await t.page.waitForFunction(() => window.__dzReady === true, null, { timeout: 180000 });
+      await t.eval(() => window.__dz.ctx.services.match.skipToLive());
+      await t.page.waitForFunction(() => {
+        const s = window.__dz.ctx.services;
+        return s.match.phase === "live" && s.player.state === "ground";
+      }, null, { timeout: 240000 });
+      await t.eval(() => {
+        const c = document.querySelector("canvas");
+        c?.addEventListener("click", () => c.requestPointerLock?.(), { once: true });
+      });
+      await t.click();
+      await t.page.waitForFunction(() => window.__dz.ctx.input.locked === true, null, { timeout: 20000 }).catch(() => {});
+    },
+    async input(t, i) {
+      if (i === -DEFAULTS.preroll) await t.hold("w", "Shift");
+      await t.look(5, 0, false);
+      if (i > 0 && i % 30 === 0) await t.page.mouse.down();
+      if (i > 0 && i % 30 === 12) await t.page.mouse.up();
+    },
+  };
+}
 
 /**
  * The common case: a world with a `?shot` mode (menus hidden, something

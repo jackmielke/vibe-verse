@@ -36,7 +36,7 @@ import { PLANS, DEFAULTS } from "./film/plans.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-const keys = args.filter((a) => !a.startsWith("--"));
+const keys = args.filter((a, i) => !a.startsWith("--") && !["--out", "--seconds"].includes(args[i - 1]));
 const KEEP = args.includes("--keep");
 const ALL = args.includes("--all");
 const OUTDIR = (() => {
@@ -107,6 +107,9 @@ const results = [];
 
 async function film(key) {
   const plan = { ...DEFAULTS, ...PLANS[key] };
+  // `--seconds 1.5` for a quick probe take.
+  const si = args.indexOf("--seconds");
+  if (si >= 0) plan.seconds = Number(args[si + 1]);
   const scratch = join(tmpdir(), `world-film-${key}`);
   rmSync(scratch, { recursive: true, force: true });
   mkdirSync(scratch, { recursive: true });
