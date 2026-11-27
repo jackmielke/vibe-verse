@@ -132,6 +132,12 @@ export interface MayhemCtx {
   grounded: boolean;
   /** The bad guy whose roof you are riding on, by id, or null. */
   riding: number | null;
+  /**
+   * Riding inside his car as the gunner, shooting out of the back window.
+   * `yaw` (the avatar's) is then where you aim, and you get the rifle even
+   * if you have never bought a gun.
+   */
+  gunner?: boolean;
 }
 
 /** A bad guy's car, for seating a rider on its roof and finding it. */
@@ -238,6 +244,12 @@ export interface Mayhem {
    * happened: "ok", "full" at `MAX_BAD`, or "nocar" when no car is near.
    */
   summon(): "ok" | "full" | "nocar";
+  /**
+   * The warehouse's red button: a bad guy to ride with, right now. The one
+   * already out there nearest (x, z), or a fresh one out of the warehouse if
+   * nobody is. His id, or null if none could be had.
+   */
+  board(x: number, z: number): number | null;
   /** The hideout pad on the roof, once placed: [x, y, z]. */
   hideout(): [number, number, number] | null;
   /** Every bad guy on the loose. The array is fresh each call. */
@@ -646,6 +658,9 @@ interface Bad extends Driver {
   tag: THREE.Sprite;
 }
 
+/** What the back-seat gunner shoots with when he has not bought a gun. */
+const GUNNER_GUN: GunKind = "rifle";
+
 /** Seconds from the roof to the driver's seat. */
 const JUMP_T = 1.6;
 
@@ -987,12 +1002,14 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
 
   // ---- HUD -------------------------------------------------------------
   let lastHud = "";
+  /** Riding as the gunner this frame, which hands you a loaner rifle. */
+  let gunnerNow = false;
   const hud = () => {
     const h: MayhemHud = {
       stars: starsFor(heat),
       forgiveIn: starsFor(heat) > 0 ? Math.max(0, Math.ceil(FORGIVE_AFTER - quiet)) : null,
       cops: cops.filter((c) => c.dead === 0).length,
-      gun,
+      gun: gun ?? (gunnerNow ? GUNNER_GUN : null),
       owned: ALL_GUNS.filter((k) => owned.has(k)),
       bads: bads.length,
       bombs: hasBombs ? bombsInHand : null,
@@ -1841,14 +1858,20 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       // The gun in your hand, and the trigger.
       for (const k of ALL_GUNS) inHand[k].visible = gun === k && !ctx.driving;
       shotCool = Math.max(0, shotCool - dt);
-      if (gun && ctx.firing && shotCool <= 0) {
-        shotCool = GUNS[gun].interval;
-        if (ctx.driving) {
+      gunnerNow = !!ctx.gunner && ctx.riding !== null;
+      const held = gun ?? (gunnerNow ? GUNNER_GUN : null);
+      if (held && ctx.firing && shotCool <= 0) {
+        shotCool = GUNS[held].interval;
+        if (gunnerNow) {
+          // Out of the back window: a little above the seat, behind the head.
+          const p = ctx.player;
+          shoot(blocked, held, p.x + Math.sin(ctx.yaw) * 1.2, p.y + 1.05, p.z + Math.cos(ctx.yaw) * 1.2, ctx.yaw);
+        } else if (ctx.driving) {
           const d = ctx.driving;
-          shoot(blocked, gun, d.x + Math.sin(d.yaw) * 2.4, d.y + 1.1, d.z + Math.cos(d.yaw) * 2.4, d.yaw);
+          shoot(blocked, held, d.x + Math.sin(d.yaw) * 2.4, d.y + 1.1, d.z + Math.cos(d.yaw) * 2.4, d.yaw);
         } else {
           const p = ctx.player;
-          shoot(blocked, gun, p.x + Math.sin(ctx.yaw) * 0.8, p.y + 1.15, p.z + Math.cos(ctx.yaw) * 0.8, ctx.yaw);
+          shoot(blocked, held, p.x + Math.sin(ctx.yaw) * 0.8, p.y + 1.15, p.z + Math.cos(ctx.yaw) * 0.8, ctx.yaw);
         }
       }
       for (const t of tracers) {
@@ -2080,6 +2103,16 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       quiet = 0;
     },
     summon,
+    board(x, z) {
+      let best: Bad | null = null;
+      for (const b of bads) {
+        if (b.hp <= 0) continue;
+        if (!best || Math.hypot(b.x - x, b.z - z) < Math.hypot(best.x - x, best.z - z)) best = b;
+      }
+      if (best) return best.id;
+      if (summon() !== "ok") return null;
+      return bads[bads.length - 1]?.id ?? null;
+    },
     hideout: () => hideoutAt,
     bads: () => bads.map(seatOf),
     seat(id) {

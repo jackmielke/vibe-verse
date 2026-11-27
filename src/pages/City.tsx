@@ -487,10 +487,16 @@ export default function City() {
     nearBad: false,
     /** On a bad guy's roof right now. */
     ridingBad: false,
+    /** Next to the warehouse's red ride-along button. */
+    nearRideButton: false,
+    /** In a bad guy's back seat, shooting out of the rear window. */
+    gunner: false,
   });
   /** E on the hideout pad, F next to a bad guy: what the buttons do. */
   const badSummonRef = useRef<(() => void) | null>(null);
   const badRideRef = useRef<(() => void) | null>(null);
+  /** The red button in the warehouse: straight into a bad guy's back seat. */
+  const rideButtonRef = useRef<(() => void) | null>(null);
   // Persistent ✦ Vibecoin balance — source of truth. Loaded from
   // `users.vibecoin_balance` for signed-in users, or localStorage for guests.
   // Incremented when collecting coins, decremented at the shop, debounced-synced.
@@ -4010,6 +4016,10 @@ export default function City() {
         badSummonRef.current?.();
         return;
       }
+      if (e.code === "KeyE" && !e.repeat && nearRideButton) {
+        rideButtonRef.current?.();
+        return;
+      }
       if (e.code === "KeyT") {
         e.preventDefault();
         arrivalStart = 0;
@@ -5389,12 +5399,24 @@ export default function City() {
     let ridingBad: number | null = null;
     let nearBadNow: number | null = null;
     let atHideout = false;
+    /** Riding inside the car as its back-seat gunner, in first person. */
+    let gunner = false;
+    /** His car's heading last frame, so the view turns with the car. */
+    let gunnerCarYaw = 0;
+    let nearRideButton = false;
+    const RIDE_BUTTON = hideouts.rideButton;
+    /** Where the gunner sits: the back seat, a little behind the middle. */
+    const gunnerSeat = (s: { x: number; z: number; yaw: number }) => ({
+      x: s.x - Math.sin(s.yaw) * 0.85,
+      y: 0.3,
+      z: s.z - Math.cos(s.yaw) * 0.85,
+    });
     badSummonRef.current = () => {
       const r = mayhem.summon();
       if (r === "ok") {
         soundsRef.current?.thud?.(0.6);
         toast("🦹 A bad guy is on the loose", {
-          description: "He jumped off the roof into a car, and the police are already after him. Catch up and press F to ride on his roof.",
+          description: "He just tore out of the warehouse in an orange car, and the police are already after him. Catch up and press F to ride on his roof, or hit the red button inside the warehouse to ride shotgun.",
         });
       } else if (r === "full") {
         toast("🦹 Three bad guys are already out there", { description: "Wait for one of them to blow up." });
@@ -5402,10 +5424,33 @@ export default function City() {
         toast("No cars nearby to steal", { description: "Try again in a moment." });
       }
     };
+    rideButtonRef.current = () => {
+      if (ridingBad !== null || drivingKartRef.current >= 0 || activeMountRef.current) return;
+      const id = mayhem.board(player.position.x, player.position.z);
+      const s = id === null ? null : mayhem.seat(id);
+      if (id === null || !s) {
+        toast("🔴 Nobody to ride with", { description: "Try again in a moment." });
+        return;
+      }
+      soundsRef.current?.thud?.(0.6);
+      ridingBad = id;
+      gunner = true;
+      gunnerCarYaw = s.yaw;
+      // Facing out of the back window to start with.
+      camYaw = s.yaw;
+      camPitch = 0.05;
+      mayhem.crime(1);
+      toast("🔴 You're riding shotgun", {
+        description: isTouch
+          ? "Drag to aim out of the back window and hold the fire button. Hop out when you've had enough."
+          : "Drag to aim out of the back window, hold R or Q to shoot at the police. F hops out.",
+      });
+    };
     badRideRef.current = () => {
       if (ridingBad !== null) {
         const s = mayhem.seat(ridingBad);
         ridingBad = null;
+        gunner = false;
         // Off the side, carrying the car's speed.
         if (s) {
           const rx = Math.cos(s.yaw);
@@ -5497,7 +5542,8 @@ export default function City() {
         badPad: atHideout,
         nearBad: nearBadNow !== null,
         ridingBad: ridingBad !== null,
-
+        nearRideButton,
+        gunner: ridingBad !== null && gunner,
       });
       // Sky-island mini games: start prompt + live status line.
       const ng = skyGames.nearGame(player.position);
@@ -6377,6 +6423,19 @@ export default function City() {
         const s = mayhem.seat(ridingBad);
         if (!s) {
           ridingBad = null;
+          gunner = false;
+        } else if (gunner) {
+          // In the back seat. The view turns with the car.
+          const g = gunnerSeat(s);
+          pos.set(g.x, g.y, g.z);
+          vel.set(0, 0, 0);
+          onGround = false;
+          peakY = pos.y;
+          let turn = s.yaw - gunnerCarYaw;
+          turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+          camYaw += turn;
+          gunnerCarYaw = s.yaw;
+          modelYaw = camYaw + Math.PI;
         } else {
           pos.set(s.x, s.y, s.z);
           vel.set(0, 0, 0);
@@ -7434,13 +7493,18 @@ export default function City() {
             throwing: enteredRef.current && (keys.has("KeyX") || touchThrowRef.current),
             grounded: onGround && knockdown <= 0 && !activeMountRef.current,
             riding: ridingBad,
+            gunner: ridingBad !== null && gunner,
           });
           if (ridingBad !== null) {
             const s = mayhem.seat(ridingBad);
-            if (s) player.position.set(s.x, s.y, s.z);
+            if (s && gunner) {
+              const g = gunnerSeat(s);
+              player.position.set(g.x, g.y, g.z);
+            } else if (s) player.position.set(s.x, s.y, s.z);
             else {
               // His car went up with you on it.
               ridingBad = null;
+              gunner = false;
               vel.set((Math.random() - 0.5) * 8, 9, (Math.random() - 0.5) * 8);
               onGround = false;
             }
@@ -7449,6 +7513,8 @@ export default function City() {
           const pp = player.position;
           atHideout = !!hq && drivingKartRef.current < 0 && ridingBad === null &&
             Math.hypot(pp.x - hq[0], pp.z - hq[2]) < 3.2 && Math.abs(pp.y - hq[1]) < 2.5;
+          nearRideButton = ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current &&
+            Math.hypot(pp.x - RIDE_BUTTON[0], pp.z - RIDE_BUTTON[2]) < 2.6 && pp.y < 3;
           nearBadNow = null;
           if (ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current) {
             for (const b of mayhem.bads()) {
@@ -8279,6 +8345,18 @@ export default function City() {
           if (shot) {
             camera.position.copy(shot.eye);
             camera.lookAt(shot.look);
+            modelHolder.visible = false;
+          } else if (ridingBad !== null && gunner) {
+            // First person from the back seat, looking where you aim.
+            const dx = -Math.sin(camYaw);
+            const dz = -Math.cos(camYaw);
+            const pitch = THREE.MathUtils.clamp(camPitch - 0.12, -0.5, 0.6);
+            camera.position.set(pos.x, pos.y + 1.0, pos.z);
+            camera.lookAt(
+              pos.x + dx * Math.cos(pitch) * 10,
+              pos.y + 1.0 - Math.sin(pitch) * 10,
+              pos.z + dz * Math.cos(pitch) * 10,
+            );
             modelHolder.visible = false;
           }
           if (camera.fov !== fov) {
@@ -10388,6 +10466,17 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-rose-300 font-semibold"
             >
               {hud.ridingBad ? `🤸 Hop off${isTouch ? "" : " (F or Space)"}` : `🦹 Ride with the bad guy${isTouch ? "" : " (F)"}`}
+            </button>
+          )}
+          {hud.nearRideButton && (
+            <button
+              onClick={(e) => {
+                rideButtonRef.current?.();
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-rose-300 font-semibold"
+            >
+              🔴 Press the red button{isTouch ? "" : " (E)"} · ride shotgun with a bad guy
             </button>
           )}
           {(hud.nearSwing || hud.swinging) && (
