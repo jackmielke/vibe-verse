@@ -105,6 +105,39 @@ back from the runner: `list` polls the GitHub API and updates rows.
   after the fence check, so the agent never touches it, two builds can never
   conflict over it, and an undo takes the entry out with the change.
 
+## The Wizard
+
+A Mage on a rune circle on Vibe Island's lawn, north-west of the plaza (Y or
+the 🧙 pill anywhere on `/city`), who turns spoken or typed wishes into things
+in the world for everybody, live. All of it is `src/wizard/` plus
+`supabase/functions/vibe-wizard/`.
+
+- **A wish is data, never code.** `spec.ts` (in the function folder, imported
+  by the browser too) is the whole format: things made of primitives with a
+  little motion, sanitised on the way in *and* on the way out. That is why a
+  stranger's wish can be drawn on everybody's machine.
+- **The world is the table.** `wizard_edits` rows are folded in id order
+  (`fold`) into what is standing; every client subscribes to
+  `postgres_changes` on its world, so a grant (INSERT) or an undo (UPDATE)
+  reaches everyone. `wizard_worlds` holds `commons` (the shared island) and
+  remixes: a fork copies the folded state into a new world only that device
+  can wish into, visited by `/city?world=<id>`.
+- **Two minds.** `gpt-5.4-mini` hears every wish (about 2 to 8 s) and grants,
+  refuses or escalates; an escalation re-asks with `tier: "smart"`, which is
+  Claude Opus through OpenRouter (about 60 s) while the HUD says "consulting
+  the ancient scrolls". Moderation runs first, so gore never reaches a model.
+  `wizard_requests` (service role only) logs every ask with its verdict, and
+  is what the rate limit counts.
+- **No real lights in a wish.** A `light` is a halo sprite. A PointLight would
+  change the light count of every material and recompile the whole city.
+- **Checking it here:** the sandbox cannot reach Supabase, so
+  `/city?wizard=local` runs offline and `window.__wizard.apply(ops)` (relative,
+  like the model writes) or `.rows([...])` (stored rows) draws exactly what a
+  grant would; `node scripts/wizard-shot.mjs` photographs it. The function was
+  verified from inside the database with `pg_net`.
+- Device ids are capabilities (undo, editing your fork), so only their
+  SHA-256 is stored and the tables are public to read.
+
 ## What's New
 
 `/whats-new` is the player-facing changelog, reachable from the ✨ New chip in

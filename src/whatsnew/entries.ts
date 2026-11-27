@@ -48,6 +48,27 @@ export const ENTRIES: WhatsNewEntry[] = [
     world: "Vibe City",
   },
   {
+    id: "the-wizard",
+    date: "2026-11-27",
+    emoji: "🧙",
+    title: "Meet the Wizard of Vibe Island",
+    body: "Walk up to the Wizard on the lawn by the plaza, or press Y anywhere, and wish for something out loud or by typing. He conjures it right in front of you, and everybody on the island sees it appear live. Want a world of your own? Press Remix to copy the island into your own private version and share the link with friends.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe Island",
+  },
+  {
+    id: "2026-11-27-vibe-summit",
+    date: "2026-11-27",
+    emoji: "🏔️",
+    title: "Vibe Summit: a 5,000 ft mountain and a rainbow road",
+    body:
+      "A huge new snowy mountain with a forest at its feet. Stand on the summit and pick your way down to the village at 300 ft: skis, a snowboard with spins off the kickers, a wingsuit through the rings, or a paraglider on the thermals. Then ride the rainbow beam up past the clouds and race the Prism Skyway. Fall off an edge and you will find out what the wingsuit is for.",
+    tag: "new",
+    route: "/summit",
+    world: "Vibe Summit",
+  },
+  {
     id: "vibe-hoops",
     date: "2026-11-27",
     emoji: "🏀",

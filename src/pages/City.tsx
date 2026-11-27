@@ -194,6 +194,9 @@ import { registerPOI } from "@/world/worldIndex";
 import { IOS_APP } from "@/lib/iosApp";
 import { isBlocked, noteSafetyContent, openSafety, subscribeSafety } from "@/safety/safety";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
+import { createWizard, type WizardController } from "@/wizard/controller";
+import { createWizardNpc } from "@/wizard/npc";
+import WizardHud from "@/wizard/WizardHud";
 
 /* Lazy: almost nobody opens the changelog mid-game, so it is not in the world's chunk. */
 const WhatsNewSheet = lazy(() => import("@/whatsnew/WhatsNewSheet"));
@@ -941,6 +944,13 @@ export default function City() {
   const questsRef = useRef<Quests | null>(null);
   const questHatRef = useRef<((id: string | null) => void) | null>(null);
   const questWarpRef = useRef<((at: [number, number, number]) => void) | null>(null);
+  // The Wizard (src/wizard): wishes become things, shared live through Supabase.
+  const [wizardApi, setWizardApi] = useState<WizardController | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const wizardOpenRef = useRef(false);
+  wizardOpenRef.current = wizardOpen;
+  const playerNameForWizard = useRef("a traveller");
+  playerNameForWizard.current = playerName || "a traveller";
   /** The dance track. Created on the same gesture the sound effects are. */
   const musicRef = useRef<CityMusic | null>(null);
   /**
@@ -1668,6 +1678,32 @@ export default function City() {
     scene.add(landmarks.group);
     snowCover.patch(landmarks.snowMaterials);
     landmarksRef.current = landmarks;
+
+    // ---- The Wizard ---------------------------------------------------
+    // He lives on a rune circle on the open lawn north-west of the plaza,
+    // in sight of spawn and clear of the lamp posts and planters on the
+    // road. Wishes are drawn by `wizard.layer`, anywhere on the map.
+    const wizardHome = new THREE.Vector3(ISLAND_X - 15, ISLAND_TOP, ISLAND_Z - 12);
+    const wizardNpc = createWizardNpc(wizardHome, Math.atan2(15, 19));
+    scene.add(wizardNpc.group);
+    const wizardDir = new THREE.Vector3();
+    const wizardParams = new URLSearchParams(window.location.search);
+    const wizard = createWizard({
+      getHere: () => {
+        camera.getWorldDirection(wizardDir);
+        return { x: player.position.x, y: player.position.y, z: player.position.z, yaw: Math.atan2(-wizardDir.x, -wizardDir.z) };
+      },
+      getName: () => playerNameForWizard.current,
+      initialWorld: wizardParams.get("world") ?? undefined,
+      offline: wizardParams.get("wizard") === "local",
+      lowDetail: smallScreen,
+    });
+    scene.add(wizard.layer.group);
+    wizard.onGrant((at, mine) => {
+      if (mine || wizardNpc.near(at, 40)) wizardNpc.cast(at);
+    });
+    let wizardWasOpen = false;
+    setWizardApi(wizard);
     landmarks.onEvent((ev) => {
       const snd = soundsRef.current;
       if (ev.type === "depart") snd?.chime(1);
@@ -4082,6 +4118,12 @@ export default function City() {
       }
       if (e.code === "KeyE" && !e.repeat && nearRideButton) {
         rideButtonRef.current?.();
+        return;
+      }
+      if (e.code === "KeyY" && !e.repeat) {
+        e.preventDefault();
+        if (document.pointerLockElement) document.exitPointerLock();
+        setWizardOpen((o) => !o);
         return;
       }
       if (e.code === "KeyT") {
@@ -7417,6 +7459,16 @@ export default function City() {
       roadmapBoard.update(dt, now);
       studioEmbassy.update(dt, now);
       wishGarden.update(dt, now, player.position);
+      if (wizardOpenRef.current !== wizardWasOpen) {
+        wizardWasOpen = wizardOpenRef.current;
+        wizardNpc.setTalking(wizardWasOpen);
+        if (wizardWasOpen) {
+          camera.getWorldDirection(wizardDir);
+          wizardNpc.summon(player.position, Math.atan2(-wizardDir.x, -wizardDir.z));
+        }
+      }
+      wizardNpc.update(dt, now, player.position);
+      wizard.update(dt, now, camera.position);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
       moon2World.update(dt, now);
@@ -8820,6 +8872,9 @@ export default function City() {
       questsRef.current = null;
       window.removeEventListener("keyup", onQuestKeyUp);
       delete (window as unknown as Record<string, unknown>).__cityQuests;
+      wizard.dispose();
+      wizardNpc.dispose();
+      setWizardApi(null);
       mayhem.dispose();
       hideouts.dispose();
       ocean.dispose();
@@ -10319,6 +10374,9 @@ export default function City() {
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-4 py-2 text-xs">
           <span className="text-primary font-heading font-semibold">⛷ POWDER PEAK</span>
           <span className="text-muted-foreground"> · carve with A/D · Space hops · jetpack = ski lift</span>
+          <Link to="/summit" className="ml-3 rounded-full bg-sky-400/90 px-3 py-1 font-semibold text-slate-900 hover:bg-sky-300">
+            🏔 Big mountain: Vibe Summit →
+          </Link>
         </div>
       )}
 
@@ -10511,6 +10569,7 @@ export default function City() {
         </div>
       )}
 
+      {entered && <WizardHud wizard={wizardApi} open={wizardOpen} onOpenChange={setWizardOpen} />}
       {/* Bottom-center action stack: context buttons appear as you
           approach things — the zipline, a cow, Jerry, Vibey. */}
       {entered && npcTarget === null && (

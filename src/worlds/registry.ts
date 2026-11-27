@@ -40,6 +40,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "thalassa",            // the harbour from the painting: walk it, swim it, VR
   "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
+  "summit",              // new: the 5,000 ft mountain, four ways down, and the rainbow road above it
   "hoops",               // new: three-on-three in the Vibe Dome, solo, couch or online
   "pool",                // new: 8-ball with real spin, vs the computer or a friend by link
   "solitaire",           // new: Klondike and FreeCell, five looks, made for a phone
@@ -687,6 +688,23 @@ const WORLDS_RAW: WorldEntry[] = [
     backdrop: "#0b0f1c",
     featured: true,
     source: "src/cannonrun + src/pages/CannonRun.tsx",
+    nav: true,
+    /* No passport stamp: the cockpit panel is full (see fogcity). */
+    chromeless: true,
+  },
+  {
+    key: "summit",
+    route: "/summit",
+    aliases: ["/vibe-summit", "/skyway", "/rainbow-road"],
+    name: "Vibe Summit",
+    emoji: "🏔️",
+    kind: "game",
+    blurb:
+      "A 5,000 ft mountain with a snowy forest at its feet. Pick your way down: carve it on skis, spin a snowboard off the kickers, dive a wingsuit through the rings or float a paraglider on the thermals. Then ride the rainbow beam above the clouds and race the Prism Skyway.",
+    status: "New: four ways down and a rainbow road",
+    accent: "#9be7ff",
+    backdrop: "#9fc3ea",
+    source: "src/summit + src/pages/Summit.tsx",
     nav: true,
     /* No passport stamp: the cockpit panel is full (see fogcity). */
     chromeless: true,
