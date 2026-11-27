@@ -27,6 +27,7 @@ page.on("pageerror", (e) => {
   errors.push(String(e));
   console.log("pageerror", String(e).slice(0, 400));
 });
+await page.addInitScript(() => { try { if (!localStorage.getItem("city.vibecoinBalance")) localStorage.setItem("city.vibecoinBalance", "500"); } catch {} });
 await page.goto("http://127.0.0.1:5184/city?spawn=hub", { waitUntil: "domcontentloaded" });
 await page.waitForFunction(() => !!window.__cityQuests && !!window.__cityDebug?.snapshot, null, { polling: 1000 });
 await page.waitForTimeout(8000);
@@ -112,6 +113,46 @@ if (want("fishing")) {
   console.log("result:", await ui());
   await snap("fishing-golden");
   await unshot();
+}
+
+if (want("race")) {
+  const drive = (x, z, yaw, v = 0) => page.evaluate(([x, z, yaw, v]) => window.__cityDrive(x, 0.3, z, yaw, v, 0), [x, z, yaw, v]);
+  const R = (op) => page.evaluate((op) => window.__cityQuests.dev().racing(op), op);
+  await drive(-103, 24, Math.PI);
+  await settle(3000);
+  await page.evaluate(() => window.__cityCam(10, 0.3, 0.6));
+  await settle(1500);
+  await snap("race-vinnie");
+  console.log("near vinnie:", await ui());
+  await Q("act");
+  await settle(600);
+  console.log("dialog:", JSON.stringify((await Q("ui")).dialog?.options));
+  await Q("choose", "bet:25");
+  await settle(800);
+  await drive(-100, 16, Math.PI);
+  await settle(5000);
+  console.log("grid:", JSON.stringify((await Q("ui")).race), JSON.stringify(await R()).slice(0, 300));
+  await page.evaluate(() => window.__cityCam(9, 0.25, 0.2));
+  await settle(1500);
+  await snap("race-grid");
+  await R("slow");
+  // Drive the course gate by gate, the way a player's car would pass them.
+  const st = await R();
+  const course = [[-100, -45], [-100, -100], [-40, -100], [30, -100], [100, -100], [100, -30], [100, 40], [100, 100], [30, 100], [-40, 100], [-100, 100], [-100, 55], [-100, 10]];
+  for (let lap = 0; lap < 2; lap++) {
+    for (const [i, [x, z]] of course.entries()) {
+      await drive(x, z, 0, 5);
+      await settle(1200);
+      if (lap === 0 && i === 9) {
+        await page.evaluate(() => window.__cityCam(9, 0.3, 2.4));
+        await settle(1200);
+        await snap("race-eiffel");
+        console.log("mid:", JSON.stringify((await Q("ui")).race));
+      }
+    }
+  }
+  console.log("finish:", JSON.stringify(await Q("ui")).slice(0, 600));
+  console.log("log:", JSON.stringify((await Q("log")).quests[2]));
 }
 
 console.log("errors:", errors.length);

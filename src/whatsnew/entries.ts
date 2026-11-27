@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-street-races",
+    date: "2026-11-27",
+    emoji: "🏁",
+    title: "Vinnie's Street Races: bet your Vibe coins",
+    body: "Roll up to Vinnie Two-Tires under the neon STREET RACES sign on the west avenue by the police station, in any car or kart. Bet 10 to 100 coins and race his three regulars two laps round the big block, under the Eiffel Tower and past the Empire State. Win and he pays triple, come second and you get your stake back. No Comets allowed.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "city-quests-pets-fishing",
     date: "2026-11-27",
     emoji: "👵",
