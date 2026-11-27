@@ -106,12 +106,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "fb6925db", iso: "2026-11-26T21:51:42+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
-    { sha: "042af9dc", iso: "2026-11-26T21:49:25+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
-    { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
-    { sha: "9cae94da", iso: "2026-11-26T21:23:45+00:00", subject: "City: Vibe Arms, a weapons shop with a Super Soaker, Glock 19, Nova Blaster and sticky pineapple bombs" },
-    { sha: "6c5049ad", iso: "2026-11-26T21:08:30+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
-    { sha: "cb183e5c", iso: "2026-11-26T21:08:30+00:00", subject: "Add What's New: a dated changelog of every update" },
+    { sha: "95a571f5", iso: "2026-11-26T22:43:09+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
+    { sha: "8c552400", iso: "2026-11-26T22:43:04+00:00", subject: "Merge branch 'main' of https://github.com/jackmielke/vibe-verse" },
+    { sha: "4f9ab17d", iso: "2026-11-26T22:41:52+00:00", subject: "City marina: racing hydroplanes on a buoy course, and a phone helm for every boat" },
+    { sha: "0dd8c9f0", iso: "2026-11-26T22:40:29+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "bfe36185", iso: "2026-11-26T22:40:28+00:00", subject: "Vibe City: weapon bar so bought guns can be drawn on a phone" },
+    { sha: "ceefaf5e", iso: "2026-11-26T22:31:19+00:00", subject: "City: bad guys in orange jumpsuits drive their own orange car out of the warehouse" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },

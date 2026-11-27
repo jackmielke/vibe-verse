@@ -18,7 +18,7 @@ const { page, errors, load, lay, close } = await open({ width: 1280, height: 720
 await load(level);
 await lay("marbles", 0.4, 0, 3.4);
 await lay("tripwire", 0.4, 0, 1.6);
-await lay("glue", 2.2, 0, 3.4);
+await lay("honey", 2.2, 0, 3.4);
 await page.evaluate((into) => {
   const e = window.__homeAlone;
   e.teleport(0.4, 0, 0.2, 0);

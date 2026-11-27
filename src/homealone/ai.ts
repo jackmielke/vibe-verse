@@ -38,6 +38,11 @@ import { line as banterLine, type Beat } from "./banter";
 import type { Collider } from "./build";
 import type { Entry, IntruderKind } from "./nights";
 
+const HONEY_GEO = new THREE.SphereGeometry(1, 10, 8);
+const HONEY_MAT = new THREE.MeshStandardMaterial({
+  color: 0xf0a81c, roughness: 0.12, metalness: 0.35, emissive: 0x7a4a00, emissiveIntensity: 0.55,
+});
+
 export type BurglarState =
   | "prowl" | "loot" | "grab" | "carry" | "hunt" | "search" | "disarm" | "down" | "flee" | "gone";
 
@@ -81,7 +86,7 @@ export interface UpdateOpts {
 /** Rooms a prowling intruder wanders through when there is nothing to steal. */
 const PROWL_ROUTE = [
   "g_front", "g_living", "g_hall", "g_dining", "g_kitchen_e", "g_kitchen_w",
-  "g_backhall", "g_family", "g_midhall", "g_stairbay", "u_landing", "u_kid",
+  "g_backhall", "g_family", "g_midhall", "g_stairfoot", "u_landing", "u_kid",
   "u_parents", "u_brother", "u_corr_e", "u_guest", "b_furnace", "g_den",
 ];
 
@@ -101,6 +106,13 @@ export class Burglar {
   rooted = 0;
   /** Seconds unable to see anything. */
   blind = 0;
+  /** Seconds slowed to a hobble: honey on his boots, a mousetrap on his toe. */
+  slowed = 0;
+  /** Seconds he is visibly covered in honey. */
+  honeyed = 0;
+  private honeyFx: THREE.Group | null = null;
+  /** A BB cannot stop him again until this time: no standing there stun-locking. */
+  private flinchFree = 0;
   /** Set while a trap is carrying him across the room. */
   flung: Fling | null = null;
   /** Links in the chain he is currently part of, and when it goes cold. */
@@ -186,6 +198,10 @@ export class Burglar {
     this.stun = 0;
     this.rooted = 0;
     this.blind = 0;
+    this.slowed = 0;
+    this.honeyed = 0;
+    this.flinchFree = 0;
+    if (this.honeyFx) this.honeyFx.visible = false;
     this.flung = null;
     this.chain = 0;
     this.lootId = null;
@@ -225,14 +241,13 @@ export class Burglar {
   }
 
   /**
-   * A snowball. Not a knockdown: a stumble, and he turns to look.
-   *
-   * It never takes anybody out of the fight on its own. If it did it would
-   * replace the traps, and the traps are the game. What it does do is buy a
-   * second, turn a head, and finish somebody who is already stuck or blind.
+   * A BB. It stings: it costs him a little nerve every time, and it stops him
+   * for a beat, though not twice in quick succession, or standing in a doorway
+   * holding the trigger would be the whole game. Somebody already stuck or
+   * blind cannot roll with it and goes down.
    */
-  pelt(t: number): "stagger" | "floor" | null {
-    if (this.state === "down" || this.state === "gone" || this.state === "flee" || this.flung) return null;
+  pelt(t: number, damage: number): "stagger" | "floor" | null {
+    if (this.state === "down" || this.state === "gone" || this.flung) return null;
     this.speak(t, "trap", true);
     this.disarmId = null;
     if (this.state === "disarm") {
@@ -240,11 +255,41 @@ export class Burglar {
       this.reached = true;
       this.lookAbout = 0;
     }
-    if (this.rooted > 0 || this.blind > 0) return "floor";
-    this.flinch = 1.1;
-    this.nerve = Math.max(0, this.nerve - 5);
-    if (this.nerve <= 0) this.state = "flee";
+    if (this.state !== "flee" && (this.rooted > 0 || this.blind > 0)) return "floor";
+    if (t >= this.flinchFree) {
+      this.flinch = 0.55;
+      this.flinchFree = t + 1.7;
+    }
+    this.nerve = Math.max(0, this.nerve - damage);
+    if (this.nerve <= 0 && this.state !== "flee") {
+      this.state = "flee";
+      this.path = [];
+      this.lootId = null;
+    }
     return "stagger";
+  }
+
+  /** Covered in honey: a golden mess on his head and shoulders until it wears off. */
+  honey(seconds: number) {
+    this.honeyed = Math.max(this.honeyed, seconds);
+    if (!this.honeyFx) {
+      const g = new THREE.Group();
+      const h = this.char.height;
+      const spots: Array<[number, number, number, number]> = [
+        [0, h * 1.0, 0, 0.17], [0.13, h * 0.86, 0.06, 0.11], [-0.14, h * 0.84, 0.04, 0.12],
+        [0.2, h * 0.74, 0, 0.1], [-0.2, h * 0.72, 0.02, 0.1], [0.05, h * 0.6, 0.14, 0.12],
+        [-0.08, h * 0.45, 0.13, 0.09], [0.1, 0.05, 0.05, 0.13], [-0.1, 0.05, 0.02, 0.13],
+      ];
+      for (const [x, y, z, r] of spots) {
+        const m = new THREE.Mesh(HONEY_GEO, HONEY_MAT);
+        m.position.set(x, y, z);
+        m.scale.set(r, r * 0.8, r);
+        g.add(m);
+      }
+      this.char.root.add(g);
+      this.honeyFx = g;
+    }
+    this.honeyFx.visible = true;
   }
 
   /**
@@ -284,6 +329,11 @@ export class Burglar {
     if (this.says && t > this.saysUntil) this.says = null;
     if (this.chain && t > this.chainUntil) this.chain = 0;
     this.blind = Math.max(0, this.blind - dt);
+    this.slowed = Math.max(0, this.slowed - dt);
+    if (this.honeyed > 0) {
+      this.honeyed = Math.max(0, this.honeyed - dt);
+      if (this.honeyed <= 0 && this.honeyFx) this.honeyFx.visible = false;
+    }
 
     /* ---- in the air --------------------------------------------------- */
     if (this.flung) {
@@ -293,7 +343,7 @@ export class Burglar {
       return;
     }
 
-    // A snowball does not floor him; it stops him for a beat and turns him round.
+    // A BB does not floor him; it stops him for a beat while he swears about it.
     if (this.flinch > 0) {
       this.flinch -= dt;
       this.speed = 0;
@@ -335,11 +385,12 @@ export class Burglar {
     /* ---- leaving ------------------------------------------------------- */
     if (this.state === "flee" || this.state === "carry") {
       if (!this.path.length) this.routeTo(EXIT[this.entry]);
-      // Running for it is fast. Walking out with a television is not, and
-      // that slow walk back down the route he came in by is your second go.
+      // Nobody in this house runs. Leaving in a hurry is a brisk walk, and
+      // walking out with a television is a slow one: that trip back down the
+      // route he came in by is your second go at him.
       const pace =
         this.state === "flee"
-          ? this.char.runSpeed * this.kind.speed * 0.95
+          ? this.char.walkSpeed * this.kind.speed * 1.3
           : this.char.walkSpeed * this.kind.speed * 0.7;
       const out = this.rooted > 0 ? (this.stuck(dt), false) : this.follow(dt, pace * (this.blind > 0 ? 0.5 : 1));
       if (out) {
@@ -417,7 +468,11 @@ export class Burglar {
     }
 
     const walk = this.char.walkSpeed * this.kind.speed * (this.blind > 0 ? 0.55 : 1);
-    const run = this.char.runSpeed * this.kind.speed * (this.blind > 0 ? 0.55 : 1);
+    // "Run" is a brisk walk. They used to sprint at better than four metres a
+    // second, which is faster than a small boy and faster than anybody can
+    // aim at; now coming for you is a stride, and you can back away from it
+    // with the gun up.
+    const run = walk * 1.12;
 
     /* ---- act ----------------------------------------------------------- */
     switch (this.state) {
@@ -429,16 +484,16 @@ export class Burglar {
         }
         // Inside the same room, go straight at him rather than via a node.
         if (dist < 5 && dy < 1.2 && clearLine(eye, target, ctx.colliders)) {
-          this.step(dt, player.x, player.y, player.z, run * (0.82 + opts.aggression * 0.24));
+          this.step(dt, player.x, player.y, player.z, run * (0.94 + opts.aggression * 0.12));
         } else {
-          this.follow(dt, run * (0.78 + opts.aggression * 0.22));
+          this.follow(dt, run * (0.92 + opts.aggression * 0.12));
         }
         break;
       }
       case "search": {
         if (!this.reached) {
           if (!this.path.length) this.routeToPoint(this.lastSeen.x, this.lastSeen.y, this.lastSeen.z);
-          if (this.follow(dt, walk * 1.3)) this.reached = true;
+          if (this.follow(dt, walk * 1.1)) this.reached = true;
         } else if (this.exact) {
           // The last few metres, straight to the noise itself.
           const far = Math.hypot(this.lastSeen.x - this.pos.x, this.lastSeen.z - this.pos.z);
@@ -446,7 +501,7 @@ export class Burglar {
           const aim = this.lastSeen.clone();
           aim.y += 0.9;
           if (!near || far < 0.5 || far > 9 || !clearLine(eye, aim, ctx.colliders)) this.exact = false;
-          else if (this.step(dt, this.lastSeen.x, this.pos.y, this.lastSeen.z, walk * 1.3)) this.exact = false;
+          else if (this.step(dt, this.lastSeen.x, this.pos.y, this.lastSeen.z, walk * 1.1)) this.exact = false;
         } else {
           this.lookAbout += dt;
           // Sweep the room for a couple of seconds, then go back to work.
@@ -535,6 +590,7 @@ export class Burglar {
 
   /** Walk one step toward a world point. Returns true once it is reached. */
   private step(dt: number, x: number, y: number, z: number, speed: number) {
+    if (this.slowed > 0) speed *= 0.5;
     const dx = x - this.pos.x;
     const dz = z - this.pos.z;
     const d = Math.hypot(dx, dz);

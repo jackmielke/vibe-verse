@@ -40,8 +40,8 @@ describe("the kit", () => {
 
   it("refuses a trap you cannot afford or that crowds another", () => {
     expect(placeProblem("spring", { x: 0, y: 0, z: 0 }, [], KIT.spring.cost - 1)).toBe("parts");
-    expect(placeProblem("marbles", { x: 0, y: 0, z: 0 }, [laid("glue", MIN_SPACING * 0.5, 0)], 99)).toBe("crowded");
-    expect(placeProblem("marbles", { x: 0, y: 0, z: 0 }, [laid("glue", MIN_SPACING * 2, 0)], 99)).toBeNull();
+    expect(placeProblem("marbles", { x: 0, y: 0, z: 0 }, [laid("honey", MIN_SPACING * 0.5, 0)], 99)).toBe("crowded");
+    expect(placeProblem("marbles", { x: 0, y: 0, z: 0 }, [laid("honey", MIN_SPACING * 2, 0)], 99)).toBeNull();
   });
 
   it("slides somebody the way he was walking", () => {
@@ -65,7 +65,7 @@ describe("the kit", () => {
     expect(heavy.dist).toBeCloseTo(light.dist / 2);
   });
 
-  it("hits harder for every link, and for somebody stuck in glue", () => {
+  it("hits harder for every link, and for somebody stuck in honey", () => {
     const first = resolveTrap(KIT.marbles, 0, victim);
     const third = resolveTrap(KIT.marbles, 0, { ...victim, chain: 2 });
     const stuck = resolveTrap(KIT.marbles, 0, { ...victim, rooted: true });
@@ -75,13 +75,30 @@ describe("the kit", () => {
     expect(stuck.tricks).toContain("STUCK SHOT");
   });
 
-  it("glue roots and flour blinds, and neither throws anybody", () => {
-    const glue = resolveTrap(KIT.glue, 0, victim);
+  it("honey roots and flour blinds, and neither throws anybody", () => {
+    const glue = resolveTrap(KIT.honey, 0, victim);
     const flour = resolveTrap(KIT.flour, 0, victim);
     expect(glue.root).toBeGreaterThan(0);
     expect(glue.dist).toBe(0);
     expect(flour.blind).toBeGreaterThan(0);
     expect(flour.dist).toBe(0);
+  });
+
+  it("mousetraps hobble without flooring, and a rake floors without throwing", () => {
+    const snap = resolveTrap(KIT.mousetrap, 0, victim);
+    expect(snap.slow).toBeGreaterThan(0);
+    expect(snap.stun).toBe(0);
+    expect(snap.dist).toBe(0);
+    const rake = resolveTrap(KIT.rake, 0, victim);
+    expect(rake.stun).toBeGreaterThan(3);
+    expect(rake.dist).toBe(0);
+    expect(resolveTrap(KIT.rake, 0, { ...victim, rooted: true }).tricks).toContain("STUCK SHOT");
+  });
+
+  it("honey slows him after it lets him go", () => {
+    const honey = resolveTrap(KIT.honey, 0, victim);
+    expect(honey.root).toBeGreaterThan(0);
+    expect(honey.slow).toBeGreaterThan(honey.root);
   });
 
   it("caps the multiplier and the score of a runaway chain", () => {

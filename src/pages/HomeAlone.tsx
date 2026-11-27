@@ -130,12 +130,12 @@ const COARSE =
 const KEYS: Array<[string, string]> = [
   ["WASD", "walk. Hold SHIFT to run"],
   ["MOUSE", "swing the camera round"],
-  ["1 to 8", "pick a trap out of the box"],
+  ["1 to 9, 0", "pick a trap out of the box"],
   ["F or CLICK", "lay it where the ghost is"],
   ["E", "light switches, pick a trap back up, the wire"],
   ["Q", "shout. They come to wherever you are standing"],
   ["R", "ring an alarm clock you laid"],
-  ["SPACE", "throw a snowball"],
+  ["SPACE", "fire the BB gun. So does a click, with nothing in your hand"],
   ["G", "stop planning and let them in"],
 ];
 
@@ -145,12 +145,12 @@ const TOUCH: Array<[string, string]> = [
   ["THE BOX", "tap a trap along the bottom to hold it"],
   ["LAY", "the big button puts it down"],
   ["SHOUT", "they come to wherever you are standing"],
-  ["❄", "throw a snowball"],
+  ["🎯", "fire the BB gun"],
 ];
 
 const HOW: Array<[string, string]> = [
   ["They want the valuables", "Each one walks to something worth taking and carries it out of the door he came in by. The dotted lines show you where."],
-  ["Traps move people", "Marbles slide him the way he was going. A springboard throws him where you aimed it. Whatever he lands on goes off too."],
+  ["Traps move people", "Marbles slide him the way he was going. Honey holds him still. A springboard throws him where you aimed it. Whatever he lands on goes off too, and the stairs are the best place for all of it."],
   ["Chains are the score", "Marbles into a springboard into a wall is three links. Stairs, walls and other burglars all count."],
 ];
 

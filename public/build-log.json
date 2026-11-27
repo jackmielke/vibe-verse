@@ -1,7 +1,45 @@
 {
-  "generated_at": "2026-11-26T22:17:57.248Z",
+  "generated_at": "2026-11-27T00:09:35.337Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "4f9ab17d",
+      "date": "2026-11-26",
+      "subject": "City marina: racing hydroplanes on a buoy course, and a phone helm for every boat",
+      "lede": "Hydroplanes: Miss Vibe and Blue Blur tie up off the T-head. They do about 74 knots, carve wider turns the faster they go, lift onto the plane and throw a rooster tail. Out past the T-head is an oval of eight orange buoy gates with a chequered start and finish: go through the start to start the clock, take every gate in order (a ring of light marks the next one), and the lap time comes up as a toast, best lap kept on ",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 6
+    },
+    {
+      "sha": "bfe36185",
+      "date": "2026-11-26",
+      "subject": "Vibe City: weapon bar so bought guns can be drawn on a phone",
+      "lede": "A bought Glock or Super Soaker could only be drawn with the G key, so on a phone it was owned but unreachable and the FIRE button never appeared. Now every owned gun has a button on a weapon bar (tap to draw, tap again to put away; 1 to 4 on a keyboard), and a gun you just bought goes straight into your hand.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 4
+    },
+    {
+      "sha": "ceefaf5e",
+      "date": "2026-11-26",
+      "subject": "City: bad guys in orange jumpsuits drive their own orange car out of the warehouse",
+      "lede": "Summoning from the Warehouse 13 roof no longer hijacks a traffic car and jumps off the roof. Each bad guy now starts behind the wheel of his own car (traffic's commonest saloon, resprayed orange) in one of three bays inside the warehouse and drives out of the west door. Police chase them as before; when one goes up, the car is left as a charred shell that smoulders for 16 s.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 4
+    },
+    {
+      "sha": "3b9a02c0",
+      "date": "2026-11-26",
+      "subject": "Refresh the build log",
+      "lede": "Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNVNK7tt11aeVFC21pC",
+      "places": [],
+      "files": 1
+    },
     {
       "sha": "e4f89efe",
       "date": "2026-11-26",

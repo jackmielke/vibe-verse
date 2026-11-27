@@ -414,10 +414,14 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   }
   // Basement: poured concrete, no openings.
   const CON = { neg: "concrete" as Kind, pos: "concrete" as Kind };
-  wall("x", Z.S, X.W, 1.15, "basement", CON, WALL_T, CEILING.basement);
+  // The south wall stands where the slab ends. It used to stand under the
+  // front of the house, five metres past the last of the floor, and anybody
+  // who walked that way stepped off the edge and out of the bottom of the map.
+  const BZ1 = ROOMS.basement.z1 + WALL_T / 2;
+  wall("x", BZ1, X.W, 1.15, "basement", CON, WALL_T, CEILING.basement);
   wall("x", Z.N, X.W, 1.15, "basement", CON, WALL_T, CEILING.basement);
-  wall("z", X.W, Z.N, Z.S, "basement", CON, WALL_T, CEILING.basement);
-  wall("z", 1.15, Z.N, Z.S, "basement", CON, WALL_T, CEILING.basement);
+  wall("z", X.W, Z.N, BZ1, "basement", CON, WALL_T, CEILING.basement);
+  wall("z", 1.15, Z.N, BZ1, "basement", CON, WALL_T, CEILING.basement);
 
   /* ---- interior partitions ----------------------------------------- */
   const P = (kind: number) => `paper${kind}` as Kind;
@@ -426,15 +430,24 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   wall("z", X.w2, Z.m, IN.S, "ground", { neg: P(0), pos: P(0) }); // stairbay | hall
   wall("z", X.e1, Z.m, IN.S, "ground", { neg: P(0), pos: P(0) }); // hall | living
   wall("z", X.w1, Z.m, IN.S, "ground", { neg: P(1), pos: P(0) }); // den | stairbay
-  wall("x", Z.m, IN.W, IN.E, "ground", { neg: P(0), pos: P(0) }); // front half | back half
+  // front half | back half. Across the head of the stairs it stops short of the
+  // ceiling: the flight passes over it there, and at full height the top of
+  // this wall is a kerb across the second-to-last tread.
+  wall("x", Z.m, IN.W, X.w1, "ground", { neg: P(0), pos: P(0) });
+  wall("x", Z.m, X.w1, X.w2, "ground", { neg: P(3), pos: P(0) }, PART_T, 2.5);
+  wall("x", Z.m, X.w2, IN.E, "ground", { neg: P(0), pos: P(0) });
+  deco(M.white, (X.w1 + X.w2) / 2, 2.5, Z.m, X.w2 - X.w1, CEILING.ground - 2.5, PART_T);
   wall("z", X.e1, Z.n1, Z.m, "ground", { neg: P(0), pos: P(1) }); // midhall | dining
   wall("z", X.w2, Z.n1, Z.m, "ground", { neg: P(3), pos: P(0) }); // family | midhall
   wall("x", Z.n1, IN.W, IN.E, "ground", { neg: "ktile", pos: P(0) }); // kitchen row
   wall("z", X.w2, IN.N, Z.n1, "ground", { neg: "ktile", pos: "ktile" }); // backhall | kitchen
-  wall("z", -2.1, -5.35, -3.9, "ground", { neg: "ktile", pos: "ktile" }); // cellar doorway wall
+  wall("z", -2.8, -5.35, -3.9, "ground", { neg: "ktile", pos: "ktile" }); // cellar doorway wall
 
   // upper
-  wall("x", 0.4, IN.W, IN.E, "upper", { neg: P(0), pos: P(0) });
+  // Either side of the stairwell, and not across it: the head of the flight
+  // arrives at this line, and a wall here is a wall across the top step.
+  wall("x", 0.4, IN.W, X.w1, "upper", { neg: P(0), pos: P(0) });
+  wall("x", 0.4, X.w2, IN.E, "upper", { neg: P(0), pos: P(0) });
   wall("x", -1.2, IN.W, IN.E, "upper", { neg: P(0), pos: P(0) });
   wall("z", X.w1, 0.4, IN.S, "upper", { neg: "ktile", pos: P(0) }); // bathroom | stairwell
   wall("z", X.w2, 0.4, IN.S, "upper", { neg: P(0), pos: P(3) }); // stairwell | Pip
@@ -554,6 +567,35 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   const runner = surface("carpet", 1.1, 5.5, "#7a2b2b");
   flight(MAIN_STAIR, runner, M.oak);
   flight(CELLAR_STAIR, CONCRETE, CONCRETE);
+
+  /*
+   * The cellar flight is open down one side, so it needs two things the main
+   * flight gets from its walls. Below: the space under the treads is solid,
+   * or you walk in under the ramp from the basement and stand inside the
+   * stairs. Above: a rail round the hole in the back hall floor, so the only
+   * way onto the flight is the cellar door at its head.
+   */
+  {
+    const r = CELLAR_STAIR;
+    const len = r.x1 - r.x0;
+    for (let i = 0; i < r.steps; i++) {
+      const top = r.yLow + ((r.yHigh - r.yLow) * (i + 1)) / r.steps;
+      // The low steps are just steps: you can walk up onto them from the side.
+      if (top - r.yLow < 0.9) continue;
+      colliders.push({
+        x0: r.x0 + (len * i) / r.steps, x1: r.x0 + (len * (i + 1)) / r.steps,
+        z0: r.z0, z1: r.z1, y0: r.yLow - 0.2, y1: top - 0.4,
+      });
+    }
+    const v = STAIR_VOIDS[1];
+    const y = FLOOR.ground;
+    colliders.push({ x0: v.x0 - 0.1, x1: v.x1, z0: v.z1 - 0.02, z1: v.z1 + 0.08, y0: y, y1: y + 1.0 });
+    colliders.push({ x0: v.x0 - 0.1, x1: v.x0, z0: v.z0, z1: v.z1 + 0.08, y0: y, y1: y + 1.0 });
+    deco(M.darkOak, (v.x0 + v.x1) / 2 - 0.05, y + 0.9, v.z1 + 0.03, v.x1 - v.x0 + 0.1, 0.08, 0.08);
+    deco(M.darkOak, v.x0 - 0.05, y + 0.9, (v.z0 + v.z1) / 2, 0.08, 0.08, v.z1 - v.z0);
+    for (let i = 0; i <= 8; i++) deco(M.white, v.x0 - 0.05 + ((v.x1 - v.x0) * i) / 8, y, v.z1 + 0.03, 0.05, 0.9, 0.05);
+    for (let i = 1; i <= 2; i++) deco(M.white, v.x0 - 0.05, y, v.z0 + ((v.z1 - v.z0) * i) / 3, 0.05, 0.9, 0.05);
+  }
 
   // Banister down the open side of the main flight, and round the landing.
   for (let i = 0; i <= 12; i++) {
@@ -827,9 +869,13 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   // Front porch: two columns, a pediment, three stone steps.
   {
     const pz = Z.S + 1.35;
-    prop(surface("stone", 3.6, 1.1), 0.4, -0.02, Z.S + 0.55, 3.6, 0.16, 1.1);
-    prop(surface("stone", 3.9, 0.55), 0.4, -0.18, Z.S + 1.15, 3.9, 0.18, 0.55);
-    prop(surface("stone", 4.2, 0.55), 0.4, -0.34, Z.S + 1.6, 4.2, 0.18, 0.55);
+    // The steps are floor, not furniture. As colliders the top one stood
+    // fourteen centimetres proud of the hall and was a wall across the front
+    // door: you could open it and not walk out of it.
+    deco(surface("stone", 3.6, 1.1), 0.4, -0.16, Z.S + 0.55, 3.6, 0.16, 1.1);
+    deco(surface("stone", 3.9, 0.55), 0.4, -0.18, Z.S + 1.15, 3.9, 0.18, 0.55);
+    deco(surface("stone", 4.2, 0.55), 0.4, -0.34, Z.S + 1.6, 4.2, 0.18, 0.55);
+    slabs.push({ x0: -1.4, x1: 2.2, z0: IN.S, z1: Z.S + 1.1, y: 0 });
     for (const s of [-1, 1]) {
       deco(M.trim, 0.4 + s * 1.5, 0, pz, 0.24, 2.9, 0.24);
       colliders.push({ x0: 0.4 + s * 1.5 - 0.15, x1: 0.4 + s * 1.5 + 0.15, z0: pz - 0.15, z1: pz + 0.15, y0: 0, y1: 2.9 });
@@ -975,8 +1021,13 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   prop(M.darkOak, IN.E - 0.3, 0, 0.0, 0.55, 1.0, 1.6); // sideboard
 
   /* Kitchen: counters round three walls, the table Pip eats at. */
-  prop(M.white, 1.4, 0, IN.N + 0.32, 5.4, 0.9, 0.62);
-  deco(M.darkOak, 1.4, 0.9, IN.N + 0.32, 5.5, 0.05, 0.66);
+  // The north run stops short of the back door. It used to carry on straight
+  // across it, so the burglars (who walk the graph) came in that way and the
+  // boy (who walks the floor) could not go out of it.
+  prop(M.white, 0.55, 0, IN.N + 0.32, 3.7, 0.9, 0.62);
+  deco(M.darkOak, 0.55, 0.9, IN.N + 0.32, 3.8, 0.05, 0.66);
+  prop(M.white, 5.3, 0, IN.N + 0.32, 2.5, 0.9, 0.62);
+  deco(M.darkOak, 5.3, 0.9, IN.N + 0.32, 2.6, 0.05, 0.66);
   prop(M.white, IN.E - 0.32, 0, -4.0, 0.62, 0.9, 2.2);
   deco(M.darkOak, IN.E - 0.32, 0.9, -4.0, 0.66, 0.05, 2.2);
   prop(M.steel, 5.9, 0, -3.0, 0.8, 1.8, 0.72); // fridge
@@ -1043,7 +1094,9 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     // Climbing the stair wall, each one a little higher than the last.
     for (let i = 0; i < 4; i++) {
       const f = i / 3;
-      hang(X.w1 + 0.1, 1.55 + f * 2.35, 4.4 - f * 2.4, Math.PI / 2, 0.42, 0.34);
+      const z = MAIN_STAIR.z1 - 0.6 - f * 2.4;
+      const tread = ((MAIN_STAIR.z1 - z) / (MAIN_STAIR.z1 - MAIN_STAIR.z0)) * (FLOOR.upper - FLOOR.ground);
+      hang(X.w1 + 0.1, 1.55 + tread, z, Math.PI / 2, 0.42, 0.34);
     }
     // Along the landing.
     hang(-0.6, 4.85, 0.32, Math.PI, 0.5, 0.38);
@@ -1111,7 +1164,11 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     // Exactly the footprint, not a metre outside it. An over-wide exclusion
     // leaves a ring of no-floor hugging the walls — step off the porch or out
     // of a ground-floor window and you fall out of the world.
-    const HX0 = X.W, HX1 = X.E, HZ0 = Z.N, HZ1 = Z.S;
+    // And it is the *inner* face of the shell, not the wall line: the rooms
+    // stop at the inner face, so stopping the lawn at the wall line left a
+    // fifteen-centimetre slot with no floor under each outside door. Stand in
+    // the back doorway and you fell through the threshold.
+    const HX0 = IN.W, HX1 = IN.E, HZ0 = IN.N, HZ1 = IN.S;
     slabs.push({ x0: -110, x1: 110, z0: -110, z1: HZ0, y: -0.02 });
     slabs.push({ x0: -110, x1: 110, z0: HZ1, z1: 110, y: -0.02 });
     slabs.push({ x0: -110, x1: HX0, z0: HZ0, z1: HZ1, y: -0.02 });

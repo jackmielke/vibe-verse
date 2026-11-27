@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "house-rules-bb-gun-honey",
+    date: "2026-11-27",
+    emoji: "🍯",
+    title: "House Rules: a BB gun, a honey trap and traps on the stairs",
+    body: "You have the BB gun back: Space, a click, or the Shoot button, and every hit costs a burglar some nerve. There are three new traps, a honey trap that leaves him stuck and dripping, mousetraps and a garden rake, and you can now lay anything on the stairs. The burglars walk instead of sprint, you can no longer step inside the staircase or fall out of the bottom of the house, and both outside doors now let you through.",
+    tag: "update",
+    route: "/house-rules",
+    world: "House Rules",
+  },
+  {
     id: "city-hydroplanes",
     date: "2026-11-26",
     emoji: "🏁",

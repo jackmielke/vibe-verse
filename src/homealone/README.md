@@ -61,7 +61,7 @@ who is coming and through which door.
 | `textures.ts` | every surface and every face, drawn into a 2D canvas at boot |
 | `christmas.ts` | the lights, the garland, the wreath, the icicles, all instanced |
 | `banter.ts` | every line anybody says, in shuffled bags |
-| `bricks.ts` | snowballs: a real projectile with a bit of aim assist (the file kept its name) |
+| `bricks.ts` | the BB gun: a fast real projectile with a bit of aim assist (the file kept its name) |
 | `audio.ts` | wind, boards, a furnace, the trap noises and two short original tunes |
 | `ui/HomeAloneHUD.tsx` | the kit bar, valuables, the intruder list, the chain feed, touch controls |
 
@@ -75,8 +75,26 @@ who is coming and through which door.
   the outside of the house to reach a room across the hall.
 - **The dotted lines are the AI's real choice.** `likelyRoutes` picks loot the
   same way `pickLoot` does, so what you plan against is what happens.
-- **A snowball never wins a night.** It staggers. It only floors somebody who
-  is stuck or blind, which makes it the finisher for glue and flour.
+- **A BB stings and does not floor.** Seven nerve a hit and a half-second
+  flinch, with 1.7 s before he can be stopped again, so the gun wears people
+  down without stun-locking them. It only floors somebody who is stuck or
+  blind, which makes it the finisher for honey and flour.
+- **Nobody runs.** Hunting is `walk * 1.12` and fleeing is `walk * 1.3`. They
+  used to sprint at over four metres a second, faster than the boy and faster
+  than anybody could aim at.
+- **The staircase is walled and you get on at the foot.** The flight used to
+  fill its bay with a doorway half-way along it, so you walked in under the
+  treads and stood inside the stairs. `tools/homealone-walk.mjs` walks every
+  awkward corner with the real controls; it found that the top of the stairs,
+  the back door and the front step were all blocked to the player, while the
+  burglars (who walk the graph, not the floor) used all three.
+- **Nothing underfoot is a bug.** `tools/homealone-holes.mjs` floods every
+  storey from a known spot and fails if it can reach a cell with no floor.
+  The rooms stop at the inner face of the outside walls, so the lawn has to
+  start there too, and the basement's walls have to stand where its slab ends.
+- **Traps lean on stairs.** `updateGhost` looks a storey's worth of step above
+  your feet, and a trap laid on a ramp carries `tiltX`/`tiltZ` so it lies on
+  the tread noses rather than inside them.
 - **Being caught costs a heart, not the night.** Three hearts; you are put back
   in your room with a few seconds' head start.
 - **Third person, with a boom that shortens.** `settleCamera` pulls the lens in
@@ -96,11 +114,16 @@ second there, so nothing can be judged by watching.
   hearts are lost, the quiet modes still finish.
 - `node tools/homealone-shot.mjs <out.png> [level]` lays a few traps and takes
   a real frame, HUD included.
+- `node tools/homealone-walk.mjs` walks Pip up both flights and through every
+  outside door with the real controls. `node tools/homealone-holes.mjs` looks
+  for floor that is not there (`--map` prints each storey).
+- `node tools/homealone-traps.mjs` checks traps on the stairs, honey,
+  mousetraps, the rake, the BB gun and how fast anybody moves.
 - `src/test/houseRules.test.ts` covers the pure half: placing, chain maths,
   scoring, the night table and the routes.
 
 ## Not verified
 
-Balance was tuned against simulated raids with nobody at the controls. Nobody
-has yet played a whole night by hand on real hardware, so how hard the later
-nights feel with a kid actually running about is a guess.
+Balance was tuned against simulated raids with nobody at the controls. How
+hard the later nights feel now that the burglars walk and the gun hurts is a
+guess until somebody plays them by hand on real hardware.

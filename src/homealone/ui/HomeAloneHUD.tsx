@@ -488,13 +488,13 @@ function KeyHint({ state }: { state: Snapshot }) {
     <div className="absolute bottom-3 left-3 hidden text-[9px] leading-relaxed tracking-[0.16em] text-white/25 lg:block">
       <div>WASD MOVE · SHIFT RUN · MOUSE LOOK</div>
       <div>E LIGHTS, PICK UP, THE WIRE</div>
-      {trapGame && <div className="text-amber-200/50">1-8 PICK A TRAP · F OR CLICK LAYS IT</div>}
+      {trapGame && <div className="text-amber-200/50">1-9, 0 PICK A TRAP · F OR CLICK LAYS IT</div>}
       {trapGame && (
         <div className={state.tauntCooldown > 0 ? "text-white/15" : "text-amber-200/50"}>
           Q SHOUT{state.tauntCooldown > 0 ? ` (${state.tauntCooldown.toFixed(1)}s)` : ""} · R RING A CLOCK
         </div>
       )}
-      <div className="text-sky-200/50">SPACE SNOWBALL</div>
+      <div className="text-sky-200/50">SPACE OR CLICK FIRES THE BB GUN</div>
     </div>
   );
 }
@@ -551,8 +551,8 @@ function TouchControls({ engine, state }: { engine: HomeAloneEngine; state: Snap
           disabled={state.brickCooldown > 0}
           className="h-14 w-14 touch-none rounded-full border border-sky-200/45 bg-sky-500/25 text-[8px] font-bold uppercase leading-tight tracking-[0.08em] text-sky-50 active:scale-95 active:bg-sky-500/50 disabled:opacity-40"
         >
-          <span className="block text-base leading-none">❄</span>
-          Throw
+          <span className="block text-base leading-none">🎯</span>
+          Shoot
         </button>
         {trapGame && (
           <button

@@ -59,7 +59,7 @@ check("they carry things out and come back for more", r.banners.some((b) => /GOT
 await load(1);
 const plan1 = [
   ["tripwire", 0.4, 0, 5.4], ["marbles", 0.4, 0, 3.6], ["tripwire", 0.4, 0, 1.6],
-  ["glue", 2.2, 0, 3.4], ["marbles", 3.4, 0, 3.2],
+  ["honey", 2.2, 0, 3.4], ["marbles", 3.4, 0, 3.2],
   ["tripwire", 3.6, 0, -3.0], ["tripwire", 4.2, 0, -2.0],
 ];
 let laid = 0;
@@ -90,7 +90,7 @@ const plan4 = [
 ];
 laid = 0;
 for (const [k, x, y, z, yaw] of plan4) if ((await lay(k, x, y, z, yaw)).ok) laid++;
-check("night 4 has the whole box", laid === plan4.length && (await snap()).kit.length === 8);
+check("night 4 has the whole box", laid === plan4.length && (await snap()).kit.length === 10);
 await page.evaluate(() => { const e = window.__homeAlone; e.teleport(-5.5, 3.1, -3.0, 0); e.ready(); });
 r = await runNight(500);
 console.log(r.feed.map((f) => `        ${f}`).join("\n"));
@@ -102,11 +102,11 @@ check("the scorecard is filled in", !!r.result && r.result.lines.length === 3, J
 /* ---- 5. The sandbox --------------------------------------------------------- */
 await load(100);
 await lay("clock", 0.4, 0, 1.0);
-await lay("glue", 0.4, 0, 3.8);
+await lay("honey", 0.4, 0, 3.8);
 await page.evaluate(() => { const e = window.__homeAlone; e.callIn("moose"); e.settle(5); e.ring(); e.settle(6); });
 s = await snap();
-check("sandbox: everything in the box, somebody came when called", s.kit.length === 8 && s.intruders.length === 1 && s.sandbox);
-check("sandbox: the glue caught him", s.feed.some((f) => /Glue/.test(f.text)));
+check("sandbox: everything in the box, somebody came when called", s.kit.length === 10 && s.intruders.length === 1 && s.sandbox);
+check("sandbox: the honey caught him", s.feed.some((f) => /Honey/.test(f.text)));
 const before = s.laid;
 await page.evaluate(() => {
   const e = window.__homeAlone;

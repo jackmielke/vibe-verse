@@ -201,6 +201,8 @@ export interface Snapshot {
 
 
 const STEP_UP = 0.62;
+/** Nerve one BB takes. A hundred-nerve man shrugs off a dozen of them. */
+const BB_DAMAGE = 7;
 const PLAYER_R = 0.26;
 const GRAVITY = 20;
 
@@ -233,9 +235,9 @@ const SWITCHES: Partial<Record<RoomId, [number, number]>> = {
    * close enough that lighting the seventh room turned the sixth back off.
    */
   hall: [1.7, 2.4],
-  stairbay: [-1.9, 4.9],
+  stairbay: [-2.6, 5.25],
   living: [2.35, 4.4],
-  den: [-3.95, 2.0],
+  den: [-3.95, 3.7],
   midhall: [0.95, 0.35],
   dining: [2.25, -1.6],
   family: [-1.75, -1.6],
@@ -271,6 +273,10 @@ export class HomeAloneEngine {
   private vel = new THREE.Vector3();
   private yaw = 0;
   private grounded = true;
+  /** The last place he stood on a real floor. See the net in `updatePlayer`. */
+  private safe = new THREE.Vector3();
+  private hasSafe = false;
+  private safeIn = 0;
   private speed = 0;
   private stepPhase = 0;
 
@@ -326,6 +332,10 @@ export class HomeAloneEngine {
   private tauntCd = 0;
   /** Counts down through the throwing animation. */
   private throwT = 0;
+  private aimT = 0;
+  /** BBs fired and landed, for the harness and the scorecard. */
+  private shots = 0;
+  private shotsHit = 0;
   private throwCd = 0;
   compassTarget: { x: number; y: number; z: number; label: string } | null = null;
   private time = 0;
@@ -342,7 +352,7 @@ export class HomeAloneEngine {
   private placed: Placed[] = [];
   private nextTrapId = 1;
   /** Where the thing in your hand would go, and what is wrong with that. */
-  private ghost = { x: 0, y: 0, z: 0, yaw: 0, problem: null as PlaceProblem };
+  private ghost = { x: 0, y: 0, z: 0, yaw: 0, tiltX: 0, tiltZ: 0, problem: null as PlaceProblem };
   private hint: string | null = null;
   private hintUntil = 0;
   private clockTurn = 0;
@@ -430,6 +440,14 @@ export class HomeAloneEngine {
     this.bricks = makeBricks(this.scene);
 
     this.kid = makeCharacter("kid");
+
+    // The BB gun is in his hand from the first frame; the snowball he used to
+
+    // carry is gone.
+
+    this.kid.setProp(true);
+
+    this.kid.setBrick(false);
     this.scene.add(this.kid.root);
 
     this.bindInput(canvas);
@@ -597,32 +615,32 @@ export class HomeAloneEngine {
   }
 
   /**
-   * Throw a snowball.
+   * Fire the BB gun.
    *
-   * There is always another one, and the only limit is the beat between
-   * throws. What it will not do is win the night: see `Burglar.pelt`.
+   * There is always another BB, and the only limit is the beat it takes to
+   * work the lever. See `Burglar.pelt` for what one does when it lands.
    */
   throwBrick() {
     if (this.phase !== "playing" || this.caught > 0 || this.throwCd > 0 || this.zipRide >= 0) return;
-    this.throwCd = 0.8;
+    this.throwCd = 0.5;
     this.throwT = 1;
-    this.kid.setBrick(false);
-    this.audio.brickThrow();
+    this.audio.bb();
 
-    // Out of his hand, in the direction the camera is looking.
-    const from = new THREE.Vector3(this.pos.x, this.pos.y + this.kid.height * 0.84, this.pos.z);
+    // Out of the muzzle, in the direction the camera is looking.
+    const from = new THREE.Vector3(this.pos.x, this.pos.y + this.kid.height * 0.78, this.pos.z);
     const dir = new THREE.Vector3(
       Math.sin(this.camYaw) * Math.cos(this.camPitch),
       Math.sin(this.camPitch),
       Math.cos(this.camYaw) * Math.cos(this.camPitch),
     );
-    from.addScaledVector(dir, 0.3);
+    from.addScaledVector(dir, 0.45);
     this.bricks.hurl(from, dir, this.brickTargets());
-    // He turns to face the throw, or it looks like he lobbed it sideways.
+    this.shots++;
+    // He turns to face the shot, or it looks like he fired it sideways.
     this.yaw = Math.atan2(dir.x, dir.z);
   }
 
-  /** The intruders, as things a snowball can hit. */
+  /** The intruders, as things a BB can hit. */
   private brickTargets(): BrickTarget[] {
     const out: BrickTarget[] = [];
     for (const b of this.burglars) {
@@ -633,14 +651,18 @@ export class HomeAloneEngine {
         z: b.pos.z,
         height: b.char.height,
         hit: () => {
-          const how = b.pelt(this.time);
+          const how = b.pelt(this.time, BB_DAMAGE);
           if (!how) return false;
-          // Stuck or blind, a snowball is enough to put him on the floor.
+          this.shotsHit++;
+          // Stuck or blind, a BB is enough to put him on the floor.
           if (how === "floor") {
             const chain = this.liveChain(b) + 1;
-            this.link(b, "Snowball", Math.round(16 * chainMult(chain)), 2.6, chain, linkScore(chain, 1), ["STUCK SHOT"]);
+            this.link(b, "BB Gun", Math.round(16 * chainMult(chain)), 2.6, chain, linkScore(chain, 1), ["STUCK SHOT"]);
+          } else {
+            this.audio.yell(b.kind.rig);
+            this.points += 10;
+            if (b.nerve <= 0) this.flash(`${b.name.toUpperCase()} HAS HAD ENOUGH`, 2.4);
           }
-          else if (b.nerve <= 0) this.flash(`${b.name.toUpperCase()} HAS HAD ENOUGH`, 2.4);
           return true;
         },
       });
@@ -680,7 +702,7 @@ export class HomeAloneEngine {
     const def = KIT[this.selected];
     const p: Placed = {
       id: this.nextTrapId++, kind: def.kind, x: g.x, y: g.y, z: g.z, yaw: g.yaw,
-      usesLeft: def.uses, cool: 0, firing: 0,
+      usesLeft: def.uses, cool: 0, firing: 0, tiltX: g.tiltX, tiltZ: g.tiltZ,
     };
     this.placed.push(p);
     this.placedRig.add(p);
@@ -771,6 +793,7 @@ export class HomeAloneEngine {
     this.kid.setScream(false);
 
     this.pos.set(level.spawn.x, level.spawn.y + 0.05, level.spawn.z);
+    this.hasSafe = false;
     this.vel.set(0, 0, 0);
     this.yaw = level.spawn.yaw;
     this.camYaw = level.spawn.yaw;
@@ -988,23 +1011,59 @@ export class HomeAloneEngine {
     this.vel.x += (want.x - this.vel.x) * Math.min(1, dt * accel);
     this.vel.z += (want.z - this.vel.z) * Math.min(1, dt * accel);
 
+    const prevY = this.pos.y;
+    const was = this.grounded;
     this.vel.y -= GRAVITY * dt;
     this.pos.y += this.vel.y * dt;
 
     const nx = this.pos.x + this.vel.x * dt;
     const nz = this.pos.z + this.vel.z * dt;
-    const solved = this.resolve(nx, nz, this.pos.y);
+    const solved = this.resolve(nx, nz, prevY);
     this.pos.x = solved.x;
     this.pos.z = solved.z;
 
-    const g = this.groundAt(this.pos.x, this.pos.z, this.pos.y + (this.grounded ? STEP_UP : 0.05));
-    if (this.pos.y <= g) {
-      if (this.vel.y < -7 && !this.grounded) this.audio.thud(1);
+    /*
+     * The floor is looked for from where his feet *were*, not where gravity
+     * has just put them. It used to be the other way round, with five
+     * centimetres of grace, and anything falling faster than five centimetres
+     * a frame went straight through whatever it was falling onto. Walking
+     * down a flight of stairs was enough: the treads drop away, he is in the
+     * air for a few frames, he picks up speed, and the next thing under him is
+     * nothing at all, all the way to the bottom of the map.
+     *
+     * And he keeps his feet on a slope. If he was standing and the floor under
+     * the next step is no more than a stair or two lower, he is still standing
+     * on it, not hopping down it.
+     */
+    const g = this.groundAt(this.pos.x, this.pos.z, prevY + (was ? STEP_UP : 0.05));
+    if (this.pos.y <= g || (was && g > prevY - 0.45)) {
+      if (this.vel.y < -7 && !was) this.audio.thud(1);
       this.pos.y = g;
       this.vel.y = 0;
       this.grounded = true;
     } else if (this.pos.y > g + 0.06) {
       this.grounded = false;
+    }
+
+    /*
+     * The net under the world. Every hole anybody has found is closed and
+     * `tools/homealone-holes.mjs` looks for new ones, but a hole nobody has
+     * found yet should cost a blink, not the night: remember the last place he
+     * stood on a real floor, and if he ever ends up below the basement, put
+     * him back there.
+     */
+    if (this.grounded && g > FLOOR.basement - 0.5) {
+      this.safeIn -= dt;
+      if (this.safeIn <= 0) {
+        this.safeIn = 0.35;
+        this.safe.copy(this.pos);
+        this.hasSafe = true;
+      }
+    } else if (this.pos.y < FLOOR.basement - 3) {
+      if (this.hasSafe) this.pos.copy(this.safe);
+      else this.pos.set(this.level.spawn.x, this.level.spawn.y + 0.05, this.level.spawn.z);
+      this.vel.set(0, 0, 0);
+      this.grounded = true;
     }
 
     this.speed = Math.hypot(this.vel.x, this.vel.z);
@@ -1042,12 +1101,14 @@ export class HomeAloneEngine {
     /* The throw: the right arm goes over the top. It is applied *after*
        `update`, because the gait would otherwise overwrite it every frame —
        and a throw you cannot see is a button that does nothing. */
-    if (this.throwT > 0) {
-      const f = 1 - this.throwT; // 0 wind-up … 1 follow-through
-      const swing = f < 0.35 ? -(f / 0.35) * 2.6 : -2.6 + ((f - 0.35) / 0.65) * 4.0;
-      this.kid.limbs.rArm.rotation.x = swing;
-      this.kid.limbs.rFore.rotation.x = -1.1 + f * 0.9;
-      this.kid.body.rotation.y = -0.35 * Math.sin(f * Math.PI);
+    if (this.aimT > 0) {
+      // Gun up to the shoulder, both hands on it, and a kick when it goes off.
+      const up = Math.min(1, this.aimT * 4);
+      const kick = this.throwT > 0.6 ? (this.throwT - 0.6) * 0.9 : 0;
+      this.kid.limbs.rArm.rotation.x = (-1.42 - kick) * up;
+      this.kid.limbs.rFore.rotation.x = -0.12 * up;
+      this.kid.limbs.lArm.rotation.x = (-1.25 - kick) * up;
+      this.kid.limbs.lFore.rotation.x = -0.55 * up;
     }
   }
 
@@ -1391,8 +1452,10 @@ export class HomeAloneEngine {
         if (!o.active || Math.abs(o.pos.y - p.y) > 1.6) continue;
         if (o !== b && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) > def.area) continue;
         const out = resolveTrap(def, p.yaw, { hx: 0, hz: 0, heavy: false, rooted: false, chain: this.liveChain(o) });
-        o.blind = out.blind;
-        this.link(o, def.name, out.damage, 0, out.chain, out.score, []);
+        // Flour sticks to honey. A man wearing both cannot see for half as long again.
+        const battered = o.honeyed > 0;
+        o.blind = out.blind * (battered ? 1.5 : 1);
+        this.link(o, def.name, out.damage, 0, out.chain, out.score + (battered ? 75 : 0), battered ? ["BATTERED"] : []);
       }
       return;
     }
@@ -1402,9 +1465,11 @@ export class HomeAloneEngine {
       hx, hz, heavy: b.kind.heavy, rooted: b.rooted > 0, chain: this.liveChain(b),
     });
     if (out.root > 0) b.rooted = out.root;
-    else b.rooted = 0;
+    else if (out.stun > 0 || out.dist > 0) b.rooted = 0;
+    if (out.slow > 0) b.slowed = Math.max(b.slowed, out.root + out.slow);
+    if (p.kind === "honey") b.honey(out.root + out.slow);
     this.link(b, def.name, out.damage, out.stun, out.chain, out.score, out.tricks);
-    // Glue is a set-up, so the chain waits for as long as he is stuck in it.
+    // Honey is a set-up, so the chain waits for as long as he is stuck in it.
     if (out.root > 0) b.chainUntil = this.time + out.root + 1;
     if (out.dist > 0 && out.mode) this.startFling(b, out.tx, out.tz, out.dist, out.mode, p.id);
   }
@@ -1481,7 +1546,9 @@ export class HomeAloneEngine {
       case "marbles": this.audio.clatter(); this.audio.slip(); break;
       case "slick": this.audio.slip(); break;
       case "tripwire": this.audio.tick(); this.audio.thud(0.4); break;
-      case "glue": this.audio.slip(); break;
+      case "honey": this.audio.slip(); break;
+      case "mousetrap": this.audio.tick(); this.audio.clatter(); break;
+      case "rake": this.audio.whoosh(); this.audio.clang(); break;
       case "spring": this.audio.boing(); break;
       case "sack": this.audio.whoosh(); break;
       case "flour": this.audio.poof(); break;
@@ -1612,11 +1679,35 @@ export class HomeAloneEngine {
     g.yaw = this.camYaw;
     g.x = this.pos.x + Math.sin(this.camYaw) * REACH;
     g.z = this.pos.z + Math.cos(this.camYaw) * REACH;
-    const floor = this.groundAt(g.x, g.z, this.pos.y + STEP_UP);
+    /*
+     * Stairs. A flight is the best place in the house for a trap and for a
+     * long time you could not put one there: the ghost is a pace ahead of you,
+     * a pace along a staircase is a metre up or down it, and "more than 75 cm
+     * off your own floor" was the test for trying to lay something in mid-air.
+     * So look a storey's worth of step above your feet, and if what is there
+     * is a ramp, lay it on the treads and lean it to the pitch of the flight.
+     */
+    const floor = this.groundAt(g.x, g.z, this.pos.y + 1.5);
     g.y = floor > -20 ? floor : this.pos.y;
+    g.tiltX = 0;
+    g.tiltZ = 0;
+    let onStair = false;
+    for (const r of this.world.ramps) {
+      const h = rampHeight(r, g.x, g.z);
+      if (h === null || Math.abs(h - floor) > 0.02 || h < r.yLow + 0.03 || h > r.yHigh - 0.03) continue;
+      onStair = true;
+      const run = r.axis === "z" ? r.z1 - r.z0 : r.x1 - r.x0;
+      const rise = r.yHigh - r.yLow;
+      const pitch = Math.atan2(rise, run);
+      if (r.axis === "z") g.tiltX = -r.dir * pitch;
+      else g.tiltZ = r.dir * pitch;
+      // The ramp runs through the back of each tread; the noses stand a
+      // little proud of it, and that is where a thing left on the stairs sits.
+      g.y = h + (rise / r.steps) * 0.75;
+    }
 
     let problem: PlaceProblem = null;
-    if (floor < -20 || Math.abs(floor - this.pos.y) > 0.75) problem = "air";
+    if (floor < -20 || Math.abs(floor - this.pos.y) > (onStair ? 1.5 : 0.75)) problem = "air";
     else if (
       this.blocked(g.x, g.y + 0.4, g.z) ||
       this.blocked((g.x + this.pos.x) / 2, g.y + 0.6, (g.z + this.pos.z) / 2)
@@ -1624,7 +1715,7 @@ export class HomeAloneEngine {
     else if (this.burglars.some((b) => b.upright && b.pos.distanceTo(this.pos) < 2.4)) problem = "busy";
     else problem = placeProblem(kind, g, this.placed, this.parts);
     g.problem = problem;
-    this.placedRig.ghost(kind, g.x, g.y, g.z, g.yaw, !problem);
+    this.placedRig.ghost(kind, g.x, g.y, g.z, g.yaw, !problem, g.tiltX, g.tiltZ);
   }
 
   /** Where each valuable is right now: on its spot, or on somebody's back. */
@@ -1925,8 +2016,11 @@ export class HomeAloneEngine {
     this.throwCd = Math.max(0, this.throwCd - dt);
     const wasThrowing = this.throwT > 0;
     this.throwT = Math.max(0, this.throwT - dt * 2.6);
+    // He keeps the gun up for a moment after a shot, so a string of them is
+    // one pose and not a twitch.
+    this.aimT = this.throwT > 0 ? 1.1 : Math.max(0, this.aimT - dt);
     // He reaches for the next one the moment the last has left.
-    if (wasThrowing && this.throwT <= 0) this.kid.setBrick(true);
+    void wasThrowing;
 
     this.world.cullLights(this.pos.x, this.pos.y, this.pos.z);
   }
@@ -2107,12 +2201,13 @@ export class HomeAloneEngine {
       if (e.code === "KeyR") this.ring();
       if (e.code === "KeyG") this.ready();
       if (e.code === "KeyB") this.callIn();
-      if (e.code === "Escape" || e.code === "Digit0") {
+      if (e.code === "Escape") {
         if (this.selected) this.selectKit(null);
       }
-      const digit = /^Digit([1-8])$/.exec(e.code);
+      const digit = /^Digit([0-9])$/.exec(e.code);
       if (digit) {
-        const k = this.kitNow()[Number(digit[1]) - 1];
+        // 1 to 9, and 0 is the tenth thing in the box.
+        const k = this.kitNow()[(Number(digit[1]) + 9) % 10];
         if (k) this.selectKit(k);
       }
       if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code))
@@ -2132,7 +2227,11 @@ export class HomeAloneEngine {
     const onClick = () => {
       this.audio.resume();
       // With the mouse captured, a click lays whatever is in your hand.
-      if (this.phase === "playing" && this.pointerLocked && this.selected) this.place();
+      // With nothing in your hand, it pulls the trigger.
+      if (this.phase === "playing" && this.pointerLocked) {
+        if (this.selected) this.place();
+        else this.throwBrick();
+      }
       if (this.phase === "playing" && !this.pointerLocked && !("ontouchstart" in window))
         canvas.requestPointerLock?.();
     };
@@ -2315,7 +2414,7 @@ export class HomeAloneEngine {
       blurb: KIT[k].blurb,
       affordable: L.kind === "roam" || this.parts >= KIT[k].cost,
       selected: this.selected === k,
-      key: i + 1,
+      key: (i + 1) % 10,
     }));
 
     // Somebody who walked out with an armful is not "gone", he is on his way
@@ -2426,6 +2525,8 @@ export class HomeAloneEngine {
     return {
       pos: { x: this.pos.x, y: this.pos.y, z: this.pos.z },
       camYaw: this.camYaw,
+      shots: this.shots,
+      shotsHit: this.shotsHit,
       placed: this.placed.map((p) => ({ ...p })),
       paths: (["front", "back"] as Entry[]).map((entry) => ({
         entry,
@@ -2436,6 +2537,7 @@ export class HomeAloneEngine {
       })),
       burglars: this.burglars.map((b) => ({
         name: b.name, state: b.state, x: b.pos.x, y: b.pos.y, z: b.pos.z, nerve: b.nerve,
+        slowed: b.slowed, honeyed: b.honeyed, rooted: b.rooted,
         carrying: b.carrying, lootId: b.lootId, chain: b.chain, flung: !!b.flung,
       })),
     };
@@ -2444,6 +2546,7 @@ export class HomeAloneEngine {
   /** Test hook: stand somewhere, facing some way. */
   teleport(x: number, y: number, z: number, yaw?: number) {
     this.pos.set(x, y + 0.05, z);
+    this.hasSafe = false;
     this.vel.set(0, 0, 0);
     if (yaw !== undefined) {
       this.yaw = yaw;

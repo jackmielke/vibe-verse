@@ -30,7 +30,7 @@ export interface PlacedRig {
   thump(x: number, y: number, z: number): void;
   ring(id: number): void;
   /** Show (or hide, with a null kind) the outline of what is about to be laid. */
-  ghost(kind: KitKind | null, x: number, y: number, z: number, yaw: number, ok: boolean): void;
+  ghost(kind: KitKind | null, x: number, y: number, z: number, yaw: number, ok: boolean, tiltX?: number, tiltZ?: number): void;
   /** Put a valuable somewhere, or hide it. */
   loot(id: string, x: number, y: number, z: number, visible: boolean, carried: boolean): void;
   /** The dotted lines of their likely routes; null clears them. */
@@ -140,9 +140,48 @@ export function buildPlaced(parent: THREE.Object3D): PlacedRig {
         actor = put(group, BOX, flat(0xe8e8f0), 0, 0.14, 0, 1.4, 0.012, 0.012);
         break;
       }
-      case "glue": {
+      case "honey": {
+        // A spilled jar: the puddle, a few fat drips, and the jar on its side.
         floor(group, DISC, std(0xe0a82a, 0.08, 0.35), 0.72, 0.025);
         floor(group, DISC, std(0xf6d77a, 0.05, 0.4), 0.3, 0.03).position.x = 0.2;
+        for (let i = 0; i < 5; i++) {
+          const a = i * 1.7 + 0.4;
+          put(group, SPH, std(0xf0b030, 0.08, 0.35), Math.cos(a) * 0.5, 0.03, Math.sin(a) * 0.5, 0.2, 0.05, 0.16);
+        }
+        const jar = put(group, CYL, std(0xf4c860, 0.1, 0.2), -0.42, 0.1, -0.2, 0.2, 0.26, 0.2);
+        jar.rotation.z = Math.PI / 2;
+        put(group, CYL, std(0x8a5a22, 0.6), -0.58, 0.1, -0.2, 0.21, 0.05, 0.21).rotation.z = Math.PI / 2;
+        break;
+      }
+      case "mousetrap": {
+        // Half a dozen of them, scattered, each a little wooden tile with a bar.
+        const set = new THREE.Group();
+        for (let i = 0; i < 6; i++) {
+          const a = i * 1.05 + 0.3;
+          const r = i === 0 ? 0 : 0.28 + (i % 2) * 0.2;
+          const one = new THREE.Group();
+          one.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+          one.rotation.y = a * 2.3;
+          put(one, BOX, std(0xc9a26b, 0.85), 0, 0.015, 0, 0.11, 0.03, 0.2);
+          put(one, BOX, std(0xc8ccd2, 0.3, 0.8), 0, 0.04, -0.03, 0.09, 0.012, 0.012);
+          put(one, BOX, std(0xe8c860, 0.6), 0, 0.04, 0.06, 0.03, 0.02, 0.03);
+          set.add(one);
+        }
+        group.add(set);
+        actor = set;
+        break;
+      }
+      case "rake": {
+        // Tines up, handle lying away from them along local +Z. The handle
+        // is the actor: it pivots at the head and comes up when trodden on.
+        put(group, BOX, std(0x6a6e74, 0.4, 0.7), 0, 0.03, -0.3, 0.5, 0.03, 0.04);
+        for (let i = 0; i < 7; i++)
+          put(group, BOX, std(0x6a6e74, 0.4, 0.7), -0.24 + i * 0.08, 0.07, -0.3, 0.02, 0.1, 0.02);
+        const handle = new THREE.Group();
+        handle.position.set(0, 0.03, -0.3);
+        put(handle, BOX, std(0xb98a4a, 0.8), 0, 0, 0.75, 0.04, 0.04, 1.5);
+        group.add(handle);
+        actor = handle;
         break;
       }
       case "clock": {
@@ -308,11 +347,20 @@ export function buildPlaced(parent: THREE.Object3D): PlacedRig {
   routePts.visible = false;
   root.add(routePts);
 
+  /** Turn it to face `yaw`, then lean the whole thing to the pitch of a stair. */
+  const leanQ = new THREE.Quaternion();
+  const leanE = new THREE.Euler();
+  const UP = new THREE.Vector3(0, 1, 0);
+  function lean(o: THREE.Object3D, yaw: number, tiltX: number, tiltZ: number) {
+    o.quaternion.setFromEuler(leanE.set(tiltX, 0, tiltZ));
+    o.quaternion.multiply(leanQ.setFromAxisAngle(UP, yaw));
+  }
+
   const rig: PlacedRig = {
     add(p) {
       const m = model(p.kind);
       m.group.position.set(p.x, p.y, p.z);
-      m.group.rotation.y = p.yaw;
+      lean(m.group, p.yaw, p.tiltX ?? 0, p.tiltZ ?? 0);
       root.add(m.group);
       visuals.set(p.id, { ...m, kind: p.kind, ringing: 0 });
     },
@@ -334,7 +382,7 @@ export function buildPlaced(parent: THREE.Object3D): PlacedRig {
       const v = visuals.get(id);
       if (v) v.ringing = 3.5;
     },
-    ghost(kind, x, y, z, yaw, ok) {
+    ghost(kind, x, y, z, yaw, ok, tiltX = 0, tiltZ = 0) {
       if (!kind) {
         ghost.visible = false;
         return;
@@ -342,7 +390,7 @@ export function buildPlaced(parent: THREE.Object3D): PlacedRig {
       const def = KIT[kind];
       ghost.visible = true;
       ghost.position.set(x, y, z);
-      ghost.rotation.y = yaw;
+      lean(ghost, yaw, tiltX, tiltZ);
       const r = Math.max(0.5, def.radius || 0.45);
       ghostRing.scale.setScalar(r);
       ghostFill.scale.setScalar(r);
@@ -423,6 +471,13 @@ export function buildPlaced(parent: THREE.Object3D): PlacedRig {
               break;
             case "flour":
               a.visible = p.firing <= 0;
+              break;
+            case "mousetrap":
+              a.position.y = p.firing > 0 ? Math.sin(f * Math.PI) * 0.35 : 0;
+              break;
+            case "rake":
+              // Up to vertical and back down again.
+              a.rotation.x = p.firing > 0 ? -Math.sin(Math.min(1, f * 1.6) * Math.PI) * 1.45 : 0;
               break;
             case "clock": {
               if (v.ringing > 0) {

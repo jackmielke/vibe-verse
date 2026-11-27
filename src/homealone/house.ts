@@ -183,18 +183,26 @@ export interface Ramp {
 /** Main flight: up out of the front hall, arriving at the landing. */
 export const MAIN_STAIR: Ramp = {
   x0: X.w1 + PART_T / 2, x1: X.w2 - PART_T / 2,
-  z0: 0.4, z1: 5.0,
+  // The foot stops at 4.0, a metre and a half short of the front wall. It used
+  // to run to 5.0 and fill the whole bay, so the only way in was a doorway
+  // half-way along the flight: you walked in *under* the treads and stood
+  // inside the staircase. Now the bay is walled either side of the flight and
+  // the one way onto it is the foot.
+  z0: 0.4, z1: 4.0,
   yLow: FLOOR.ground, yHigh: FLOOR.upper,
   axis: "z", dir: -1, steps: 16,
 };
 
 /** Basement flight: down along the back wall, out of the back hall. */
 export const CELLAR_STAIR: Ramp = {
-  x0: -6.4, x1: -2.2,
+  // The head stops at -2.9, which leaves a landing more than a metre deep
+  // between the cellar door and the kitchen wall. It used to stop at -2.2 and
+  // leave forty-four centimetres, which is narrower than the boy.
+  x0: -6.4, x1: -2.9,
   z0: -5.25, z1: -4.05,
   yLow: FLOOR.basement, yHigh: FLOOR.ground,
   // dir: +1 — it climbs towards larger x, so the *head* of the flight is at
-  // x = -2.2, right behind the cellar door, and it descends westward. Getting
+  // x = -2.9, right behind the cellar door, and it descends westward. Getting
   // this backwards builds a staircase whose top is in the far corner of the
   // basement and whose bottom is at the door: the geometry and the ramp agree
   // with each other and disagree with the nav graph, which is the worst of
@@ -207,7 +215,7 @@ export const STAIR_VOIDS = [
   // Bedroom floor is open over the main flight.
   { x0: X.w1, x1: X.w2, z0: 0.4, z1: IN.S, floor: "upper" as FloorName },
   // Ground floor is open over the cellar flight.
-  { x0: -6.5, x1: -2.1, z0: -5.35, z1: -4.0, floor: "ground" as FloorName },
+  { x0: -6.5, x1: -2.8, z0: -5.35, z1: -4.0, floor: "ground" as FloorName },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -236,10 +244,10 @@ export interface Doorway {
 
 export const DOORWAYS: Doorway[] = [
   /* ground floor */
-  { along: "z", at: X.w2, centre: 3.2, width: 1.35, height: 2.15, floor: "ground", leaf: "none" }, // hall ↔ stairbay (cased opening)
+  { along: "z", at: X.w2, centre: 4.7, width: 1.3, height: 2.3, floor: "ground", leaf: "none" }, // hall ↔ foot of the stairs (cased opening)
   { along: "z", at: X.e1, centre: 3.4, width: 1.5, height: 2.2, floor: "ground", leaf: "none" }, // hall ↔ living
   { along: "x", at: Z.m, centre: 0.4, width: 1.2, height: 2.15, floor: "ground", leaf: "none" }, // hall ↔ midhall
-  { along: "z", at: X.w1, centre: 2.4, width: 1.0, height: 2.1, floor: "ground", leaf: "interior", swing: 1.5 }, // stairbay ↔ den
+  { along: "z", at: X.w1, centre: 4.7, width: 1.0, height: 2.1, floor: "ground", leaf: "none" }, // foot of the stairs ↔ den
   { along: "z", at: X.e1, centre: -1.0, width: 1.4, height: 2.2, floor: "ground", leaf: "none" }, // midhall ↔ dining
   { along: "z", at: X.w2, centre: -1.0, width: 1.1, height: 2.1, floor: "ground", leaf: "interior", swing: -1.5 }, // midhall ↔ family
   { along: "x", at: Z.n1, centre: 3.6, width: 1.3, height: 2.15, floor: "ground", leaf: "none" }, // dining ↔ kitchen
@@ -249,7 +257,7 @@ export const DOORWAYS: Doorway[] = [
   { along: "x", at: Z.S, centre: 0.4, width: 1.25, height: 2.35, floor: "ground", leaf: "front", swing: -1.7 },
   { along: "x", at: Z.N, centre: 3.2, width: 1.1, height: 2.2, floor: "ground", leaf: "back", swing: 1.6 },
   /* cellar door, at the head of the back stair */
-  { along: "z", at: -2.1, centre: -4.65, width: 1.0, height: 2.1, floor: "ground", leaf: "cellar", swing: -1.5 },
+  { along: "z", at: -2.8, centre: -4.65, width: 1.0, height: 2.1, floor: "ground", leaf: "cellar", swing: -1.5 },
 
   /* bedroom floor */
   { along: "x", at: 0.4, centre: -5.2, width: 0.95, height: 2.05, floor: "upper", leaf: "interior", swing: 1.4 }, // corridor ↔ bathroom
@@ -291,9 +299,9 @@ export const NAV: NavNode[] = [
   g("g_front", 0.4, 4.6, "hall"),
   g("g_hall", 0.4, 2.6, "hall"),
   g("g_hall_n", 0.4, 1.1, "hall"),
-  g("g_stairfoot", -2.6, 4.4, "stairbay"),
-  g("g_stairbay", -2.6, 2.6, "stairbay"),
-  g("g_den_door", -3.9, 2.4, "den"),
+  g("g_stair_door", -1.2, 4.7, "hall"),
+  g("g_stairfoot", -2.6, 4.7, "stairbay"),
+  g("g_den_door", -4.0, 4.7, "den"),
   g("g_den", -5.4, 3.4, "den"),
   g("g_living_door", 2.2, 3.4, "living"),
   g("g_living", 4.4, 3.0, "living"),
@@ -307,17 +315,17 @@ export const NAV: NavNode[] = [
   g("g_kitchen_w", 0.2, -3.6, "kitchen"),
   g("g_backdoor", 3.2, -4.8, "kitchen"),
   g("g_backhall", -1.9, -3.3, "backhall"),
-  g("g_cellar_head", -1.9, -4.65, "backhall"),
+  g("g_cellar_head", -2.15, -4.65, "backhall"),
 
   /* main stair — three nodes so a burglar is genuinely mid-flight */
-  { id: "s_low", x: -2.6, y: FLOOR.ground + 0.05, z: 4.7, room: "stairbay" },
-  { id: "s_mid", x: -2.6, y: (FLOOR.ground + FLOOR.upper) / 2, z: 2.7, room: "stairbay" },
-  { id: "s_high", x: -2.6, y: FLOOR.upper, z: 0.55, room: "stairbay" },
+  { id: "s_low", x: -2.6, y: FLOOR.ground, z: 4.0, room: "stairbay" },
+  { id: "s_mid", x: -2.6, y: (FLOOR.ground + FLOOR.upper) / 2, z: 2.2, room: "stairbay" },
+  { id: "s_high", x: -2.6, y: FLOOR.upper, z: 0.4, room: "stairbay" },
 
   /* cellar stair */
-  { id: "c_high", x: -2.5, y: FLOOR.ground, z: -4.65, room: "backhall" },
-  { id: "c_mid", x: -4.3, y: (FLOOR.basement + FLOOR.ground) / 2, z: -4.65, room: "basement" },
-  { id: "c_low", x: -6.1, y: FLOOR.basement, z: -4.65, room: "basement" },
+  { id: "c_high", x: -2.95, y: FLOOR.ground, z: -4.65, room: "backhall" },
+  { id: "c_mid", x: -4.65, y: (FLOOR.basement + FLOOR.ground) / 2, z: -4.65, room: "basement" },
+  { id: "c_low", x: -6.35, y: FLOOR.basement, z: -4.65, room: "basement" },
   { id: "b_floor", x: -4.4, y: FLOOR.basement, z: -3.0, room: "basement" },
   { id: "b_furnace", x: -1.4, y: FLOOR.basement, z: -2.0, room: "basement" },
 
@@ -340,10 +348,11 @@ const LINKS: Array<[string, string]> = [
   ["out_back", "g_backdoor"],
   ["g_front", "g_hall"],
   ["g_hall", "g_hall_n"],
-  ["g_hall", "g_stairfoot"],
+  ["g_front", "g_stair_door"],
+  ["g_hall", "g_stair_door"],
+  ["g_stair_door", "g_stairfoot"],
   ["g_hall", "g_living_door"],
-  ["g_stairfoot", "g_stairbay"],
-  ["g_stairbay", "g_den_door"],
+  ["g_stairfoot", "g_den_door"],
   ["g_den_door", "g_den"],
   ["g_living_door", "g_living"],
   ["g_hall_n", "g_midhall"],

@@ -21,14 +21,16 @@
 export type KitKind =
   | "marbles"
   | "tripwire"
-  | "glue"
+  | "honey"
   | "clock"
   | "slick"
   | "spring"
+  | "mousetrap"
   | "sack"
-  | "flour";
+  | "flour"
+  | "rake";
 
-export type Effect = "slide" | "trip" | "root" | "lure" | "launch" | "swat" | "blind";
+export type Effect = "slide" | "trip" | "root" | "lure" | "launch" | "swat" | "blind" | "snap" | "bonk";
 
 export interface KitDef {
   kind: KitKind;
@@ -61,6 +63,8 @@ export interface KitDef {
   area: number;
   /** Seconds of the lingering effect (stuck, blinded). */
   linger: number;
+  /** Seconds he is slowed to a hobble afterwards (honey on his boots, a trap on his toe). */
+  slow: number;
   /** Colour of the ring on the floor, so a laid trap reads in the dark. */
   colour: number;
 }
@@ -70,53 +74,67 @@ export const KIT: Record<KitKind, KitDef> = {
     kind: "marbles", name: "Marbles", icon: "🔮", cost: 2,
     blurb: "Slip. He slides 3 m the way he was going.",
     effect: "slide", radius: 0.85, uses: 2, rearm: 2.5, directional: false, hidden: false, night: 1,
-    damage: 22, stun: 2.6, throw: 3.2, area: 0, linger: 0, colour: 0x6fd0ff,
+    damage: 22, stun: 2.6, throw: 3.2, area: 0, linger: 0, slow: 0, colour: 0x6fd0ff,
   },
   tripwire: {
     kind: "tripwire", name: "Tripwire", icon: "🧵", cost: 1,
     blurb: "Cheap, and nobody ever sees it. Face first.",
     effect: "trip", radius: 0.75, uses: 1, rearm: 0, directional: false, hidden: true, night: 1,
-    damage: 18, stun: 2.4, throw: 1.5, area: 0, linger: 0, colour: 0xd8d8e0,
+    damage: 18, stun: 2.4, throw: 1.5, area: 0, linger: 0, slow: 0, colour: 0xd8d8e0,
   },
-  glue: {
-    kind: "glue", name: "Glue Mat", icon: "🍯", cost: 2,
-    blurb: "Stuck for 5 s. The next thing to hit him hits half again as hard.",
+  honey: {
+    kind: "honey", name: "Honey Trap", icon: "🍯", cost: 2,
+    blurb: "Stuck for 4 s and covered in it, then slow for 8 more. Hit him while he is stuck.",
     effect: "root", radius: 0.8, uses: 1, rearm: 0, directional: false, hidden: false, night: 1,
-    damage: 8, stun: 0, throw: 0, area: 0, linger: 5, colour: 0xf2c53d,
+    damage: 8, stun: 0, throw: 0, area: 0, linger: 4, slow: 8, colour: 0xf2c53d,
   },
   clock: {
     kind: "clock", name: "Alarm Clock", icon: "⏰", cost: 1,
     blurb: "Ring it from anywhere. They come and look.",
     effect: "lure", radius: 0, uses: 3, rearm: 6, directional: false, hidden: true, night: 1,
-    damage: 0, stun: 0, throw: 0, area: 18, linger: 0, colour: 0xff7a5a,
+    damage: 0, stun: 0, throw: 0, area: 18, linger: 0, slow: 0, colour: 0xff7a5a,
   },
   slick: {
     kind: "slick", name: "Soap Slick", icon: "🧼", cost: 3,
     blurb: "A 6 m slide, three times over. The long link in a chain.",
     effect: "slide", radius: 1.0, uses: 3, rearm: 2.0, directional: false, hidden: false, night: 2,
-    damage: 14, stun: 2.2, throw: 6.0, area: 0, linger: 0, colour: 0x9af0e0,
+    damage: 14, stun: 2.2, throw: 6.0, area: 0, linger: 0, slow: 0, colour: 0x9af0e0,
   },
   spring: {
     kind: "spring", name: "Springboard", icon: "🛹", cost: 4,
     blurb: "Launches him 6 m the way YOU were facing. Aim it at something.",
     effect: "launch", radius: 0.75, uses: 2, rearm: 2.5, directional: true, hidden: false, night: 2,
-    damage: 26, stun: 3.0, throw: 6.0, area: 0, linger: 0, colour: 0xff9a3c,
+    damage: 26, stun: 3.0, throw: 6.0, area: 0, linger: 0, slow: 0, colour: 0xff9a3c,
+  },
+  mousetrap: {
+    kind: "mousetrap", name: "Mousetraps", icon: "🪤", cost: 1,
+    blurb: "Snap. He hops about holding his foot, slow for 6 s. Too small to spot.",
+    effect: "snap", radius: 0.7, uses: 2, rearm: 1.5, directional: false, hidden: true, night: 2,
+    damage: 16, stun: 0, throw: 0, area: 0, linger: 0, slow: 6, colour: 0xc9a26b,
   },
   sack: {
     kind: "sack", name: "Swinging Sack", icon: "🥊", cost: 5,
     blurb: "A sack of potatoes on a rope. Swats him 4.5 m, twice.",
     effect: "swat", radius: 1.1, uses: 2, rearm: 3.0, directional: true, hidden: false, night: 3,
-    damage: 34, stun: 3.4, throw: 4.5, area: 0, linger: 0, colour: 0xe06a6a,
+    damage: 34, stun: 3.4, throw: 4.5, area: 0, linger: 0, slow: 0, colour: 0xe06a6a,
   },
   flour: {
     kind: "flour", name: "Flour Bomb", icon: "💨", cost: 3,
     blurb: "Everyone within 2.5 m is blind for 7 s and cannot find you.",
     effect: "blind", radius: 0.9, uses: 1, rearm: 0, directional: false, hidden: false, night: 3,
-    damage: 12, stun: 0, throw: 0, area: 2.5, linger: 7, colour: 0xf4f0e6,
+    damage: 12, stun: 0, throw: 0, area: 2.5, linger: 7, slow: 0, colour: 0xf4f0e6,
+  },
+  rake: {
+    kind: "rake", name: "Garden Rake", icon: "🧹", cost: 2,
+    blurb: "He treads on the tines and the handle comes up to meet him. Out cold for 4 s, twice.",
+    effect: "bonk", radius: 0.7, uses: 2, rearm: 2.5, directional: false, hidden: false, night: 3,
+    damage: 28, stun: 4.0, throw: 0, area: 0, linger: 0, slow: 0, colour: 0x9bd36a,
   },
 };
 
-export const KIT_ORDER: KitKind[] = ["marbles", "tripwire", "glue", "clock", "slick", "spring", "sack", "flour"];
+export const KIT_ORDER: KitKind[] = [
+  "marbles", "tripwire", "honey", "clock", "slick", "spring", "mousetrap", "sack", "flour", "rake",
+];
 
 /** What is in the box on a given night. Night 3 onwards is everything. */
 export function kitForNight(night: number): KitKind[] {
@@ -140,6 +158,9 @@ export interface Placed {
   cool: number;
   /** Counts down from 1 while it is going off, for the animation. */
   firing: number;
+  /** Laid on a flight of stairs: how far it leans, about the world X and Z axes. */
+  tiltX?: number;
+  tiltZ?: number;
 }
 
 /** Two traps closer than this are one trap, and nobody can tell which. */
@@ -186,7 +207,7 @@ export interface Victim {
   chain: number;
 }
 
-export type Trick = "STUCK SHOT" | "WALL SLAM" | "TUMBLE" | "BOWLING";
+export type Trick = "STUCK SHOT" | "WALL SLAM" | "TUMBLE" | "BOWLING" | "BATTERED";
 
 export interface Outcome {
   damage: number;
@@ -195,6 +216,8 @@ export interface Outcome {
   root: number;
   /** Seconds unable to see. */
   blind: number;
+  /** Seconds slowed to a hobble. */
+  slow: number;
   /** Unit direction and distance he is thrown; zero distance is no throw. */
   tx: number;
   tz: number;
@@ -231,6 +254,7 @@ export const TRICK_DAMAGE: Record<Trick, number> = {
   "WALL SLAM": 14,
   TUMBLE: 18,
   BOWLING: 14,
+  BATTERED: 0, // flour on honey: paid as a longer blind instead
 };
 
 export function resolveTrap(def: KitDef, trapYaw: number, v: Victim): Outcome {
@@ -238,7 +262,10 @@ export function resolveTrap(def: KitDef, trapYaw: number, v: Victim): Outcome {
   const tricks: Trick[] = [];
   let mult = chainMult(chain);
   // Somebody glued to the floor cannot roll with it.
-  if (v.rooted && (def.effect === "launch" || def.effect === "swat" || def.effect === "slide" || def.effect === "trip")) {
+  if (
+    v.rooted &&
+    (def.effect === "launch" || def.effect === "swat" || def.effect === "slide" || def.effect === "trip" || def.effect === "bonk")
+  ) {
     mult *= 1.5;
     tricks.push("STUCK SHOT");
   }
@@ -273,6 +300,7 @@ export function resolveTrap(def: KitDef, trapYaw: number, v: Victim): Outcome {
     stun: def.stun,
     root: def.effect === "root" ? def.linger : 0,
     blind: def.effect === "blind" ? def.linger : 0,
+    slow: def.slow,
     tx, tz, dist, mode,
     chain,
     tricks,
