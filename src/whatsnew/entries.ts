@@ -58,6 +58,16 @@ export const ENTRIES: WhatsNewEntry[] = [
     world: "Vibe City",
   },
   {
+    id: "cannon-chase-endless-zoom",
+    date: "2026-11-27",
+    emoji: "💥",
+    title: "Cannon Chase never ends, and you can zoom out",
+    body: "Mort and Linda now chase you forever. Gatch News records the night so you can rewatch it after a run, you can read the whole story for one or two players, and a Zoom out button pulls the camera back. Two players on a phone get a much tidier screen.",
+    tag: "update",
+    route: "/cannon-chase",
+    world: "Cannon Chase",
+  },
+  {
     id: "haymaker-boxing",
     date: "2026-11-27",
     emoji: "🥊",
