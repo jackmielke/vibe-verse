@@ -977,6 +977,8 @@ export default function City() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const wizardOpenRef = useRef(false);
   wizardOpenRef.current = wizardOpen;
+  // Walk up to him to talk: the prompt only shows within a few metres.
+  const [wizardNear, setWizardNear] = useState(false);
   const playerNameForWizard = useRef("a traveller");
   playerNameForWizard.current = playerName || "a traveller";
   /** The dance track. Created on the same gesture the sound effects are. */
@@ -1784,6 +1786,7 @@ export default function City() {
       if (mine || wizardNpc.near(at, 40)) wizardNpc.cast(at);
     });
     let wizardWasOpen = false;
+    let wizardWasNear = false;
     setWizardApi(wizard);
     landmarks.onEvent((ev) => {
       const snd = soundsRef.current;
@@ -7678,6 +7681,13 @@ export default function City() {
         }
       }
       wizardNpc.update(dt, now, player.position);
+      {
+        const n = wizardNpc.near(player.position, 6);
+        if (n !== wizardWasNear) {
+          wizardWasNear = n;
+          setWizardNear(n);
+        }
+      }
       wizard.update(dt, now, camera.position);
       updateSpawns(spawnsGroup, dt, now);
       moonWorld.update(dt, now);
@@ -9977,6 +9987,20 @@ export default function City() {
               💬 {peers.online ? peers.count : ""}
               {chatUnread > 0 && <span className="text-amber-300"> +{chatUnread}</span>}
             </button>
+            {wizardApi && (
+              <button
+                onClick={(e) => {
+                  setWizardOpen(true);
+                  setHudMenuOpen(false);
+                  if (document.pointerLockElement) document.exitPointerLock();
+                  e.currentTarget.blur();
+                }}
+                className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
+                title="Talk to the Wizard (Y)"
+              >
+                🧙 Wizard
+              </button>
+            )}
             <button
               onClick={(e) => {
                 setWhatsNewOpen(true);
@@ -11042,6 +11066,19 @@ export default function City() {
             onClose={() => openFolk(null)}
             onSay={(id, text) => folkRef.current?.say(id, text)}
           />
+          {wizardNear && !wizardOpen && wizardApi && (
+            <button
+              data-testid="wizard-prompt"
+              onClick={(e) => {
+                if (document.pointerLockElement) document.exitPointerLock();
+                setWizardOpen(true);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-amber-200 animate-pulse"
+            >
+              🧙 Talk to the Wizard{isTouch ? "" : " · Y"}
+            </button>
+          )}
           {nearGamePrompt && !gameHud && (
             <button
               onClick={(e) => {

@@ -74,23 +74,8 @@ export default function WizardHud({
 
   if (!wizard || !snap) return null;
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        data-testid="wizard-pill"
-        onClick={() => {
-          if (document.pointerLockElement) document.exitPointerLock();
-          onOpenChange(true);
-        }}
-        title="Talk to the Wizard (Y)"
-        className="fixed left-3 top-[7.25rem] z-[60] flex items-center gap-1.5 rounded-full border border-violet-300/40 bg-[#24124a]/80 px-3.5 py-2 text-sm font-semibold text-amber-100 shadow-lg shadow-violet-900/40 backdrop-blur hover:bg-[#2f1863]"
-      >
-        <span className="text-lg leading-none">🧙</span> Wizard
-        {!snap.world.shared && <span className="ml-1 rounded-full bg-amber-300/20 px-1.5 text-[10px] text-amber-200">remix</span>}
-      </button>
-    );
-  }
+  // Closed, he is just a man on the lawn: walk up to him, or use the menu.
+  if (!open) return null;
 
   const submit = () => {
     const t = (dictation.listening ? dictation.interim : text).trim();

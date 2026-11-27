@@ -89,7 +89,7 @@ export function createWizardNpc(home: THREE.Vector3, homeYaw: number): WizardNpc
   disposables.push(starMat, star.geometry);
   body.add(star);
 
-  const label = sign("🧙 The Wizard", "press Y to make a wish");
+  const label = sign("🧙 The Wizard", "walk up to make a wish");
   if (label) {
     label.position.y = 2.95;
     disposables.push(label.material.map!, label.material);
