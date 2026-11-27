@@ -472,7 +472,7 @@ const WORLDS_RAW: WorldEntry[] = [
     emoji: "⚽",
     kind: "game",
     blurb:
-      "Five-a-side arcade soccer in a floodlit cage. Pick a club from around the Vibe Verse, ping passes about, slide in for the ball and hold shoot for a flaming SUPER SHOT. Two and a half minutes, golden goal if it is level. Play the computer, a friend on the same keyboard, or up to three friends online, each on their own phone.",
+      "Five-a-side arcade soccer in a floodlit cage. Play the Vibe Cup, a six-club tournament where every other match runs live beside yours, or a quick match. Pick a club from around the Vibe Verse, ping passes about, slide in for the ball and hold shoot for a flaming SUPER SHOT. Two and a half minutes, golden goal if it is level. Play the computer, a friend on the same keyboard, or up to three friends online, each on their own phone.",
     status: "Playable on phone (thumb stick) and desktop, 1 to 4 players, online rooms",
     accent: "#1fd1b0",
     featured: true,

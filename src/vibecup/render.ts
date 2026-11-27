@@ -203,17 +203,27 @@ function tickFx(fx: Fx, g: Game, dt: number) {
 // The frame
 // ---------------------------------------------------------------------------
 
-const KEEPER_SHIRT = ["#a3e635", "#f472b6"];
+const KEEPER_SHIRT = ["#a3e635", "#e2e8f0"];
 export const PAD_COLORS = ["#38bdf8", "#fb7185", "#facc15", "#a3e635"];
 
-export function drawFrame(ctx: CanvasRenderingContext2D, g: Game, v: View, fx: Fx, dt: number, labels: string[]) {
+export function drawFrame(ctx: CanvasRenderingContext2D, g: Game, v: View, fx: Fx, dt: number, labels: string[], focus = -1) {
   tickFx(fx, g, dt);
   // Camera: ahead of the ball, clamped so the far end of the cage stays on.
   const b = g.ball;
-  const lookX = b.x + b.vx * 0.25;
-  const lookY = b.y + b.vy * 0.25;
+  let lookX = b.x + b.vx * 0.25;
+  let lookY = b.y + b.vy * 0.25;
   const halfLong = (v.portrait ? v.h / TILT : v.w) / 2 / v.s;
   const halfAcross = (v.portrait ? v.w : v.h / TILT) / 2 / v.s;
+  // Playing as one person all match: keep them in the shot as well as the ball.
+  const me = focus >= 0 ? g.players[focus] : null;
+  if (me) {
+    lookX += (me.x - lookX) * 0.35;
+    lookY += (me.y - lookY) * 0.35;
+    const mx = Math.max(2, halfLong - 3);
+    const my = Math.max(2, halfAcross - 2.5);
+    lookX = Math.max(me.x - mx, Math.min(me.x + mx, lookX));
+    lookY = Math.max(me.y - my, Math.min(me.y + my, lookY));
+  }
   const maxX = Math.max(0, L / 2 + 5 - halfLong);
   const maxY = Math.max(0, W / 2 + 4 - halfAcross);
   const k = Math.min(1, dt * 4);

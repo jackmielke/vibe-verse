@@ -61,6 +61,7 @@ export const CLUBS: Club[] = [
   { id: "comets", name: "Cloud Island Comets", short: "COMETS", emoji: "☄️", shirt: "#8b5cf6", trim: "#f5f3ff", shorts: "#2e1065", ink: "#ffffff" },
   { id: "mechanics", name: "Mort's Mechanics", short: "MORT'S", emoji: "🔧", shirt: "#b91c3c", trim: "#facc15", shorts: "#3b0d18", ink: "#facc15" },
   { id: "pineapples", name: "Palm Court Pineapples", short: "PINES", emoji: "🍍", shirt: "#facc15", trim: "#166534", shorts: "#166534", ink: "#14361f" },
+  { id: "paintpads", name: "Paint Pads", short: "PAINT", emoji: "🪣", shirt: "#e11d8f", trim: "#22d3ee", shorts: "#1e1b4b", ink: "#ffffff" },
 ];
 
 export const clubById = (id: string) => CLUBS.find((c) => c.id === id) ?? CLUBS[0];
@@ -72,6 +73,7 @@ const SQUADS: Record<string, string[]> = {
   comets: ["Nimbus", "Halley", "Wisp", "Nova", "Drizzle"],
   mechanics: ["Mad Mort", "Rusty Ray", "Hubcap Hank", "Linda", "Spanner"],
   pineapples: ["Coco", "Pina", "Mango", "Lime", "Kiwi"],
+  paintpads: ["Splat", "Drip", "Rolla", "Swatch", "Tagger"],
 };
 
 // ---------------------------------------------------------------------------
@@ -155,6 +157,10 @@ export interface Controller {
   aimAge: number;
   /** Seconds this controller's player has been off the edge of the screen. */
   far: number;
+  /** One player for the whole match: their index, or -1 to switch freely. */
+  lock: number;
+  /** Seconds left on "pass it to me!" (A pressed without the ball, when locked). */
+  call: number;
 }
 
 export type Phase = "kickoff" | "play" | "goal" | "over";
@@ -227,6 +233,8 @@ export interface NewGameOpts {
   difficulty?: Difficulty;
   /** Teams driven by a person: [0] for one player, [0, 1] for versus, [] to watch. */
   humans?: TeamId[];
+  /** Keep each person on one player all match, in this position (the Vibe Cup tournament). */
+  lockRole?: Role;
 }
 
 export function newGame(o: NewGameOpts = {}): Game {
@@ -283,6 +291,8 @@ export function newGame(o: NewGameOpts = {}): Game {
       aim: null,
       aimAge: 0,
       far: 0,
+      lock: o.lockRole ? players.find((p) => p.team === team && p.role === o.lockRole)!.i : -1,
+      call: 0,
     })),
     kickoffTeam: 0,
     events: [],
@@ -319,6 +329,12 @@ function resetKickoff(g: Game, team: TeamId) {
   const order = (t: TeamId) => (t === team ? ["fw", "mf", "df", "df"] : ["mf", "fw", "df", "df"]) as Role[];
   const taken = new Set<number>();
   for (const c of g.ctrls) {
+    if (c.lock >= 0) {
+      c.active = c.lock;
+      taken.add(c.lock);
+      c.charge = 0;
+      continue;
+    }
     const roles = order(c.team);
     const pick = roles.map((r) => g.players.find((p) => p.team === c.team && p.role === r && !taken.has(p.i))).find(Boolean) ?? g.players.find((p) => p.team === c.team && p.role !== "gk")!;
     c.active = pick.i;
@@ -398,7 +414,9 @@ export function passTarget(g: Game, p: Player, aim: number | null): Player | nul
       if (od < 1.6) blocked += 1.6 - od;
     }
     const forward = ((q.x - p.x) * attackDir(p.team)) / d;
-    const score = -off * 2.2 - Math.abs(d - 12) * 0.08 - blocked * 1.4 + forward * 0.6 - (q.role === "gk" ? 3 : 0);
+    // The computer likes to involve the person on its side.
+    const person = aim === null && g.ctrls.some((c) => c.active === q.i && c.team === p.team) ? 0.7 : 0;
+    const score = -off * 2.2 - Math.abs(d - 12) * 0.08 - blocked * 1.4 + forward * 0.6 - (q.role === "gk" ? 3 : 0) + person;
     if (score > bestScore) {
       bestScore = score;
       best = q;
@@ -443,7 +461,7 @@ function doPass(g: Game, p: Player, aim: number | null, lofted: number) {
   b.target = q ? q.i : -1;
   g.events.push({ type: "pass" });
   // Control follows the ball to whoever it was meant for.
-  if (q && !humanOf(g, q.i)) for (const c of g.ctrls) if (c.team === p.team && c.active === p.i) c.active = q.i;
+  if (q && !humanOf(g, q.i)) for (const c of g.ctrls) if (c.team === p.team && c.active === p.i && c.lock < 0) c.active = q.i;
 }
 
 function doShoot(g: Game, p: Player, charge: number, aimY: number | null, curve: number) {
@@ -524,7 +542,7 @@ function gain(g: Game, p: Player) {
     let best: Controller | null = null;
     let bd = Infinity;
     for (const c of g.ctrls) {
-      if (c.team !== p.team) continue;
+      if (c.team !== p.team || c.lock >= 0) continue;
       const q = g.players[c.active];
       const d = dist(q.x, q.y, p.x, p.y);
       if (d < bd) {
@@ -573,7 +591,7 @@ export function step(g: Game, dt: number) {
       g.phase = "play";
       g.phaseT = 0;
     }
-    if (g.phaseT > 1.0 && !isHumanTeam(g, g.kickoffTeam) && b.owner >= 0) {
+    if (g.phaseT > 1.0 && b.owner >= 0 && (!isHumanTeam(g, g.kickoffTeam) || !humanOf(g, b.owner))) {
       const p = g.players[b.owner];
       doPass(g, p, attackDir(p.team) > 0 ? Math.PI : 0, 0);
       g.phase = "play";
@@ -642,7 +660,10 @@ function readControllers(g: Game, dt: number, kickoff: boolean) {
         doShoot(g, p, c.charge, stick === null ? null : inp.my * ad * ad, -inp.my * ad * 0.6);
       }
     } else if (!kickoff) {
-      if (pressA) {
+      if (pressA && c.lock >= 0) {
+        // Locked to one player: A without the ball shouts for it.
+        c.call = 1.4;
+      } else if (pressA) {
         // Switch to whoever on the team is nearest the ball.
         let best = -1;
         let bd = Infinity;
@@ -660,7 +681,8 @@ function readControllers(g: Game, dt: number, kickoff: boolean) {
     }
     // Never lose your player off the screen: the camera follows the ball, so a
     // person left behind by play is handed the free team-mate nearest to it.
-    if (!kickoff && !has && c.active === p.i) {
+    c.call = Math.max(0, c.call - dt);
+    if (!kickoff && !has && c.active === p.i && c.lock < 0) {
       const ox = (p.x - b.x) / OFFSCREEN_X;
       const oy = (p.y - b.y) / OFFSCREEN_Y;
       c.far = ox * ox + oy * oy > 1 ? c.far + dt : 0;
@@ -925,6 +947,19 @@ function carrierThink(g: Game, p: Player, dt: number) {
     if (d < 4 && ahead > -1) {
       press += 4 - d;
       threatY += (o.y - p.y) * (4 - d);
+    }
+  }
+  // A person on our side shouting for it gets it, if the pass is on.
+  if (p.cool <= 0) {
+    for (const c of g.ctrls) {
+      if (c.team !== p.team || c.call <= 0 || c.active === p.i) continue;
+      const q = g.players[c.active];
+      const d = dist(p.x, p.y, q.x, q.y);
+      if (q.stun <= 0 && d > 2.5 && d < 28 && laneBlock(g, p, q.x, q.y) < 1.4) {
+        c.call = 0;
+        doPass(g, p, Math.atan2(q.y - p.y, q.x - p.x), d > 18 || laneBlock(g, p, q.x, q.y) > 0.7 ? 0.5 : 0);
+        return;
+      }
     }
   }
   // Decide, a few times a second.

@@ -12,9 +12,9 @@ const run = (g: Game, seconds: number, each?: (g: Game) => void) => {
 };
 
 describe("Vibe Cup", () => {
-  it("has five original clubs with distinct shirts", () => {
-    expect(CLUBS).toHaveLength(5);
-    expect(new Set(CLUBS.map((c) => c.shirt)).size).toBe(5);
+  it("has six original clubs with distinct shirts", () => {
+    expect(CLUBS).toHaveLength(6);
+    expect(new Set(CLUBS.map((c) => c.shirt)).size).toBe(6);
   });
 
   it("kicks off with the ball at the forward's feet and ten players on the pitch", () => {

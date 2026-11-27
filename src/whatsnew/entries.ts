@@ -68,6 +68,16 @@ export const ENTRIES: WhatsNewEntry[] = [
     world: "Vibe City",
   },
   {
+    id: "vibe-cup-tournament",
+    date: "2026-11-27",
+    emoji: "🏆",
+    title: "The Vibe Cup tournament, and the Paint Pads",
+    body: "Pick a club and play the whole Vibe Cup: everybody plays everybody, then the top two meet in the final, with a live table and every result kept. You are one player all Cup long, so press pass without the ball to call for it. The other matches play live at the same time and you can watch any of them, or pick the eyes and just follow the computer's Cup. Say hello to the sixth club, the Paint Pads.",
+    tag: "new",
+    route: "/vibe-cup",
+    world: "Vibe Cup",
+  },
+  {
     id: "vibe-cup-online",
     date: "2026-11-27",
     emoji: "📲",

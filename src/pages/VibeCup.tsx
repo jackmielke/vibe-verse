@@ -2,6 +2,9 @@
  * VIBE CUP — the page.
  *
  * Five-a-side arcade soccer in a cage: pass, shoot, slide, golden goal.
+ * The Vibe Cup itself is a six-club tournament (`src/vibecup/cup.ts`): you
+ * are one player for your club all Cup long, and every other match of the
+ * round plays live beside yours, ready to watch.
  * One player against the computer, two people on one keyboard (or two
  * gamepads, or a pad and a keyboard), or up to four online, each on their own
  * device (`src/vibecup/net.ts`: the room maker referees, `?room=CODE` joins,
@@ -26,14 +29,48 @@ import { drawFrame, feedFx, fitView, newFx, PAD_COLORS, screenToWorld, type Fx, 
 import { CupAudio } from "@/vibecup/audio";
 import { applySnap, BOARD, cleanCode, CupRoom, matchGame, MAX_PER_SIDE, openTransport, RoomBoard, roomCode, type Member, type NetMode, type OpenRoom, type Wire } from "@/vibecup/net";
 import { QrCode } from "@/oni/ui/QrCode";
+import {
+  advance, FINAL_ROUND, myFixture, newCup, record as recordCup, roundDone, roundFixtures, roundName, table, validCup, type Cup, type Fixture, type Position,
+} from "@/vibecup/cup";
 
 const MUTE_KEY = "vibecup.muted";
 const PREFS_KEY = "vibecup.prefs";
 const RECORD_KEY = "vibecup.record";
 const NAME_KEY = "vibecup.name";
+const CUP_KEY = "vibecup.cup";
 
-type Mode = "cpu" | "versus" | "online";
-type Screen = "title" | "lobby" | "playing" | "paused" | "over";
+type Mode = "cup" | "cpu" | "versus" | "online";
+type Screen = "title" | "lobby" | "cup" | "playing" | "paused" | "over";
+
+/** One match of a Cup round being played right now. */
+interface LiveGame {
+  f: Fixture;
+  g: Game;
+  fx: Fx;
+  mine: boolean;
+  done: boolean;
+  scorers: string[];
+}
+interface LiveRound {
+  round: number;
+  games: Map<string, LiveGame>;
+  focus: string | null;
+}
+/** What the scoreboards around the Cup show, copied out of the live round. */
+interface Tick {
+  id: string;
+  home: string;
+  away: string;
+  score: [number, number];
+  clock: string;
+  done: boolean;
+  mine: boolean;
+}
+const fixtureSeed = (cup: Cup, f: Fixture) => {
+  let h = cup.seed;
+  for (const ch of f.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h || 1;
+};
 
 /** What the lobby and the online screens show, copied out of the room on every change. */
 interface NetUi {
@@ -157,6 +194,20 @@ export default function VibeCup() {
   const [net, setNet] = useState<NetUi | null>(null);
   const [name, setNameState] = useState<string>(() => read(NAME_KEY, { n: "" }).n || defaultName());
   const [openRooms, setOpenRooms] = useState<OpenRoom[]>([]);
+  // The tournament.
+  const cupRef = useRef<Cup | null>(null);
+  const [cup, setCupState] = useState<Cup | null>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(CUP_KEY) ?? "null");
+      return validCup(v) ? v : null;
+    } catch {
+      return null;
+    }
+  });
+  cupRef.current = cup;
+  const liveRef = useRef<LiveRound | null>(null);
+  const [ticks, setTicks] = useState<Tick[]>([]);
+  const [focusMine, setFocusMine] = useState(false);
 
   const setScreen = useCallback((s: Screen) => {
     screenRef.current = s;
@@ -173,6 +224,7 @@ export default function VibeCup() {
   const start = useCallback(
     (over?: Partial<Prefs> & { seed?: number }) => {
       audioRef.current.unlock();
+      liveRef.current = null;
       const p = { ...prefsRef.current, ...over };
       const g = newGame({
         seed: over?.seed ?? (Date.now() & 0xffff) + 1,
@@ -236,6 +288,7 @@ export default function VibeCup() {
     async (host: boolean, code: string) => {
       roomRef.current?.leave();
       roomRef.current = null;
+      liveRef.current = null;
       setNet({ status: "connecting", code, host, me: "", hostName: "", members: [], clubs: [prefsRef.current.club, prefsRef.current.rival], lost: false });
       setScreen("lobby");
       const u = new URL(window.location.href);
@@ -344,6 +397,97 @@ export default function VibeCup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---- The Cup
+
+  const saveCup = useCallback((c: Cup | null) => {
+    cupRef.current = c;
+    setCupState(c);
+    try {
+      if (c) localStorage.setItem(CUP_KEY, JSON.stringify(c));
+      else localStorage.removeItem(CUP_KEY);
+    } catch {
+      /* private mode: the Cup lasts as long as the tab */
+    }
+  }, []);
+
+  const startCup = useCallback(
+    (me: string | null, position: Position) => {
+      audioRef.current.unlock();
+      liveRef.current = null;
+      setTicks([]);
+      saveCup(newCup(me, position));
+      setScreen("cup");
+    },
+    [saveCup, setScreen],
+  );
+
+  /** Point the camera (and the controls, if it is ours) at one match of the round. */
+  const watch = useCallback(
+    (id: string) => {
+      const live = liveRef.current;
+      const L = live?.games.get(id);
+      if (!live || !L) return;
+      audioRef.current.unlock();
+      live.focus = id;
+      gameRef.current = L.g;
+      fxRef.current = L.fx;
+      setFocusMine(L.mine);
+      setResult(null);
+      setScreen("playing");
+    },
+    [setScreen],
+  );
+
+  /** Everybody kicks off: your match, and the computer's matches alongside it. */
+  const kickoffRound = useCallback(() => {
+    const c = cupRef.current;
+    if (!c || c.champion) return;
+    const games = new Map<string, LiveGame>();
+    for (const f of roundFixtures(c)) {
+      if (f.score) continue;
+      const side = f.home === c.me ? 0 : f.away === c.me ? 1 : -1;
+      const g = newGame({
+        seed: fixtureSeed(c, f),
+        clubs: [f.home, f.away],
+        difficulty: prefsRef.current.difficulty,
+        humans: side >= 0 ? [side as TeamId] : [],
+        lockRole: side >= 0 ? c.position : undefined,
+      });
+      games.set(f.id, { f, g, fx: newFx(g.clubs), mine: side >= 0, done: false, scorers: [] });
+    }
+    if (!games.size) return;
+    liveRef.current = { round: c.round, games, focus: null };
+    const mine = [...games.values()].find((x) => x.mine);
+    watch(mine ? mine.f.id : games.keys().next().value!);
+  }, [watch]);
+
+  /** Play out the computer's matches in an instant. */
+  const skipBots = useCallback(() => {
+    const live = liveRef.current;
+    if (!live) return;
+    let c = cupRef.current!;
+    for (const L of live.games.values()) {
+      if (L.done || L.mine) continue;
+      while (L.g.phase !== "over") {
+        step(L.g, 1 / 30);
+        for (const e of L.g.events) if (e.type === "goal") L.scorers.push(e.own ? `${e.name} (own goal)` : e.name);
+        L.g.events.length = 0;
+      }
+      L.done = true;
+      c = recordCup(c, L.f.id, [...L.g.score] as [number, number], L.g.golden, L.scorers);
+    }
+    saveCup(c);
+  }, [saveCup]);
+
+  const nextRound = useCallback(() => {
+    const c = cupRef.current;
+    if (!c || !roundDone(c)) return;
+    liveRef.current = null;
+    setTicks([]);
+    saveCup(advance(c));
+    setScreen("cup");
+  }, [saveCup, setScreen]);
+
   const togglePause = useCallback(() => {
     if (roomRef.current) return; // nobody pauses an online match
     const s = screenRef.current;
@@ -429,6 +573,7 @@ export default function VibeCup() {
     let last = performance.now();
     let shown = "";
     let lostShown = false;
+    let tickKey = "";
     const frame = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -482,8 +627,55 @@ export default function VibeCup() {
         if (g.phase === "over" && nr.ended !== room.match!.k && !evs.some((e) => e.type === "fulltime")) {
           evs = [...evs, { type: "fulltime", winner: g.score[0] > g.score[1] ? 0 : g.score[1] > g.score[0] ? 1 : null }];
         }
+      } else if (liveRef.current) {
+        // A Cup round: every match of it moves on at once, except ours, which waits while we look elsewhere.
+        const live = liveRef.current;
+        const onPitch = screenRef.current === "playing";
+        let changed = false;
+        for (const [id, L] of live.games) {
+          if (L.done) continue;
+          const focused = live.focus === id;
+          if (L.mine) {
+            if (!(focused && onPitch)) continue;
+            setInput(L.g, 0, autoRef.current ? autopilot(L.g, 0) : gather(L.g)[0]);
+          }
+          step(L.g, dt / 2);
+          step(L.g, dt / 2);
+          const es = L.g.events;
+          if (focused && onPitch) for (const e of es) audioRef.current.play(e);
+          feedFx(L.fx, L.g, es);
+          for (const e of es) if (e.type === "goal") L.scorers.push(e.own ? `${e.name} (own goal)` : e.name);
+          if (es.some((e) => e.type === "fulltime")) {
+            L.done = true;
+            changed = true;
+            saveCup(recordCup(cupRef.current!, id, [...L.g.score] as [number, number], L.g.golden, L.scorers));
+            if (focused) {
+              const g0 = L.g;
+              window.setTimeout(() => {
+                if (gameRef.current === g0 && screenRef.current === "playing") setScreen("cup");
+              }, 3000);
+            }
+          }
+          L.g.events.length = 0;
+        }
+        evs = [];
+        const tk = [...live.games.values()].map((L) => `${L.f.id}:${L.g.score.join("-")}:${clockLabel(L.g)}:${L.done}`).join("|");
+        if (changed || tk !== tickKey) {
+          tickKey = tk;
+          setTicks(
+            [...live.games.values()].map((L) => ({
+              id: L.f.id,
+              home: L.f.home,
+              away: L.f.away,
+              score: [...L.g.score] as [number, number],
+              clock: L.g.phase === "over" ? "FT" : clockLabel(L.g),
+              done: L.done,
+              mine: L.mine,
+            })),
+          );
+        }
       } else {
-        const playing = screenRef.current === "playing" || ((screenRef.current === "title" || screenRef.current === "lobby") && !isShot());
+        const playing = screenRef.current === "playing" || ((screenRef.current === "title" || screenRef.current === "lobby" || screenRef.current === "cup") && !isShot());
         if (playing) {
           if (screenRef.current === "playing") {
             gather(g).forEach((inp, i) => setInput(g, i, inp));
@@ -543,13 +735,14 @@ export default function VibeCup() {
         shift(g, off, -1);
       } else {
         const labels = online ? netRef.current.labels : g.ctrls.length > 1 ? ["P1", "P2"] : ["YOU"];
-        drawFrame(ctx, g, viewRef.current, fxRef.current, dt, labels);
+        const lock = g.ctrls.length === 1 && g.ctrls[0].lock >= 0 ? g.ctrls[0].lock : -1;
+        drawFrame(ctx, g, viewRef.current, fxRef.current, dt, labels, lock);
       }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [gather, setScreen, syncNet]);
+  }, [gather, setScreen, syncNet, saveCup]);
 
   // Keys.
   useEffect(() => {
@@ -678,12 +871,53 @@ export default function VibeCup() {
       clock: (s: number) => {
         gameRef.current.clock = s;
       },
+      cup: {
+        state: () => {
+          const c = cupRef.current;
+          const live = liveRef.current;
+          return c
+            ? {
+                round: c.round,
+                me: c.me,
+                champion: c.champion,
+                played: c.fixtures.filter((f) => f.score).length,
+                table: table(c).map((r) => [r.club, r.p, r.pts]),
+                live: live ? [...live.games.values()].map((L) => ({ id: L.f.id, mine: L.mine, done: L.done, score: L.g.score, clock: clockLabel(L.g), lock: L.g.ctrls[0]?.lock ?? -1, active: L.g.ctrls[0]?.active ?? -1 })) : null,
+                focus: live?.focus ?? null,
+              }
+            : null;
+        },
+        start: (me: string | null, pos: Position = "fw") => startCup(me, pos),
+        kickoff: () => kickoffRound(),
+        watch: (id: string) => watch(id),
+        skip: () => skipBots(),
+        next: () => nextRound(),
+        /** Run every live match of the round on for `seconds` (ours on autopilot), as if time passed. */
+        settle: (seconds: number) => {
+          const live = liveRef.current;
+          if (!live) return;
+          let c = cupRef.current!;
+          for (const L of live.games.values()) {
+            for (let t = 0; t < seconds && !L.done; t += 1 / 30) {
+              if (L.mine) setInput(L.g, 0, autopilot(L.g, 0));
+              step(L.g, 1 / 30);
+              for (const e of L.g.events) if (e.type === "goal") L.scorers.push(e.name);
+              if (L.g.events.some((e) => e.type === "fulltime")) {
+                L.done = true;
+                c = recordCup(c, L.f.id, [...L.g.score] as [number, number], L.g.golden, L.scorers);
+              }
+              L.g.events.length = 0;
+            }
+          }
+          saveCup(c);
+        },
+      },
     };
     (window as unknown as { __vibecup?: typeof hook }).__vibecup = hook;
     return () => {
       delete (window as unknown as { __vibecup?: typeof hook }).__vibecup;
     };
-  }, [start]);
+  }, [start, startCup, kickoffRound, watch, skipBots, nextRound, saveCup]);
 
   const shot = isShot();
   const g = gameRef.current;
@@ -740,10 +974,42 @@ export default function VibeCup() {
       </div>
 
       {/* Touch controls */}
-      {touchUi && screen === "playing" && <TouchPad touch={touch} has={hud.has} />}
+      {touchUi && screen === "playing" && (!liveRef.current || focusMine) && <TouchPad touch={touch} has={hud.has} locked={!!liveRef.current} />}
+
+      {/* The Cup, mid-round: every other match's score, tap one to watch it. */}
+      {liveRef.current && screen === "playing" && !shot && (
+        <CupTicker
+          ticks={ticks}
+          focus={liveRef.current.focus}
+          onWatch={watch}
+          onHub={() => setScreen("cup")}
+        />
+      )}
+
+      {screen === "cup" && cup && (
+        <CupHub
+          cup={cup}
+          ticks={ticks}
+          live={!!liveRef.current && liveRef.current.round === cup.round}
+          onKickoff={kickoffRound}
+          onWatch={watch}
+          onSkip={skipBots}
+          onNext={nextRound}
+          onNew={() => {
+            liveRef.current = null;
+            saveCup(null);
+            setPrefs({ mode: "cup" });
+            setScreen("title");
+          }}
+          onMenu={() => {
+            liveRef.current = null;
+            setScreen("title");
+          }}
+        />
+      )}
 
       {/* Keyboard hint */}
-      {!touchUi && screen === "playing" && (
+      {!touchUi && screen === "playing" && (!liveRef.current || focusMine) && (
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-black/45 px-2.5 py-1.5 text-[11px] leading-snug text-white/75">
           {versus && !net ? (
             <>
@@ -752,7 +1018,9 @@ export default function VibeCup() {
               <span style={{ color: PAD_COLORS[1] }}>P2</span> Arrows · K pass · L shoot · R-Shift sprint
             </>
           ) : (
-            <>Move: arrows or WASD · Pass/switch: J or X · Shoot/slide: K, Z or Space (hold to power up) · Sprint: Shift</>
+            <>
+              Move: arrows or WASD · {liveRef.current ? "Pass, or call for it: J or X" : "Pass/switch: J or X"} · Shoot/slide: K, Z or Space (hold to power up) · Sprint: Shift
+            </>
           )}
         </div>
       )}
@@ -765,6 +1033,9 @@ export default function VibeCup() {
           onHost={() => void openRoom(true, roomCode())}
           onJoin={(code) => void openRoom(false, cleanCode(code))}
           openRooms={openRooms}
+          cup={cup}
+          onCupContinue={() => setScreen("cup")}
+          onCupStart={startCup}
           record={record}
           touchUi={touchUi}
         />
@@ -821,7 +1092,19 @@ export default function VibeCup() {
             <button type="button" onClick={togglePause} className="mt-4 w-full rounded-2xl bg-emerald-400 px-6 py-2.5 font-black text-[#002016]">
               Back to the match
             </button>
-            <button type="button" onClick={() => setScreen("title")} className="mt-2 w-full rounded-2xl bg-white/10 px-6 py-2 text-sm font-bold">
+            {liveRef.current && (
+              <button type="button" onClick={() => setScreen("cup")} className="mt-2 w-full rounded-2xl bg-white/10 px-6 py-2 text-sm font-bold">
+                Back to the Cup
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                liveRef.current = null;
+                setScreen("title");
+              }}
+              className="mt-2 w-full rounded-2xl bg-white/10 px-6 py-2 text-sm font-bold"
+            >
               Quit to menu
             </button>
           </div>
@@ -952,6 +1235,9 @@ function TitleCard({
   onHost,
   onJoin,
   openRooms,
+  cup,
+  onCupContinue,
+  onCupStart,
   record,
   touchUi,
 }: {
@@ -961,10 +1247,16 @@ function TitleCard({
   onHost: () => void;
   onJoin: (code: string) => void;
   openRooms: OpenRoom[];
+  cup: Cup | null;
+  onCupContinue: () => void;
+  onCupStart: (me: string | null, position: Position) => void;
   record: Record3;
   touchUi: boolean;
 }) {
   const [code, setCode] = useState("");
+  const [cupClub, setCupClub] = useState<string | null>(prefs.club);
+  const [position, setPosition] = useState<Position>("fw");
+  const running = cup && !cup.champion ? cup : null;
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-y-auto bg-black/35 p-3">
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b1726]/92 p-5 text-center shadow-2xl backdrop-blur">
@@ -974,10 +1266,11 @@ function TitleCard({
         </h1>
         <p className="mt-1 text-sm text-white/75">Five-a-side in the cage. Pass it about, slide in, and hold shoot for a SUPER SHOT.</p>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           {(
             [
-              ["cpu", "1 player", "You against the computer"],
+              ["cup", "🏆 The Vibe Cup", "Six clubs, a league and a final"],
+              ["cpu", "Quick match", "You against the computer"],
               ["versus", "2 players", touchUi ? "Two pads on one screen" : "One keyboard, or two pads"],
               ["online", "Online", "Friends on their own phones"],
             ] as const
@@ -996,7 +1289,86 @@ function TitleCard({
           ))}
         </div>
 
-        {prefs.mode === "online" ? (
+        {prefs.mode === "cup" ? (
+          <div className="mt-4 space-y-3 text-left">
+            {running && (
+              <button
+                type="button"
+                onClick={onCupContinue}
+                data-testid="vibecup-cup-continue"
+                className="w-full rounded-2xl py-3 text-center text-lg font-black text-[#002016] shadow-lg active:scale-[0.98]"
+                style={{ background: "linear-gradient(180deg,#ffe27a,#f5b800)" }}
+              >
+                Carry on the Cup: {roundName(running.round)}
+                <div className="text-xs font-bold text-[#002016]/70">{running.me ? `with ${clubById(running.me).name}` : "watching"}</div>
+              </button>
+            )}
+            <div className="text-[10px] font-bold tracking-[0.2em] text-white/55">{running ? "OR START A NEW CUP" : "PICK YOUR CLUB"}</div>
+            <div className="grid grid-cols-7 gap-1.5">
+              {CLUBS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCupClub(c.id)}
+                  title={c.name}
+                  data-testid={`vibecup-cup-club-${c.id}`}
+                  className={`flex h-11 items-center justify-center rounded-xl text-lg transition ${cupClub === c.id ? "ring-2 ring-white" : "opacity-70 hover:opacity-100"}`}
+                  style={{ background: c.shirt }}
+                >
+                  {c.emoji}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setCupClub(null)}
+                title="Just watch"
+                data-testid="vibecup-cup-watch"
+                className={`flex h-11 items-center justify-center rounded-xl bg-white/10 text-lg transition ${cupClub === null ? "ring-2 ring-white" : "opacity-70 hover:opacity-100"}`}
+              >
+                👀
+              </button>
+            </div>
+            <div className="text-xs font-bold" style={{ color: cupClub ? clubById(cupClub).shirt : "#fff" }}>
+              {cupClub ? clubById(cupClub).name : "Just watch: the computer plays every match"}
+            </div>
+            {cupClub && (
+              <div>
+                <div className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/55">YOU PLAY AS (ALL CUP LONG)</div>
+                <div className="flex gap-1.5">
+                  {(
+                    [
+                      ["fw", "Striker"],
+                      ["mf", "Midfield"],
+                      ["df", "Defender"],
+                    ] as const
+                  ).map(([k, t]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setPosition(k)}
+                      className={`flex-1 rounded-xl py-1.5 text-sm font-bold ${position === k ? "bg-amber-300 text-black" : "text-white/70"}`}
+                      style={position === k ? undefined : { background: "rgba(255,255,255,0.08)" }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => onCupStart(cupClub, position)}
+              data-testid="vibecup-cup-start"
+              className="w-full rounded-2xl py-3 text-lg font-black text-[#002016] shadow-lg active:scale-[0.98]"
+              style={{ background: "linear-gradient(180deg,#6ff7d2,#1fd1b0)" }}
+            >
+              {running ? "Start a new Cup" : "Start the Cup"}
+            </button>
+            <p className="text-xs leading-relaxed text-white/55">
+              Everybody plays everybody once, then the top two meet in the final. You are one player the whole way: press pass without the ball to call for it. Every other match plays live at the same time, and you can watch any of them.
+            </p>
+          </div>
+        ) : prefs.mode === "online" ? (
           <div className="mt-4 space-y-3 text-left">
             <button
               type="button"
@@ -1258,8 +1630,227 @@ function Lobby({
   );
 }
 
+/** Mid-round: a chip per match of the round, live, and a way back to the Cup. */
+function CupTicker({ ticks, focus, onWatch, onHub }: { ticks: Tick[]; focus: string | null; onWatch: (id: string) => void; onHub: () => void }) {
+  return (
+    <div className="absolute left-1/2 top-[calc(max(env(safe-area-inset-top),10px)+46px)] flex max-w-[calc(100vw-24px)] -translate-x-1/2 gap-1 overflow-x-auto" data-testid="vibecup-ticker">
+      {ticks.map((t) => {
+        const h = clubById(t.home);
+        const a = clubById(t.away);
+        const on = t.id === focus;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onWatch(t.id)}
+            className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-black tabular-nums ${on ? "bg-white text-black" : "bg-black/55 text-white"}`}
+            title={t.mine ? "Your match" : "Watch this match"}
+          >
+            <span>{h.emoji}</span>
+            <span>
+              {t.score[0]}-{t.score[1]}
+            </span>
+            <span>{a.emoji}</span>
+            <span className={on ? "text-black/55" : "text-white/55"}>{t.mine ? "YOU" : t.clock}</span>
+          </button>
+        );
+      })}
+      <button type="button" onClick={onHub} className="shrink-0 rounded-full bg-amber-300 px-2.5 py-0.5 text-[11px] font-black text-black">
+        🏆 Cup
+      </button>
+    </div>
+  );
+}
+
+/** The Cup between matches: this round's fixtures (live or played), the table, and what to do next. */
+function CupHub({
+  cup,
+  ticks,
+  live,
+  onKickoff,
+  onWatch,
+  onSkip,
+  onNext,
+  onNew,
+  onMenu,
+}: {
+  cup: Cup;
+  ticks: Tick[];
+  live: boolean;
+  onKickoff: () => void;
+  onWatch: (id: string) => void;
+  onSkip: () => void;
+  onNext: () => void;
+  onNew: () => void;
+  onMenu: () => void;
+}) {
+  const rows = table(cup);
+  const fixtures = roundFixtures(cup);
+  const mine = myFixture(cup);
+  const done = roundDone(cup);
+  const botsLeft = live && ticks.some((t) => !t.done && !t.mine);
+  const myLive = live && ticks.some((t) => t.mine && !t.done);
+  const champ = cup.champion ? clubById(cup.champion) : null;
+  const tick = (id: string) => ticks.find((t) => t.id === id);
+  const past = cup.fixtures.filter((f) => f.score && f.round < cup.round).reverse();
+  return (
+    <div className="absolute inset-0 overflow-y-auto bg-black/55 p-3" data-testid="vibecup-hub">
+      <div className="mx-auto my-6 w-full max-w-lg rounded-3xl border border-white/10 bg-[#0b1726]/95 p-5 shadow-2xl backdrop-blur">
+        <div className="text-center">
+          <div className="text-[10px] font-bold tracking-[0.3em] text-white/55">THE VIBE CUP</div>
+          <h2 className="mt-1 text-3xl font-black italic text-amber-300">{champ ? "Champions!" : roundName(cup.round)}</h2>
+          <div className="mt-1 text-xs text-white/60">
+            {cup.me ? (
+              <>
+                You play for <b style={{ color: clubById(cup.me).shirt }}>{clubById(cup.me).name}</b> as their{" "}
+                {cup.position === "fw" ? "striker" : cup.position === "mf" ? "midfielder" : "defender"}
+              </>
+            ) : (
+              "You are watching. The computer plays every match."
+            )}
+          </div>
+        </div>
+
+        {champ && (
+          <div className="mt-4 rounded-2xl p-4 text-center" style={{ background: `${champ.shirt}33` }} data-testid="vibecup-champion">
+            <div className="text-5xl">🏆</div>
+            <div className="mt-1 text-2xl font-black" style={{ color: champ.shirt }}>
+              {champ.emoji} {champ.name}
+            </div>
+            <div className="text-sm text-white/75">{cup.champion === cup.me ? "You won the Vibe Cup!" : "win the Vibe Cup"}</div>
+          </div>
+        )}
+
+        {!champ && (
+          <div className="mt-4 space-y-1.5" data-testid="vibecup-fixtures">
+            {fixtures.map((f) => {
+              const h = clubById(f.home);
+              const a = clubById(f.away);
+              const t = tick(f.id);
+              const isMine = f.home === cup.me || f.away === cup.me;
+              const score = f.score ?? (t ? t.score : null);
+              return (
+                <div key={f.id} className={`flex items-center gap-1.5 rounded-2xl px-2.5 py-2 ${isMine ? "bg-white/15" : "bg-white/5"}`}>
+                  <span className="flex min-w-0 flex-1 items-center justify-end gap-1 truncate text-right text-xs font-bold sm:text-sm">
+                    <span className="truncate">{h.short}</span>
+                    <span>{h.emoji}</span>
+                  </span>
+                  <span className="w-11 shrink-0 text-center font-mono text-base font-black tabular-nums sm:w-14 sm:text-lg">{score ? `${score[0]}-${score[1]}` : "v"}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-xs font-bold sm:text-sm">
+                    <span>{a.emoji}</span>
+                    <span className="truncate">{a.short}</span>
+                  </span>
+                  <span className="w-[4.5rem] shrink-0 text-right">
+                    {f.score ? (
+                      <span className="text-[11px] font-bold text-white/50">{f.golden ? "FT, GG" : "FT"}</span>
+                    ) : t && !t.done ? (
+                      <button type="button" onClick={() => onWatch(f.id)} className="rounded-xl bg-emerald-400 px-2.5 py-1 text-xs font-black text-[#002016]" data-testid="vibecup-watch">
+                        {isMine ? "Play" : `Watch`}
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-white/40">{isMine ? "You" : ""}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-4 space-y-2">
+          {champ ? (
+            <button type="button" onClick={onNew} className="w-full rounded-2xl bg-emerald-400 py-3 text-lg font-black text-[#002016]" data-testid="vibecup-cup-new">
+              Play another Cup
+            </button>
+          ) : done ? (
+            <button type="button" onClick={onNext} className="w-full rounded-2xl bg-amber-300 py-3 text-lg font-black text-black" data-testid="vibecup-cup-next">
+              {cup.round >= FINAL_ROUND - 1 ? "On to the final" : "Next round"}
+            </button>
+          ) : !live ? (
+            <button type="button" onClick={onKickoff} className="w-full rounded-2xl py-3 text-lg font-black text-[#002016]" style={{ background: "linear-gradient(180deg,#6ff7d2,#1fd1b0)" }} data-testid="vibecup-cup-kickoff">
+              {mine ? `Kick off: ${clubById(mine.home).short} v ${clubById(mine.away).short}` : cup.round >= FINAL_ROUND ? "Watch the final" : "Kick off the round"}
+            </button>
+          ) : (
+            <>
+              {myLive && mine && (
+                <button type="button" onClick={() => onWatch(mine.id)} className="w-full rounded-2xl bg-emerald-400 py-3 text-lg font-black text-[#002016]">
+                  Back to your match
+                </button>
+              )}
+              {botsLeft && (
+                <button type="button" onClick={onSkip} className="w-full rounded-2xl bg-white/10 py-2 text-sm font-bold" data-testid="vibecup-cup-skip">
+                  Skip to the computer's results
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="mt-5">
+          <div className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/55">TABLE</div>
+          <table className="w-full text-xs tabular-nums" data-testid="vibecup-table">
+            <thead className="text-white/45">
+              <tr>
+                <th className="w-5 text-left font-bold">#</th>
+                <th className="text-left font-bold">Club</th>
+                <th className="w-6 font-bold">P</th>
+                <th className="w-6 font-bold">W</th>
+                <th className="w-6 font-bold">D</th>
+                <th className="w-6 font-bold">L</th>
+                <th className="w-9 font-bold">GD</th>
+                <th className="w-8 font-bold">Pts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const c = clubById(r.club);
+                return (
+                  <tr key={r.club} className={r.club === cup.me ? "bg-white/10 font-black" : ""}>
+                    <td className={`py-1 ${i < 2 ? "text-amber-300" : "text-white/50"}`}>{i + 1}</td>
+                    <td className="truncate py-1">
+                      {c.emoji} {c.name}
+                    </td>
+                    <td className="text-center">{r.p}</td>
+                    <td className="text-center">{r.w}</td>
+                    <td className="text-center">{r.d}</td>
+                    <td className="text-center">{r.l}</td>
+                    <td className="text-center">{r.gf - r.ga > 0 ? `+${r.gf - r.ga}` : r.gf - r.ga}</td>
+                    <td className="text-center font-black">{r.pts}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="mt-1 text-[10px] text-white/40">Top two after five rounds play the final. GG means a golden goal settled it.</div>
+        </div>
+
+        {past.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-1 text-[10px] font-bold tracking-[0.2em] text-white/55">RESULTS</div>
+            <div className="space-y-1 text-xs">
+              {past.map((f) => (
+                <div key={f.id} className="flex gap-2 text-white/70">
+                  <span className="w-10 text-white/40">{f.stage === "final" ? "Final" : `R${f.round}`}</span>
+                  <span className="flex-1 truncate">
+                    {clubById(f.home).emoji} {clubById(f.home).short} {f.score![0]}-{f.score![1]} {clubById(f.away).short} {clubById(f.away).emoji}
+                    {f.scorers && f.scorers.length > 0 && <span className="text-white/40"> · {f.scorers.join(", ")}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button type="button" onClick={onMenu} className="mt-4 w-full rounded-2xl bg-white/5 py-2 text-sm font-bold text-white/70">
+          Main menu{live && !done ? " (this round's unfinished matches start again)" : ""}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** A floating thumb stick on the left half, two buttons on the right. */
-function TouchPad({ touch, has }: { touch: MutableRefObject<{ mx: number; my: number; a: boolean; b: boolean; on: boolean; tapA: boolean; tapB: boolean }>; has: boolean }) {
+function TouchPad({ touch, has, locked }: { touch: MutableRefObject<{ mx: number; my: number; a: boolean; b: boolean; on: boolean; tapA: boolean; tapB: boolean }>; has: boolean; locked?: boolean }) {
   const [stick, setStick] = useState<{ ox: number; oy: number; x: number; y: number } | null>(null);
   const id = useRef<number | null>(null);
   const R = 56;
@@ -1309,7 +1900,7 @@ function TouchPad({ touch, has }: { touch: MutableRefObject<{ mx: number; my: nu
       <div className="absolute bottom-[max(env(safe-area-inset-bottom),18px)] right-4 flex items-end gap-3">
         {(
           [
-            ["a", has ? "PASS" : "SWITCH", "#38bdf8", 64],
+            ["a", has ? "PASS" : locked ? "CALL" : "SWITCH", "#38bdf8", 64],
             ["b", has ? "SHOOT" : "SLIDE", "#fb7185", 78],
           ] as const
         ).map(([k, label, col, size]) => (
