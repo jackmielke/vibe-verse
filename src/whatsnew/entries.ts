@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "pool",
+    date: "2026-11-27",
+    emoji: "🎱",
+    title: "New game: 8-Ball Club",
+    body: "Real eight-ball pool, made to feel right on a phone. Drag to aim, pull the cue back to shoot, and put spin on the cue ball for draw, follow and english. Play the computer on three levels, pass the phone to a friend, or send a link and play them online. Five tables to pick from.",
+    tag: "new",
+    route: "/pool",
+    world: "8-Ball Club",
+  },
+  {
     id: "solitaire",
     date: "2026-11-27",
     emoji: "🃏",

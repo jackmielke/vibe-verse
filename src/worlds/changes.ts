@@ -362,6 +362,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "phangan": [
     { sha: "7596d371", iso: "2026-09-04T09:24:59+00:00", subject: "Add Flow Phangan: scooter world at /phangan" },
   ],
+  "pool": [
+    { sha: "0b144138", iso: "2026-11-27T05:09:07+00:00", subject: "Add 8-Ball Club: eight-ball pool with real spin physics" },
+  ],
   "portal": [
     { sha: "b6b15b85", iso: "2026-08-12T20:33:43+00:00", subject: "The form fills itself in while you type" },
     { sha: "1ece01a5", iso: "2026-08-10T07:08:13+00:00", subject: "Anybody can hand the arcade a game now" },

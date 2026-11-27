@@ -55,6 +55,7 @@ import coilArt from "@/assets/worlds/coil.jpg";
 import twenty48Art from "@/assets/worlds/2048.jpg";
 import mortMazeArt from "@/assets/worlds/mort-maze.jpg";
 import solitaireArt from "@/assets/worlds/solitaire.jpg";
+import poolArt from "@/assets/worlds/pool.jpg";
 import vibeCupArt from "@/assets/worlds/vibe-cup.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import conservatoryArt from "@/assets/worlds/conservatory.jpg";
@@ -111,6 +112,7 @@ export const WORLD_ART: Record<string, string> = {
   "2048": twenty48Art,
   "mort-maze": mortMazeArt,
   solitaire: solitaireArt,
+  pool: poolArt,
   "vibe-cup": vibeCupArt,
   "blue-angels": blueAngelsArt,
   conservatory: conservatoryArt,
