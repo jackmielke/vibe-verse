@@ -88,6 +88,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
   "bots": [
     { sha: "9666825b", iso: "2026-10-03T15:21:23-07:00", subject: "Bot Battle (/bots): X handle -> AI bot -> coached RPS match -> share card -> challenge link" },
   ],
+  "boxing": [
+    { sha: "34300b82", iso: "2026-11-27T03:25:04+00:00", subject: "Haymaker: a camera boxing game where the opponent stands in your room" },
+  ],
   "cannon-run": [
     { sha: "4cbb3f55", iso: "2026-11-27T00:53:48+00:00", subject: "Cannon Chase: outer space mode" },
     { sha: "79d312f8", iso: "2026-11-26T21:10:46+00:00", subject: "Cannon Chase: one-tap shareable Gatch News clips" },
