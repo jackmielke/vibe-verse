@@ -13,7 +13,7 @@
  * The rooftop rifle is not here on purpose. It is a find, not a purchase:
  * glinting on a roof in the middle of town, and you need the jetpack.
  */
-export type WeaponId = "water" | "glock" | "pineapple" | "blaster";
+export type WeaponId = "water" | "glock" | "paint" | "pineapple" | "blaster";
 
 export interface WeaponItem {
   id: WeaponId;
@@ -42,6 +42,14 @@ export const WEAPON_ITEMS: WeaponItem[] = [
     price: 150,
     blurb: "The plain one. Normal damage at a steady, even rate.",
     color: "#c9d1db",
+  },
+  {
+    id: "paint",
+    name: "Paintball Marker",
+    emoji: "🎨",
+    price: 120,
+    blurb: "Splats bright paint on whatever it hits: cars, cops, walls, the street. The paint rides along on anything that drives off.",
+    color: "#ff4fd8",
   },
   {
     id: "pineapple",

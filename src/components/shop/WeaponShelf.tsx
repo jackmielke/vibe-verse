@@ -61,7 +61,7 @@ export default function WeaponShelf({ inCity = false }: { inCity?: boolean }) {
         </h2>
         <p className="text-[11.5px] text-muted-foreground">
           {inCity
-            ? "Buy once, never run out. Tap a gun on the weapon bar (or 1 to 4) to draw it, R fires, X throws a pineapple."
+            ? "Buy once, never run out. Tap a gun on the weapon bar (or 1 to 5) to draw it, R fires, X throws a pineapple."
             : "For Vibe City. Buy once, never run out of ammo."}
         </p>
       </div>

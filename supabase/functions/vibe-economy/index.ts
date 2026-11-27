@@ -691,6 +691,7 @@ const COSMETICS: Record<string, Record<string, CosmeticSpec>> = {
   weapon: {
     water:     { price: 60,  title: "Super Soaker" },
     glock:     { price: 150, title: "Glock 19" },
+    paint:     { price: 120, title: "Paintball Marker" },
     pineapple: { price: 250, title: "Pineapple Bombs" },
     blaster:   { price: 500, title: "Nova Blaster" },
   },

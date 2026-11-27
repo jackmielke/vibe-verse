@@ -90,8 +90,8 @@ import { createCarSink } from "@/city/carSink";
 import { createCrashFx } from "@/city/crashFx";
 import { createMayhem, GUNS, type GunKind, type Mayhem, type MayhemHud } from "@/city/mayhem";
 
-/** The weapon bar's order, and what the 1 to 4 keys count along. */
-const GUN_SLOTS: readonly GunKind[] = ["glock", "water", "blaster", "rifle"];
+/** The weapon bar's order, and what the 1 to 5 keys count along. */
+const GUN_SLOTS: readonly GunKind[] = ["glock", "water", "paint", "blaster", "rifle"];
 import { buildHideouts } from "@/city/hideouts";
 import { createBodyguards, squadEnabled, type Bodyguards } from "@/city/bodyguards";
 import { SquadPanel } from "@/components/city/SquadPanel";
@@ -4006,7 +4006,7 @@ export default function City() {
         mayhemCycleRef.current?.();
         return;
       }
-      if (/^Digit[1-4]$/.test(e.code) && !e.repeat) {
+      if (/^Digit[1-5]$/.test(e.code) && !e.repeat) {
         const { owned, gun } = mayhemSlotsRef.current;
         const pick = GUN_SLOTS.filter((k) => owned.includes(k))[Number(e.code.slice(5)) - 1];
         if (pick) {
@@ -4453,6 +4453,7 @@ export default function City() {
         act: () => landmarks.act(),
         shot: (s: { eye: number[]; look: number[]; fov?: number } | null) => landmarks.devShot(s),
         ball: (k?: [number, number, number, number]) => landmarks.devBall(k),
+        match: (op?: string, arg?: number) => landmarks.devMatch(op, arg),
         boat: (at?: [number, number, number]) => landmarks.devBoat(at),
       };
       (window as unknown as Record<string, unknown>).__cityWarp = (
@@ -6425,9 +6426,15 @@ export default function City() {
       // is what turns the whole thing from a consequence into a bump.
       if (knockdown > 0) intent.set(0, 0, 0);
       if (intent.lengthSq() > 0) intent.normalize();
-      const targetSpeed = onGround
-        ? running ? RUN_SPEED : WALK_SPEED
-        : running ? FLY_RUN_SPEED : FLY_SPEED;
+      const matchCap = landmarksRef.current?.speedCap() ?? null;
+      const targetSpeed = Math.min(
+        onGround
+          ? running ? RUN_SPEED : WALK_SPEED
+          : running ? FLY_RUN_SPEED : FLY_SPEED,
+        // On the pitch in a Vibe Commons Cup match you run at a footballer's
+        // pace, not a superhero's: 16 m/s crosses the pitch in a second and a half.
+        matchCap ?? Infinity,
+      );
 
       const pos = player.position;
       if (mountFlight && activeMountRef.current) {
@@ -10243,7 +10250,7 @@ export default function City() {
           {mayhemHud.gun && (
             <span className="text-foreground/90">
               {GUNS[mayhemHud.gun].emoji} {GUNS[mayhemHud.gun].label}
-              <span className="text-muted-foreground"> · {isTouch ? "hold FIRE · tap a gun to switch" : "R or Q fire · 1 to 4 or G switch"}</span>
+              <span className="text-muted-foreground"> · {isTouch ? "hold FIRE · tap a gun to switch" : "R or Q fire · 1 to 5 or G switch"}</span>
             </span>
           )}
           {mayhemHud.bombs !== null && (
@@ -10257,7 +10264,7 @@ export default function City() {
       )}
       {/* The weapon bar: one button per gun you own, so a gun you just bought
           is one tap away on a phone (there is no G key there). Tapping the gun
-          in your hand puts it away. On a keyboard 1 to 4 do the same. */}
+          in your hand puts it away. On a keyboard 1 to 5 do the same. */}
       {entered && !gameHud && !rebelHud?.active && mayhemHud.owned.length > 0 && (
         <div
           className={`fixed z-30 flex gap-1.5 select-none ${

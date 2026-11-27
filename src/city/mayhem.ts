@@ -48,10 +48,10 @@ import type { CrashFx } from "@/city/crashFx";
 import type { Smashables } from "@/city/smash";
 import { buildCityCar, type Traffic } from "@/city/traffic";
 
-export type GunKind = "rifle" | "glock" | "water" | "blaster";
+export type GunKind = "rifle" | "glock" | "water" | "blaster" | "paint";
 /** Guns you buy rather than find. Ids match `weapon:<id>` in the inventory. */
-export const BOUGHT_GUNS: readonly GunKind[] = ["glock", "water", "blaster"];
-const ALL_GUNS: readonly GunKind[] = ["rifle", "glock", "water", "blaster"];
+export const BOUGHT_GUNS: readonly GunKind[] = ["glock", "water", "blaster", "paint"];
+const ALL_GUNS: readonly GunKind[] = ["rifle", "glock", "water", "blaster", "paint"];
 
 export interface GunSpec {
   label: string;
@@ -73,6 +73,7 @@ export const GUNS: Record<GunKind, GunSpec> = {
   rifle: { label: "Rifle", emoji: "🎯", interval: 0.11, damage: 24, range: 95, ignite: 0.3, tracer: 0xffe29a, thick: 1 },
   glock: { label: "Glock 19", emoji: "🔫", interval: 0.24, damage: 17, range: 50, ignite: 0.06, tracer: 0xffe29a, thick: 1 },
   water: { label: "Super Soaker", emoji: "💦", interval: 0.07, damage: 1.5, range: 32, ignite: 0, soak: 4, tracer: 0x6fd0ff, thick: 2.6 },
+  paint: { label: "Paintball Marker", emoji: "🎨", interval: 0.17, damage: 5, range: 60, ignite: 0, tracer: 0xff4fd8, thick: 1.8 },
   blaster: { label: "Nova Blaster", emoji: "☄️", interval: 0.06, damage: 14, range: 90, ignite: 0.2, tracer: 0xff4a3a, thick: 2 },
 };
 
@@ -221,7 +222,7 @@ export interface Mayhem {
   cycle(): void;
   /**
    * Put this gun in your hand (null holsters). Ignored for a gun you do not
-   * own. This is what the weapon bar's buttons and the 1 to 4 keys call.
+   * own. This is what the weapon bar's buttons and the 1 to 5 keys call.
    */
   select(kind: GunKind | null): void;
   /**
@@ -247,6 +248,7 @@ export interface Mayhem {
     bombs: Array<{ x: number; y: number; z: number; stuck: string | null; fuse: number }>;
     pops: number;
     puddles: Array<{ x: number; z: number; age: number }>;
+    splats: Array<{ x: number; y: number; z: number; on: string | null }>;
     slips: number;
     bads: Array<{ id: number; x: number; z: number; hp: number; speed: number; boarding: boolean; chasers: number }>;
   };
@@ -391,6 +393,29 @@ function buildBlaster(): THREE.Group {
   return g;
 }
 
+/** A paintball marker: a chunky body, a long barrel and a round hopper of balls on top. */
+function buildMarker(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.MeshStandardMaterial({ color: 0x2b2f3a, roughness: 0.5, metalness: 0.3 });
+  const trim = new THREE.MeshStandardMaterial({ color: 0x3ee0c8, roughness: 0.4 });
+  const hopper = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, transparent: true, opacity: 0.55 });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  };
+  add(new THREE.BoxGeometry(0.07, 0.08, 0.22), body, 0, 0.02, 0.02);
+  add(new THREE.BoxGeometry(0.074, 0.02, 0.18), trim, 0, -0.025, 0.03);
+  add(new THREE.CylinderGeometry(0.018, 0.018, 0.3, 10).rotateX(Math.PI / 2), body, 0, 0.03, 0.27);
+  add(new THREE.SphereGeometry(0.065, 12, 10).scale(1, 0.8, 1.2), hopper, 0, 0.13, 0.0);
+  const balls = [0xff4fd8, 0xffd23f, 0x3ee07a, 0x4fa8ff];
+  balls.forEach((c, i) => add(new THREE.SphereGeometry(0.022, 8, 6), new THREE.MeshStandardMaterial({ color: c }), -0.02 + (i % 2) * 0.04, 0.12, -0.03 + Math.floor(i / 2) * 0.05));
+  add(new THREE.BoxGeometry(0.045, 0.12, 0.055), body, 0, -0.07, -0.05).rotation.x = -0.25;
+  add(new THREE.CylinderGeometry(0.03, 0.03, 0.14, 10).rotateX(Math.PI / 2), trim, 0, -0.03, -0.16); // air tank
+  return g;
+}
+
 /** One pineapple: yellow body with a grid of darker diamonds and a green crown. */
 function buildPineapple(): THREE.Group {
   const g = new THREE.Group();
@@ -479,10 +504,10 @@ function buildStall(): { group: THREE.Group; display: THREE.Group } {
   g.add(back);
   const display = new THREE.Group();
   display.position.y = 1.45;
-  const items = [buildGlock(), buildSoaker(), buildBlaster(), buildPineapple()];
+  const items = [buildGlock(), buildSoaker(), buildMarker(), buildBlaster(), buildPineapple()];
   items.forEach((m, i) => {
     m.scale.setScalar(2.2);
-    m.position.x = -1.2 + i * 0.8;
+    m.position.x = -1.4 + i * 0.7;
     display.add(m);
   });
   g.add(display);
@@ -815,8 +840,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   let throwCool = 0;
 
   const inHand: Record<GunKind, THREE.Group> = {
-    rifle: buildRifle(), glock: buildGlock(), water: buildSoaker(), blaster: buildBlaster(),
+    rifle: buildRifle(), glock: buildGlock(), water: buildSoaker(), blaster: buildBlaster(), paint: buildMarker(),
   };
+  inHand.paint.position.set(-0.29, 1.05, 0.34);
   inHand.rifle.position.set(-0.28, 1.05, 0.3);
   inHand.glock.position.set(-0.3, 1.05, 0.38);
   inHand.water.position.set(-0.28, 1.05, 0.32);
@@ -828,7 +854,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
 
   // The pickups. Where they lie is decided once the collision exists, on
   // the first update, because a spot inside a wall is no spot at all.
-  const spots: Record<GunKind, [number, number, number] | null> = { rifle: null, glock: null, water: null, blaster: null };
+  const spots: Record<GunKind, [number, number, number] | null> = { rifle: null, glock: null, water: null, blaster: null, paint: null };
   const rifleUp = new THREE.Group();
   {
     const r = buildRifle();
@@ -929,6 +955,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     rifle: tracerMat,
     glock: tracerMat,
     water: new THREE.MeshBasicMaterial({ color: GUNS.water.tracer, transparent: true, opacity: 0.7, depthWrite: false }),
+    paint: new THREE.MeshBasicMaterial({ color: GUNS.paint.tracer, transparent: true, opacity: 0.95, depthWrite: false }),
     blaster: new THREE.MeshBasicMaterial({
       color: GUNS.blaster.tracer, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
     }),
@@ -980,6 +1007,23 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       o.connect(g).connect(a.destination);
       o.start();
       o.stop(a.currentTime + 0.15);
+      return;
+    }
+    if (kind === "paint") {
+      // Thwop: a soft, low puff of air.
+      const src = a.createBufferSource();
+      src.buffer = noise;
+      src.playbackRate.value = 0.8;
+      const f = a.createBiquadFilter();
+      f.type = "bandpass";
+      f.frequency.value = 900;
+      f.Q.value = 1.2;
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.16, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 0.1);
+      src.connect(f).connect(g).connect(a.destination);
+      src.start();
+      src.stop(a.currentTime + 0.11);
       return;
     }
     if (kind === "water") {
@@ -1505,6 +1549,152 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   const cands: Array<{ x: number; z: number; weight: number; kind: "cop" | "car" | "tree" | "bad"; ref: number }> = [];
   /** The bad guy you are riding with, so you do not shoot your own ride. */
   let riding: number | null = null;
+  // ---- Paint splats ----------------------------------------------------
+  //
+  // Every paintball leaves a splat where it lands, in one of a handful of
+  // loud colours. On a wall it faces back the way the ball came; on the
+  // ground it lies flat; on a cruiser, a bad guy's car or a bot car it rides
+  // along with it (its offset is kept in that thing's own frame and the
+  // splat is re-placed every frame). They last a while and then fade.
+  const PAINT = [0xff4fd8, 0xffd23f, 0x3ee07a, 0x4fa8ff, 0xff7a1a, 0xa45cff];
+  const SPLAT_LIFE = 45;
+  const MAX_SPLATS = 90;
+  type SplatOn =
+    | { kind: "cop"; cop: Cop }
+    | { kind: "bad"; bad: Bad }
+    | { kind: "car"; id: number }
+    | null;
+  interface Splat {
+    mesh: THREE.Mesh;
+    age: number;
+    on: SplatOn;
+    /** Offset in the carrier's frame: right, up, forward. */
+    lx: number; ly: number; lz: number;
+    /** Which way it faces, relative to the carrier's heading. */
+    lyaw: number;
+  }
+  const splats: Splat[] = [];
+  const splatTex = (() => {
+    // One irregular blob with a few droplets, white on transparent, tinted per
+    // splat by the material colour.
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d");
+    if (g) {
+      g.fillStyle = "#fff";
+      g.beginPath();
+      for (let i = 0; i <= 18; i++) {
+        const a = (i / 18) * Math.PI * 2;
+        const r = 34 + Math.sin(i * 2.7) * 9 + Math.cos(i * 5.1) * 6;
+        const x = 64 + Math.cos(a) * r;
+        const y = 64 + Math.sin(a) * r;
+        if (i === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.closePath();
+      g.fill();
+      for (let i = 0; i < 9; i++) {
+        const a = i * 2.39;
+        const d = 44 + (i * 37) % 16;
+        g.beginPath();
+        g.arc(64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 3 + (i % 3) * 2.5, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const splatGeo = new THREE.PlaneGeometry(1, 1);
+  let splatCount = 0;
+
+  const removeSplat = (i: number) => {
+    const sp = splats[i];
+    group.remove(sp.mesh);
+    (sp.mesh.material as THREE.Material).dispose();
+    splats.splice(i, 1);
+  };
+
+  const carrierPose = (on: SplatOn): { x: number; y: number; z: number; yaw: number } | null => {
+    if (!on) return null;
+    if (on.kind === "cop") return on.cop.dead > 0 && !cops.includes(on.cop) ? null : { x: on.cop.x, y: 0, z: on.cop.z, yaw: on.cop.yaw };
+    if (on.kind === "bad") return bads.includes(on.bad) ? { x: on.bad.x, y: 0, z: on.bad.z, yaw: on.bad.yaw } : null;
+    return traffic.poseOf(on.id);
+  };
+
+  const placeSplat = (sp: Splat) => {
+    const p = carrierPose(sp.on);
+    if (!p) return;
+    const c = Math.cos(p.yaw);
+    const sn = Math.sin(p.yaw);
+    // forward = (sin, cos), right = (cos, -sin)
+    sp.mesh.position.set(p.x + sp.lx * c + sp.lz * sn, p.y + sp.ly, p.z - sp.lx * sn + sp.lz * c);
+    sp.mesh.rotation.set(0, p.yaw + sp.lyaw, 0);
+  };
+
+  /**
+   * Leave a splat at (x, y, z). `nx, nz` is the way it faces (back toward the
+   * shooter) for a wall or a vehicle; `flat` lays it on the ground instead.
+   */
+  const splatAt = (x: number, y: number, z: number, nx: number, nz: number, flat: boolean, on: SplatOn, out?: number) => {
+    if (splats.length >= MAX_SPLATS) removeSplat(0);
+    const mat = new THREE.MeshBasicMaterial({
+      map: splatTex, color: PAINT[splatCount++ % PAINT.length], transparent: true,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(splatGeo, mat);
+    const size = (flat ? 1.1 : 0.75) * (0.8 + Math.random() * 0.5);
+    mesh.scale.set(size, size, 1);
+    mesh.renderOrder = 3;
+    group.add(mesh);
+    const sp: Splat = { mesh, age: 0, on, lx: 0, ly: 0, lz: 0, lyaw: 0 };
+    if (flat) {
+      // Lies on the floor: a plane turned face-up, spun at random.
+      mesh.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI * 2);
+      mesh.position.set(x, y + 0.05, z);
+    } else {
+      const face = Math.atan2(nx, nz);
+      const p = carrierPose(on);
+      if (p) {
+        // Kept in the carrier's own frame, nudged out toward the shooter so it
+        // sits on the body rather than inside it.
+        // From the middle of a vehicle out to its skin: further along its
+        // length than across it.
+        const along = Math.abs(nx * Math.sin(p.yaw) + nz * Math.cos(p.yaw));
+        if (out === undefined) out = 0.95 + 1.3 * along;
+        const wx = x + nx * out - p.x;
+        const wz = z + nz * out - p.z;
+        const c = Math.cos(p.yaw);
+        const sn = Math.sin(p.yaw);
+        sp.lx = wx * c - wz * sn;
+        sp.lz = wx * sn + wz * c;
+        sp.ly = Math.max(0.4, y - p.y);
+        sp.lyaw = face - p.yaw;
+        placeSplat(sp);
+      } else {
+        mesh.position.set(x + nx * 0.06, y, z + nz * 0.06);
+        mesh.rotation.set(0, face, Math.random() * Math.PI * 2);
+      }
+    }
+    splats.push(sp);
+  };
+
+  const updateSplats = (dt: number) => {
+    for (let i = splats.length - 1; i >= 0; i--) {
+      const sp = splats[i];
+      sp.age += dt;
+      if (sp.age >= SPLAT_LIFE) {
+        removeSplat(i);
+        continue;
+      }
+      if (sp.on) {
+        if (!carrierPose(sp.on)) sp.on = null; // what it was on has gone; it stays where it was
+        else placeSplat(sp);
+      }
+      (sp.mesh.material as THREE.MeshBasicMaterial).opacity = Math.min(1, (SPLAT_LIFE - sp.age) / 5);
+    }
+  };
+
   const shoot = (
     blocked: (x: number, z: number, y: number) => boolean, kind: GunKind,
     ox: number, oy: number, oz: number, yaw: number,
@@ -1544,11 +1734,17 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (blocked(ox + ax * s, oz + az * s, y)) {
         const id = traffic.carAt(ox + ax * s, oz + az * s, y, 0.6);
         if (id >= 0) {
+          if (kind === "paint") {
+            // Back up to the body's surface so the paint sits on it.
+            let b = s;
+            while (b > 0.2 && blocked(ox + ax * (b - 0.1), oz + az * (b - 0.1), y)) b -= 0.1;
+            splatAt(ox + ax * b, y, oz + az * b, -ax, -az, false, { kind: "car", id }, -0.35);
+          }
           traffic.damage(id, spec.damage);
           if (!spec.soak) traffic.shove(id, ax, az, 1.5);
           crime(0.12);
           hits++;
-          crashFx.sparks(ox + ax * s, y, oz + az * s, -ax, -az, 6);
+          if (kind !== "paint") crashFx.sparks(ox + ax * s, y, oz + az * s, -ax, -az, 6);
           end = s;
           wall = false;
           len = -1;
@@ -1562,6 +1758,27 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     const ex = ox + ax * end;
     const ez = oz + az * end;
     const ey = oy + (ty - oy) * Math.min(1, end / Math.max(1, Math.abs(len)));
+    if (kind === "paint") {
+      // Where the ball broke: on whatever it hit, on the wall, or (a miss that
+      // ran out of range) on the floor beneath the end of its flight.
+      if (len >= 0 && !wall && pick >= 0) {
+        const t = cands[pick];
+        const on: SplatOn =
+          t.kind === "cop" ? { kind: "cop", cop: cops[t.ref] }
+          : t.kind === "bad" ? { kind: "bad", bad: bads[t.ref] }
+          : t.kind === "car" ? { kind: "car", id: t.ref }
+          : null;
+        splatAt(ex, t.kind === "tree" ? 1.6 : 1.1, ez, -ax, -az, false, on);
+      } else if (wall) {
+        let b = end;
+        while (b > 0.2 && blocked(ox + ax * (b - 0.1), oz + az * (b - 0.1), ey)) b -= 0.1;
+        splatAt(ox + ax * b, ey, oz + az * b, -ax, -az, false, null);
+      } else if (len >= 0) {
+        const fy = lastCtx && !lastCtx.inCity ? lastCtx.player.y : 0;
+        splatAt(ex, fy, ez, 0, 1, true, null);
+      }
+      tracerMats.paint.color.setHex(PAINT[splatCount % PAINT.length]);
+    }
     if (len >= 0 && !wall && pick >= 0) {
       const t = cands[pick];
       hits++;
@@ -1569,15 +1786,15 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         const c = cops[t.ref];
         hurtCop(c, spec.damage);
         crime(spec.soak ? 0.05 : 0.3);
-        if (!spec.soak) crashFx.sparks(ex, 1, ez, -ax, -az, 8);
+        if (!spec.soak && kind !== "paint") crashFx.sparks(ex, 1, ez, -ax, -az, 8);
       } else if (t.kind === "bad") {
         hurtBad(bads[t.ref], spec.damage);
-        crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
+        if (kind !== "paint") crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
       } else if (t.kind === "car") {
         traffic.damage(t.ref, spec.damage);
         if (!spec.soak) traffic.shove(t.ref, ax, az, 1.5);
         crime(spec.soak ? 0.02 : 0.12);
-        if (!spec.soak) crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
+        if (!spec.soak && kind !== "paint") crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
       } else if (spec.soak) {
         // Water puts a burning tree out.
         for (let i = fires.length - 1; i >= 0; i--) {
@@ -1588,7 +1805,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         crashFx.leaves(t.x, 3, t.z, 6);
         if (Math.random() < spec.ignite) ignite(t.x, t.z, 0.6);
       }
-    } else if (wall && !spec.soak) {
+    } else if (wall && !spec.soak && kind !== "paint") {
       crashFx.sparks(ex, ey, ez, -ax, -az, 5);
       crashFx.debris(ex, ey, ez, 1, 0x9aa2ab, 2);
     }
@@ -1605,7 +1822,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     tr.mesh.position.set(ox, oy, oz);
     tr.mesh.scale.set(spec.thick, spec.thick, Math.max(0.5, Math.hypot(ex - ox, ey - oy, ez - oz)));
     tr.mesh.lookAt(ex, ey, ez);
-    if (!spec.soak) {
+    if (!spec.soak && kind !== "paint") {
       flash.position.set(ox, oy, oz);
       flash.visible = true;
       flashT = 0;
@@ -1945,7 +2162,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       return true;
     },
     cycle() {
-      const order: Array<GunKind | null> = [null, "glock", "water", "blaster", "rifle"];
+      const order: Array<GunKind | null> = [null, "glock", "water", "paint", "blaster", "rifle"];
       for (let i = 1; i <= order.length; i++) {
         const next = order[(order.indexOf(gun) + i) % order.length];
         if (next === null || owned.has(next)) {
@@ -2004,6 +2221,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (ctx.throwing) throwBomb();
       updateBombs(dt, blocked, ctx);
       updatePuddles(dt, ctx);
+      updateSplats(dt);
 
       // The gun in your hand, and the trigger.
       for (const k of ALL_GUNS) inHand[k].visible = gun === k && !ctx.driving;
@@ -2243,6 +2461,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         })),
         pops,
         puddles: puddles.map((p) => ({ x: p.x, z: p.z, age: p.age })),
+        splats: splats.map((sp) => ({
+          x: sp.mesh.position.x, y: sp.mesh.position.y, z: sp.mesh.position.z,
+          on: sp.on ? (sp.on.kind === "car" ? `car:${sp.on.id}` : sp.on.kind) : null,
+        })),
         slips,
         bads: bads.map((b) => ({
           id: b.id, x: b.x, z: b.z, hp: b.hp, speed: b.speed, boarding: b.jump < JUMP_T,
@@ -2358,6 +2580,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       tracerMat.dispose();
       tracerMats.water.dispose();
       tracerMats.blaster.dispose();
+      tracerMats.paint.dispose();
+      while (splats.length) removeSplat(0);
+      splatGeo.dispose();
+      splatTex.dispose();
       try {
         siren?.osc.stop();
         void actx?.close();

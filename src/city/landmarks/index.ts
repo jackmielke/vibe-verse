@@ -44,6 +44,7 @@ import { buildSpaceNeedle } from "./spaceNeedle";
 import { buildEiffel } from "./eiffel";
 import { buildPark } from "./park";
 import { buildMarina, type Boat } from "./marina";
+import type { MatchEvent, MatchUi } from "./match";
 
 export type { LandmarkKey } from "./common";
 
@@ -71,6 +72,8 @@ export interface LandmarkUi {
   viewing: boolean;
   /** At a boat's helm: the HUD shows the touch helm on a phone. */
   helm: boolean;
+  /** The Vibe Commons Cup, while a match is on. */
+  match?: MatchUi | null;
 }
 
 export interface LandmarkEvent {
@@ -124,6 +127,10 @@ export interface Landmarks {
   devShot(shot: { eye: number[]; look: number[]; fov?: number } | null): void;
   /** Dev: put the boat at the helm somewhere, and read the race. */
   devBoat(at?: [number, number, number]): { race: unknown; boat: number[] | null };
+  /** A match is on: the player's top speed, m/s, or null for no limit. */
+  speedCap(): number | null;
+  /** Dev: the Vibe Commons Cup ("start", "stop", "clock", "shoot"). */
+  devMatch(op?: string, arg?: number): unknown;
   /** Dev: the soccer ball. */
   devBall(kick?: [number, number, number, number]): { ball: number[]; score: [number, number] };
   dispose(): void;
@@ -337,6 +344,20 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
       },
     });
   }
+  // The Vibe Commons Cup: E by the scoreboard.
+  stations.push({
+    id: "park-match",
+    label: "Play a match: Vibe Commons Cup",
+    emoji: "⚽",
+    pos: park.matchSpot,
+    radius: 3.2,
+    height: 2.5,
+    available: () => !park.matchUi(),
+    act() {
+      emit(matchEvent(park.startMatch()));
+    },
+  });
+  const matchEvent = (e: MatchEvent): LandmarkEvent => ({ type: e.kind === "goal" || e.kind === "full-time" ? "arrive" : "depart", key: "park", title: e.title, description: e.description });
   let touchThrottle = 0;
   let touchSteer = 0;
   const helmBoat = () => (ride?.kind === "boat" ? ride.b : null);
@@ -455,6 +476,8 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
         const [h, a] = park.score();
         emit({ type: "arrive", key: "park", title: "⚽ GOAL!", description: `Vibe Commons FC: Home ${h}, Away ${a}` });
       }
+      for (const e of kick.events) emit(matchEvent(e));
+      if (kick.place && !ride) release = kick.place;
       empire.update(dt, now, player);
       eiffel.update(dt, now);
       // The Loupe turns whoever is on it, unless they are locked to something.
@@ -512,6 +535,7 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
         return true;
       }
       if (ride) return false;
+      if (park.matchUi() && !busy) return park.shoot();
       const s = nearest();
       if (!s) return false;
       s.act();
@@ -519,9 +543,13 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
     },
     ui() {
       const s = ride ? null : nearest();
+      const mu = park.matchUi();
       return {
+        match: mu,
         prompt:
-          ride?.kind === "view"
+          !ride && mu && park.canShoot()
+            ? { emoji: "⚽", label: "Shoot" }
+            : ride?.kind === "view"
             ? { emoji: "👣", label: "Step back" }
             : ride?.kind === "boat"
               ? boatLanding()
@@ -637,6 +665,8 @@ export function buildLandmarks(opts: { boxes: WorldBox[]; pitch: number; lowDeta
       }
       return { race: { ...marina.race() }, boat: b ? [b.x, b.z, b.yaw, b.speed] : null };
     },
+    speedCap: () => (ride ? null : park.speedCap()),
+    devMatch: (op, arg) => park.devMatch(op, arg),
     devBall(k) {
       if (k) park.kick(...k);
       return { ball: park.ball(), score: park.score() };
