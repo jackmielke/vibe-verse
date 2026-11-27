@@ -30,6 +30,8 @@ export interface SummitHud {
   timer: number | null;
   rings: [number, number] | null;
   lap: [number, number] | null;
+  /** Race position on the Skyway: [you, field]. */
+  place: [number, number] | null;
   stars: number;
   onDeck: boolean;
   inVillage: boolean;
@@ -256,6 +258,36 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
   const LAPS = 2;
   let stars = 0;
   let fallT = 0;
+  // Rivals on the Skyway: they race in road space, total distance in `s`.
+  const RIVALS = [
+    { name: "Comet", color: "#ff5a5a", base: 44.5 },
+    { name: "Juno", color: "#4dd2ff", base: 43.5 },
+    { name: "Pip", color: "#7dff7a", base: 42.5 },
+    { name: "Nova", color: "#ffd24d", base: 45.2 },
+    { name: "Lux", color: "#c07bff", base: 41.5 },
+  ].map((r, i) => {
+    const g = new THREE.Group();
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 2.6), new THREE.MeshStandardMaterial({ color: r.color, roughness: 0.35 }));
+    shell.position.y = 0.45;
+    g.add(shell);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), new THREE.MeshStandardMaterial({ color: "#fff1e0" }));
+    head.position.set(0, 1.25, -0.3);
+    g.add(head);
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.47, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: r.color }));
+    helmet.position.copy(head.position);
+    g.add(helmet);
+    const glow = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 2.2), new THREE.MeshBasicMaterial({ color: r.color, toneMapped: false }));
+    glow.position.y = 0.12;
+    g.add(glow);
+    g.visible = false;
+    scene.add(g);
+    return { ...r, g, s: 0, l: 0, v: 0, lane: ((i % 3) - 1) * 5.5, done: false };
+  });
+  const placeRivalsOnGrid = () => {
+    RIVALS.forEach((r, i) => { r.s = -8 - i * 7; r.l = r.lane; r.v = 0; r.done = false; });
+  };
+  const playerTotal = () => (lap - 1) * skyway.length + ks;
+  const place = () => 1 + RIVALS.filter((r) => r.s > playerTotal()).length;
   // Rides
   let rideU = 0, rideDir = 1;
   let beamT = 0;
@@ -422,6 +454,7 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
     stars = 0;
     for (const st of skyway.stars) st.got = false;
     trailPts.length = 0;
+    placeRivalsOnGrid();
     say("The Prism Skyway. W to drive, A and D to steer. Some edges have no rail.", 4);
   };
   const enterRide = (dir: 1 | -1) => {
@@ -562,6 +595,7 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
         const gy = ground(pos.x, pos.z);
         if (pos.y <= gy) { pos.y = gy; vel.y = 0; grounded = true; }
         else if (pos.y - gy > 0.3) grounded = false;
+        pushOutOfTrees();
         rig?.setLocomotion(Math.hypot(vel.x, vel.z) / 4.6);
         break;
       }
@@ -604,6 +638,15 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
             vel.addScaledVector(n, -vel.dot(n));
           }
           if (!runStarted && Math.hypot(pos.x - SUMMIT.x, pos.z - SUMMIT.z) > 50) runStarted = true;
+          const tree = scenery.treeNear(pos.x, pos.z);
+          if (tree) {
+            if (vel.length() > 9) {
+              tumble = 1.3; afterTumble = mode; mode = "tumble";
+              vel.multiplyScalar(-0.15);
+              say("Tree! Stay on the run, it is the white stripe with blue poles.", 3);
+            }
+            pushOutOfTrees();
+          }
         } else {
           airTime += dt;
           const dh = ax.x * (isBoard ? 5.5 : 4.5) * dt;
@@ -829,10 +872,13 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
           if (lap >= LAPS) {
             const t = runT;
             const best = writeBest("skyway", t);
+            const pl = 1 + RIVALS.filter((r) => r.done).length;
+            const ord = ["1st", "2nd", "3rd", "4th", "5th", "6th"][pl - 1];
             results = {
-              title: "Prism Skyway: finished!",
-              lines: [`${LAPS} laps in ${fmt(t)}`, `${stars} stars`, best ? "New personal best!" : `Your best: ${fmt(readBest().skyway)}`],
+              title: pl === 1 ? "Prism Skyway: you won!" : `Prism Skyway: ${ord} place`,
+              lines: [`${LAPS} laps in ${fmt(t)}`, `${ord} of ${RIVALS.length + 1} · ${stars} stars`, best ? "New personal best!" : `Your best: ${fmt(readBest().skyway)}`],
             };
+            placeRivalsOnGrid();
             chime(660); chime(990);
             runKind = null;
             lap = 1;
@@ -848,6 +894,27 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
         }
         if (ks < 0) ks += skyway.length;
         topSpeed = Math.max(topSpeed, kv);
+        // Rivals: each holds a lane and a pace, eases through bends, and bumps you.
+        if (runStarted || results) {
+          const total = LAPS * skyway.length;
+          for (const r of RIVALS) {
+            if (r.done) { r.v = damp(r.v, 0, 1, dt); r.s += r.v * dt; continue; }
+            skyway.frameAt(r.s, f);
+            const want = r.base * (1 + 0.05 * Math.sin(r.s / 260 + r.lane)) - Math.min(8, Math.abs(f.k) * 2500);
+            r.v = damp(r.v, want, 0.7, dt);
+            r.s += r.v * dt;
+            r.l = damp(r.l, r.lane + Math.sin(r.s / 140 + r.base) * 3, 0.8, dt);
+            if (r.s >= total) r.done = true;
+            // Bump: compare on the same lap.
+            const ds = r.s - playerTotal();
+            if (Math.abs(ds) < 2.8 && Math.abs(r.l - kl) < 2.1 && kh < 1.5) {
+              const side = Math.sign(kl - r.l) || 1;
+              kl += side * 0.6;
+              r.l -= side * 0.4;
+              if (ds > 0) kv *= 0.97; else r.v *= 0.97;
+            }
+          }
+        }
         // Where the body is.
         skyway.frameAt(ks, f);
         pos.copy(f.p).addScaledVector(f.r, kl).addScaledVector(f.u, kh);
@@ -909,6 +976,15 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
       }
     }
     if (pos.y < -50) { placeOnDeck(); toWalk(); }
+  };
+
+  const pushOutOfTrees = () => {
+    const t = scenery.treeNear(pos.x, pos.z);
+    if (!t) return;
+    const dx = pos.x - t.x, dz = pos.z - t.z;
+    const d = Math.hypot(dx, dz) || 1;
+    pos.x = t.x + (dx / d) * (t.r + 0.05);
+    pos.z = t.z + (dz / d) * (t.r + 0.05);
   };
 
   const nearPad = (): Pad | null => {
@@ -1072,6 +1148,7 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
       timer: runKind && runStarted ? runT : null,
       rings: runKind === "wingsuit" ? [ringsGot, scenery.rings.length] : null,
       lap: mode === "kart" ? [lap, LAPS] : null,
+      place: mode === "kart" ? [place(), RIVALS.length + 1] : null,
       stars,
       onDeck,
       inVillage: mode === "walk" && inVillage(),
@@ -1096,6 +1173,15 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
     // World bits.
     scenery.update(clock, dt);
     skyway.update(clock);
+    const showRivals = mode === "kart" || mode === "fall" || (runKind === "skyway");
+    for (const r of RIVALS) {
+      r.g.visible = showRivals;
+      if (!showRivals) continue;
+      skyway.frameAt(r.s, f);
+      const lift = skyway.deckAt(r.s) ? skyway.liftAt(r.s) : 3.5;
+      r.g.position.copy(f.p).addScaledVector(f.r, r.l).addScaledVector(f.u, lift);
+      r.g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(f.r.clone().negate(), f.u, f.t));
+    }
     const space = THREE.MathUtils.smoothstep(camera.position.y, 2000, 2700);
     sky.update(camera, space, clock);
     (scene.fog as THREE.Fog).color.copy(sky.horizon);
@@ -1171,7 +1257,7 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
 
   // ---- Test hook ---------------------------------------------------------
   (window as unknown as { __summit?: unknown }).__summit = {
-    state: () => ({ mode, x: pos.x, y: pos.y, z: pos.z, heading, speed: vel.length(), V, ks, kl, kv, lap, runT, ringsGot, results, grounded }),
+    state: () => ({ place: place(), mode, x: pos.x, y: pos.y, z: pos.z, heading, speed: vel.length(), V, ks, kl, kv, lap, runT, ringsGot, results, grounded }),
     /** Run the simulation for `seconds` without drawing, holding the given keys. */
     settle(seconds: number, hold: string[] = []) {
       hold.forEach((k) => keys.add(k));

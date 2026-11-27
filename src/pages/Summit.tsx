@@ -112,6 +112,7 @@ export default function Summit() {
             ) : null}
             {hud.rings ? <div className="mt-0.5 text-[11px] text-[#ffb36b]">◯ {hud.rings[0]} / {hud.rings[1]} rings</div> : null}
             {hud.lap ? <div className="mt-0.5 text-[11px] text-[#e8c6ff]">Lap {hud.lap[0]} / {hud.lap[1]} · ★ {hud.stars}</div> : null}
+            {hud.place ? <div className="mt-0.5 text-[18px] font-black text-white" style={{ fontFamily: MONO }}>P{hud.place[0]}<span className="text-[11px] text-white/60"> / {hud.place[1]}</span></div> : null}
           </div>
 
           {/* Toast. */}

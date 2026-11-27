@@ -25,6 +25,8 @@ export interface Scenery {
   rings: { x: number; y: number; z: number; yaw: number; mesh: THREE.Mesh }[];
   /** The gondola cable as a polyline, village to summit. */
   cable: THREE.Vector3[];
+  /** Tree trunks for collisions: a coarse grid of [x, z, radius] buckets. */
+  treeNear(x: number, z: number): { x: number; z: number; r: number } | null;
   update(t: number, dt: number): void;
   dispose(): void;
 }
@@ -118,6 +120,28 @@ float snN(vec2 p) {
   terrain.receiveShadow = true;
   group.add(terrain);
 
+  const BUCKET = 40;
+  const buckets = new Map<number, number[]>();
+  const bkey = (i: number, j: number) => i * 100003 + j;
+  const treeAdd = (x: number, z: number, r: number) => {
+    const k = bkey(Math.floor(x / BUCKET), Math.floor(z / BUCKET));
+    let b = buckets.get(k);
+    if (!b) buckets.set(k, (b = []));
+    b.push(x, z, r);
+  };
+  const treeNear = (x: number, z: number) => {
+    const i0 = Math.floor(x / BUCKET), j0 = Math.floor(z / BUCKET);
+    for (let i = i0 - 1; i <= i0 + 1; i++) for (let j = j0 - 1; j <= j0 + 1; j++) {
+      const b = buckets.get(bkey(i, j));
+      if (!b) continue;
+      for (let t = 0; t < b.length; t += 3) {
+        const dx = x - b[t], dz = z - b[t + 1];
+        if (dx * dx + dz * dz < b[t + 2] * b[t + 2]) return { x: b[t], z: b[t + 1], r: b[t + 2] };
+      }
+    }
+    return null;
+  };
+
   // ---- The forest --------------------------------------------------------
   {
     const parts: THREE.BufferGeometry[] = [];
@@ -167,6 +191,7 @@ float snN(vec2 p) {
       q.setFromAxisAngle(up, rnd() * Math.PI * 2);
       s.set(k, k * (0.9 + rnd() * 0.3), k);
       trees.setMatrixAt(n++, m.compose(p, q, s));
+      treeAdd(x, z, 1.1 * k);
     }
     trees.count = n;
     trees.instanceMatrix.needsUpdate = true;
@@ -466,6 +491,22 @@ float snN(vec2 p) {
     return { ...r, mesh };
   });
 
+  // ---- Birds: a few flocks wheeling over the valley and the thermals ------
+  const birdGeo = keep(new THREE.BufferGeometry());
+  birdGeo.setAttribute("position", new THREE.Float32BufferAttribute([-1.2, 0.3, -0.2, 0, 0, 0.3, 0, 0, -0.3, 1.2, 0.3, -0.2, 0, 0, 0.3, 0, 0, -0.3], 3));
+  birdGeo.computeVertexNormals();
+  const BIRDS = 48;
+  const birds = new THREE.InstancedMesh(birdGeo, keep(new THREE.MeshBasicMaterial({ color: "#2a2f3a", side: THREE.DoubleSide })), BIRDS);
+  birds.frustumCulled = false;
+  group.add(birds);
+  const flocks = [
+    { x: 0, z: 1700, y: 260, r: 160 },
+    { x: 1500, z: 1500, y: 520, r: 120 },
+    { x: 520, z: 100, y: 620, r: 90 },
+    { x: -420, z: -800, y: 920, r: 80 },
+  ];
+  const birdM = new THREE.Matrix4(), birdQ = new THREE.Quaternion(), birdS = new THREE.Vector3(), birdP = new THREE.Vector3(), birdE = new THREE.Euler();
+
   // ---- Thermals: rising sparkles -----------------------------------------
   const sparkN = 90;
   const sparkGeo = keep(new THREE.BufferGeometry());
@@ -483,6 +524,7 @@ float snN(vec2 p) {
     pads,
     rings,
     cable,
+    treeNear,
     update(t) {
       beamUniforms.uTime.value = t;
       // Cabins loop the cable: half going up, half coming down.
@@ -496,6 +538,19 @@ float snN(vec2 p) {
         c.position.x += down ? 3 : -3;
       });
       for (const r of rings) r.mesh.rotation.z = t * 0.4;
+      for (let i = 0; i < BIRDS; i++) {
+        const f = flocks[i % flocks.length];
+        const k = Math.floor(i / flocks.length);
+        const a = t * (0.18 + (k % 3) * 0.02) + k * 0.5;
+        const rr = f.r + Math.sin(k * 2.1) * 25;
+        birdP.set(f.x + Math.cos(a) * rr, f.y + Math.sin(t * 0.7 + k) * 6 + k * 1.5, f.z + Math.sin(a) * rr);
+        const flap = Math.sin(t * 9 + i) * 0.5;
+        birdE.set(0, -a, -0.3);
+        birdQ.setFromEuler(birdE);
+        birdS.set(1.6, 1.6 + flap, 1.6);
+        birds.setMatrixAt(i, birdM.compose(birdP, birdQ, birdS));
+      }
+      birds.instanceMatrix.needsUpdate = true;
       let o = 0;
       THERMALS.forEach((th, ti) => {
         for (let i = 0; i < sparkN; i++) {
