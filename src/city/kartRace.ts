@@ -305,7 +305,8 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
   }
 
   // ---- The kiosk on the plaza's east edge ---------------------------------
-  const kiosk = new THREE.Vector3(11, 0, 9.5);
+  // Clear of Granny (10.5, 5), whose E is the lost-pets quest.
+  const kiosk = new THREE.Vector3(11.5, 0, 12.5);
   {
     const post = mat(new THREE.MeshStandardMaterial({ color: 0x1a1030, roughness: 0.5 }));
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 0.6), post);

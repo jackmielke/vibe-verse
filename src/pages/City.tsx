@@ -73,6 +73,8 @@ import { CollisionWorld } from "@/city/player/collision";
 import { buildDistrict } from "@/city/district";
 import { buildLandmarks, LANDMARK_RESERVE, type Landmarks } from "@/city/landmarks";
 import { LandmarkHud } from "@/city/landmarks/LandmarkHud";
+import { buildQuests, questHat, setWornQuestHat, wornQuestHat, type Quests } from "@/city/quests";
+import { QuestHud } from "@/city/quests/QuestHud";
 import { buildThanksgiving, thanksgivingOn, saveThanksgiving, TURKEY_REST } from "@/city/thanksgiving";
 import { buildTurkey } from "@/city/turkey";
 import {
@@ -964,6 +966,10 @@ export default function City() {
   mutedRef.current = muted;
   const soundsRef = useRef<CitySounds | null>(null);
   const landmarksRef = useRef<Landmarks | null>(null);
+  /** Side quests: Granny's pets, fishing, street races, the Sky Sprint. See src/city/quests. */
+  const questsRef = useRef<Quests | null>(null);
+  const questHatRef = useRef<((id: string | null) => void) | null>(null);
+  const questWarpRef = useRef<((at: [number, number, number]) => void) | null>(null);
   // The Wizard (src/wizard): wishes become things, shared live through Supabase.
   const [wizardApi, setWizardApi] = useState<WizardController | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -1218,7 +1224,10 @@ export default function City() {
   useEffect(() => {
     const { hat, flame, jetpack } = wardrobe.loadout;
     setEquippedHat((cur) => {
-      if (cur !== hat) applyHatRef.current?.(hat);
+      if (cur !== hat) {
+        setWornQuestHat(null);
+        applyHatRef.current?.(hat);
+      }
       return hat;
     });
     setEquippedFlame((cur) => {
@@ -1777,6 +1786,41 @@ export default function City() {
       }
       if (ev.title) toast(ev.title, { description: ev.description });
     });
+    // Side quests. They pay into the same in-city ✦ balance the floor gems do.
+    let questNight = false;
+    let questEHeld = false;
+    const quests = buildQuests({
+      balance: () => vibeBalanceRef.current,
+      earn: (n, why) => {
+        vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + n;
+        setVibeBalanceTick((k) => k + 1);
+        persistVibeBalanceRef.current?.();
+        toast.success(`+${n} ✦`, { description: why });
+      },
+      spend: (n) => {
+        if (vibeBalanceRef.current < n) return false;
+        vibeBalanceRef.current -= n;
+        setVibeBalanceTick((k) => k + 1);
+        persistVibeBalanceRef.current?.();
+        return true;
+      },
+      toast: (title, description) => toast(title, { description }),
+      sound: (s, n) => {
+        const snd = soundsRef.current;
+        if (!snd) return;
+        if (s === "fanfare") snd.fanfare();
+        else if (s === "thud") snd.thud(n ?? 0.5);
+        else if (s === "coin") snd.chime(5);
+        else if (s === "splash") snd.splash(0.4, 0.5);
+        else if (s === "meow") snd.chime(9);
+        else if (s === "countdown") snd.chime(2);
+        else if (s === "go") snd.chime(8);
+        else snd.chime(n ?? 3);
+      },
+      wearHat: (id) => questHatRef.current?.(id),
+    });
+    scene.add(quests.group);
+    questsRef.current = quests;
     const hideouts = buildHideouts();
     scene.add(hideouts.group);
     district.boxes.push(...hideouts.boxes);
@@ -3522,6 +3566,7 @@ export default function City() {
       skyUniforms.uSunPower.value = day ? 0.9 : 0.22;
       district.setDay(day);
       landmarks.setDay(day);
+      questNight = !day;
       ocean.setPalette(day ? OCEAN_DAY : OCEAN_NIGHT);
       // The sand is lit geometry, not a shader, so it needs the same knock-down
       // the facades get at night or the beach glows like a runway.
@@ -4097,6 +4142,23 @@ export default function City() {
     };
     applyJetpackRef.current = applyJetpack;
     applyHat(localStorage.getItem("city.hat") || "none");
+    // Quest hats (Granny Mabel's thank-yous) are not in the shop's ledger;
+    // they sit on the same mount and replace whatever shop hat is on.
+    const applyQuestHat = (id: string | null) => {
+      const def = questHat(id);
+      setWornQuestHat(def ? def.id : null);
+      if (!def) {
+        applyHat(localStorage.getItem("city.hat") || "none");
+        return;
+      }
+      applyHat("none");
+      const g = def.build();
+      g.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+      hatMount.add(g);
+      currentHat = g;
+    };
+    questHatRef.current = applyQuestHat;
+    if (wornQuestHat()) applyQuestHat(wornQuestHat());
     applyFlame(localStorage.getItem("city.flame") || "mint");
     applyJetpack(localStorage.getItem("city.jetpack") || "stock");
 
@@ -4654,6 +4716,15 @@ export default function City() {
         close: () => closeCabinet(),
         entrance: () => arcade.entrance.toArray(),
       };
+      (window as unknown as Record<string, unknown>).__cityQuests = {
+        ui: () => quests.ui(),
+        log: () => quests.log(),
+        act: () => quests.act(),
+        choose: (id: string) => quests.choose(id),
+        hold: (on: boolean) => quests.setHold(on),
+        dev: () => quests.dev(),
+        hat: (id: string | null) => questHatRef.current?.(id),
+      };
       (window as unknown as Record<string, unknown>).__cityLandmarks = {
         sites: () => landmarks.devSites(),
         near: () => landmarks.ui(),
@@ -4739,7 +4810,9 @@ export default function City() {
        */
       // E: the landmarks' elevators and binoculars.
       if (e.code === "KeyE" && !e.repeat && enteredRef.current) {
+        questEHeld = true;
         if (landmarksRef.current?.act()) e.preventDefault();
+        else if (questsRef.current?.act()) e.preventDefault();
       }
       if (e.code === "KeyF" && !e.repeat) {
         if (activeMountRef.current) { mountActionRef.current?.(null); return; }
@@ -4753,6 +4826,16 @@ export default function City() {
       }
     };
     window.addEventListener("keydown", onToggleView);
+    const onQuestKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "KeyE") questEHeld = false;
+    };
+    window.addEventListener("keyup", onQuestKeyUp);
+    questWarpRef.current = (at) => {
+      arrivalStart = 0;
+      if (drivingKartRef.current >= 0) exitKartRef.current?.();
+      player.position.set(at[0], at[1], at[2]);
+      vel.set(0, 0, 0);
+    };
     // Manual delta tracking (movementX is unreliable for touch
     // pointers on mobile Safari). One finger drags the camera; two
     // fingers on the canvas pinch-zoom, all the way out to god view.
@@ -7716,6 +7799,47 @@ export default function City() {
         }
       }
 
+      // ---- Side quests: Granny's pets, fishing, races, the Sky Sprint -----
+      // Same contract as the landmarks: a quest that holds the player returns
+      // where their feet go. See src/city/quests/index.ts.
+      {
+        const tmQ = touchMoveRef.current;
+        const dk = drivingKartRef.current;
+        const kq = dk >= 0 ? kartStates[dk] : null;
+        const qs = quests.update({
+          t: now / 1000,
+          dt,
+          player: player.position,
+          grounded: onGround,
+          busy: !!activeMountRef.current || swimming || ridingZeppelin || landmarks.holding(),
+          thrusting,
+          vehicle: kq ? { kind: kq.kind, x: kq.x, z: kq.z, yaw: kq.yaw, speed: kq.speed } : null,
+          camYaw,
+          night: questNight,
+          input: {
+            up: keys.has("KeyW") || keys.has("ArrowUp") || tmQ.y < -0.3,
+            down: keys.has("KeyS") || keys.has("ArrowDown") || tmQ.y > 0.3,
+            left: keys.has("KeyA") || keys.has("ArrowLeft") || tmQ.x < -0.3,
+            right: keys.has("KeyD") || keys.has("ArrowRight") || tmQ.x > 0.3,
+            jump: keys.has("Space") || touchJetRef.current,
+            hold: questEHeld,
+            run: keys.has("ShiftLeft") || keys.has("ShiftRight"),
+          },
+        });
+        if (qs?.lock) {
+          player.position.copy(qs.lock);
+          vel.set(0, 0, 0);
+          onGround = true;
+          wallJumpUsed = false;
+          peakY = qs.lock.y;
+        }
+        if (qs?.kick) vel.copy(qs.kick);
+        if (qs?.face != null) {
+          modelYaw = qs.face;
+          modelHolder.rotation.y = modelYaw;
+        }
+      }
+
       // Zeppelin Heist: spawn the sky coin on schedule, ride it around
       // on the deck, and pay out when someone grabs it.
       {
@@ -9006,6 +9130,10 @@ export default function City() {
       wetStreets.dispose();
       citySky.dispose();
       landmarksRef.current = null;
+      quests.dispose();
+      questsRef.current = null;
+      window.removeEventListener("keyup", onQuestKeyUp);
+      delete (window as unknown as Record<string, unknown>).__cityQuests;
       wizard.dispose();
       wizardNpc.dispose();
       setWizardApi(null);
@@ -10813,6 +10941,12 @@ export default function City() {
             </div>
           )}
           <LandmarkHud system={landmarksRef} compact={isTouch} />
+          <QuestHud
+            system={questsRef}
+            compact={isTouch}
+            onWarp={(at) => questWarpRef.current?.(at)}
+            onWearHat={(id) => questHatRef.current?.(id)}
+          />
           <FolkChat
             near={folkNear}
             open={folkOpen}
