@@ -93,6 +93,8 @@ import { createMayhem, GUNS, type GunKind, type Mayhem, type MayhemHud } from "@
 /** The weapon bar's order, and what the 1 to 5 keys count along. */
 const GUN_SLOTS: readonly GunKind[] = ["glock", "water", "paint", "blaster", "rifle"];
 import { buildHideouts } from "@/city/hideouts";
+import { buildArcade, ARCADE_RESERVE, type ArcadeStation } from "@/city/arcade";
+import { ArcadeCabinet, type CabinetGame } from "@/components/city/ArcadeCabinet";
 import { createBodyguards, squadEnabled, type Bodyguards } from "@/city/bodyguards";
 import { SquadPanel } from "@/components/city/SquadPanel";
 import {
@@ -1041,6 +1043,21 @@ export default function City() {
   const [nearRps, setNearRps] = useState(false);
   const [rpsOpen, setRpsOpen] = useState(false);
   const [arcadeOpen, setArcadeOpen] = useState(false);
+  // The Vibe Arcade on the block east of the plaza (src/city/arcade.ts):
+  // the station you are standing at, and the game open in the cabinet.
+  const [arcadeStation, setArcadeStation] = useState<ArcadeStation | null>(null);
+  const [cabinetGame, setCabinetGame] = useState<CabinetGame | null>(null);
+  const cabinetOpenRef = useRef(false);
+  const arcadeStationRef = useRef<ArcadeStation | null>(null);
+  const closeCabinet = useCallback(() => {
+    cabinetOpenRef.current = false;
+    setCabinetGame(null);
+  }, []);
+  const openCabinet = useCallback((st: ArcadeStation | null) => {
+    if (!st) return;
+    cabinetOpenRef.current = true;
+    setCabinetGame({ key: st.key, title: st.title, emoji: st.emoji, route: st.route, accent: st.accent });
+  }, []);
   const [nearTv, setNearTv] = useState(false);
   // VIBE FM boomboxes — walking up shows the tune-in prompt; walking
   // away folds the deck UI (the music itself keeps playing).
@@ -1650,7 +1667,7 @@ export default function City() {
       lowDetail: smallScreen,
       // Landmarks, plus the warehouse (6,4) and police station (2,4) from
       // `src/city/hideouts.ts`.
-      reserve: [...LANDMARK_RESERVE, { gx: 6, gz: 4, ground: "pave", trees: true }, { gx: 2, gz: 4, ground: "pave", trees: true }],
+      reserve: [...LANDMARK_RESERVE, { gx: 6, gz: 4, ground: "pave", trees: true }, { gx: 2, gz: 4, ground: "pave", trees: true }, ARCADE_RESERVE],
     });
     scene.add(district.group);
     // The Space Needle, the Empire State and the Eiffel Tower, on the blocks
@@ -1671,6 +1688,10 @@ export default function City() {
     const hideouts = buildHideouts();
     scene.add(hideouts.group);
     district.boxes.push(...hideouts.boxes);
+    // The Vibe Arcade, east of the plaza on cell (5,4).
+    const arcade = buildArcade({ lowDetail: smallScreen });
+    scene.add(arcade.group);
+    district.boxes.push(...arcade.boxes);
     // Held live by reference — every world that loads after this pushes its
     // own collision into the same array. See CollisionWorld's constructor.
     const boxes = district.boxes;
@@ -2570,6 +2591,7 @@ export default function City() {
       ) => registerPOI({ key, name, region, position: pos, kind: "landmark", aliases });
       reg("plaza", "Plaza Spawn", "Plaza", new THREE.Vector3(0, 0, 0), ["spawn", "lobby", "start"]);
       for (const site of landmarks.sites) reg(site.key, site.name, "Vibe City", site.entrance.clone(), site.aliases);
+      reg("vibe-arcade", "Vibe Arcade", "Vibe City", arcade.entrance.clone(), ["vibe arcade", "the arcade", "game room", "arcade hall", "pool hall", "pool table", "foosball"]);
       reg("cardboard-island", "Vibe Island", "Vibe Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard", "edge island", "cardboard island"]);
       reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
       reg("arcade", "Esmeralda Jump Arcade", "Cardboard Island", island.arcade, ["arcade", "esmeralda jump", "jump cabinet", "cabinet"]);
@@ -4022,6 +4044,10 @@ export default function City() {
         rideButtonRef.current?.();
         return;
       }
+      if (e.code === "KeyE" && !e.repeat && arcadeStationRef.current && !cabinetOpenRef.current) {
+        openCabinet(arcadeStationRef.current);
+        return;
+      }
       if (e.code === "KeyT") {
         e.preventDefault();
         arrivalStart = 0;
@@ -4443,6 +4469,13 @@ export default function City() {
         helicopter: heli.body.position.toArray(),
         parade: thanks.float.getWorldPosition(new THREE.Vector3()).toArray(),
       });
+      (window as unknown as Record<string, unknown>).__cityArcade = {
+        stations: () => arcade.stations.map((s) => ({ key: s.key, route: s.route, at: s.at.toArray() })),
+        near: () => arcadeStationRef.current?.key ?? null,
+        open: (key?: string) => openCabinet(key ? arcade.stations.find((s) => s.key === key) ?? null : arcadeStationRef.current),
+        close: () => closeCabinet(),
+        entrance: () => arcade.entrance.toArray(),
+      };
       (window as unknown as Record<string, unknown>).__cityLandmarks = {
         sites: () => landmarks.devSites(),
         near: () => landmarks.ui(),
@@ -6171,6 +6204,9 @@ export default function City() {
       const now = performance.now();
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
+      // At a Vibe Arcade cabinet the game in the frame gets the whole GPU;
+      // the city holds still underneath and picks up where it left off.
+      if (cabinetOpenRef.current) return;
 
       // VR input: read the strongest thumbstick from any connected
       // controller and feed it through the same touch refs that the
@@ -7425,6 +7461,7 @@ export default function City() {
       {
         const tmL = touchMoveRef.current;
         const tmLen = Math.hypot(tmL.x, tmL.y);
+        arcade.update(dt, now, player.position);
         const lock = landmarks.update(dt, now, {
           player: player.position,
           grounded: onGround,
@@ -7560,6 +7597,13 @@ export default function City() {
             Math.hypot(pp.x - hq[0], pp.z - hq[2]) < 3.2 && Math.abs(pp.y - hq[1]) < 2.5;
           nearRideButton = ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current &&
             Math.hypot(pp.x - RIDE_BUTTON[0], pp.z - RIDE_BUTTON[2]) < 2.6 && pp.y < 3;
+          {
+            const st = drivingKartRef.current < 0 && !activeMountRef.current ? arcade.nearest(pp) : null;
+            if (st !== arcadeStationRef.current) {
+              arcadeStationRef.current = st;
+              setArcadeStation(st);
+            }
+          }
           nearBadNow = null;
           if (ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current) {
             for (const b of mayhem.bads()) {
@@ -8338,7 +8382,7 @@ export default function City() {
            it is what a player standing in the club would see. Clamping to
            something that fits inside the room is the fix, and it is the same
            trick the dive camera above already uses. */
-        const camDistNow = club.contains(pos) || landmarks.indoors(pos)
+        const camDistNow = club.contains(pos) || landmarks.indoors(pos) || arcade.contains(pos)
           ? Math.min(camDist, 5.2)
           : THREE.MathUtils.lerp(camDist, Math.min(camDist, 4.6), diveEased);
         const camLift = THREE.MathUtils.lerp(1.4, 0.25, diveEased);
@@ -8694,6 +8738,7 @@ export default function City() {
       landmarksRef.current = null;
       mayhem.dispose();
       hideouts.dispose();
+      arcade.dispose();
       ocean.dispose();
       underwater.dispose();
       splash.dispose();
@@ -9817,6 +9862,7 @@ export default function City() {
       )}
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
+      <ArcadeCabinet game={cabinetGame} onClose={closeCabinet} />
       {!IOS_APP && <RockPaperScissors open={rpsOpen} onClose={() => setRpsOpen(false)} />}
       {!IOS_APP && <RpsDevHook onOpen={() => setRpsOpen(true)} />}
       <PhotoGalleryModal
@@ -10568,6 +10614,18 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-primary shadow-[0_0_24px_hsl(var(--primary)/0.45)]"
             >
               ✨ Open Vibe Maker
+            </button>
+          )}
+          {arcadeStation && !cabinetGame && (
+            <button
+              onClick={(e) => {
+                openCabinet(arcadeStation);
+                e.currentTarget.blur();
+              }}
+              className="glass-panel rounded-full px-5 py-2.5 text-sm text-white border-2 backdrop-blur-md transition-colors hover:bg-white/10"
+              style={{ borderColor: arcadeStation.accent, boxShadow: `0 0 24px ${arcadeStation.accent}88`, background: "rgba(10,6,24,0.55)" }}
+            >
+              {arcadeStation.emoji} Play {arcadeStation.title}{isTouch ? "" : " (E)"}
             </button>
           )}
           {nearArcade && !arcadeOpen && (

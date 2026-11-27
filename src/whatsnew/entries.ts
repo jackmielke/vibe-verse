@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-27-vibe-arcade",
+    date: "2026-11-27",
+    emoji: "🕹️",
+    title: "The Vibe Arcade opens in Vibe City",
+    body: "A neon arcade just east of the plaza. Walk in as yourself, step up to the pool table, the hoops machine, the foosball table or the card table and press E to play 8-Ball Club, Vibe Hoops, Vibe Cup or Solitaire right there. Mort Maze, Haymaker and 2048 have cabinets by the back wall.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "vibe-hoops",
     date: "2026-11-27",
     emoji: "🏀",
