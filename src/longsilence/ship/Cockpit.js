@@ -1173,7 +1173,7 @@ function drawArchiveGallery(g, v, ctx) {
  * Exported so `passport.test.ts` can assert against the drawing code's real
  * limit instead of a number copied into the test and left behind.
  */
-export const PASSPORT_ROWS = 54;
+export const PASSPORT_ROWS = 60;
 
 function drawArchivePassport(g, v, ctx) {
   const { w, h } = g;
@@ -1251,7 +1251,11 @@ function drawArchivePassport(g, v, ctx) {
      about 560 px tall, where twelve rows instead of eleven takes `nameSize`
      from 12 to 11.5. Everything 600 px and up is unchanged. Thirty-six rather
      than thirty-four so this is not a line somebody has to come back to for
-     the two worlds after this one. */
+     the two worlds after this one.
+
+     Mort's Maze made fifty-five against a cap of fifty-four. Sixty is twenty
+     rows at three columns, still above the 21 px pitch where the type steps
+     down on a 720 px window, so it is room rather than a squeeze. */
   const TOP = 196;
   const BOTTOM = h - 76;
   const shown = rows.slice(0, PASSPORT_ROWS);

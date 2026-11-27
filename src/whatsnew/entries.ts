@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "mort-maze",
+    date: "2026-11-27",
+    emoji: "🎈",
+    title: "New game: Mort's Maze",
+    body: "A maze chase on Vibe Island at night. Eat every Vibey Coin while Mad Mort and his junkyard crew chase you, then pop a water balloon to soak them and splash them home for big points. Swipe to steer on a phone, or use the arrow keys.",
+    tag: "new",
+    route: "/mort-maze",
+    world: "Mort's Maze",
+  },
+  {
     id: "city-soaker-puddles",
     date: "2026-11-27",
     emoji: "💦",

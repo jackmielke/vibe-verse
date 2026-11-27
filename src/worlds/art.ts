@@ -52,6 +52,7 @@ import chronicleArt from "@/assets/worlds/chronicle.jpg";
 import blobArt from "@/assets/worlds/blob.jpg";
 import coilArt from "@/assets/worlds/coil.jpg";
 import twenty48Art from "@/assets/worlds/2048.jpg";
+import mortMazeArt from "@/assets/worlds/mort-maze.jpg";
 import blueAngelsArt from "@/assets/worlds/blue-angels.jpg";
 import conservatoryArt from "@/assets/worlds/conservatory.jpg";
 import venusArt from "@/assets/worlds/venus.jpg";
@@ -105,6 +106,7 @@ export const WORLD_ART: Record<string, string> = {
   blob: blobArt,
   coil: coilArt,
   "2048": twenty48Art,
+  "mort-maze": mortMazeArt,
   "blue-angels": blueAngelsArt,
   conservatory: conservatoryArt,
   venus: venusArt,

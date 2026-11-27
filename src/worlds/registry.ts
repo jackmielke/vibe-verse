@@ -40,6 +40,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "thalassa",            // the harbour from the painting: walk it, swim it, VR
   "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
+  "mort-maze",           // new: the maze chase, Vibey against Mad Mort's crew
   "bots",                // …then the thirty-second loop: your handle becomes a bot that fights
   "oni",                 // the room game: everybody's phone, one square, zombie tag
   "magician",            // …then the valley you talk to, which rebuilds itself as you speak
@@ -455,6 +456,23 @@ const WORLDS_RAW: WorldEntry[] = [
     accent: "#ff6ad5",
     featured: true,
     source: "src/coil",
+    nav: true,
+    passport: true,
+    chromeless: true,
+  },
+  {
+    key: "mort-maze",
+    route: "/mort-maze",
+    aliases: ["/maze", "/chomp", "/munch"],
+    name: "Mort's Maze",
+    emoji: "🎈",
+    kind: "game",
+    blurb:
+      "A maze chase on Vibe Island at night. Roll Vibey round the hedges eating every Vibey Coin while Mad Mort, Lunatic Linda, Hubcap Hank and Rusty Ray hunt you down. Pop a water balloon and the whole crew is soaked and running, so splash them back to the junkyard for big points.",
+    status: "Playable on phone (swipe) and desktop, three mazes",
+    accent: "#ffd23f",
+    featured: true,
+    source: "src/mortmaze",
     nav: true,
     passport: true,
     chromeless: true,
