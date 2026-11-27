@@ -27,7 +27,7 @@ import {
 } from "@/vibecup/game";
 import { drawFrame, feedFx, fitView, newFx, PAD_COLORS, screenToWorld, type Fx, type View } from "@/vibecup/render";
 import { CupAudio } from "@/vibecup/audio";
-import { applySnap, BOARD, cleanCode, CupRoom, matchGame, MAX_PER_SIDE, openTransport, RoomBoard, roomCode, type Member, type NetMode, type OpenRoom, type Wire } from "@/vibecup/net";
+import { applySnap, snapshot, BOARD, cleanCode, CupRoom, matchGame, MAX_PER_SIDE, openTransport, RoomBoard, roomCode, type Member, type NetMode, type OpenRoom, type Snap, type Wire } from "@/vibecup/net";
 import { QrCode } from "@/oni/ui/QrCode";
 import {
   advance, FINAL_ROUND, myFixture, newCup, record as recordCup, roundDone, roundFixtures, roundName, table, validCup, type Cup, type Fixture, type Position,
@@ -50,7 +50,59 @@ interface LiveGame {
   mine: boolean;
   done: boolean;
   scorers: string[];
+  /** Replays of this match's goals, until somebody watches them. */
+  clips: Clip[];
+  /** The last few seconds, so a goal's replay can start before the shot. */
+  buf: Snap[];
+  /** Replays still recording what happened after the goal. */
+  rec: { clip: Clip; left: number }[];
 }
+/** One goal, as the frames either side of it. Lives in memory only: once watched it is gone. */
+interface Clip {
+  frames: Snap[];
+  goalAt: number;
+  ev: Extract<GameEvent, { type: "goal" }>;
+  minute: number;
+  score: [number, number];
+}
+const CLIP_HZ = 30;
+const CLIP_PRE = 4 * CLIP_HZ;
+const CLIP_POST = 2 * CLIP_HZ;
+const goalName = (e: Extract<GameEvent, { type: "goal" }>) => (e.own ? `${e.name} (own goal)` : e.name);
+
+/** One fixed step of a computer match, filming as it goes. Returns true at full time. */
+function filmStep(L: LiveGame): boolean {
+  step(L.g, 1 / CLIP_HZ);
+  const s = snapshot(L.g);
+  L.buf.push(s);
+  if (L.buf.length > CLIP_PRE) L.buf.shift();
+  for (const r of L.rec) {
+    r.clip.frames.push(s);
+    r.left--;
+  }
+  L.rec = L.rec.filter((r) => r.left > 0);
+  let over = false;
+  for (const e of L.g.events) {
+    if (e.type === "goal") {
+      L.scorers.push(goalName(e));
+      const clip: Clip = { frames: [...L.buf], goalAt: L.buf.length - 1, ev: e, minute: L.g.lastGoal?.minute ?? 0, score: [...L.g.score] as [number, number] };
+      L.clips.push(clip);
+      L.rec.push({ clip, left: CLIP_POST });
+    }
+    if (e.type === "fulltime") over = true;
+  }
+  L.g.events.length = 0;
+  return over;
+}
+/** Play a computer match out to the final whistle in an instant, keeping a replay of every goal. */
+function playOut(L: LiveGame) {
+  for (let n = 0; n < 60 * 60 * CLIP_HZ && !filmStep(L); n++);
+  L.rec = [];
+  L.buf = [];
+  L.done = true;
+}
+const myMatchOn = (live: LiveRound | null) => !!live && [...live.games.values()].some((x) => x.mine && !x.done);
+
 interface LiveRound {
   round: number;
   games: Map<string, LiveGame>;
@@ -65,6 +117,8 @@ interface Tick {
   clock: string;
   done: boolean;
   mine: boolean;
+  /** Goal replays waiting to be watched. */
+  clips: number;
 }
 const fixtureSeed = (cup: Cup, f: Fixture) => {
   let h = cup.seed;
@@ -208,8 +262,15 @@ export default function VibeCup() {
   const liveRef = useRef<LiveRound | null>(null);
   const [ticks, setTicks] = useState<Tick[]>([]);
   const [focusMine, setFocusMine] = useState(false);
+  /** The highlights being shown: goals from the computer's matches, each deleted once it has played. */
+  const reelRef = useRef<{ items: { L: LiveGame; clip: Clip }[]; i: number; t: number; fired: boolean } | null>(null);
+  const [reel, setReel] = useState<{ i: number; n: number; scorer: string; minute: number } | null>(null);
 
   const setScreen = useCallback((s: Screen) => {
+    if (reelRef.current && s !== "playing" && s !== "paused") {
+      reelRef.current = null;
+      setReel(null);
+    }
     screenRef.current = s;
     setScreenState(s);
   }, []);
@@ -427,7 +488,11 @@ export default function VibeCup() {
       const live = liveRef.current;
       const L = live?.games.get(id);
       if (!live || !L) return;
+      // The other matches are for after yours.
+      if (!L.mine && myMatchOn(live)) return;
       audioRef.current.unlock();
+      reelRef.current = null;
+      setReel(null);
       live.focus = id;
       gameRef.current = L.g;
       fxRef.current = L.fx;
@@ -453,7 +518,7 @@ export default function VibeCup() {
         humans: side >= 0 ? [side as TeamId] : [],
         lockRole: side >= 0 ? c.position : undefined,
       });
-      games.set(f.id, { f, g, fx: newFx(g.clubs), mine: side >= 0, done: false, scorers: [] });
+      games.set(f.id, { f, g, fx: newFx(g.clubs), mine: side >= 0, done: false, scorers: [], clips: [], buf: [], rec: [] });
     }
     if (!games.size) return;
     liveRef.current = { round: c.round, games, focus: null };
@@ -468,16 +533,63 @@ export default function VibeCup() {
     let c = cupRef.current!;
     for (const L of live.games.values()) {
       if (L.done || L.mine) continue;
-      while (L.g.phase !== "over") {
-        step(L.g, 1 / 30);
-        for (const e of L.g.events) if (e.type === "goal") L.scorers.push(e.own ? `${e.name} (own goal)` : e.name);
-        L.g.events.length = 0;
-      }
-      L.done = true;
+      playOut(L);
       c = recordCup(c, L.f.id, [...L.g.score] as [number, number], L.g.golden, L.scorers);
     }
     saveCup(c);
   }, [saveCup]);
+
+  /** Show one goal of the reel: a fresh pitch for its match, put where the clip starts. */
+  const showClip = useCallback(() => {
+    const R = reelRef.current;
+    const it = R?.items[R.i];
+    if (!R || !it) return;
+    const g = newGame({ seed: it.L.g.seed, clubs: [it.L.f.home, it.L.f.away], humans: [] });
+    applySnap(g, it.clip.frames[0]);
+    gameRef.current = g;
+    fxRef.current = newFx(g.clubs);
+    R.t = 0;
+    R.fired = false;
+    setReel({ i: R.i, n: R.items.length, scorer: goalName(it.clip.ev), minute: it.clip.minute });
+  }, []);
+
+  /** The goals from the computer's matches (all of them, or one match's), oldest first. */
+  const startReel = useCallback(
+    (ids?: string[]) => {
+      const live = liveRef.current;
+      if (!live || myMatchOn(live)) return;
+      const items = [...live.games.values()]
+        .filter((L) => !L.mine && L.done && (!ids || ids.includes(L.f.id)))
+        .flatMap((L) => L.clips.map((clip) => ({ L, clip })));
+      if (!items.length) return;
+      audioRef.current.unlock();
+      reelRef.current = { items, i: 0, t: 0, fired: false };
+      setFocusMine(false);
+      setResult(null);
+      showClip();
+      setScreen("playing");
+    },
+    [showClip, setScreen],
+  );
+
+  /** Done with this goal: it is deleted, and the next one plays, or it is back to the Cup. */
+  const nextClip = useCallback(
+    (all = false) => {
+      const R = reelRef.current;
+      if (!R) return;
+      const it = R.items[R.i];
+      if (it) it.L.clips = it.L.clips.filter((x) => x !== it.clip);
+      R.i++;
+      if (all || R.i >= R.items.length) {
+        setScreen("cup");
+        return;
+      }
+      showClip();
+    },
+    [showClip, setScreen],
+  );
+  const nextClipRef = useRef(nextClip);
+  nextClipRef.current = nextClip;
 
   const nextRound = useCallback(() => {
     const c = cupRef.current;
@@ -627,13 +739,32 @@ export default function VibeCup() {
         if (g.phase === "over" && nr.ended !== room.match!.k && !evs.some((e) => e.type === "fulltime")) {
           evs = [...evs, { type: "fulltime", winner: g.score[0] > g.score[1] ? 0 : g.score[1] > g.score[0] ? 1 : null }];
         }
+      } else if (reelRef.current) {
+        // Highlights: no simulation at all, just the filmed frames, with the goal's cheer at its moment.
+        const R = reelRef.current;
+        const it = R.items[R.i];
+        evs = [];
+        if (it && screenRef.current === "playing") {
+          R.t += dt;
+          const idx = Math.floor(R.t * CLIP_HZ);
+          if (idx >= it.clip.frames.length) nextClipRef.current();
+          else {
+            applySnap(g, it.clip.frames[idx]);
+            if (!R.fired && idx >= it.clip.goalAt) {
+              R.fired = true;
+              evs = [it.clip.ev];
+            }
+          }
+        }
       } else if (liveRef.current) {
         // A Cup round: every match of it moves on at once, except ours, which waits while we look elsewhere.
         const live = liveRef.current;
         const onPitch = screenRef.current === "playing";
         let changed = false;
+        // While you are playing, the computer's matches wait; they are played out the moment yours ends.
+        const hold = myMatchOn(live);
         for (const [id, L] of live.games) {
-          if (L.done) continue;
+          if (L.done || (hold && !L.mine)) continue;
           const focused = live.focus === id;
           if (L.mine) {
             if (!(focused && onPitch)) continue;
@@ -644,11 +775,19 @@ export default function VibeCup() {
           const es = L.g.events;
           if (focused && onPitch) for (const e of es) audioRef.current.play(e);
           feedFx(L.fx, L.g, es);
-          for (const e of es) if (e.type === "goal") L.scorers.push(e.own ? `${e.name} (own goal)` : e.name);
+          for (const e of es) if (e.type === "goal") L.scorers.push(goalName(e));
           if (es.some((e) => e.type === "fulltime")) {
             L.done = true;
             changed = true;
-            saveCup(recordCup(cupRef.current!, id, [...L.g.score] as [number, number], L.g.golden, L.scorers));
+            let c = recordCup(cupRef.current!, id, [...L.g.score] as [number, number], L.g.golden, L.scorers);
+            if (L.mine) {
+              for (const B of live.games.values()) {
+                if (B.done || B.mine) continue;
+                playOut(B);
+                c = recordCup(c, B.f.id, [...B.g.score] as [number, number], B.g.golden, B.scorers);
+              }
+            }
+            saveCup(c);
             if (focused) {
               const g0 = L.g;
               window.setTimeout(() => {
@@ -659,7 +798,7 @@ export default function VibeCup() {
           L.g.events.length = 0;
         }
         evs = [];
-        const tk = [...live.games.values()].map((L) => `${L.f.id}:${L.g.score.join("-")}:${clockLabel(L.g)}:${L.done}`).join("|");
+        const tk = [...live.games.values()].map((L) => `${L.f.id}:${L.g.score.join("-")}:${clockLabel(L.g)}:${L.done}:${L.clips.length}`).join("|");
         if (changed || tk !== tickKey) {
           tickKey = tk;
           setTicks(
@@ -671,6 +810,7 @@ export default function VibeCup() {
               clock: L.g.phase === "over" ? "FT" : clockLabel(L.g),
               done: L.done,
               mine: L.mine,
+              clips: L.clips.length,
             })),
           );
         }
@@ -882,8 +1022,9 @@ export default function VibeCup() {
                 champion: c.champion,
                 played: c.fixtures.filter((f) => f.score).length,
                 table: table(c).map((r) => [r.club, r.p, r.pts]),
-                live: live ? [...live.games.values()].map((L) => ({ id: L.f.id, mine: L.mine, done: L.done, score: L.g.score, clock: clockLabel(L.g), lock: L.g.ctrls[0]?.lock ?? -1, active: L.g.ctrls[0]?.active ?? -1 })) : null,
+                live: live ? [...live.games.values()].map((L) => ({ id: L.f.id, mine: L.mine, done: L.done, score: L.g.score, clock: clockLabel(L.g), lock: L.g.ctrls[0]?.lock ?? -1, active: L.g.ctrls[0]?.active ?? -1, clips: L.clips.length, frames: L.clips.map((x) => x.frames.length) })) : null,
                 focus: live?.focus ?? null,
+                reel: reelRef.current ? { i: reelRef.current.i, n: reelRef.current.items.length, t: reelRef.current.t } : null,
               }
             : null;
         },
@@ -892,22 +1033,31 @@ export default function VibeCup() {
         watch: (id: string) => watch(id),
         skip: () => skipBots(),
         next: () => nextRound(),
+        reel: (ids?: string[]) => startReel(ids),
+        /** Skip to the next goal of the reel (true: end it). */
+        nextClip: (all?: boolean) => nextClip(all),
         /** Run every live match of the round on for `seconds` (ours on autopilot), as if time passed. */
         settle: (seconds: number) => {
           const live = liveRef.current;
           if (!live) return;
           let c = cupRef.current!;
-          for (const L of live.games.values()) {
-            for (let t = 0; t < seconds && !L.done; t += 1 / 30) {
-              if (L.mine) setInput(L.g, 0, autopilot(L.g, 0));
-              step(L.g, 1 / 30);
-              for (const e of L.g.events) if (e.type === "goal") L.scorers.push(e.name);
-              if (L.g.events.some((e) => e.type === "fulltime")) {
-                L.done = true;
-                c = recordCup(c, L.f.id, [...L.g.score] as [number, number], L.g.golden, L.scorers);
+          const hadMine = [...live.games.values()].some((L) => L.mine);
+          // Ours first; the computer's matches only move once ours is over, as on the pitch.
+          for (const L of [...live.games.values()].sort((a, b) => Number(b.mine) - Number(a.mine))) {
+            if (L.done) continue;
+            if (!L.mine && myMatchOn(live)) continue;
+            if (!L.mine && hadMine) playOut(L);
+            else
+              for (let t = 0; t < seconds && !L.done; t += 1 / 30) {
+                if (L.mine) {
+                  setInput(L.g, 0, autopilot(L.g, 0));
+                  step(L.g, 1 / 30);
+                  for (const e of L.g.events) if (e.type === "goal") L.scorers.push(goalName(e));
+                  if (L.g.events.some((e) => e.type === "fulltime")) L.done = true;
+                  L.g.events.length = 0;
+                } else if (filmStep(L)) L.done = true;
               }
-              L.g.events.length = 0;
-            }
+            if (L.done) c = recordCup(c, L.f.id, [...L.g.score] as [number, number], L.g.golden, L.scorers);
           }
           saveCup(c);
         },
@@ -917,7 +1067,7 @@ export default function VibeCup() {
     return () => {
       delete (window as unknown as { __vibecup?: typeof hook }).__vibecup;
     };
-  }, [start, startCup, kickoffRound, watch, skipBots, nextRound, saveCup]);
+  }, [start, startCup, kickoffRound, watch, skipBots, nextRound, saveCup, startReel, nextClip]);
 
   const shot = isShot();
   const g = gameRef.current;
@@ -977,13 +1127,31 @@ export default function VibeCup() {
       {touchUi && screen === "playing" && (!liveRef.current || focusMine) && <TouchPad touch={touch} has={hud.has} locked={!!liveRef.current} />}
 
       {/* The Cup, mid-round: every other match's score, tap one to watch it. */}
-      {liveRef.current && screen === "playing" && !shot && (
+      {liveRef.current && screen === "playing" && !shot && !reel && (
         <CupTicker
-          ticks={ticks}
+          ticks={myMatchOn(liveRef.current) ? ticks.filter((t) => t.mine) : ticks}
           focus={liveRef.current.focus}
           onWatch={watch}
           onHub={() => setScreen("cup")}
         />
+      )}
+
+      {/* Highlights from the computer's matches. Each goal is gone once it has played. */}
+      {reel && screen === "playing" && !shot && (
+        <div className="absolute left-1/2 top-[calc(max(env(safe-area-inset-top),10px)+46px)] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-1.5" data-testid="vibecup-reel">
+          <span className="whitespace-nowrap rounded-full bg-rose-500 px-2.5 py-0.5 text-[11px] font-black tracking-wider">● REPLAY</span>
+          <span className="truncate rounded-full bg-black/60 px-2.5 py-0.5 text-[11px] font-bold">
+            ⚽ {reel.scorer} {reel.minute}' · {reel.i + 1} of {reel.n}
+          </span>
+          <button type="button" onClick={() => nextClip()} className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-black text-black" data-testid="vibecup-reel-next">
+            {reel.i + 1 < reel.n ? "Next ▶" : "Done"}
+          </button>
+          {reel.i + 1 < reel.n && (
+            <button type="button" onClick={() => nextClip(true)} className="shrink-0 rounded-full bg-amber-300 px-2.5 py-0.5 text-[11px] font-black text-black">
+              🏆 Cup
+            </button>
+          )}
+        </div>
       )}
 
       {screen === "cup" && cup && (
@@ -994,6 +1162,7 @@ export default function VibeCup() {
           onKickoff={kickoffRound}
           onWatch={watch}
           onSkip={skipBots}
+          onReel={startReel}
           onNext={nextRound}
           onNew={() => {
             liveRef.current = null;
@@ -1670,6 +1839,7 @@ function CupHub({
   onKickoff,
   onWatch,
   onSkip,
+  onReel,
   onNext,
   onNew,
   onMenu,
@@ -1680,6 +1850,7 @@ function CupHub({
   onKickoff: () => void;
   onWatch: (id: string) => void;
   onSkip: () => void;
+  onReel: (ids?: string[]) => void;
   onNext: () => void;
   onNew: () => void;
   onMenu: () => void;
@@ -1688,8 +1859,9 @@ function CupHub({
   const fixtures = roundFixtures(cup);
   const mine = myFixture(cup);
   const done = roundDone(cup);
-  const botsLeft = live && ticks.some((t) => !t.done && !t.mine);
   const myLive = live && ticks.some((t) => t.mine && !t.done);
+  const botsLeft = live && !myLive && ticks.some((t) => !t.done && !t.mine);
+  const reelLeft = live && !myLive ? ticks.reduce((a, t) => a + (t.mine ? 0 : t.clips), 0) : 0;
   const champ = cup.champion ? clubById(cup.champion) : null;
   const tick = (id: string) => ticks.find((t) => t.id === id);
   const past = cup.fixtures.filter((f) => f.score && f.round < cup.round).reverse();
@@ -1728,7 +1900,9 @@ function CupHub({
               const a = clubById(f.away);
               const t = tick(f.id);
               const isMine = f.home === cup.me || f.away === cup.me;
-              const score = f.score ?? (t ? t.score : null);
+              // While you are playing, the other matches are a surprise for afterwards.
+              const hidden = myLive && !isMine;
+              const score = hidden ? null : f.score ?? (t ? t.score : null);
               return (
                 <div key={f.id} className={`flex items-center gap-1.5 rounded-2xl px-2.5 py-2 ${isMine ? "bg-white/15" : "bg-white/5"}`}>
                   <span className="flex min-w-0 flex-1 items-center justify-end gap-1 truncate text-right text-xs font-bold sm:text-sm">
@@ -1741,7 +1915,13 @@ function CupHub({
                     <span className="truncate">{a.short}</span>
                   </span>
                   <span className="w-[4.5rem] shrink-0 text-right">
-                    {f.score ? (
+                    {hidden ? (
+                      <span className="text-[10px] leading-tight text-white/40">after yours</span>
+                    ) : f.score && t && !t.mine && t.clips > 0 ? (
+                      <button type="button" onClick={() => onReel([f.id])} className="rounded-xl bg-rose-500 px-2 py-1 text-[11px] font-black" title="Watch this match's goals">
+                        🎬 {t.clips}
+                      </button>
+                    ) : f.score ? (
                       <span className="text-[11px] font-bold text-white/50">{f.golden ? "FT, GG" : "FT"}</span>
                     ) : t && !t.done ? (
                       <button type="button" onClick={() => onWatch(f.id)} className="rounded-xl bg-emerald-400 px-2.5 py-1 text-xs font-black text-[#002016]" data-testid="vibecup-watch">
@@ -1758,6 +1938,11 @@ function CupHub({
         )}
 
         <div className="mt-4 space-y-2">
+          {reelLeft > 0 && (
+            <button type="button" onClick={() => onReel()} className="w-full rounded-2xl bg-rose-500 py-2.5 text-base font-black" data-testid="vibecup-cup-reel">
+              🎬 Watch the other goals ({reelLeft})
+            </button>
+          )}
           {champ ? (
             <button type="button" onClick={onNew} className="w-full rounded-2xl bg-emerald-400 py-3 text-lg font-black text-[#002016]" data-testid="vibecup-cup-new">
               Play another Cup

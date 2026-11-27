@@ -38,6 +38,14 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "vibe-cup-highlights",
+    date: "2026-11-27",
+    emoji: "🎬",
+    title: "Vibe Cup goal replays",
+    body: "In the Vibe Cup the other matches of a round stay a surprise while you play yours. When your final whistle goes, their results come in, and you can watch a replay of every goal they scored. Each replay is gone once you have watched it.",
+    tag: "update",
+  },
+  {
     id: "city-sky-sprint",
     date: "2026-11-27",
     emoji: "🦎",
