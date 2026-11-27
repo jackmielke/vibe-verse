@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-quests-pets-fishing",
+    date: "2026-11-27",
+    emoji: "👵",
+    title: "Side quests in Vibe City: Granny's lost pets and fishing",
+    body: "Granny Mabel is on a bench by the plaza and her cat, her pug and her bunny keep running off. Find them with the hot and cold tracker, walk up gently, and she pays in hats you can't buy anywhere else. Down at Vibe Marina, Sal will show you how to fish off the main pier, and there is a Golden Vibe Koi out there that bites more after dark. Open 📜 Quests to see them all.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "vibe-hoops",
     date: "2026-11-27",
     emoji: "🏀",
