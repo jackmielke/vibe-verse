@@ -12,7 +12,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 /** Face styles for Mort and Linda (Jack, Nov 2026: "make their faces better"). */
 export type FaceStyle = "classic" | "cartoon" | "muppet" | "clay";
 export const FACE_STYLES: FaceStyle[] = ["classic", "cartoon", "muppet", "clay"];
-export const THEME: { thanksgiving: boolean; face: FaceStyle } = { thanksgiving: false, face: "classic" };
+export const THEME: { thanksgiving: boolean; face: FaceStyle; space: boolean } = { thanksgiving: false, face: "classic", space: false };
 
 export function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
   const c = document.createElement("canvas");
@@ -381,6 +381,7 @@ export function buildMort(linda = false): Mort {
       head.add(crown);
     }
   }
+  if (THEME.space) spaceHelmet(head, 0.36, 0.02);
   const hands = new THREE.Group();
   hands.position.set(0, 1.12, 0.42);
   root.add(hands);
@@ -536,6 +537,24 @@ function buildFace(head: THREE.Group, linda: boolean, style: FaceStyle, skin: TH
   lipL.scale.set(1, 0.85, 1);
   head.add(lipL);
   return { brows, mouth };
+}
+
+/** A fishbowl space helmet round a head, with a collar ring and a little antenna. */
+export function spaceHelmet(head: THREE.Object3D, r: number, y: number): void {
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false }));
+  glass.position.y = y;
+  glass.renderOrder = 3;
+  head.add(glass);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(r * 0.72, 0.045, 8, 22), new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.3, metalness: 0.8 }));
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = y - r * 0.72;
+  head.add(collar);
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 5), collar.material);
+  ant.position.set(r * 0.5, y + r * 0.85, -0.05);
+  head.add(ant);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3a3a, toneMapped: false }));
+  tip.position.set(r * 0.5, y + r * 0.85 + 0.12, -0.05);
+  head.add(tip);
 }
 
 /* ---------------------------------------------------------------- his backup */
@@ -780,6 +799,7 @@ export function buildHench(m: ReturnType<typeof henchKit>, n = 0): Hench {
       hat.add(pt);
     }
   }
+  if (THEME.space) spaceHelmet(head, 0.3, 0.0);
   return { root, legL, legR, armL, armR };
 }
 
@@ -837,6 +857,12 @@ export const RIDES = [
 ] as const;
 export type RideKind = (typeof RIDES)[number]["kind"];
 export const rideAt = (level: number) => RIDES[Math.min(level - 1, RIDES.length - 1)];
+const SPACE_RIDE_NAMES: Record<RideKind, string> = {
+  wagon: "the space wagon", tow: "the space tug", monster: "the monster rocket",
+  cement: "the comet mixer", rig: "the star hauler", train: "the Tripod",
+};
+/** what he is driving at this level, in words, in whichever world the chase is in */
+export const rideName = (level: number): string => (THEME.space ? SPACE_RIDE_NAMES[rideAt(level).kind] : rideAt(level).name);
 
 
 /** Mort and whatever he is driving tonight. Built facing +z, so his grille faces you. */

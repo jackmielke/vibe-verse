@@ -26,11 +26,15 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { HALF, LANE, LAT_MAX, G, MUZZLE, RELOAD, heading, V, toWorld, toRoad, clamp, lerp, hash } from "./road";
 import {
   canvasTex, roadTexture, sandTexture, glowTexture, puffTexture, box,
-  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, rideAt, THEME, FACE_STYLES, type FaceStyle, buildHench, henchKit, buildAutoGun,
+  buildTruck, buildFoe, buildMort, buildCannon, trafficGeometry, RIDES, rideAt, rideName, THEME, FACE_STYLES, type FaceStyle, buildHench, henchKit, buildAutoGun,
   type Truck, type Foe, type Hench,
 } from "./models";
 import type { Transport, Upgrades, Wire, Snap, Input } from "./net";
 import { Replay, type ReplayClip } from "./replay";
+import {
+  HOVER, buildFreighter, buildBlaster, buildRocket, spaceTrafficGeometry, asteroidGeometry, laneTexture, planetTexture, nebulaTexture,
+  SPACE_TAUNTS, SPACE_L_TAUNTS, SPACE_COMMENTS, SPACE_RADIO, SPACE_IDLE_NEWS,
+} from "./space";
 import { createFinale, type Finale, type FinaleHud, type FinaleInput, type FinaleStage } from "./finale";
 
 export type Mode = "solo" | "duo" | "host" | "guest";
@@ -107,6 +111,8 @@ export interface Opts {
   aurora?: boolean;
   /** pumpkins for cannonballs, pies and drumsticks, pilgrim hats, a harvest moon */
   thanksgiving?: boolean;
+  /** the whole chase in outer space: a freighter, Mort's blaster, and his rockets */
+  space?: boolean;
 }
 
 const NO_UPGRADES: Upgrades = { armor: 0, loader: 0, nitro: 0, auto: 0, punch: 0, engine: 0 };
@@ -188,13 +194,21 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const params = new URLSearchParams(window.location.search);
   const automated = navigator.webdriver || params.has("shot");
   const mode: Mode = opts.mode ?? "solo";
-  const thanks = opts.thanksgiving ?? params.has("thanksgiving");
+  const space = opts.space ?? params.has("space");
+  // no pilgrims in orbit: space wins over Thanksgiving
+  const thanks = !space && (opts.thanksgiving ?? params.has("thanksgiving"));
   THEME.thanksgiving = thanks;
+  THEME.space = space;
+  const mkTruck = space ? buildFreighter : buildTruck;
+  const mkFoe = space ? buildRocket : buildFoe;
+  const mkGun = space ? buildBlaster : buildCannon;
+  const lift = space ? HOVER : 0;
   // ?face=cartoon|muppet|clay tries one of the face styles on Mort and Linda
   const faceWant = params.get("face") as FaceStyle | null;
   THEME.face = faceWant && FACE_STYLES.includes(faceWant) ? faceWant : "classic";
-  const TAUNT_LIST = thanks ? [...TAUNTS, ...T_TAUNTS, ...T_TAUNTS] : TAUNTS;
-  const L_TAUNT_LIST = thanks ? [...L_TAUNTS, ...T_L_TAUNTS, ...T_L_TAUNTS] : L_TAUNTS;
+  const TAUNT_LIST = space ? [...SPACE_TAUNTS, "GET BACK HERE!", "You scratched my paint!"] : thanks ? [...TAUNTS, ...T_TAUNTS, ...T_TAUNTS] : TAUNTS;
+  const L_TAUNT_LIST = space ? [...SPACE_L_TAUNTS, ...L_TAUNTS.slice(0, 3)] : thanks ? [...L_TAUNTS, ...T_L_TAUNTS, ...T_L_TAUNTS] : L_TAUNTS;
+  const COMMENT = space ? SPACE_COMMENTS : COMMENTS;
   const net = mode === "host" || mode === "guest" ? opts.net ?? null : null;
   const isGuest = mode === "guest";
   const two = mode !== "solo";
@@ -218,8 +232,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   mount.appendChild(lindaBubble);
 
   const scene = new THREE.Scene();
-  const FOG = new THREE.Color(0x141a2e);
-  scene.fog = new THREE.FogExp2(FOG, 0.0042);
+  const FOG = new THREE.Color(space ? 0x070816 : 0x141a2e);
+  scene.fog = new THREE.FogExp2(FOG, space ? 0.0022 : 0.0042);
   scene.background = FOG;
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1400);
   let baseFov = 56;
@@ -242,9 +256,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   {
     const pos = skyGeo.attributes.position;
     const col = new Float32Array(pos.count * 3);
-    const top = new THREE.Color(0x03050c);
-    const hor = new THREE.Color(0x26314f);
-    const low = new THREE.Color(0x141a2e);
+    const top = new THREE.Color(space ? 0x020208 : 0x03050c);
+    const hor = new THREE.Color(space ? 0x1a1038 : 0x26314f);
+    const low = new THREE.Color(space ? 0x05040e : 0x141a2e);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const y = pos.getY(i) / 1000;
@@ -259,11 +273,12 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   scene.add(sky);
   const starGeo = new THREE.BufferGeometry();
   {
-    const n = 900;
+    const n = space ? 3200 : 900;
     const p = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       const u = Math.random() * Math.PI * 2;
-      const v = 0.06 + Math.pow(Math.random(), 0.8) * 1.45;
+      // in space the stars go all the way round, under the lane too
+      const v = space ? Math.asin(Math.random() * 2 - 1) : 0.06 + Math.pow(Math.random(), 0.8) * 1.45;
       p.set([Math.cos(u) * Math.cos(v) * 950, Math.sin(v) * 950, Math.sin(u) * Math.cos(v) * 950], i * 3);
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(p, 3));
@@ -276,7 +291,41 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   scene.add(moon);
   const moonDisc = new THREE.Mesh(new THREE.CircleGeometry(14, 32), new THREE.MeshBasicMaterial({ color: 0xf4f1e4, fog: false }));
   scene.add(moonDisc);
-  if (thanks) {
+  // Space: a ringed gas giant where the moon was, a red planet, and nebulae.
+  const nebulae = new THREE.Group();
+  if (space) {
+    const pm = moonDisc.material as THREE.MeshBasicMaterial;
+    pm.map = planetTexture();
+    pm.color.set(0xffffff);
+    pm.transparent = true;
+    moonDisc.geometry.dispose();
+    moonDisc.geometry = new THREE.CircleGeometry(1, 48);
+    moonDisc.scale.setScalar(70);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.35, 2.1, 64), new THREE.MeshBasicMaterial({ color: 0xe8c89a, transparent: true, opacity: 0.55, side: THREE.DoubleSide, fog: false, depthWrite: false }));
+    ring.rotation.set(1.2, 0, 0.35);
+    moonDisc.add(ring);
+    moon.material.color.set(0xffb070);
+    moon.material.opacity = 0.45;
+    moon.scale.setScalar(260);
+    const neb = nebulaTexture();
+    const NEB: [number, number, number, number, number][] = [
+      [0xb04ad8, 0.9, 120, 0.2, 520], [0x3a7aff, 2.6, 60, -0.15, 600], [0xff4a8a, 4.2, 200, 0.1, 480], [0x2ad8c0, 5.4, -80, 0, 700],
+    ];
+    for (const [c, a, y, tilt, size] of NEB) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: neb, color: c, transparent: true, opacity: 0.55, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+      sp.position.set(Math.cos(a) * 880, y, Math.sin(a) * 880);
+      sp.scale.set(size, size * 0.6, 1);
+      sp.material.rotation = tilt;
+      nebulae.add(sp);
+    }
+    const mars = new THREE.Mesh(new THREE.CircleGeometry(16, 32), new THREE.MeshBasicMaterial({ color: 0xc8502a, fog: false }));
+    mars.position.set(-600, 300, -620);
+    mars.lookAt(0, 0, 0);
+    nebulae.add(mars);
+    nebulae.renderOrder = -9;
+    scene.add(nebulae);
+  }
+  if (thanks && !space) {
     // a big orange harvest moon
     (moonDisc.material as THREE.MeshBasicMaterial).color.set(0xffa64a);
     moonDisc.scale.setScalar(1.8);
@@ -347,13 +396,13 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   }
 
   /* ------------------------------------------------------------ light */
-  scene.add(new THREE.HemisphereLight(aurora ? 0x4a9a8a : 0x5a6ea8, 0x2a2018, 0.9));
+  scene.add(new THREE.HemisphereLight(space ? 0x8a7ad8 : aurora ? 0x4a9a8a : 0x5a6ea8, space ? 0x1a1430 : 0x2a2018, space ? 1.05 : 0.9));
   const moonLight = new THREE.DirectionalLight(0xaab8ff, 0.55);
   scene.add(moonLight);
   scene.add(moonLight.target);
   const lampLights: THREE.PointLight[] = [];
   for (let k = 0; k < 3; k++) {
-    const l = new THREE.PointLight(0xffa44a, 260, 42, 1.7);
+    const l = new THREE.PointLight(space ? 0x5ad8ff : 0xffa44a, 260, 42, 1.7);
     scene.add(l);
     lampLights.push(l);
   }
@@ -380,6 +429,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), new THREE.MeshLambertMaterial({ map: sand }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.03;
+  ground.visible = !space;
   scene.add(ground);
 
   const SEG = 180;
@@ -405,9 +455,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     scene.add(mesh);
     return { mesh, geo };
   };
-  const roadTex = roadTexture();
-  const road = ribbon(HALF, 0.02, new THREE.MeshLambertMaterial({ map: roadTex }));
-  const shoulder = ribbon(HALF + 2.6, 0.0, new THREE.MeshLambertMaterial({ color: 0x4a4038 }));
+  const roadTex = space ? laneTexture() : roadTexture();
+  const road = ribbon(HALF, 0.02, space ? new THREE.MeshBasicMaterial({ map: roadTex, transparent: true, opacity: 0.9, toneMapped: false }) : new THREE.MeshLambertMaterial({ map: roadTex }));
+  const shoulder = ribbon(HALF + 2.6, 0.0, space ? new THREE.MeshBasicMaterial({ color: 0x2a1a5a, transparent: true, opacity: 0.35, depthWrite: false }) : new THREE.MeshLambertMaterial({ color: 0x4a4038 }));
   const layRibbon = (r: { mesh: THREE.Mesh; geo: THREE.BufferGeometry }, s0: number): void => {
     const { half, y } = r.mesh.userData as { half: number; y: number };
     const pos = r.geo.attributes.position as THREE.BufferAttribute;
@@ -427,7 +477,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   };
 
   /* ------------------------------------------------------------ roadside */
-  const poleMat = new THREE.MeshLambertMaterial({ color: 0x3b3f45 });
+  const poleMat = space ? new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.4, metalness: 0.8, emissive: 0x0a3a5a }) : new THREE.MeshLambertMaterial({ color: 0x3b3f45 });
   const poleGeo = (() => {
     const pole = new THREE.CylinderGeometry(0.11, 0.15, 8, 8);
     pole.translate(0, 4, 0);
@@ -446,12 +496,12 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   scene.add(lamps);
   const lampGlowGeo = new THREE.BufferGeometry();
   lampGlowGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(LAMPS * 3), 3));
-  const lampGlow = new THREE.Points(lampGlowGeo, new THREE.PointsMaterial({ map: glow, color: 0xffb46a, size: 7, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const lampGlow = new THREE.Points(lampGlowGeo, new THREE.PointsMaterial({ map: glow, color: space ? 0x6ad8ff : 0xffb46a, size: 7, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   lampGlow.frustumCulled = false;
   scene.add(lampGlow);
   const poolGeo = new THREE.CircleGeometry(1, 24);
   poolGeo.rotateX(-Math.PI / 2);
-  const pools = new THREE.InstancedMesh(poolGeo, new THREE.MeshBasicMaterial({ map: glow, color: 0xff9a40, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending }), LAMPS);
+  const pools = new THREE.InstancedMesh(poolGeo, new THREE.MeshBasicMaterial({ map: glow, color: space ? 0x4ab8ff : 0xff9a40, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending }), LAMPS);
   pools.frustumCulled = false;
   scene.add(pools);
 
@@ -474,17 +524,18 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   })();
   const CACTI = 48;
   const CACTUS_GAP = 16;
-  const cacti = new THREE.InstancedMesh(cactusGeo, new THREE.MeshLambertMaterial({ color: 0x2f4a33 }), CACTI);
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x6a6070, roughness: 0.95, metalness: 0.05, flatShading: true });
+  const cacti = new THREE.InstancedMesh(space ? asteroidGeometry(1.3) : cactusGeo, space ? rockMat : new THREE.MeshLambertMaterial({ color: 0x2f4a33 }), CACTI);
   cacti.frustumCulled = false;
   scene.add(cacti);
   const ROCKS = 40;
-  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0x5a4636 }), ROCKS);
+  const rocks = new THREE.InstancedMesh(space ? asteroidGeometry(2.7, 0) : new THREE.DodecahedronGeometry(1, 0), space ? rockMat : new THREE.MeshLambertMaterial({ color: 0x5a4636 }), ROCKS);
   rocks.frustumCulled = false;
   scene.add(rocks);
   const mesaGeo = new THREE.CylinderGeometry(0.75, 1, 1, 7);
   mesaGeo.translate(0, 0.5, 0);
   const MESAS = 16;
-  const mesas = new THREE.InstancedMesh(mesaGeo, new THREE.MeshLambertMaterial({ color: 0x2a2030 }), MESAS);
+  const mesas = new THREE.InstancedMesh(space ? asteroidGeometry(0.7, 2) : mesaGeo, new THREE.MeshLambertMaterial({ color: space ? 0x3a3448 : 0x2a2030, flatShading: space }), MESAS);
   mesas.frustumCulled = false;
   scene.add(mesas);
   const signs: THREE.Group[] = [];
@@ -497,11 +548,11 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     c.shadowColor = "#ff3b7a";
     c.shadowBlur = 18;
     c.fillStyle = "#ff6aa0";
-    c.fillText("MOTEL", 128, 40);
+    c.fillText(space ? "SPACE MOTEL" : "MOTEL", 128, 40);
     c.font = "bold 20px Inter, system-ui, sans-serif";
     c.shadowColor = "#4de0ff";
     c.fillStyle = "#8ff0ff";
-    c.fillText("NO VACANCY", 128, 78);
+    c.fillText(space ? "NO GRAVITY" : "NO VACANCY", 128, 78);
   });
   for (let k = 0; k < 2; k++) {
     const g = new THREE.Group();
@@ -523,7 +574,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const riders: Rider[] = [];
   for (let i = 0; i < (two ? 2 : 1); i++) {
     const look = RIDER_LOOK[i];
-    const truck = buildTruck(look.color, look.plate);
+    const truck = mkTruck(look.color, look.plate);
     scene.add(truck.root);
     const up = upFor(i);
     riders.push({
@@ -563,7 +614,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   });
 
   /* ------------------------------------------------------------ Mort */
-  let foe: Foe = buildFoe(1);
+  let foe: Foe = mkFoe(1);
   scene.add(foe.root);
   const glareMat = new THREE.SpriteMaterial({ map: glow, color: 0xfff2d8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
   const glares = [new THREE.Sprite(glareMat), new THREE.Sprite(glareMat)];
@@ -574,7 +625,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const walker = buildMort();
   walker.root.visible = false;
   scene.add(walker.root);
-  const carried = buildCannon();
+  const carried = mkGun();
   carried.root.scale.setScalar(0.85);
   carried.root.rotation.y = Math.PI / 2;
   carried.root.position.set(0, -0.42, 0.05);
@@ -596,7 +647,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   let henchSay = { i: -1, t: 0 };
 
   /* ------------------------------------------------------------ traffic */
-  const trafficMesh = new THREE.InstancedMesh(trafficGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.3 }), 8);
+  const trafficMesh = new THREE.InstancedMesh(space ? spaceTrafficGeometry() : trafficGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.3 }), 8);
   const MAX_TRAFFIC = 8;
   trafficMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_TRAFFIC * 3), 3);
   trafficMesh.frustumCulled = false;
@@ -616,13 +667,19 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
     ballGeo.computeVertexNormals();
   }
-  const ballMat = thanks ? new THREE.MeshStandardMaterial({ color: 0xf07a1a, roughness: 0.6, emissive: 0x3a1400 }) : new THREE.MeshStandardMaterial({ color: 0x18191b, roughness: 0.35, metalness: 0.8 });
+  if (space) ballGeo.scale(1.1, 1.1, 1.1);
+  const ballMat = space ? new THREE.MeshBasicMaterial({ color: 0x8aff9a, toneMapped: false }) as THREE.Material : thanks ? new THREE.MeshStandardMaterial({ color: 0xf07a1a, roughness: 0.6, emissive: 0x3a1400 }) : new THREE.MeshStandardMaterial({ color: 0x18191b, roughness: 0.35, metalness: 0.8 });
   const stemGeo = new THREE.CylinderGeometry(0.025, 0.035, 0.09, 6);
   const stemMat = new THREE.MeshStandardMaterial({ color: 0x4a6a1a, roughness: 0.8 });
   const balls: Ball[] = [];
   for (let k = 0; k < 14; k++) {
     const mesh = new THREE.Mesh(ballGeo, ballMat);
-    if (thanks) { const st = new THREE.Mesh(stemGeo, stemMat); st.position.y = 0.17; mesh.add(st); }
+    if (thanks && !space) { const st = new THREE.Mesh(stemGeo, stemMat); st.position.y = 0.17; mesh.add(st); }
+    if (space) {
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0x4aff6a, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+      halo.scale.setScalar(1.6);
+      mesh.add(halo);
+    }
     mesh.visible = false;
     scene.add(mesh);
     balls.push({ s: 0, lat: 0, y: 0, vs: 0, vl: 0, vy: 0, age: 0, bounces: 0, mesh, live: false, trail: 0, rider: 0, dmg: 1 });
@@ -630,8 +687,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   // tyres and cans, or on Thanksgiving a giant drumstick and a pumpkin pie
   const tyreGeo = thanks ? new THREE.SphereGeometry(0.42, 14, 10).scale(1, 0.85, 1.5) : new THREE.TorusGeometry(0.42, 0.18, 10, 20);
   const canGeo = thanks ? new THREE.CylinderGeometry(0.55, 0.45, 0.22, 20) : new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12);
-  const thrownMatA = thanks ? new THREE.MeshStandardMaterial({ color: 0xa8521e, roughness: 0.5 }) : new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
-  const thrownMatB = thanks ? new THREE.MeshStandardMaterial({ color: 0xd8a060, roughness: 0.8 }) : new THREE.MeshStandardMaterial({ color: 0xb8392e, roughness: 0.5, metalness: 0.4 });
+  const thrownMatA = space ? new THREE.MeshStandardMaterial({ color: 0x8a9098, roughness: 0.4, metalness: 0.8 }) : thanks ? new THREE.MeshStandardMaterial({ color: 0xa8521e, roughness: 0.5 }) : new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+  const thrownMatB = space ? new THREE.MeshStandardMaterial({ color: 0xff8a2a, roughness: 0.4, metalness: 0.4, emissive: 0x6a2000 }) : thanks ? new THREE.MeshStandardMaterial({ color: 0xd8a060, roughness: 0.8 }) : new THREE.MeshStandardMaterial({ color: 0xb8392e, roughness: 0.5, metalness: 0.4 });
   const thrown: Thrown[] = [];
   for (let k = 0; k < 6; k++) {
     const mesh = new THREE.Mesh(k % 2 ? canGeo : tyreGeo, k % 2 ? thrownMatB : thrownMatA);
@@ -750,7 +807,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   // Lunatic Linda, Mort's cousin: two-player only (Jack, Nov 2026: "go w linda").
   const LINDA_ON = true;
   if (two && LINDA_ON) {
-    const lf = buildFoe(1, true);
+    const lf = mkFoe(1, true);
     scene.add(lf.root);
     const le = { ...en };
     linda = { en: le, foe: lf, respawnT: 0, backupT: 10 + Math.random() * 30, tauntT: 5, talk: "", talkT: 0, linda: true, net: { s: le.s, lat: le.lat }, bubble: lindaBubble };
@@ -1033,7 +1090,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   const spawnFoe = (level: number, gap: number): void => {
     scene.remove(foe.root);
     disposeTree(foe.root);
-    foe = buildFoe(level, cur.linda);
+    foe = mkFoe(level, cur.linda);
     scene.add(foe.root);
     const spec = RIDES[Math.min(level - 1, RIDES.length - 1)];
     const max = spec.hp + Math.max(0, level - RIDES.length) * 3 + (two ? 5 : 0);
@@ -1271,8 +1328,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       for (const r of riders) if (alive(r)) r.hull = Math.min(r.max, r.hull + 15);
       emit("wreck", en.s, en.lat, 1);
       if (!cur.linda && rideAt(en.level).kind === "train" && FINALE_ON) say("THE TRAIN IS DOWN! Everybody's pulling over...", 4);
-      else say(`WRECKED ${cur.linda ? "LINDA'S " : ""}${RIDES[Math.min(en.level - 1, RIDES.length - 1)].name.replace(/^the /, cur.linda ? "" : "the ").toUpperCase()}! +$${250 * en.level}`, 2.6);
-      const back = cur.linda ? L_COMEBACK : COMEBACK;
+      else say(`WRECKED ${cur.linda ? "LINDA'S " : ""}${rideName(en.level).replace(/^the /, cur.linda ? "" : "the ").toUpperCase()}! +$${250 * en.level}`, 2.6);
+      const back = cur.linda ? L_COMEBACK : space ? ["This isn't over!", "I've got a bigger rocket!", "I'll be back with my cousin's star hauler!"] : COMEBACK;
       shout(back[Math.floor(Math.random() * back.length)], 2.6);
       respawnT = 5.5;
     } else {
@@ -1504,7 +1561,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   // The game is endless (Jack, Nov 2026): past the train they just keep coming, forever, and
   // there is no way to win. The diner finale is for the film and the storybook; ?finale opens
   // it directly and ?ending lets the train hand off to it.
-  const FINALE_ON = params.has("ending");
+  const FINALE_ON = params.has("ending") && !space;
   const FIN_SOUND: Record<string, string> = { throw: "whoosh", splat: "pop", shove: "whack", pies: "clank", horn: "horn", door: "door", win: "horn" };
   const finSound = (k: string): void => { const kind = FIN_SOUND[k]; if (kind) emit(kind, me.s, me.lat, 1.2, mine); };
   const ensureFinale = (): Finale => {
@@ -1608,7 +1665,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
 
     if (phase === "intro") {
       introT += dt;
-      if (introT > 0.6 && introT - dt <= 0.6) { emit("horn", en.s, en.lat, 1); shout("HEY! THAT'S MY CANNON!", 2.8); }
+      if (introT > 0.6 && introT - dt <= 0.6) { emit("horn", en.s, en.lat, 1); shout(space ? "HEY! THAT'S MY BLASTER!" : "HEY! THAT'S MY CANNON!", 2.8); }
       if (introT > 2.6) { phase = "play"; say(two ? "Here he comes. Both barrels!" : "Here he comes. Light him up!", 3); }
     }
 
@@ -1667,10 +1724,10 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         spawnFoe(en.level + 1, 220);
         emit(rideAt(en.level).kind === "train" ? "whistle" : "horn", en.s, en.lat, 1);
         if (cur.linda) {
-          say(rideAt(en.level).kind === "train" ? "She's driving a train!" : `Linda's back. In ${rideAt(en.level).name.replace(/^the /, "a ")}.`, 2.8);
+          say(rideAt(en.level).kind === "train" ? "She's driving a train!" : `Linda's back. In ${rideName(en.level).replace(/^the /, "a ")}.`, 2.8);
           shout(L_TAUNT_LIST[Math.floor(Math.random() * L_TAUNT_LIST.length)], 2.5);
         } else {
-          say(COMMENTS[en.level] ?? `Level ${en.level}. He just keeps coming.`, 2.8);
+          say(COMMENT[en.level] ?? `Level ${en.level}. He just keeps coming.`, 2.8);
           shout(TAUNT_LIST[Math.floor(Math.random() * TAUNT_LIST.length)], 2.5);
         }
       }
@@ -2133,7 +2190,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       if (e[4] !== en.level) {
         scene.remove(foe.root);
         disposeTree(foe.root);
-        foe = buildFoe(e[4], cur.linda);
+        foe = mkFoe(e[4], cur.linda);
         scene.add(foe.root);
         en.s = e[0];
         en.lat = e[1];
@@ -2360,6 +2417,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = lerp(camera.fov, fov, ease(3)); camera.updateProjectionMatrix(); }
     sky.position.copy(camera.position);
     stars.position.copy(camera.position);
+    if (space) nebulae.position.copy(camera.position);
     if (aurora) { auroraGroup.position.copy(camera.position); auroraMat.uniforms.uTime.value = time; }
     const h = heading(camS);
     tmp.set(-Math.sin(h) * 700 - 180 * Math.cos(h), 240, -Math.cos(h) * 700 + 180 * Math.sin(h));
@@ -2407,9 +2465,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     for (let i = 0; i < CACTI; i++) {
       const k = c0 + i;
       const side = hash(k) > 0.5 ? 1 : -1;
-      toWorld(k * CACTUS_GAP + hash(k + 7) * 8, side * (HALF + 6 + hash(k + 0.31) * 55), 0, P);
-      const sc = 0.7 + hash(k + 2.2) * 0.9;
-      Q.setFromEuler(E.set(0, hash(k + 9) * 6.28, 0));
+      toWorld(k * CACTUS_GAP + hash(k + 7) * 8, side * (HALF + 6 + hash(k + 0.31) * 55), space ? -6 + hash(k + 3.1) * 22 : 0, P);
+      const sc = space ? 1 + Math.pow(hash(k + 2.2), 2) * 4 : 0.7 + hash(k + 2.2) * 0.9;
+      Q.setFromEuler(space ? E.set(hash(k) * 6 + time * 0.2 * (hash(k + 1) - 0.5), hash(k + 9) * 6.28 + time * 0.3 * (hash(k + 4) - 0.5), 0) : E.set(0, hash(k + 9) * 6.28, 0));
       M.compose(P, Q, S3.set(sc, sc, sc));
       cacti.setMatrixAt(i, M);
     }
@@ -2418,9 +2476,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     for (let i = 0; i < ROCKS; i++) {
       const k = r0 + i;
       const side = hash(k + 3.3) > 0.5 ? 1 : -1;
-      toWorld(k * 20 + hash(k) * 10, side * (HALF + 3.5 + hash(k + 1.7) * 40), 0, P);
+      toWorld(k * 20 + hash(k) * 10, side * (HALF + 3.5 + hash(k + 1.7) * 40), space ? -3 + hash(k + 2.9) * 9 : 0, P);
       const sc = 0.3 + Math.pow(hash(k + 5.5), 3) * 2.4;
-      Q.setFromEuler(E.set(hash(k) * 3, hash(k + 1) * 3, 0));
+      Q.setFromEuler(E.set(hash(k) * 3 + (space ? time * (hash(k + 6) - 0.5) : 0), hash(k + 1) * 3 + (space ? time * 0.7 * (hash(k + 8) - 0.5) : 0), 0));
       M.compose(P, Q, S3.set(sc * 1.3, sc * 0.7, sc));
       rocks.setMatrixAt(i, M);
     }
@@ -2429,23 +2487,24 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     for (let i = 0; i < MESAS; i++) {
       const k = m0 + i;
       const side = hash(k + 4.4) > 0.5 ? 1 : -1;
-      toWorld(k * 90, side * (220 + hash(k + 8) * 260), 0, P);
-      const w = 60 + hash(k + 1.1) * 120;
-      M.compose(P, Q.identity(), S3.set(w, 25 + hash(k + 6) * 55, w * 0.6));
+      toWorld(k * 90, side * (220 + hash(k + 8) * 260), space ? -60 + hash(k + 2) * 200 : 0, P);
+      const w = space ? 18 + hash(k + 1.1) * 50 : 60 + hash(k + 1.1) * 120;
+      if (space) Q.setFromEuler(E.set(hash(k) * 6 + time * 0.02, hash(k + 3) * 6, 0));
+      M.compose(P, space ? Q : Q.identity(), space ? S3.set(w, w * 0.8, w) : S3.set(w, 25 + hash(k + 6) * 55, w * 0.6));
       mesas.setMatrixAt(i, M);
     }
     mesas.instanceMatrix.needsUpdate = true;
     for (let i = 0; i < signs.length; i++) {
       const k = Math.floor(camS / 700) - i;
       const side = k % 2 === 0 ? -1 : 1;
-      place(signs[i], k * 700 + 300, side * (HALF + 7), 0, side * 0.45);
+      place(signs[i], k * 700 + 300, side * (HALF + 7), space ? 2 : 0, side * 0.45);
     }
 
     // traffic
     for (let i = 0; i < MAX_TRAFFIC; i++) {
       const t = traffic[i];
       if (!t) { M.makeScale(0, 0, 0); trafficMesh.setMatrixAt(i, M); continue; }
-      toWorld(t.s, t.lat, t.y, P);
+      toWorld(t.s, t.lat, t.y + lift, P);
       const lean = t.mode === 0 ? Math.sin(time * 1.7 + i) * 0.01 : 0;
       Q.setFromEuler(E.set(t.rx, heading(t.s) + t.ry, t.rz + lean));
       M.compose(P, Q, S3.set(1, 1, 1));
@@ -2681,21 +2740,21 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   };
   const watchNews = (dt: number): void => {
     if (phase === "intro") return;
-    const L = rideAt(mort.en.level).name.replace(/^the /, "").toUpperCase();
+    const L = rideName(mort.en.level).replace(/^the /, "").toUpperCase();
     if (mort.en.level !== news.level) {
       news.level = mort.en.level;
-      if (rideAt(mort.en.level).kind === "train") breaking("HE IS DRIVING A TRAIN", "We cannot stress this enough: a TRAIN, on the highway");
+      if (rideAt(mort.en.level).kind === "train") breaking(space ? "HE IS FLYING A TRIPOD" : "HE IS DRIVING A TRAIN", space ? "Three legs, one heat ray, one very angry man" : "We cannot stress this enough: a TRAIN, on the highway");
       else breaking(`MORT IS BACK, NOW IN A ${L}`, "Where does he keep finding these?");
     }
     const mw = mort.en.wreck > 0;
-    if (mw && !news.wrecked) breaking(`${L} WRECKED BY CANNON FIRE`, "Witnesses expect him back in something bigger");
+    if (mw && !news.wrecked) breaking(`${L} WRECKED BY ${space ? "BLASTER" : "CANNON"} FIRE`, "Witnesses expect him back in something bigger");
     news.wrecked = mw;
     if (linda) {
       if (!news.linda && phase === "play") { news.linda = true; }
-      const LL = rideAt(linda.en.level).name.replace(/^the /, "").toUpperCase();
+      const LL = rideName(linda.en.level).replace(/^the /, "").toUpperCase();
       if (linda.en.level !== news.lindaLevel) {
         news.lindaLevel = linda.en.level;
-        breaking(rideAt(linda.en.level).kind === "train" ? "SHE IS ALSO DRIVING A TRAIN" : `COUSIN LINDA NOW IN A ${LL}`, "Family sources call her 'a lunatic, lovingly'");
+        breaking(rideAt(linda.en.level).kind === "train" ? (space ? "SHE IS ALSO FLYING A TRIPOD" : "SHE IS ALSO DRIVING A TRAIN") : `COUSIN LINDA NOW IN A ${LL}`, "Family sources call her 'a lunatic, lovingly'");
       }
       const lw = linda.en.wreck > 0;
       if (lw && !news.lindaWrecked) breaking(`LUNATIC LINDA'S ${LL} WRECKED`, "She is reportedly 'not done, honey'");
@@ -2703,14 +2762,16 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
     if (alert && alert !== news.alert && phase === "play") breaking("ACCOMPLICES IN RIDICULOUS HATS JOIN CHASE", "Police describe the hats as 'a lot'");
     news.alert = alert;
-    if (phase === "takeback" && news.headline !== "IT'S OVER: MORT TAKES BACK HIS CANNON") breaking("IT'S OVER: MORT TAKES BACK HIS CANNON", "He is walking it back to his car. Slowly.", 9);
+    const over = space ? "IT'S OVER: MORT TAKES BACK HIS BLASTER" : "IT'S OVER: MORT TAKES BACK HIS CANNON";
+    if (phase === "takeback" && news.headline !== over) breaking(over, "He is walking it back to his car. Slowly.", 9);
     news.on = Math.max(0, news.on - dt);
     news.cd -= dt;
     if (news.cd <= 0 && phase === "play") {
       const first = news.idle === 0 && news.headline === "";
-      if (first) breaking("BREAKING: STOLEN PIRATE CANNON ON ROUTE 66", linda ? "Owner 'Mad Mort' and cousin in pursuit" : "Owner 'Mad Mort' in pursuit in a station wagon", 8);
+      if (first) breaking(space ? "BREAKING: STOLEN BLASTER IN LOW ORBIT" : "BREAKING: STOLEN PIRATE CANNON ON ROUTE 66", linda ? "Owner 'Mad Mort' and cousin in pursuit" : space ? "Owner 'Mad Mort' boarded a rocket to get it back" : "Owner 'Mad Mort' in pursuit in a station wagon", 8);
       else {
-        const [h, sub] = IDLE_NEWS[Math.floor(Math.random() * IDLE_NEWS.length)];
+        const idle = space ? SPACE_IDLE_NEWS : IDLE_NEWS;
+        const [h, sub] = idle[Math.floor(Math.random() * idle.length)];
         breaking(h.replace("{MIN}", String(Math.max(2, Math.floor(time / 60)))), sub, 6);
       }
       news.idle++;
@@ -2719,7 +2780,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     news.radioT = Math.max(0, news.radioT - dt);
     news.radioCd -= dt;
     if (news.radioCd <= 0 && news.on <= 0 && phase === "play") {
-      const pool = [...RADIO, ...(linda ? RADIO_LINDA : []), ...(thanks ? RADIO_THANKS : [])];
+      const pool = space ? [...SPACE_RADIO, ...(linda ? RADIO_LINDA : [])] : [...RADIO, ...(linda ? RADIO_LINDA : []), ...(thanks ? RADIO_THANKS : [])];
       news.radio = pool[Math.floor(Math.random() * pool.length)];
       news.radioT = 6;
       news.radioCd = 16 + Math.random() * 12;
@@ -2753,7 +2814,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       nc.fillRect(NEWS_W - 150, 14, 136, 32);
       nc.fillStyle = "#fff";
       nc.font = "700 15px Inter, system-ui, sans-serif";
-      nc.fillText("CHOPPER 7", NEWS_W - 138, 36);
+      nc.fillText(space ? "SPACE CAM 7" : "CHOPPER 7", NEWS_W - 138, 36);
       // lower third
       nc.fillStyle = "#0b1a4a";
       nc.fillRect(0, NEWS_PIC - 92, NEWS_W, 70);
@@ -2789,7 +2850,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
         while (nc.measureText(news.radio).width > NEWS_W - 24 && size > 11) { size -= 1; nc.font = `600 ${size}px Inter, system-ui, sans-serif`; }
         nc.fillText(news.radio, 12, y + 43);
       } else {
-        const line = [...RADIO.slice(0, 5), "HOLIDAY TRAFFIC: AVOID ROUTE 66", "MORE ON THE CANNON CHASE AT ELEVEN"].join("   •   ");
+        const line = (space ? [...SPACE_RADIO.slice(0, 5), "ORBIT TRAFFIC: AVOID THE ASTEROID BELT", "MORE ON THE BLASTER CHASE AT ELEVEN"] : [...RADIO.slice(0, 5), "HOLIDAY TRAFFIC: AVOID ROUTE 66", "MORE ON THE CANNON CHASE AT ELEVEN"]).join("   •   ");
         nc.fillStyle = "#0b1230";
         nc.font = "800 19px Inter, system-ui, sans-serif";
         const wLine = nc.measureText(line + "   •   ").width;
@@ -2873,9 +2934,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       })),
       score: Math.max(0, Math.round(score)), best: Math.round(Math.max(best, score)), cash: Math.round(cash),
       meters: Math.round(Math.max(0, leadS())), level: en.level,
-      ride: RIDES[Math.min(en.level - 1, RIDES.length - 1)].name, foeHp: Math.max(0, Math.ceil(en.hp - 0.001)), foeMax: en.max,
+      ride: rideName(en.level), foeHp: Math.max(0, Math.ceil(en.hp - 0.001)), foeMax: en.max,
       foeWrecked: en.wreck > 0,
-      linda: linda ? { hp: Math.max(0, Math.ceil(linda.en.hp - 0.001)), max: linda.en.max, ride: rideAt(linda.en.level).name, wrecked: linda.en.wreck > 0 } : null,
+      linda: linda ? { hp: Math.max(0, Math.ceil(linda.en.hp - 0.001)), max: linda.en.max, ride: rideName(linda.en.level), wrecked: linda.en.wreck > 0 } : null,
       gap: Math.round(t.s - en.s), hits, wrecks, toast, fps: Math.round(fps),
       link: !net ? "" : time - lastHeard > 6 ? "lost" : "ok",
       alert, henchmen: henchmen.filter((h) => h.state >= 0 && h.state <= 2).length,
@@ -3026,6 +3087,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     upgrade: (u: Partial<Upgrades>, i = mine) => { const r = riders[i]; Object.assign(r, u); r.autoGun.root.visible = r.auto > 0; },
     run: (n: number, dt = 1 / 60) => { for (let k = 0; k < n; k++) { tick(dt); draw(dt); } },
     snapshot: () => { draw(1); renderAll(); return canvas.toDataURL("image/jpeg", 0.9); },
+    /** take Gatch News and the radio off the air, for clean frames and films */
+    quiet: () => { news.on = 0; news.cd = 1e9; news.radioT = 0; news.radioCd = 1e9; },
     /** put a Gatch News bulletin on now */
     news: (headline = "BREAKING: STOLEN PIRATE CANNON ON ROUTE 66", sub = "Owner 'Mad Mort' in pursuit") => breaking(headline, sub, 8),
     radio: (line?: string) => { news.radio = line ?? RADIO[0]; news.radioT = 6; news.on = 0; },

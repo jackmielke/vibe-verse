@@ -17,6 +17,9 @@ import fontAnton from "@/assets/cannonrun/splash/anton-latin-400-normal.woff2";
 
 import imgAuroraTrain from "@/assets/cannonrun/splash/aurora-train.jpg";
 import imgAurora from "@/assets/cannonrun/splash/aurora.jpg";
+import imgSpaceTripod from "@/assets/cannonrun/splash/space-tripod.jpg";
+import imgSpaceMonster from "@/assets/cannonrun/splash/space-monster.jpg";
+import imgSpaceTakeback from "@/assets/cannonrun/splash/space-takeback.jpg";
 import imgExplode from "@/assets/cannonrun/splash/explode.jpg";
 import imgFlying from "@/assets/cannonrun/splash/flying.jpg";
 import imgHenchmen from "@/assets/cannonrun/splash/henchmen.jpg";
@@ -41,6 +44,9 @@ export type SplashProps = {
   phone: boolean;
   aurora: boolean;
   thanks: boolean;
+  /** outer space mode, and its switch */
+  space?: boolean;
+  onSpace?: () => void;
   bank: number;
   onSolo: () => void;
   onDuo: () => void;
@@ -67,7 +73,7 @@ const FONTS = `
 type Shot = { src: string; line: string; tag: string };
 
 /** The story in eight beats. Aurora and Thanksgiving lead when they are switched on. */
-function useShots(aurora: boolean, thanks: boolean): Shot[] {
+function useShots(aurora: boolean, thanks: boolean, space = false): Shot[] {
   return useMemo(() => {
     const base: Shot[] = [
       { src: imgMortTow, tag: "MAD MORT", line: "It was Grandpa's cannon. Mad Mort wants it back." },
@@ -80,10 +86,15 @@ function useShots(aurora: boolean, thanks: boolean): Shot[] {
       { src: imgSunrise, tag: "DOT'S DINER", line: "Dot's Diner never closes, and neither does the chase." },
     ];
     const lead: Shot[] = [];
-    if (thanks) lead.push({ src: imgThanks, tag: "THANKSGIVING", line: "Pilgrim hats for everybody. Even the henchmen." });
+    if (space) lead.push(
+      { src: imgSpaceTripod, tag: "OUTER SPACE", line: "You swiped his blaster. He boarded a rocket to get it back. Then a Tripod." },
+      { src: imgSpaceMonster, tag: "MONSTER ROCKET", line: "Every truck he had, he has a rocket of now." },
+      { src: imgSpaceTakeback, tag: "HIS BLASTER", line: "Let him catch you and he walks it home. In his helmet." },
+    );
+    if (thanks && !space) lead.push({ src: imgThanks, tag: "THANKSGIVING", line: "Pilgrim hats for everybody. Even the henchmen." });
     if (aurora) lead.push({ src: imgAuroraTrain, tag: "AURORA TONIGHT", line: "Northern lights over the desert. Nobody knows why." });
     return [...lead, ...base];
-  }, [aurora, thanks]);
+  }, [aurora, thanks, space]);
 }
 
 function useTick(n: number, ms: number): number {
@@ -131,7 +142,7 @@ export function SplashLook({ look, ...p }: SplashProps & { look: Look }) {
 /* ================================================================ A. Highlight reel */
 
 function Reel(p: SplashProps) {
-  const shots = useShots(p.aurora, p.thanks);
+  const shots = useShots(p.aurora, p.thanks, p.space);
   const i = useTick(shots.length, 4800);
   const s = shots[i] ?? shots[0];
   const item = "group flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left text-[15px] font-semibold transition hover:bg-white/10";
@@ -142,12 +153,14 @@ function Reel(p: SplashProps) {
 
       <div className={`absolute inset-0 flex flex-col overflow-y-auto ${p.phone ? "justify-end px-5 pb-8" : "justify-center px-[6vw]"}`}>
         <div className="w-full max-w-[420px]">
-          <div className="text-[12px] font-bold tracking-[0.32em] text-[#ffd36a]">MIDNIGHT · ROUTE 66</div>
+          <div className="text-[12px] font-bold tracking-[0.32em] text-[#ffd36a]">{p.space ? "LOW ORBIT · THE ASTEROID BELT" : "MIDNIGHT · ROUTE 66"}</div>
           <h1 className="mt-2 leading-[0.86] text-white" style={{ fontFamily: "'CC Anton', Impact, sans-serif", fontSize: p.phone ? 64 : 96, textShadow: "0 4px 30px rgba(0,0,0,.6)" }}>
             CANNON<br /><span className="text-[#ffd36a]">CHASE</span>
           </h1>
           <p className="mt-3 text-[15px] leading-relaxed text-white/75">
-            You stole Grandpa's ship cannon and bolted it in the bed of your pickup. Mad Mort says it's his. His headlights are right behind you.
+            {p.space
+              ? "You swiped Mad Mort's blaster and bolted it to the top of your freighter. He boarded a rocket to get it back. His headlights are right behind you."
+              : "You stole Grandpa's ship cannon and bolted it in the bed of your pickup. Mad Mort says it's his. His headlights are right behind you."}
           </p>
 
           <div className="mt-5 flex flex-col gap-0.5">
@@ -164,9 +177,11 @@ function Reel(p: SplashProps) {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
+            {p.onSpace ? <Chip on={!!p.space} onClick={p.onSpace} color="#9a8aff">🚀 Outer space</Chip> : null}
             <Chip on={p.aurora} onClick={p.onAurora} color="#5dffb0">✦ Aurora sky</Chip>
             <Chip on={p.thanks} onClick={p.onThanks} color="#ffa64a">🦃 Thanksgiving</Chip>
           </div>
+
         </div>
       </div>
 
@@ -212,7 +227,7 @@ const HEADLINES = [
 ];
 
 function News(p: SplashProps) {
-  const shots = useShots(p.aurora, p.thanks);
+  const shots = useShots(p.aurora, p.thanks, p.space);
   const i = useTick(shots.length, 3800);
   const h = useTick(HEADLINES.length, 5200);
   const [clock, setClock] = useState(() => new Date());

@@ -60,6 +60,13 @@ export default function CannonRun() {
     return d.getMonth() === 10 && d.getDate() >= 20;
   });
   const thanksRef = useRef(thanks);
+  // Outer space: Mort boarded a rocket to get his blaster back (?space, or the 🚀 chip)
+  const [space, setSpace] = useState<boolean>(() => {
+    if (new URLSearchParams(window.location.search).has("space")) return true;
+    try { return localStorage.getItem("cannonrun.space") === "on"; } catch { return false; }
+  });
+  const spaceRef = useRef(space);
+  spaceRef.current = space;
 
   thanksRef.current = thanks;
   const [muted, setMuted] = useState(false);
@@ -163,6 +170,7 @@ export default function CannonRun() {
             guestUpgrades: guestUpRef.current,
             aurora: auroraRef.current,
             thanksgiving: thanksRef.current,
+            space: spaceRef.current,
             onHud: setHud,
             onReady: () => setScreen("playing"),
             onEnd: (cash) => {
@@ -206,6 +214,7 @@ export default function CannonRun() {
   };
 
   const toggleAurora = (): void => { const v = !aurora; setAurora(v); try { localStorage.setItem("cannonrun.sky", v ? "aurora" : "moon"); } catch { /* private window */ } };
+  const toggleSpace = (): void => { const v = !space; setSpace(v); try { localStorage.setItem("cannonrun.space", v ? "on" : "off"); } catch { /* private window */ } };
   const toggleThanks = (): void => { const v = !thanks; setThanks(v); try { localStorage.setItem("cannonrun.thanks", v ? "on" : "off"); } catch { /* private window */ } };
 
   const card = "rounded-xl bg-black/55 ring-1 ring-white/10 backdrop-blur-sm";
@@ -214,7 +223,7 @@ export default function CannonRun() {
   // the diner showdown after the train: its own HUD, and the words are drawn in the canvas
   const fz = hud?.finale && !over ? hud.finale : null;
   const guest = hud?.mode === "guest";
-  const inviteUrl = typeof window !== "undefined" ? `${window.location.origin}/cannon-chase?room=${room}${netMode === "local" ? "&net=local" : ""}` : "";
+  const inviteUrl = typeof window !== "undefined" ? `${window.location.origin}/cannon-chase?room=${room}${netMode === "local" ? "&net=local" : ""}${space ? "&space" : ""}` : "";
 
   return (
     <div className="fixed inset-0 select-none overflow-hidden bg-[#0b0f1c] text-white" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -372,6 +381,8 @@ export default function CannonRun() {
           phone={phone}
           aurora={aurora}
           thanks={thanks}
+          space={space}
+          onSpace={toggleSpace}
           bank={bank.bank}
           onSolo={() => start("solo")}
           onDuo={() => start("duo")}
@@ -411,6 +422,12 @@ export default function CannonRun() {
               onClick={toggleAurora}
             >
               {aurora ? "✦ Aurora sky: on" : "✦ Aurora sky: off"}
+            </button>
+            <button
+              className={`w-64 rounded-full px-6 py-2 text-[13px] font-semibold ring-1 ${space ? "bg-[#2a1a6a] ring-[#9a8aff]/60 text-[#e0d8ff]" : "bg-white/5 ring-white/15 text-white/70"}`}
+              onClick={toggleSpace}
+            >
+              {space ? "🚀 Outer space: on" : "🚀 Outer space: off"}
             </button>
             <button
               className={`w-64 rounded-full px-6 py-2 text-[13px] font-semibold ring-1 ${thanks ? "bg-[#8a3a12] ring-[#ffa64a]/60 text-[#ffe2c0]" : "bg-white/5 ring-white/15 text-white/70"}`}

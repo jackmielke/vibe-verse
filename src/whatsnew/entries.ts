@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "cannon-chase-space",
+    date: "2026-11-27",
+    emoji: "🚀",
+    title: "Cannon Chase goes to outer space",
+    body: "You swiped Mad Mort's blaster, and he boarded a rocket to get it back. Fly a beat-up saucer freighter down a glowing space lane while he chases you in a space wagon, a space tug, a monster rocket, a comet mixer, a star hauler and finally a three-legged Tripod. Switch on 🚀 Outer space on the Cannon Chase start screen.",
+    tag: "new",
+    route: "/cannon-chase?space",
+    world: "Cannon Chase",
+  },
+  {
     id: "house-rules-bb-gun-honey",
     date: "2026-11-27",
     emoji: "🍯",
