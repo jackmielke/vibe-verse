@@ -1,7 +1,242 @@
 {
-  "generated_at": "2026-11-27T00:09:35.337Z",
+  "generated_at": "2026-11-27T17:23:00.768Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "ea8b4b68",
+      "date": "2026-11-27",
+      "subject": "Stamp Vibe Hoops' date on its card",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXHN2PaU6qCQ1Y5QFt",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "9c61a2f9",
+      "date": "2026-11-27",
+      "subject": "Vibe Hoops: three-on-three basketball in the Vibe Dome",
+      "lede": "A new world at /hoops (also /basketball): a sold-out arena with a four-sided jumbotron showing a live feed, sweeping show beams, pyro, confetti and a crowd that swells with the play. Six original clubs of real Vibe Verse characters (Vibey, Mad Mort's crew, the samurai, the pirates, the wizards, the Sky Capes), or play as your own My Vibe character.",
+      "places": [],
+      "files": 19
+    },
+    {
+      "sha": "3c4b121a",
+      "date": "2026-11-27",
+      "subject": "Cannon Chase: take the Chopper 7 helicopter out of the sky",
+      "lede": "Jack wants the chopper unseen: you only know it is up there because Gatch News is on. The mesh, its layer and the searchlight are gone; the chopper camera, the news picture and the replay tape filmed from it are unchanged.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "ffd3c567",
+      "date": "2026-11-27",
+      "subject": "Cannon Chase: Gatch News films from Chopper 7",
+      "lede": "The replay tape is now the news helicopter's view, not the player's: while a clip rolls, the engine renders the chase from Chopper 7 into a 960x540 tape canvas with the GATCH NEWS / LIVE / CHOPPER 7 bug and the lower third baked in, and the recorder films that canvas. A Chopper 7 helicopter (rotor, tail rotor, blinking light, searchlight cone) hangs over the road behind you whenever the news is on air or tape is roll",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "9330c93c",
+      "date": "2026-11-27",
+      "subject": "Stamp world dates for Vibe Cup",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXDCVnnnRzYLr5ktz6",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "619caaa4",
+      "date": "2026-11-27",
+      "subject": "Vibe Cup: the tournament, one player all match, and the Paint Pads",
+      "lede": "Jack asked for a real Vibe Cup: pick a club, every match tracked, bot matches you can watch, and staying as the one player you start as. - src/vibecup/cup.ts: six-club round robin over five rounds, a table, a final between the top two, saved in localStorage. - Each round's other matches play live beside yours; a ticker shows their scores and tapping one watches it (your match waits). Skip to results, or pick no club ",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "951de74d",
+      "date": "2026-11-27",
+      "subject": "Vibe Cup: slides knock over anybody in the way, team-mates too",
+      "lede": "Jack asked for accidental bumps. A sliding outfielder now flattens any player it runs through who is not an opponent on the ball (that is still a tackle): team-mates included, and a team-mate on the ball loses it. Keepers in their own area are safe from opponents, and a keeper's dive bumps nobody. Thud, grass and an OOPS! banner for an own goal of a tackle.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "2e701a06",
+      "date": "2026-11-27",
+      "subject": "Stamp world dates for 8-Ball Club",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWanjvC3YsfVCs5UJk",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "0b144138",
+      "date": "2026-11-27",
+      "subject": "Add 8-Ball Club: eight-ball pool with real spin physics",
+      "lede": "New world at /pool (aliases /8-ball, /8ball, /eight-ball, /billiards).",
+      "places": [],
+      "files": 14
+    },
+    {
+      "sha": "6c5c6350",
+      "date": "2026-11-27",
+      "subject": "Stamp world dates for Vibe Cup",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXDCVnnnRzYLr5ktz6",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "c62f0704",
+      "date": "2026-11-27",
+      "subject": "Vibe Cup: open rooms list, off-screen switching, smarter computer players",
+      "lede": "Jack asked for each person to keep a player they can see, an easy way to join friends, and smarter AI. - A player left off the screen for half a second hands control to the free team-mate nearest the ball. - Room makers advertise on a shared board; the Online menu lists open rooms to join with one tap. - Computer players find space for the carrier, mark runners goal side, pass when a team-mate is clearly better place",
+      "places": [],
+      "files": 6
+    },
+    {
+      "sha": "8d74f05a",
+      "date": "2026-11-27",
+      "subject": "Stamp world dates for Vibe Cup online",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXDCVnnnRzYLr5ktz6",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "91dbe0b9",
+      "date": "2026-11-27",
+      "subject": "Vibe Cup: online rooms, up to two a side on your own devices",
+      "lede": "The room maker referees the match and broadcasts state 12 times a second; guests send their controls and predict their own player between states. Invite link (?room=CODE), share sheet and QR, sides and clubs in a lobby, rematches keep the room. ?net=local plays over a BroadcastChannel so scripts/vibecup-online.mjs can check a laptop and a phone in one browser. Game rules now give two people on one side different play",
+      "places": [],
+      "files": 8
+    },
+    {
+      "sha": "7668f2d2",
+      "date": "2026-11-27",
+      "subject": "Stamp world dates for Solitaire",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWqv5RfhLjoiArWqFM",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "03961c07",
+      "date": "2026-11-27",
+      "subject": "Solitaire: Klondike and FreeCell, five looks, made for a phone",
+      "lede": "New world at /solitaire (also /klondike, /freecell, /cards, /patience). Classic Klondike with draw 1 or draw 3, plus FreeCell as a second game on the same table. Drag a card or a run, or tap it and it flies to the best spot (a foundation first, then a column). Unlimited undo, hints, tap the deck to draw, and it finishes itself once every card is face up. A win bounces the whole deck across the table.",
+      "places": [],
+      "files": 17
+    },
+    {
+      "sha": "d71f0449",
+      "date": "2026-11-27",
+      "subject": "Cannon Chase space: starfighter squadrons, ball fighters, Mort's flagship and the old moon",
+      "lede": "Original ships in the spirit of the classic space films: four-wing starfighters strafe Mort on your side, ball fighters with flat wing panels come up the lane at you, his arrowhead flagship hangs behind him, and the 1902 moon has a rocket in its eye. Scenery only; the fleet clock runs on the sim step so snapshots don't fast-forward it. __chase.fleet(side, slow) starts a pass for films.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "3304a557",
+      "date": "2026-11-27",
+      "subject": "Vibe City: Paintball Marker in Vibe Arms",
+      "lede": "A new 120-coin weapon. Every ball leaves a bright splat where it breaks: on walls facing back toward you, flat on the street for a miss, and on cars, cruisers and bad guys' cars, where the splat rides along in the vehicle's own frame as it drives off. Splats fade after 45 seconds, at most 90 out at once. It is on the weapon bar (keys now 1 to 5), the stall's display and every shop shelf. The till needs a vibe-economy",
+      "places": [
+        "Vibe Island",
+        "the machinery underneath"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "d54ea458",
+      "date": "2026-11-27",
+      "subject": "Stamp world dates for Vibe Cup and Vibe Commons",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXDCVnnnRzYLr5ktz6",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "c1bb3750",
+      "date": "2026-11-27",
+      "subject": "Cannon Chase: tidy two-player phone HUD, add a zoom out button",
+      "lede": "On a phone with two trucks, You and Friend now share one slim card (a line each with three thin bars) instead of two tall cards that covered the road. A Zoom out button (1x, 1.35x, 1.7x, remembered per device) pulls the chase camera back; phones start at 1.35x. The sound and zoom buttons sat under the tap-to-fire layer on phones and could not be pressed; they are above it now and moved clear of Linda's card.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "b7b7b2d5",
+      "date": "2026-11-27",
+      "subject": "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch",
+      "lede": "Vibe Cup (/vibe-cup, also /soccer, /football, /futbol, /kickabout) is a new five-a-side arcade soccer world in a floodlit cage. Five original clubs from around the Vibe Verse, passing (tap for along the ground, hold for a lob, the stick picks the team-mate), charged shots with a flaming super shot at full bar, slide tackles, headers, keepers that dive, parry and catch, a 2.5 minute clock and golden goal. One player a",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 16
+    },
+    {
+      "sha": "34300b82",
+      "date": "2026-11-27",
+      "subject": "Haymaker: a camera boxing game where the opponent stands in your room",
+      "lede": "New world at /boxing (also /box, /haymaker, /punch). Prop a phone or laptop up and the front camera reads your body with MediaPipe's pose landmarker: fast fists going out are punches (jab, hook or uppercut by direction), leaning away from a glowing glove slips it and opens the opponent for double-damage counters, fists by the face is a guard. The opponent is drawn over the mirrored camera picture and your gloves sit ",
+      "places": [],
+      "files": 18
+    },
+    {
+      "sha": "0f667cdb",
+      "date": "2026-11-27",
+      "subject": "Stamp world dates for Mort's Maze",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNUGe2fZg533vctSzYu",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "d06b0315",
+      "date": "2026-11-27",
+      "subject": "Mort's Maze: a maze chase on Vibe Island",
+      "lede": "New world at /mort-maze (also /maze, /chomp, /munch). Vibey rolls round three original hedge mazes (Palm Court, Mort's Junkyard, Lighthouse Loop) eating Vibey Coins while Mad Mort, Lunatic Linda, Hubcap Hank and Rusty Ray hunt it, each with their own head. A water balloon soaks the crew so they can be splashed back to the junkyard. Swipe anywhere on a phone, arrows or WASD on a keyboard. Rules are pure and covered by",
+      "places": [
+        "The Long Silence"
+      ],
+      "files": 12
+    },
+    {
+      "sha": "7f95528e",
+      "date": "2026-11-27",
+      "subject": "Vibe City: the Super Soaker leaves slippery puddles",
+      "lede": "Jack's spec: about one shot in three leaves a puddle that lasts four seconds, and anything moving that runs into it slips and slides. Cars spin out on low grip and rejoin their lane, cruisers and bad guys lose steering and spin while carrying on, you slip over on foot, and a kart spins out. This replaces the old slow-down-on-hit. Nearby shots top up a puddle rather than stacking, and at most eight are out at once.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "4cbb3f55",
+      "date": "2026-11-27",
+      "subject": "Cannon Chase: outer space mode",
+      "lede": "You swiped Mad Mort's blaster and he boarded a rocket to get it back. ?space or the new Outer space chip on the start screen turns the desert highway into a glowing space lane through an asteroid belt, with a ringed planet and nebulae. You fly a saucer freighter with the blaster on top; Mort chases in a rocket version of every ride (space wagon, space tug, monster rocket, comet mixer, star hauler) and finally a three",
+      "places": [],
+      "files": 9
+    },
+    {
+      "sha": "483accc4",
+      "date": "2026-11-27",
+      "subject": "City: red button in Warehouse 13 puts you in a bad guy's back seat as gunner",
+      "lede": "E at the new red RIDE ALONG button boards the nearest loose bad guy, or sends a fresh one out of the warehouse if nobody is out. You ride in the back seat in first person, the view turns with the car, drag aims out of the back window, and R/Q fires a loaner rifle (or your own gun). F or Space hops out; the old hop-on-the-roof ride is unchanged.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 4
+    },
+    {
+      "sha": "9fa75c0e",
+      "date": "2026-11-27",
+      "subject": "Stamp worlds after the House Rules update",
+      "lede": "Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNVNK7tt11aeVFC21pC",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "429cdc32",
+      "date": "2026-11-27",
+      "subject": "House Rules: BB gun, honey trap, traps on the stairs, and the holes closed",
+      "lede": "Jack played it and came back with a list. All of it is here.",
+      "places": [],
+      "files": 20
+    },
     {
       "sha": "4f9ab17d",
       "date": "2026-11-26",
