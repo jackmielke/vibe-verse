@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "solitaire",
+    date: "2026-11-27",
+    emoji: "🃏",
+    title: "New game: Solitaire",
+    body: "Classic solitaire, built to feel great on a phone. Drag cards or tap one and it jumps to the right spot, undo anything, draw one or three, and watch the deck bounce off the table when you win. There is FreeCell too, and five looks to pick from, from green felt to deep space.",
+    tag: "new",
+    route: "/solitaire",
+    world: "Solitaire",
+  },
+  {
     id: "cannon-chase-endless-zoom",
     date: "2026-11-27",
     emoji: "💥",

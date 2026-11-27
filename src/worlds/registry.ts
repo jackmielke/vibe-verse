@@ -40,6 +40,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "thalassa",            // the harbour from the painting: walk it, swim it, VR
   "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
+  "solitaire",           // new: Klondike and FreeCell, five looks, made for a phone
   "mort-maze",           // new: the maze chase, Vibey against Mad Mort's crew
   "bots",                // …then the thirty-second loop: your handle becomes a bot that fights
   "oni",                 // the room game: everybody's phone, one square, zombie tag
@@ -477,6 +478,24 @@ const WORLDS_RAW: WorldEntry[] = [
     nav: true,
     passport: true,
     chromeless: true,
+  },
+  {
+    key: "solitaire",
+    route: "/solitaire",
+    aliases: ["/klondike", "/freecell", "/cards", "/patience"],
+    name: "Solitaire",
+    emoji: "🃏",
+    kind: "game",
+    blurb:
+      "The card game everybody knows, made to feel good. Drag a card or just tap it and it flies to the best spot, undo as much as you like, draw one or three, and when you win the whole deck bounces off the table. Switch to FreeCell for the thinking version, and pick a look: card club felt, neon night, island sunset, airmail or deep space.",
+    status: "Playable on phone and desktop, Klondike and FreeCell",
+    accent: "#ffd84a",
+    featured: true,
+    source: "src/solitaire",
+    nav: true,
+    passport: true,
+    chromeless: true,
+    backdrop: "#1d6b42",
   },
   {
     key: "2048",

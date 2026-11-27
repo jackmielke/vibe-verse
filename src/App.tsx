@@ -128,6 +128,7 @@ const HomeAlone = lazy(() => import("./pages/HomeAlone.tsx"));
 const BlobWorld = lazy(() => import("./pages/Blob.tsx"));
 const Coil = lazy(() => import("./pages/Coil.tsx"));
 const Twenty48 = lazy(() => import("./pages/Twenty48.tsx"));
+const Solitaire = lazy(() => import("./pages/Solitaire.tsx"));
 const MortsMaze = lazy(() => import("./pages/MortsMaze.tsx"));
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
 const Empyrean = lazy(() => import("./pages/Empyrean.tsx"));
@@ -553,6 +554,10 @@ const App = () => (
               dodge Mad Mort's crew, soak them with a water balloon. */}
           {["/mort-maze", "/maze", "/chomp", "/munch"].map((path) => (
             <Route key={path} path={path} element={<MortsMaze />} />
+          ))}
+          {/* SOLITAIRE: Klondike and FreeCell on one table, five looks. */}
+          {["/solitaire", "/klondike", "/freecell", "/cards", "/patience"].map((path) => (
+            <Route key={path} path={path} element={<Solitaire />} />
           ))}
           {/* NEON 2048 — the sliding-tile game in BLOB's colours. Swipe on a
               phone, arrows on a desktop, and the 2048 tile is virus green. */}
