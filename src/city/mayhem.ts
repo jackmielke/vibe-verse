@@ -86,6 +86,16 @@ const BOMB_POP = 45;
 export const BOMB_MAX_FUSE = 27;
 
 /**
+ * The Super Soaker's puddles (Jack's spec): about one shot in three leaves a
+ * puddle where it lands, it lasts four seconds, and anything moving that runs
+ * into it slips and slides: cars and cruisers spin out, you go over.
+ */
+export const PUDDLE_CHANCE = 1 / 3;
+export const PUDDLE_LIFE = 4;
+const PUDDLE_R = 2.2;
+const MAX_PUDDLES = 8;
+
+/**
  * How long a thrown pineapple holds on before it pops: anywhere from an
  * instant to BOMB_MAX_FUSE, skewed short so most of them go off while you
  * are still watching. `r` is a uniform 0..1.
@@ -176,6 +186,11 @@ export interface MayhemOpts {
   onBust(): void;
   onHud(h: MayhemHud): void;
   onPickup(kind: GunKind): void;
+  /**
+   * You ran or drove into a puddle moving at `speed`, heading (dx, dz).
+   * The city decides what slipping looks like for you. Optional.
+   */
+  onSlip?(dx: number, dz: number, speed: number, driving: boolean): void;
   /** Gunshot / siren / boom hooks into the city's own sound, optional. */
   boom?(x: number, z: number): void;
   /** A bad guy's car went up. */
@@ -231,10 +246,14 @@ export interface Mayhem {
     hits: number;
     bombs: Array<{ x: number; y: number; z: number; stuck: string | null; fuse: number }>;
     pops: number;
+    puddles: Array<{ x: number; z: number; age: number }>;
+    slips: number;
     bads: Array<{ id: number; x: number; z: number; hp: number; speed: number; boarding: boolean; chasers: number }>;
   };
   setHeat(h: number): void;
   give(kind: GunKind): void;
+  /** For harnesses: leave a puddle here. */
+  puddleAt(x: number, z: number): void;
   /** For harnesses: fire one round from here, along `yaw`. */
   shootFrom(kind: GunKind, x: number, y: number, z: number, yaw: number): void;
   /** For harnesses: throw a pineapple from here, along `yaw`, at `speed`. */
@@ -609,6 +628,12 @@ interface Driver {
   repath: number;
   stuck: number;
   reverse: number;
+  /** Seconds left sliding on a water-gun puddle: no steering, spinning. */
+  slip?: number;
+  /** The heading it was on when it hit the puddle, which it keeps sliding along. */
+  slipYaw?: number;
+  /** Spin while sliding, radians a second. */
+  slipSpin?: number;
 }
 
 interface Cop extends Driver {
@@ -1195,7 +1220,14 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     let dyaw = Math.atan2(dx, dz) - c.yaw;
     while (dyaw > Math.PI) dyaw -= Math.PI * 2;
     while (dyaw < -Math.PI) dyaw += Math.PI * 2;
-    if (c.reverse > 0) {
+    const sliding = (c.slip ?? 0) > 0;
+    if (sliding) {
+      // On a puddle: the wheel does nothing. It spins and carries on the way
+      // it was going, losing speed slowly.
+      c.slip = (c.slip ?? 0) - dt;
+      c.yaw += (c.slipSpin ?? 0) * dt;
+      c.speed *= Math.pow(0.5, dt);
+    } else if (c.reverse > 0) {
       c.reverse -= dt;
       c.speed = Math.max(c.speed - COP_ACCEL * dt, -8);
       c.yaw -= Math.sign(dyaw || 1) * 1.6 * dt;
@@ -1206,8 +1238,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       const want = top * Math.max(0.3, Math.cos(dyaw));
       c.speed += THREE.MathUtils.clamp(want - c.speed, -COP_ACCEL * 1.5 * dt, COP_ACCEL * dt);
     }
-    const fx = Math.sin(c.yaw);
-    const fz = Math.cos(c.yaw);
+    const fx = Math.sin(sliding ? c.slipYaw ?? c.yaw : c.yaw);
+    const fz = Math.cos(sliding ? c.slipYaw ?? c.yaw : c.yaw);
     const sign = Math.sign(c.speed || 1);
     const nx = c.x + fx * c.speed * dt;
     const nz = c.z + fz * c.speed * dt;
@@ -1513,8 +1545,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         const id = traffic.carAt(ox + ax * s, oz + az * s, y, 0.6);
         if (id >= 0) {
           traffic.damage(id, spec.damage);
-          if (spec.soak) traffic.soak(id, spec.soak);
-          else traffic.shove(id, ax, az, 1.5);
+          if (!spec.soak) traffic.shove(id, ax, az, 1.5);
           crime(0.12);
           hits++;
           crashFx.sparks(ox + ax * s, y, oz + az * s, -ax, -az, 6);
@@ -1537,17 +1568,14 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (t.kind === "cop") {
         const c = cops[t.ref];
         hurtCop(c, spec.damage);
-        if (spec.soak) c.soaked = Math.min(8, Math.max(c.soaked, spec.soak));
         crime(spec.soak ? 0.05 : 0.3);
         if (!spec.soak) crashFx.sparks(ex, 1, ez, -ax, -az, 8);
       } else if (t.kind === "bad") {
         hurtBad(bads[t.ref], spec.damage);
-        if (spec.soak) bads[t.ref].speed *= 0.4;
         crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
       } else if (t.kind === "car") {
         traffic.damage(t.ref, spec.damage);
-        if (spec.soak) traffic.soak(t.ref, spec.soak);
-        else traffic.shove(t.ref, ax, az, 1.5);
+        if (!spec.soak) traffic.shove(t.ref, ax, az, 1.5);
         crime(spec.soak ? 0.02 : 0.12);
         if (!spec.soak) crashFx.sparks(ex, 0.9, ez, -ax, -az, 8);
       } else if (spec.soak) {
@@ -1565,6 +1593,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       crashFx.debris(ex, ey, ez, 1, 0x9aa2ab, 2);
     }
     if (spec.soak && Math.random() < 0.3) crashFx.debris(ex, ey, ez, 2, 0x8fd8ff, 3);
+    // About one shot in three leaves a puddle where it lands.
+    if (spec.soak && Math.random() < PUDDLE_CHANCE) spawnPuddle(ex, ez);
     // Shooting in town is noticed. Water much less so.
     if (cands.some((c) => c.kind !== "tree")) crime(spec.soak ? 0.005 : 0.03);
     const tr = tracers[tracerNext];
@@ -1581,6 +1611,125 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       flashT = 0;
     }
     bang(kind);
+  };
+
+  // ---- Soaker puddles ---------------------------------------------------
+  //
+  // A puddle is a flat blue disc on the floor. Each frame anything moving that
+  // is over one starts a slide: a car or cruiser keeps going the way it was
+  // headed with no steering and spins, and you go over. One slide per thing
+  // per puddle visit, so standing in one does not lock you down.
+  interface Puddle { mesh: THREE.Mesh; x: number; z: number; y: number; age: number }
+  const puddles: Puddle[] = [];
+  const puddleGeo = new THREE.CircleGeometry(1, 28);
+  puddleGeo.rotateX(-Math.PI / 2);
+  let slips = 0;
+  let playerSlipCool = 0;
+  const lastPlayer = new THREE.Vector3(NaN, 0, 0);
+
+  const removePuddle = (i: number) => {
+    const p = puddles[i];
+    group.remove(p.mesh);
+    (p.mesh.material as THREE.Material).dispose();
+    puddles.splice(i, 1);
+  };
+
+  const spawnPuddle = (x: number, z: number) => {
+    const ctx = lastCtx;
+    const y = ctx && !ctx.inCity ? ctx.player.y : 0;
+    // A puddle right next to a fresh one just tops it up: a held trigger would
+    // otherwise lay a carpet of overlapping discs.
+    for (const p of puddles) {
+      if (Math.hypot(p.x - x, p.z - z) < PUDDLE_R * 0.9 && Math.abs(p.y - y) < 1.5) {
+        p.age = Math.min(p.age, 0.3);
+        return;
+      }
+    }
+    if (puddles.length >= MAX_PUDDLES) removePuddle(0);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x6fc8ff, transparent: true, opacity: 0.6, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2,
+    });
+    const mesh = new THREE.Mesh(puddleGeo, mat);
+    mesh.position.set(x, y + 0.04, z);
+    mesh.renderOrder = 2;
+    mesh.scale.setScalar(0.01);
+    group.add(mesh);
+    puddles.push({ mesh, x, z, y, age: 0 });
+  };
+
+  const inPuddle = (x: number, z: number, y: number, pad = 0): boolean => {
+    for (const p of puddles) {
+      if (Math.abs(p.y - y) < 2.5 && Math.hypot(p.x - x, p.z - z) < PUDDLE_R + pad) return true;
+    }
+    return false;
+  };
+
+  const slipDriver = (d: Driver) => {
+    if ((d.slip ?? 0) > 0 || Math.abs(d.speed) < 2) return;
+    d.slip = 1.4;
+    d.slipYaw = d.speed >= 0 ? d.yaw : d.yaw + Math.PI;
+    d.speed = Math.abs(d.speed);
+    d.slipSpin = (Math.random() < 0.5 ? -1 : 1) * (4.5 + Math.random() * 2);
+    slips++;
+  };
+
+  const updatePuddles = (dt: number, ctx: MayhemCtx) => {
+    playerSlipCool = Math.max(0, playerSlipCool - dt);
+    // How fast you are moving, from where your feet were last frame.
+    let pSpeed = 0;
+    let pdx = 0;
+    let pdz = 0;
+    if (Number.isFinite(lastPlayer.x) && dt > 0) {
+      pdx = ctx.player.x - lastPlayer.x;
+      pdz = ctx.player.z - lastPlayer.z;
+      const d = Math.hypot(pdx, pdz);
+      pSpeed = d / dt;
+      if (d > 0) {
+        pdx /= d;
+        pdz /= d;
+      }
+    }
+    lastPlayer.copy(ctx.player);
+    if (!puddles.length) return;
+
+    for (let i = puddles.length - 1; i >= 0; i--) {
+      const p = puddles[i];
+      p.age += dt;
+      if (p.age >= PUDDLE_LIFE) {
+        removePuddle(i);
+        continue;
+      }
+      // Spreads out over a fifth of a second, fades over the last second.
+      const grow = Math.min(1, p.age / 0.2);
+      p.mesh.scale.setScalar(PUDDLE_R * (0.4 + 0.6 * grow));
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = 0.6 * Math.min(1, (PUDDLE_LIFE - p.age) / 1);
+    }
+
+    for (const c of cops) if (c.dead === 0 && inPuddle(c.x, c.z, 0, 1)) slipDriver(c);
+    for (const b of bads) if (b.jump >= JUMP_T && inPuddle(b.x, b.z, 0, 1)) slipDriver(b);
+    for (const p of puddles) {
+      for (const car of traffic.debugNear(p.x, p.z, PUDDLE_R + 2.5)) {
+        if (!car.wreck && traffic.slip(car.id)) {
+          slips++;
+          crashFx.debris(car.x, 0.3, car.z, 3, 0x8fd8ff, 4);
+        }
+      }
+    }
+    if (playerSlipCool <= 0 && inPuddle(ctx.player.x, ctx.player.z, ctx.player.y)) {
+      if (ctx.driving) {
+        const sp = Math.abs(ctx.driving.speed);
+        if (sp > 3) {
+          playerSlipCool = 2;
+          slips++;
+          opts.onSlip?.(Math.sin(ctx.driving.yaw), Math.cos(ctx.driving.yaw), sp, true);
+        }
+      } else if (ctx.grounded && pSpeed > 2.5 && pSpeed < 40) {
+        playerSlipCool = 2.5;
+        slips++;
+        opts.onSlip?.(pdx, pdz, pSpeed, false);
+      }
+    }
   };
 
   // ---- Pineapple bombs -------------------------------------------------
@@ -1854,6 +2003,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       }
       if (ctx.throwing) throwBomb();
       updateBombs(dt, blocked, ctx);
+      updatePuddles(dt, ctx);
 
       // The gun in your hand, and the trigger.
       for (const k of ALL_GUNS) inHand[k].visible = gun === k && !ctx.driving;
@@ -2092,6 +2242,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
           stuck: b.stuck ? (b.stuck.kind === "car" ? `car:${b.stuck.id}` : b.stuck.kind) : null,
         })),
         pops,
+        puddles: puddles.map((p) => ({ x: p.x, z: p.z, age: p.age })),
+        slips,
         bads: bads.map((b) => ({
           id: b.id, x: b.x, z: b.z, hp: b.hp, speed: b.speed, boarding: b.jump < JUMP_T,
           chasers: cops.filter((c) => c.dead === 0 && c.target === "bad" && c.prey === b.id).length,
@@ -2171,6 +2323,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       hud();
     },
     throwBomb,
+    puddleAt(x, z) {
+      spawnPuddle(x, z);
+    },
     shootFrom(kind, x, y, z, yaw) {
       const blocked = opts.blocked();
       if (blocked) shoot(blocked, kind, x, y, z, yaw);
@@ -2196,6 +2351,8 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       hideoutMats.forEach((m) => m.dispose());
       opts.scene.remove(group);
       while (bombs.length) removeBomb(bombs.length - 1);
+      while (puddles.length) removePuddle(puddles.length - 1);
+      puddleGeo.dispose();
       for (const k of ALL_GUNS) opts.hand.remove(inHand[k]);
       tracerGeo.dispose();
       tracerMat.dispose();

@@ -32,7 +32,7 @@ export const WEAPON_ITEMS: WeaponItem[] = [
     name: "Super Soaker",
     emoji: "💦",
     price: 60,
-    blurb: "Barely scratches the paint. Slows cops, cars and anything it hits to a crawl.",
+    blurb: "Barely scratches the paint. About one shot in three leaves a puddle, and anything that runs into it slips and spins out.",
     color: "#5ec8ff",
   },
   {

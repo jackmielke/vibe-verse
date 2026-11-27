@@ -450,6 +450,12 @@ export interface Traffic {
   /** Water gun: slow this car to a crawl for `seconds`. */
   soak(id: number, seconds: number): void;
   /**
+   * The car hit a water-gun puddle: it spins out and slides on, then rejoins
+   * its lane once it stops. Ignored for a parked, wrecked or driven car, or
+   * one already off its lane. Returns true if it slipped.
+   */
+  slip(id: number): boolean;
+  /**
    * A car somebody was driving blows up under them. It leaves the driver,
    * stays exactly where it is (no snap to a lane), and burns as a wreck.
    * `yaw` is its heading in the fleet's own (−Z forward) convention.
@@ -1564,6 +1570,24 @@ export function buildTraffic(opts: {
     soak(id, seconds) {
       const car = cars[id];
       if (car && !car.driven) car.soaked = Math.min(8, Math.max(car.soaked, seconds));
+    },
+
+    slip(id) {
+      const car = cars[id];
+      if (!car || car.driven || car.hit || car.wreck > 0 || car.speed < 1.5) return false;
+      const hx = car.axis === 0 ? 0 : car.dir;
+      const hz = car.axis === 0 ? car.dir : 0;
+      const side = rnd() < 0.5 ? -1 : 1;
+      // Keeps most of its speed and goes on the way it was going, drifting a
+      // little sideways, turning a full circle or so on the way: a slide, not
+      // a crash. Low grip (the skid clock) is what makes it travel.
+      const sp = Math.max(car.speed, 6);
+      launch(car, hx * sp - hz * side * sp * 0.25, 0.15, hz * sp + hx * side * sp * 0.25, side * (4 + rnd() * 2.5), 0, side * 0.05);
+      car.skid = 1.8;
+      counts.skids++;
+      const h = car.hit!;
+      emit({ kind: "skid", x: h.x, y: 0, z: h.z, strength: sp, id });
+      return true;
     },
 
     detonate(id, yaw) {

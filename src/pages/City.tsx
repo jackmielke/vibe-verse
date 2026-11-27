@@ -2364,6 +2364,8 @@ export default function City() {
      * than a push/pop, because `drivingKartRef` holds an index into this array
      * and shuffling it mid-drive would hand you a different vehicle.
      */
+    /** The kart you are driving, while it slides on a Soaker puddle. */
+    const kartSlip: { kart: unknown; t: number; spin: number; yaw: number } = { kart: null, t: 0, spin: 0, yaw: 0 };
     const kartStates: Array<{
       x: number; y: number; z: number; yaw: number;
       speed: number; vy: number; steer: number;
@@ -4711,6 +4713,33 @@ export default function City() {
           bowlOver(dx, dz, speed);
         }
       },
+      onSlip: (dx, dz, speed, driving) => {
+        const i = drivingKartRef.current;
+        if (driving) {
+          if (i < 0) return;
+          const k = kartStates[i];
+          kartSlip.kart = k;
+          kartSlip.t = 1.2;
+          kartSlip.yaw = k.speed >= 0 ? k.yaw : k.yaw + Math.PI;
+          kartSlip.spin = (Math.random() < 0.5 ? -1 : 1) * 5.5;
+          soundsRef.current?.thud?.(0.35);
+          return;
+        }
+        // On foot: feet go out from under you and you slide on along the way
+        // you were running, low and fast, rather than flying up.
+        const k = Math.min(1, speed / 9);
+        vel.x = dx * (5 + speed * 0.8);
+        vel.z = dz * (5 + speed * 0.8);
+        vel.y = 2.5 + k * 1.5;
+        onGround = false;
+        coyoteTimer = 0;
+        peakY = player.position.y;
+        knockdown = 1.1;
+        knockSpin = 0;
+        knockAxis = Math.abs(dx) > Math.abs(dz) ? 1 : 0;
+        soundsRef.current?.thud?.(0.4);
+        setDance(null);
+      },
       onBlast: (x, z, r) => {
         const d = Math.hypot(player.position.x - x, player.position.z - z);
         if (d > r) return;
@@ -6507,10 +6536,19 @@ export default function City() {
         // Steering strength scales up with speed, flips in reverse.
         kart.steer += (stIn - kart.steer) * Math.min(1, dt * 10);
         const grip = THREE.MathUtils.clamp(Math.abs(kart.speed) / spec.gripSpeed, 0, 1);
-        kart.yaw -= kart.steer * spec.steer * grip * Math.sign(kart.speed || 1) * dt;
+        // On a Soaker puddle the wheel does nothing for a moment: it spins
+        // and carries on the way it was going.
+        const slipping = kartSlip.kart === kart && kartSlip.t > 0;
+        if (slipping) {
+          kartSlip.t -= dt;
+          kart.yaw += kartSlip.spin * dt;
+        } else {
+          kart.yaw -= kart.steer * spec.steer * grip * Math.sign(kart.speed || 1) * dt;
+        }
         // Integrate with the same axis-separated wall sliding players use.
-        const kdx = Math.sin(kart.yaw) * kart.speed * dt;
-        const kdz = Math.cos(kart.yaw) * kart.speed * dt;
+        const headYaw = slipping ? kartSlip.yaw : kart.yaw;
+        const kdx = Math.sin(headYaw) * kart.speed * dt;
+        const kdz = Math.cos(headYaw) * kart.speed * dt;
         const knx = kart.x + kdx;
         const knz = kart.z + kdz;
         /**

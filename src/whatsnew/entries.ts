@@ -38,6 +38,15 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-soaker-puddles",
+    date: "2026-11-27",
+    emoji: "💦",
+    title: "The Super Soaker leaves slippery puddles",
+    body: "About one shot in three from the Super Soaker leaves a puddle on the ground for four seconds. Cars, police cruisers and bad guys that drive into one spin out and slide, and if you run or drive through one yourself, you slip too.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },  {
     id: "cannon-chase-space",
     date: "2026-11-27",
     emoji: "🚀",
@@ -87,6 +96,7 @@ export const ENTRIES: WhatsNewEntry[] = [
     route: "/city",
     world: "Vibe City",
   },
+
   {
     id: "city-vibe-arms",
     date: "2026-11-26",
