@@ -40,6 +40,7 @@ const ORDER: string[] = [
   "island",              // the front door — magical, gentle, works on a phone
   "thalassa",            // the harbour from the painting: walk it, swim it, VR
   "horizon",             // the garden where the future stands in a ring; Jack's live project, keep it on the front page
+  "pool",                // new: 8-ball with real spin, vs the computer or a friend by link
   "solitaire",           // new: Klondike and FreeCell, five looks, made for a phone
   "vibe-cup",            // new: five-a-side arcade soccer, one player or two
   "mort-maze",           // new: the maze chase, Vibey against Mad Mort's crew
@@ -496,6 +497,24 @@ const WORLDS_RAW: WorldEntry[] = [
     nav: true,
     passport: true,
     chromeless: true,
+  },
+  {
+    key: "pool",
+    route: "/pool",
+    aliases: ["/8-ball", "/8ball", "/eight-ball", "/billiards"],
+    name: "8-Ball Club",
+    emoji: "🎱",
+    kind: "game",
+    blurb:
+      "Eight-ball pool with physics that feel right: draw, follow and english all work, balls click and rattle into the leather, and the cushions throw spin back at you. Drag to aim, pull the cue back to shoot, call your pocket for the 8. Play the computer on easy, normal or hard, pass the phone to a friend, or send a link and play them online. Five tables, from a club room to deep space.",
+    status: "Playable on phone and desktop, vs computer, pass and play, online by link",
+    accent: "#ffd166",
+    featured: true,
+    source: "src/pool",
+    nav: true,
+    passport: true,
+    chromeless: true,
+    backdrop: "#1c130c",
   },
   {
     key: "solitaire",

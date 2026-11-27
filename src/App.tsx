@@ -129,6 +129,7 @@ const BlobWorld = lazy(() => import("./pages/Blob.tsx"));
 const Coil = lazy(() => import("./pages/Coil.tsx"));
 const Twenty48 = lazy(() => import("./pages/Twenty48.tsx"));
 const Solitaire = lazy(() => import("./pages/Solitaire.tsx"));
+const Pool = lazy(() => import("./pages/Pool.tsx"));
 const MortsMaze = lazy(() => import("./pages/MortsMaze.tsx"));
 const VibeCup = lazy(() => import("./pages/VibeCup.tsx"));
 const RunVibeyRun = lazy(() => import("./pages/RunVibeyRun.tsx"));
@@ -555,6 +556,10 @@ const App = () => (
               dodge Mad Mort's crew, soak them with a water balloon. */}
           {["/mort-maze", "/maze", "/chomp", "/munch"].map((path) => (
             <Route key={path} path={path} element={<MortsMaze />} />
+          ))}
+          {/* 8-BALL CLUB: pool with real spin. The computer, pass and play, or a friend by link. */}
+          {["/pool", "/8-ball", "/8ball", "/eight-ball", "/billiards"].map((path) => (
+            <Route key={path} path={path} element={<Pool />} />
           ))}
           {/* SOLITAIRE: Klondike and FreeCell on one table, five looks. */}
           {["/solitaire", "/klondike", "/freecell", "/cards", "/patience"].map((path) => (
