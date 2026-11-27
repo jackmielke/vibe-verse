@@ -38,6 +38,26 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-skies-neon",
+    date: "2026-11-27",
+    emoji: "🌉",
+    title: "Vibe City: a bridge, an island, sunsets and people to talk to",
+    body: "Drive west from the city over the Vibe Gate Bridge to The Rock, an island prison with a lighthouse that sweeps the bay at night. The sky button now cycles Day, Sunset, Night and Aurora, neon signs light the shopfronts, and rain leaves the streets wet and glowing. Ten locals walk the streets with their own routines: walk up and press T or tap Talk to chat with them. You can also walk or drive up the ramp onto the marina pier now.",
+    tag: "update",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
+    id: "the-wizard",
+    date: "2026-11-27",
+    emoji: "🧙",
+    title: "Meet the Wizard of Vibe Island",
+    body: "Walk up to the Wizard on the lawn by the plaza, or press Y anywhere, and wish for something out loud or by typing. He conjures it right in front of you, and everybody on the island sees it appear live. Want a world of your own? Press Remix to copy the island into your own private version and share the link with friends.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe Island",
+  },
+  {
     id: "2026-11-27-vibe-summit",
     date: "2026-11-27",
     emoji: "🏔️",
