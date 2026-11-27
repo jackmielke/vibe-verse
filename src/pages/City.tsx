@@ -197,6 +197,14 @@ import { useWorldStamp } from "@/hooks/use-world-stamp";
 import { createWizard, type WizardController } from "@/wizard/controller";
 import { createWizardNpc } from "@/wizard/npc";
 import WizardHud from "@/wizard/WizardHud";
+import { createCitySky, isDayLook, lookFor, parseLook, SKY_LOOKS, type SkyLook } from "@/city/sky";
+import { buildNeon } from "@/city/neon";
+import { createWetStreets } from "@/city/wet";
+import { createBirds } from "@/city/birds";
+import { buildBay } from "@/city/bay";
+import { createFolk, type Folk } from "@/city/folk";
+import type { FolkDef } from "@/city/folk/cast";
+import FolkChat from "@/city/folk/FolkChat";
 
 /* Lazy: almost nobody opens the changelog mid-game, so it is not in the world's chunk. */
 const WhatsNewSheet = lazy(() => import("@/whatsnew/WhatsNewSheet"));
@@ -815,6 +823,17 @@ export default function City() {
   const rebelRemoteRef = useRef<((ev: RebelEvent) => void) | null>(null);
   // THE GETAWAY — the chaseable city heist. HUD chip while it's loose.
   const [heistChaseOn, setHeistChaseOn] = useState(false);
+  // The ten talkable pedestrians (src/city/folk).
+  const folkRef = useRef<Folk | null>(null);
+  const [folkNear, setFolkNear] = useState<FolkDef | null>(null);
+  const [folkOpen, setFolkOpen] = useState<FolkDef | null>(null);
+  const folkNearRef = useRef<FolkDef | null>(null);
+  const folkOpenRef = useRef<FolkDef | null>(null);
+  const openFolk = useCallback((d: FolkDef | null) => {
+    folkOpenRef.current = d;
+    setFolkOpen(d);
+    folkRef.current?.engage(d?.id ?? null);
+  }, []);
   // Let players dismiss the bounty chip; it comes back on the next heist.
   const [heistChipDismissed, setHeistChipDismissed] = useState(false);
   useEffect(() => {
@@ -929,6 +948,9 @@ export default function City() {
   const weatherRef = useRef<WeatherSystem | null>(null);
   const setWeatherRef = useRef<((k: WeatherKind) => void) | null>(null);
   const dayModeRef = useRef(false);
+  /** Which of the four skies: Day, Sunset, Night, Aurora. See src/city/sky.ts. */
+  const skyLookRef = useRef<SkyLook>(parseLook(new URLSearchParams(window.location.search).get("sky")) ?? "night");
+  const [skyLook, setSkyLook] = useState<SkyLook>(skyLookRef.current);
   // The weather has to re-apply itself whenever the sky changes, and the
   // sky can change from three places (the button, a peer, the DB), so the
   // current value is mirrored here rather than threaded through each one.
@@ -1677,6 +1699,31 @@ export default function City() {
     const landmarks = buildLandmarks({ boxes: district.boxes, pitch: BLOCK + STREET, lowDetail: smallScreen });
     scene.add(landmarks.group);
     snowCover.patch(landmarks.snowMaterials);
+    // The Vibe Gate Bridge, west over the bay to The Rock. See src/city/bay.
+    const bay = buildBay({ boxes: district.boxes, lowDetail: smallScreen });
+    scene.add(bay.group);
+    // Neon on the shopfronts, and its streaks in the road when it rains.
+    const neon = buildNeon({ footprints: district.footprints, seed: CITY_SEED, lowDetail: smallScreen });
+    scene.add(neon.group);
+    const wetStreets = createWetStreets({ renderer, road: district.ground.road, pave: district.ground.pave });
+    // Gulls over the marina, the beach and the towers; pigeons on the plaza.
+    const birds = createBirds({
+      plaza: { x: 0, z: -2, y: 0.14 },
+      flocks: [
+        { x: -225, z: 60, y: 16, radius: 34, count: 9 },
+        { x: -205, z: -70, y: 22, radius: 48, count: 6 },
+        { x: 15, z: -25, y: 72, radius: 70, count: 6 },
+        { x: 120, z: 150, y: 30, radius: 40, count: 4 },
+      ],
+      lowDetail: smallScreen,
+    });
+    scene.add(birds.group);
+    const folk = createFolk({
+      scene,
+      ground: (x, z, y) => Math.max(beachHeightAt(x, z) ?? 0, supportHeightAt(x, z, y + 0.5)),
+      lowDetail: smallScreen,
+    });
+    folkRef.current = folk;
     landmarksRef.current = landmarks;
 
     // ---- The Wizard ---------------------------------------------------
@@ -3415,6 +3462,9 @@ export default function City() {
     // window glow, stars. The moon doubles as the daytime sun disk.
     let baseFogNear = 90;
     let baseFogFar = 520;
+    // Sunset and Aurora ride on top of plain day and plain night.
+    const citySky = createCitySky({ scene, fog: scene.fog as THREE.Fog, ambient, hemi, sun: moonlight, moon, moonMat, skyUniforms, setOcean: (p) => ocean.setPalette(p) });
+    scene.add(citySky.group);
     const applyMode = (day: boolean) => {
       const sky = day ? "#7ec0ee" : "#05080d";
       (scene.background as THREE.Color).set(sky);
@@ -3458,6 +3508,13 @@ export default function City() {
       // The sand is lit geometry, not a shader, so it needs the same knock-down
       // the facades get at night or the beach glows like a runway.
       ocean.setSandTint(day ? "#ffffff" : "#7f92aa");
+      const look = lookFor(day, skyLookRef.current);
+      citySky.apply(look);
+      baseFogNear = (scene.fog as THREE.Fog).near;
+      baseFogFar = (scene.fog as THREE.Fog).far;
+      neon.setDay(day);
+      bay.setDay(day);
+      wetStreets.setSky(skyUniforms.uZenith.value, skyUniforms.uHorizon.value, !day || look === "sunset");
       // GOD MODE layers on top: this function has just reset every handle
       // to its clear-sky value, so the weather has to re-state itself.
       weatherRef.current?.applyAtmosphere(day);
@@ -4126,6 +4183,14 @@ export default function City() {
         setWizardOpen((o) => !o);
         return;
       }
+      if (e.code === "KeyT" && !e.repeat && folkNearRef.current && !folkOpenRef.current) {
+        e.preventDefault();
+        const d = folkNearRef.current;
+        folkOpenRef.current = d;
+        setFolkOpen(d);
+        folkRef.current?.engage(d.id);
+        return;
+      }
       if (e.code === "KeyT") {
         e.preventDefault();
         arrivalStart = 0;
@@ -4520,6 +4585,24 @@ export default function City() {
        * both overwrite it mid-run — which is how a "day" pass came back as
        * seven pictures of a night ocean.
        */
+      (window as unknown as Record<string, unknown>).__citySky = (look: SkyLook) => {
+        skyLookRef.current = look;
+        setSkyLook(look);
+        const day = isDayLook(look);
+        setDayMode(day);
+        dayModeRef.current = day;
+        applyMode(day);
+        citySky.snap();
+        return { look: citySky.get(), neon: neon.count };
+      };
+      (window as unknown as Record<string, unknown>).__cityWet = (w: number | null) => wetStreets.force(w);
+      (window as unknown as Record<string, unknown>).__cityFolk = {
+        where: () => folk.where(),
+        near: () => folk.near()?.id ?? null,
+        say: (id: string, t: string) => folk.say(id, t),
+        pigeons: () => birds.airborne(),
+      };
+      (window as unknown as Record<string, unknown>).__cityBay = () => ({ bridge: bay.spots.bridge.toArray(), rock: bay.spots.rock.toArray() });
       (window as unknown as Record<string, unknown>).__cityDay = (on: boolean) => {
         setDayMode(on);
         // The ref too, not just the state. `dayModeRef` is updated by an effect
@@ -4568,6 +4651,10 @@ export default function City() {
         ball: (k?: [number, number, number, number]) => landmarks.devBall(k),
         match: (op?: string, arg?: number) => landmarks.devMatch(op, arg),
         boat: (at?: [number, number, number]) => landmarks.devBoat(at),
+      };
+      (window as unknown as Record<string, unknown>).__cityPos = () => {
+        const k = drivingKartRef.current >= 0 ? kartStates[drivingKartRef.current] : null;
+        return { p: [player.position.x, player.position.y, player.position.z], kart: k ? [k.x, k.y, k.z, k.speed] : null, onGround };
       };
       (window as unknown as Record<string, unknown>).__cityWarp = (
         x: number,
@@ -7163,7 +7250,11 @@ export default function City() {
       }
 
       // Land on whatever is underneath (street, rooftop, or island).
-      let support = supportHeightAt(pos.x, pos.z, prevY + 0.1);
+      // A grounded walker steps up anything under 0.42 m: the same allowance
+      // `isBlocked` gives, so a ledge you can walk into is one you stand on.
+      // Without it a walker passed straight through ramps and stairs at street
+      // level and met the top step as a wall (the marina ramp, Nov 2026).
+      let support = supportHeightAt(pos.x, pos.z, prevY + (onGround && vel.y <= 0 ? 0.42 : 0.1));
       // Nothing but the phantom sea-level plate won, and we are in the water:
       // let the swimmer past it and down to the actual seabed, which is what
       // buoyancy is then pushing them back up off.
@@ -7701,6 +7792,33 @@ export default function City() {
           chaseAnnounced = true;
         }
         weather.update(dt, player.position);
+        {
+          const wk = weather.get();
+          wetStreets.update(dt, wk === "rain" || wk === "storm");
+          neon.setWet(wetStreets.wetness());
+          neon.update(dt);
+          birds.update(dt, player.position);
+          bay.update(dt);
+          folk.update(dt, player.position);
+          {
+            const n = folk.near();
+            if (n !== folkNearRef.current) {
+              folkNearRef.current = n;
+              setFolkNear(n);
+            }
+            // Walking off ends the conversation.
+            const o = folkOpenRef.current;
+            if (o && !n) {
+              const w = folk.where().find((p) => p.id === o.id);
+              if (!w || Math.hypot(w.x - player.position.x, w.z - player.position.z) > 7) {
+                folkOpenRef.current = null;
+                setFolkOpen(null);
+                folk.engage(null);
+              }
+            }
+          }
+          citySky.update(dt, camera.position);
+        }
         {
           const di = drivingKartRef.current;
           const dk = di >= 0 ? kartStates[di] : null;
@@ -8867,6 +8985,13 @@ export default function City() {
       mayhemRef.current = null;
       district.dispose();
       landmarks.dispose();
+      neon.dispose();
+      birds.dispose();
+      bay.dispose();
+      folk.dispose();
+      folkRef.current = null;
+      wetStreets.dispose();
+      citySky.dispose();
       landmarksRef.current = null;
       quests.dispose();
       questsRef.current = null;
@@ -8965,9 +9090,26 @@ export default function City() {
   // propagates to everyone instantly.
   useEffect(() => {
     let cancelled = false;
+    // `?sky=sunset` (or day, night, aurora) pins a look for a demo or a
+    // screenshot and ignores the lobby's shared setting.
+    const pinned = parseLook(new URLSearchParams(window.location.search).get("sky"));
+    if (pinned) {
+      skyLookRef.current = pinned;
+      setSkyLook(pinned);
+      const day = isDayLook(pinned);
+      dayModeRef.current = day;
+      setDayMode(day);
+      applyModeRef.current?.(day);
+      return;
+    }
     const applyFromRow = (row: { value: unknown } | null) => {
       if (cancelled || !row) return;
-      const day = !!(row.value as { day?: boolean } | null)?.day;
+      const v = row.value as { day?: boolean; look?: unknown } | null;
+      const day = !!v?.day;
+      // Older clients only write `day`; keep a compatible look.
+      const look = lookFor(day, parseLook(v?.look) ?? skyLookRef.current);
+      skyLookRef.current = look;
+      setSkyLook(look);
       setDayMode(day);
       applyModeRef.current?.(day);
     };
@@ -9427,7 +9569,13 @@ export default function City() {
             </button>
             <button
               onClick={(e) => {
-                const next = !dayMode;
+                // Day, Sunset, Night, Aurora, round and round.
+                const i = SKY_LOOKS.findIndex((l) => l.look === lookFor(dayMode, skyLook));
+                const nextLook = SKY_LOOKS[(i + 1) % SKY_LOOKS.length];
+                const next = nextLook.day;
+                skyLookRef.current = nextLook.look;
+                setSkyLook(nextLook.look);
+                dayModeRef.current = next;
                 setDayMode(next);
                 applyModeRef.current?.(next);
                 mpRef.current?.sendTimeMode(next);
@@ -9436,13 +9584,16 @@ export default function City() {
                 // time of day. Realtime will broadcast to live peers.
                 void supabase
                   .from("world_settings")
-                  .upsert({ key: "time_mode", value: { day: next }, updated_at: new Date().toISOString() });
+                  .upsert({ key: "time_mode", value: { day: next, look: nextLook.look }, updated_at: new Date().toISOString() });
                 e.currentTarget.blur();
               }}
               className="glass-panel rounded-full px-3.5 py-2 text-xs hover:bg-muted/50 transition-colors"
-              title={dayMode ? "Switch the whole lobby to night" : "Switch the whole lobby to day"}
+              title="Change the sky for the whole lobby: Day, Sunset, Night, Aurora"
             >
-              {dayMode ? "🌙 Night" : "☀️ Day"}
+              {(() => {
+                const cur = SKY_LOOKS.find((l) => l.look === lookFor(dayMode, skyLook)) ?? SKY_LOOKS[2];
+                return `${cur.emoji} ${cur.label}`;
+              })()}
             </button>
             <button
               onClick={(e) => {
@@ -10648,6 +10799,14 @@ export default function City() {
             compact={isTouch}
             onWarp={(at) => questWarpRef.current?.(at)}
             onWearHat={(id) => questHatRef.current?.(id)}
+          />
+          <FolkChat
+            near={folkNear}
+            open={folkOpen}
+            look={skyLook}
+            onOpen={(d) => openFolk(d)}
+            onClose={() => openFolk(null)}
+            onSay={(id, text) => folkRef.current?.say(id, text)}
           />
           {nearGamePrompt && !gameHud && (
             <button
