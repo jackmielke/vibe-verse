@@ -75,7 +75,8 @@ import { buildLandmarks, LANDMARK_RESERVE, type Landmarks } from "@/city/landmar
 import { LandmarkHud } from "@/city/landmarks/LandmarkHud";
 import { buildQuests, questHat, setWornQuestHat, wornQuestHat, type Quests } from "@/city/quests";
 import { QuestHud } from "@/city/quests/QuestHud";
-import { buildThanksgiving, thanksgivingOn, saveThanksgiving, TURKEY_REST } from "@/city/thanksgiving";
+import { buildThanksgiving, thanksgivingOn, TURKEY_REST } from "@/city/thanksgiving";
+import { CAM_MODES, loadCamMode, nextCamMode, saveCamMode, chaseYawStep, type CamMode } from "@/city/camMode";
 import { buildTurkey } from "@/city/turkey";
 import {
   buildOcean,
@@ -634,7 +635,23 @@ export default function City() {
   const [squad, setSquad] = useState<Bodyguards | null>(null);
   const [mayhemHud, setMayhemHud] = useState<MayhemHud>({
     stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bads: 0, bombs: null, atStall: false,
+    hp: 100, chopper: null,
   });
+  /** The police chopper took you down: a timestamp, the overlay shows ~2.6 s. */
+  const [downFx, setDownFx] = useState(0);
+  useEffect(() => {
+    if (downFx <= 0) return;
+    const timer = window.setTimeout(() => setDownFx(0), 2600);
+    return () => window.clearTimeout(timer);
+  }, [downFx]);
+  /**
+   * Camera mode, from the world controls (Jack, Nov 27 2026): the drag-to-orbit
+   * view we always had, a chase cam that swings in behind wherever you face
+   * (no dragging needed), or first person. Per device.
+   */
+  const [camMode, setCamMode] = useState<CamMode>(() => loadCamMode());
+  const camModeRef = useRef<CamMode>(camMode);
+  camModeRef.current = camMode;
   const mayhemCycleRef = useRef<(() => void) | null>(null);
   /** What the number keys see: the guns you own and the one in hand. */
   const mayhemSlotsRef = useRef<{ owned: GunKind[]; gun: GunKind | null }>({ owned: [], gun: null });
@@ -1020,7 +1037,9 @@ export default function City() {
   const applyModeRef = useRef<((day: boolean) => void) | null>(null);
   // Thanksgiving dress-up: on by itself in Thanksgiving week, unless switched
   // off (per device). See src/city/thanksgiving.ts.
-  const [thanksOn, setThanksOn] = useState<boolean>(() => thanksgivingOn());
+  // The world-controls toggle for it made way for the camera mode (Nov 27);
+  // `?thanksgiving=off` still turns it off.
+  const [thanksOn] = useState<boolean>(() => thanksgivingOn());
   const thanksRef = useRef(thanksOn);
   const setThanksRef = useRef<((on: boolean) => void) | null>(null);
   const loadPilotRef = useRef<((name: string) => void) | null>(null);
@@ -4907,7 +4926,9 @@ export default function City() {
      * most recognisable thing about being underwater. It was built, it worked,
      * and for two weeks nobody could see it.
      */
-    const minCamPitch = () => (swimming ? -0.85 : 0.06);
+    const minCamPitch = () => (swimming ? -0.85 : camModeRef.current === "first" ? -0.9 : 0.06);
+    /** When a drag last turned the camera: the chase cam waits a moment after one. */
+    let lastDragAt = 0;
 
     const onPointerMove = (e: PointerEvent) => {
       const p = pointers.get(e.pointerId);
@@ -4925,6 +4946,7 @@ export default function City() {
       const dx = e.clientX - dragLast.x;
       const dy = e.clientY - dragLast.y;
       dragLast = { x: e.clientX, y: e.clientY };
+      if (dx !== 0 || dy !== 0) lastDragAt = performance.now();
       camYaw -= dx * 0.0052;
       camPitch = THREE.MathUtils.clamp(camPitch + dy * 0.0052, minCamPitch(), 1.25);
     };
@@ -5079,6 +5101,34 @@ export default function City() {
         }
       },
       onBust: () => heistChase.bust(),
+      onShot: (dmg) => {
+        if (drivingKartRef.current >= 0) hurtVehicle(drivingKartRef.current, "blast", dmg * 1.4, true);
+      },
+      onDown: () => {
+        // The chopper got you: down you go, then you wake up outside the
+        // police station with the slate wiped clean.
+        const a = Math.random() * Math.PI * 2;
+        if (!activeMountRef.current) bowlOver(Math.cos(a), Math.sin(a), 10);
+        soundsRef.current?.thud?.(1);
+        setDownFx(Date.now());
+        window.setTimeout(() => {
+          if (drivingKartRef.current >= 0 || activeMountRef.current || ridingBad !== null) return;
+          const [gx, gz, gyaw] = hideouts.garage;
+          player.position.set(gx + Math.sin(gyaw) * 6, 0.5, gz + Math.cos(gyaw) * 6);
+          vel.set(0, 0, 0);
+          peakY = player.position.y;
+        }, 1800);
+      },
+      onChopper: (e) => {
+        if (e === "up") {
+          toast("🚁 Police chopper inbound", {
+            description: "Five stars. It shoots from the sky and fires rockets. Keep moving, get under cover, or shoot it down.",
+          });
+        } else {
+          soundsRef.current?.fanfare?.();
+          toast("💥 You shot down the police chopper", { description: "Another one is coming if you stay at five stars." });
+        }
+      },
       hideout: hideouts.hideout,
       lair: hideouts.lair,
       garage: hideouts.garage,
@@ -8014,6 +8064,10 @@ export default function City() {
         {
           const di = drivingKartRef.current;
           const dk = di >= 0 ? kartStates[di] : null;
+          // First person on foot: the guns fire where you look.
+          if (camModeRef.current === "first" && !dk && !activeMountRef.current && ridingBad === null) {
+            modelYaw = camYaw + Math.PI;
+          }
           mayhem.update(dt, {
             player: player.position,
             yaw: modelYaw,
@@ -8810,6 +8864,21 @@ export default function City() {
         }
       }
 
+      // Chase cam mode (world controls): swing in behind wherever you face
+      // while you move, so nobody has to keep dragging the view round.
+      if (
+        camModeRef.current === "chase" && arrivalStart === 0 && dragPointer === null &&
+        now - lastDragAt > 900 && drivingKartRef.current < 0 && !activeMountRef.current &&
+        !swimming && ridingBad === null
+      ) {
+        const sp = Math.hypot(vel.x, vel.z);
+        const step = chaseYawStep(camYaw, modelYaw, sp, dt);
+        if (step !== 0) {
+          camYaw += step;
+          camPitch += (0.24 - camPitch) * Math.min(1, dt * 0.8);
+        }
+      }
+
       // Chase camera.
         /**
          * Diving swings the camera from overhead to behind.
@@ -8831,7 +8900,7 @@ export default function City() {
         // back rather than snapping, so surfacing while looking up is a tilt
         // and not a cut. Without this the camera stays below the waterline on
         // dry land and the floor clamp shoves it up through the player's head.
-        if (!swimming && camPitch < 0.06) {
+        if (!swimming && camPitch < 0.06 && camModeRef.current !== "first") {
           camPitch = Math.min(0.06, camPitch + dt * 1.6);
         }
         /**
@@ -8922,6 +8991,33 @@ export default function City() {
               pos.z + dz * Math.cos(pitch) * 10,
             );
             modelHolder.visible = false;
+          } else if (camModeRef.current === "first" && arrivalStart === 0 && !activeMountRef.current && !swimming) {
+            // First person (world controls): your own eyes, or the driver's
+            // seat. Look with a drag; the guns follow the look.
+            const di = drivingKartRef.current;
+            const pitch = THREE.MathUtils.clamp(camPitch - 0.25, -1.15, 1.0);
+            if (di >= 0) {
+              const k = kartStates[di];
+              const fx = Math.sin(k.yaw);
+              const fz = Math.cos(k.yaw);
+              const seat = k.kind === "monster" ? 2.6 : k.kind === "kart" || k.kind === "mower" ? 1.05 : 1.3;
+              camera.position.set(k.x + fx * 0.2, k.y + seat, k.z + fz * 0.2);
+              camera.lookAt(
+                k.x + fx * 12,
+                k.y + seat - 0.6 - Math.sin(pitch) * 4,
+                k.z + fz * 12,
+              );
+            } else {
+              const dx = -Math.sin(camYaw);
+              const dz = -Math.cos(camYaw);
+              camera.position.set(pos.x + dx * 0.25, pos.y + 1.62, pos.z + dz * 0.25);
+              camera.lookAt(
+                pos.x + dx * Math.cos(pitch) * 10,
+                pos.y + 1.62 - Math.sin(pitch) * 10,
+                pos.z + dz * Math.cos(pitch) * 10,
+              );
+              modelHolder.visible = false;
+            }
           }
           if (camera.fov !== fov) {
             camera.fov = fov;
@@ -9826,18 +9922,16 @@ export default function City() {
             </button>
             <button
               onClick={(e) => {
-                const next = !thanksOn;
-                setThanksOn(next);
-                saveThanksgiving(next);
-                setThanksRef.current?.(next);
+                const next = nextCamMode(camMode);
+                setCamMode(next);
+                saveCamMode(next);
                 e.currentTarget.blur();
               }}
-              className={`glass-panel rounded-full px-3.5 py-2 text-xs transition-colors ${thanksOn ? "text-amber-300" : "hover:bg-muted/50 text-muted-foreground"}`}
-              title={thanksOn ? "Turn the Thanksgiving decorations off" : "Turn the Thanksgiving decorations on"}
-              data-testid="thanksgiving-toggle"
-              aria-pressed={thanksOn}
+              className={`glass-panel rounded-full px-3.5 py-2 text-xs transition-colors hover:bg-muted/50 ${camMode === "default" ? "" : "text-sky-300"}`}
+              title="Camera: Default (drag to look), Chase (follows where you face) or First person"
+              data-testid="camera-mode-toggle"
             >
-              {thanksOn ? "🦃 Thanksgiving" : "🦃 Off"}
+              {CAM_MODES[camMode].emoji} {CAM_MODES[camMode].label}
             </button>
             {/* GOD MODE — summon weather. Opens a little palette rather
                 than cycling, so you can go straight to the storm. */}
@@ -10526,6 +10620,32 @@ export default function City() {
 
       {entered && isTouch && <TouchControls moveRef={touchMoveRef} jetRef={touchJetRef} mode={equippedJetpack === "none" ? "jump" : "jet"} />}
 
+      {/* First person: a small crosshair so you know where the guns go. */}
+      {entered && camMode === "first" && (
+        <div className="pointer-events-none fixed inset-0 z-20 flex items-center justify-center">
+          <div className="relative w-5 h-5 opacity-80">
+            <span className="absolute left-1/2 top-0 h-full w-[2px] -translate-x-1/2 bg-white/80 rounded" />
+            <span className="absolute top-1/2 left-0 w-full h-[2px] -translate-y-1/2 bg-white/80 rounded" />
+          </div>
+        </div>
+      )}
+
+      {/* Taken down by the police chopper. */}
+      {entered && downFx > 0 && (
+        <div
+          key={downFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+          data-testid="taken-down"
+        >
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-grayscale" />
+          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in">
+            <div className="text-5xl mb-1">🚁</div>
+            <div className="text-sm font-semibold text-rose-300">TAKEN DOWN</div>
+            <div className="text-xs text-muted-foreground">The police chopper got you. Heat cleared, waking up at the station…</div>
+          </div>
+        </div>
+      )}
+
       {/* Whimsical fall-damage splat → plaza respawn flash. */}
       {entered && respawnFx > 0 && (
         <div
@@ -10835,6 +10955,25 @@ export default function City() {
           {mayhemHud.stars > 0 && (
             <span className="text-rose-300 font-heading font-semibold">
               {mayhemHud.cops > 0 ? `🚓 ${mayhemHud.cops} on your tail` : "🚨 Police on the way"}
+            </span>
+          )}
+          {mayhemHud.chopper !== null && (
+            <span className="text-sky-300 font-heading font-semibold flex items-center gap-1.5" data-testid="chopper-hud">
+              🚁 Police chopper
+              <span className="inline-block w-14 h-1.5 rounded-full bg-white/15 overflow-hidden">
+                <span className="block h-full bg-sky-300" style={{ width: `${mayhemHud.chopper}%` }} />
+              </span>
+            </span>
+          )}
+          {(mayhemHud.chopper !== null || mayhemHud.hp < 100) && (
+            <span className="text-foreground/90 flex items-center gap-1.5" data-testid="player-hp">
+              ❤️ You
+              <span className="inline-block w-20 h-1.5 rounded-full bg-white/15 overflow-hidden">
+                <span
+                  className={`block h-full ${mayhemHud.hp > 50 ? "bg-emerald-400" : mayhemHud.hp > 25 ? "bg-amber-300" : "bg-rose-500"}`}
+                  style={{ width: `${mayhemHud.hp}%` }}
+                />
+              </span>
             </span>
           )}
           {mayhemHud.stars > 0 && mayhemHud.forgiveIn !== null && (

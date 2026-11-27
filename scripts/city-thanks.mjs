@@ -86,11 +86,8 @@ console.log("· the town plaza below");
 await warp(0, 0.2, 10, [16, 0.3, 0]);
 await shot("05-town");
 
-console.log("· switched off");
-await warp(330 + 0, 120.4, -30 + 6, [18, 0.28, 0.25]);
-await page.getByTestId("thanksgiving-toggle").click();
-await page.waitForTimeout(1000);
-console.log(`   toggle now reads "${await page.getByTestId("thanksgiving-toggle").innerText()}", saved=${await page.evaluate(() => localStorage.getItem("city.thanks"))}`);
-await shot("06-off");
+// The world-controls toggle is gone (Nov 27 2026, it became the camera
+// mode); `?thanksgiving=off` is the way to see it switched off now.
+
 console.log(errors.length ? `!! ${errors.length} errors:\n${errors.slice(0, 8).join("\n")}` : "· no page errors");
 await browser.close();

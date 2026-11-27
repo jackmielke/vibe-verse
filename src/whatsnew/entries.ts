@@ -38,6 +38,26 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-police-chopper",
+    date: "2026-11-27",
+    emoji: "🚁",
+    title: "Five stars brings the police chopper",
+    body: "Hit five stars in Vibe City and a police helicopter comes after you. It sprays bullets from above and fires rockets, and if it wears your health down you wake up at the police station. Keep moving, hide under cover, or shoot it out of the sky.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
+    id: "city-camera-modes",
+    date: "2026-11-27",
+    emoji: "🎥",
+    title: "Pick your camera",
+    body: "The camera button in Vibe City's world controls switches between the Default view, a Chase cam that swings in behind wherever you face so you never have to drag, and First person. Works on phones too.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "2026-11-27-moving-cards",
     date: "2026-11-27",
     emoji: "🎬",
