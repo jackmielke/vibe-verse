@@ -2884,63 +2884,9 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     nc.globalAlpha = 1;
     newsTex.needsUpdate = true;
   };
-  /* Chopper 7 itself, up in the sky over the chase whenever Gatch News is on
-     the air or the tape is rolling. It lives on layer 1, which the main camera
-     sees and its own camera does not, so it never films its own belly. */
-  const chopper = new THREE.Group();
-  {
-    const paint = new THREE.MeshStandardMaterial({ color: 0x1d2c6a, roughness: 0.5, metalness: 0.3 });
-    const red = new THREE.MeshStandardMaterial({ color: 0xc8101e, roughness: 0.5 });
-    const glass = new THREE.MeshStandardMaterial({ color: 0x9fc6ff, roughness: 0.1, metalness: 0.6, emissive: 0x1a2a4a });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.8 });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1.3, 14, 10), paint);
-    body.scale.set(1, 0.85, 1.7);
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.95, 12, 8), glass);
-    nose.position.set(0, 0.15, 1.45);
-    nose.scale.set(1, 0.8, 0.9);
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.3, 3.2), red);
-    stripe.position.y = -0.2;
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 4.2), paint);
-    tail.position.set(0, 0.35, -3.6);
-    const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.3, 0.8), red);
-    tailFin.position.set(0, 0.9, -5.5);
-    const skid1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 3.6), dark);
-    skid1.position.set(0.95, -1.45, 0.2);
-    const skid2 = skid1.clone();
-    skid2.position.x = -0.95;
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.6, 6), dark);
-    mast.position.y = 1.25;
-    chopper.add(body, nose, stripe, tail, tailFin, skid1, skid2, mast);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(9, 0.05, 0.35), dark);
-    const blade2 = blade.clone();
-    blade2.rotation.y = Math.PI / 2;
-    const rotor = new THREE.Group();
-    rotor.add(blade, blade2);
-    rotor.position.y = 1.55;
-    rotor.name = "rotor";
-    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.6, 0.18), dark);
-    tailRotor.position.set(0.25, 0.9, -5.6);
-    tailRotor.name = "tailRotor";
-    chopper.add(rotor, tailRotor);
-    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2a2a }));
-    blink.position.set(0, -1.1, 0);
-    blink.name = "blink";
-    chopper.add(blink);
-    // the searchlight: a faint cone from the chopper down onto the trucks
-    const beamGeo = new THREE.ConeGeometry(1, 1, 18, 1, true);
-    beamGeo.translate(0, -0.5, 0);
-    const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0.1, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    beam.name = "beam";
-    chopper.add(beam);
-    chopper.traverse((o) => o.layers.set(1));
-    chopper.visible = false;
-    chopper.scale.setScalar(1.3);
-    if (!space) scene.add(chopper);
-    camera.layers.enable(1);
-  }
+  // Chopper 7 is never seen, only its picture (Jack, Nov 2026: "delete the chopper", you just
+  // know it is up there because Gatch News is on).
   const chopperLook = new THREE.Vector3();
-  const beamDir = new THREE.Vector3();
-  const DOWN = new THREE.Vector3(0, -1, 0);
   /** Where Chopper 7 is and what it is looking at: high, off to the side, circling slowly. */
   const aimChopper = (aspect: number): void => {
     const sMid = (me.s * 2 + en.s) / 3;
@@ -2951,27 +2897,6 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     newsCam.lookAt(chopperLook);
     newsCam.aspect = aspect;
     newsCam.updateProjectionMatrix();
-    // the helicopter itself hangs low over the road behind you, where your camera can see it,
-    // keeping pace and swaying; its lens (newsCam above) is the long zoom from higher up
-    const side = -(7 + Math.sin(time * 0.23) * 3);
-    toWorld(me.s - 40 + Math.sin(time * 0.31) * 4, latMid + side, 7 + Math.sin(time * 0.9) * 0.5, chopper.position);
-    toWorld(me.s + 10, latMid + side * 0.5, 7, beamDir);
-    chopper.lookAt(beamDir);
-    chopper.rotateX(0.14);
-    chopper.rotateZ(Math.sin(time * 0.7) * 0.08);
-    const rotor = chopper.getObjectByName("rotor");
-    if (rotor) rotor.rotation.y = time * 38;
-    const tr = chopper.getObjectByName("tailRotor");
-    if (tr) tr.rotation.x = time * 50;
-    const blink = chopper.getObjectByName("blink");
-    if (blink) blink.visible = Math.floor(time * 1.6) % 2 === 0;
-    const beam = chopper.getObjectByName("beam");
-    if (beam) {
-      beamDir.copy(chopperLook).sub(chopper.position);
-      const d = beamDir.length();
-      beam.quaternion.copy(chopper.quaternion).invert().multiply(new THREE.Quaternion().setFromUnitVectors(DOWN, beamDir.normalize()));
-      beam.scale.set(4, d, 4);
-    }
   };
   /** One frame of tape: the chopper's view of the chase with the broadcast over it. */
   const rollTape = (W: number, H: number): void => {
@@ -3006,11 +2931,8 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       }
       return;
     }
-    const rolling = !!replay?.rolling;
-    chopper.visible = news.on > 0 || rolling;
     // every other frame while the tape rolls, film the chase from Chopper 7 first (the main view draws over it)
-    if (rolling && tapeN++ % 2 === 0) rollTape(canvas.clientWidth || mount.clientWidth || 1, canvas.clientHeight || mount.clientHeight || 1);
-    else if (chopper.visible) aimChopper(newsCam.aspect);
+    if (replay?.rolling && tapeN++ % 2 === 0) rollTape(canvas.clientWidth || mount.clientWidth || 1, canvas.clientHeight || mount.clientHeight || 1);
     renderer.render(scene, camera);
     const tv = news.on > 0;
     const radio = !tv && news.radioT > 0;
