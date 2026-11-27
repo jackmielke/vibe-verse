@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { createPortal } from "react-dom";
 import type { QuestUi, Quests } from "./index";
 
-const EMPTY: QuestUi = { prompt: null, dialog: null, tracker: null, fishing: null, hold: false };
+const EMPTY: QuestUi = { prompt: null, dialog: null, tracker: null, fishing: null, race: null, hold: false };
 
 export function QuestHud({
   system,
@@ -32,6 +32,7 @@ export function QuestHud({
       const next = system.current?.ui() ?? EMPTY;
       const key = JSON.stringify({
         ...next,
+        race: next.race ? { ...next.race, time: Math.round(next.race.time * 10), arrow: Math.round(next.race.arrow * 20) } : null,
         tracker: next.tracker ? { ...next.tracker, arrow: next.tracker.arrow != null ? Math.round(next.tracker.arrow * 20) : null } : null,
         fishing: next.fishing?.reel
           ? { r: [Math.round(next.fishing.reel.zone * 100), Math.round(next.fishing.reel.fish * 100), Math.round(next.fishing.reel.progress * 100)] }
@@ -129,7 +130,7 @@ export function QuestHud({
         </div>
       )}
 
-      {ui.tracker && (
+      {ui.tracker && !ui.race && (
         <div
           className={`pointer-events-none fixed left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-amber-200/25 bg-black/60 px-4 py-2 text-white backdrop-blur ${
             compact ? "top-28" : "top-32"
@@ -187,6 +188,7 @@ export function QuestHud({
         </div>
       )}
 
+      {ui.race && <RaceBoard race={ui.race} compact={compact} />}
       {ui.fishing?.reel && <Reel reel={ui.fishing.reel} compact={compact} />}
       {ui.fishing?.caught && (
         <div className="pointer-events-none fixed left-1/2 top-1/3 z-30 -translate-x-1/2 rounded-2xl border border-amber-200/40 bg-black/70 px-6 py-3 text-center text-white backdrop-blur">
@@ -261,5 +263,53 @@ function Reel({ reel, compact }: { reel: NonNullable<NonNullable<QuestUi["fishin
         <div className="absolute bottom-0 left-0 right-0 rounded-full bg-amber-300" style={{ height: `${Math.max(0, Math.min(1, reel.progress)) * 100}%` }} />
       </div>
     </div>
+  );
+}
+
+const ORD = ["", "1st", "2nd", "3rd", "4th"];
+
+function RaceBoard({ race, compact }: { race: NonNullable<QuestUi["race"]>; compact?: boolean }) {
+  const m = Math.floor(race.time / 60);
+  const sec = (race.time % 60).toFixed(1).padStart(4, "0");
+  return (
+    <>
+      <div
+        className={`pointer-events-none fixed left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 rounded-2xl border border-fuchsia-400/50 bg-black/70 px-5 py-2 text-white shadow-[0_0_24px_rgba(255,45,149,0.35)] backdrop-blur ${
+          compact ? "top-28" : "top-32"
+        }`}
+        data-testid="quest-race"
+      >
+        <span className="inline-block text-xl text-cyan-300" style={{ transform: `rotate(${(-race.arrow * 180) / Math.PI}deg)` }}>
+          ⬆
+        </span>
+        {race.phase === "race" ? (
+          <>
+            <div className="text-center leading-none">
+              <div className="text-2xl font-black text-fuchsia-300">{ORD[race.place]}</div>
+              <div className="text-[10px] uppercase tracking-wide text-white/60">of {race.of}</div>
+            </div>
+            <div className="text-center leading-tight">
+              <div className="text-sm font-bold">
+                Lap {race.lap}/{race.laps}
+              </div>
+              <div className="font-mono text-sm tabular-nums text-cyan-200">
+                {m}:{sec}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="text-sm font-semibold">{race.hint ?? "Get ready"}</div>
+        )}
+        {race.stake > 0 && <div className="rounded-full bg-amber-300/20 px-2 py-0.5 text-xs font-semibold text-amber-200">{race.stake} ✦ on it</div>}
+      </div>
+      {race.hint && race.phase === "race" && (
+        <div className="pointer-events-none fixed left-1/2 top-1/3 z-30 -translate-x-1/2 text-2xl font-black text-red-400 drop-shadow">{race.hint}</div>
+      )}
+      {race.countdown != null && (
+        <div className="pointer-events-none fixed left-1/2 top-1/3 z-30 -translate-x-1/2 text-8xl font-black text-fuchsia-300 drop-shadow-[0_0_20px_rgba(255,45,149,0.8)]">
+          {race.countdown}
+        </div>
+      )}
+    </>
   );
 }

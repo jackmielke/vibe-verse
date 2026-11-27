@@ -12,6 +12,7 @@ import * as THREE from "three";
 import type { Dialog, Prompt, QuestCtx, QuestHost, QuestStep } from "./common";
 import { buildGrannyQuest } from "./granny";
 import { buildFishing, type FishingUi } from "./fishing";
+import { buildRacing, type RaceUi } from "./racing";
 import { QUEST_HATS, earnedQuestHats, wornQuestHat } from "./hats";
 
 export type { QuestCtx, QuestHost, QuestStep } from "./common";
@@ -22,6 +23,7 @@ export interface QuestUi {
   dialog: Dialog | null;
   tracker: { emoji: string; text: string; sub?: string; arrow?: number } | null;
   fishing: FishingUi | null;
+  race: RaceUi | null;
   /** A hold-to-act button is needed (the reel) on a phone. */
   hold: boolean;
 }
@@ -61,10 +63,11 @@ export function buildQuests(host: QuestHost): Quests {
     salAt: new THREE.Vector3(-218.6, 1.5, 61.0),
     face: 0,
   });
-  group.add(granny.group, fishing.group);
+  const racing = buildRacing(host);
+  group.add(granny.group, fishing.group, racing.group);
 
   type Owner = { dialog(): Dialog | null; choose(id: string): void; closeDialog(): void };
-  const owners: Owner[] = [granny, fishing];
+  const owners: Owner[] = [granny, fishing, racing];
 
   let prompt: Prompt | null = null;
   let tracker: QuestUi["tracker"] = null;
@@ -78,8 +81,9 @@ export function buildQuests(host: QuestHost): Quests {
       lastCtx = c;
       granny.update(c);
       const step = fishing.update(c);
+      racing.update(c);
       // The nearest prompt wins; an active quest's own prompt (strike!) is at distance 0.
-      const ps = [granny.prompt(c), fishing.prompt(c)].filter((p): p is Prompt => !!p);
+      const ps = [granny.prompt(c), fishing.prompt(c), racing.prompt(c)].filter((p): p is Prompt => !!p);
       ps.sort((a, b) => a.dist - b.dist);
       prompt = ps[0] ?? null;
       const tr = granny.tracker(c);
@@ -128,12 +132,14 @@ export function buildQuests(host: QuestHost): Quests {
         dialog,
         tracker,
         fishing: f,
+        race: racing.ui(),
         hold: f?.phase === "reel",
       };
     },
     log() {
       const g = granny.log();
       const f = fishing.log();
+      const r = racing.log();
       const earned = earnedQuestHats();
       return {
         quests: [
@@ -144,15 +150,17 @@ export function buildQuests(host: QuestHost): Quests {
             at: [-214, 1.8, 60],
             extra: f.journal.map((j) => `${j.emoji} ${j.name} ×${j.count} (best ${j.best} kg)`),
           },
+          { title: r.title, status: r.status, at: [racing.at.x + 3, 0.3, racing.at.z - 2] },
         ],
         hats: QUEST_HATS.map((h) => ({ id: h.id, name: h.name, emoji: h.emoji, earned: earned.includes(h.id) })),
         worn: wornQuestHat(),
       };
     },
-    dev: () => ({ granny: granny.dev(), fishing: (op?: string) => fishing.dev(op), last: lastCtx?.player.toArray() }),
+    dev: () => ({ granny: granny.dev(), fishing: (op?: string) => fishing.dev(op), racing: (op?: string) => racing.dev(op), last: lastCtx?.player.toArray() }),
     dispose() {
       granny.dispose();
       fishing.dispose();
+      racing.dispose();
     },
   };
 }
