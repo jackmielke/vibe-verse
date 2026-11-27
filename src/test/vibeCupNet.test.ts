@@ -189,4 +189,25 @@ describe("Vibe Cup online", () => {
     clock.t += 8000;
     expect(menu.list()).toEqual([]);
   });
+
+  it("a slide knocks over whoever is in the way, team-mates included", () => {
+    const g = matchGame({ seed: 8, clubs: ["volts", "rovers"], sides: [0] });
+    for (let i = 0; i < 90; i++) step(g, 1 / 60);
+    g.phase = "play";
+    const slider = g.players[3];
+    const mate = g.players[1];
+    const foe = g.players[7];
+    Object.assign(g.ball, { x: -20, y: 10, vx: 0, vy: 0, owner: -1 });
+    Object.assign(slider, { x: 0, y: 0, vx: 12, vy: 0, face: 0, slide: 0.4, stun: 0 });
+    Object.assign(mate, { x: 0.6, y: 0.1, vx: 0, vy: 0, stun: 0, slide: 0 });
+    Object.assign(foe, { x: 1.7, y: -0.1, vx: 0, vy: 0, stun: 0, slide: 0 });
+    const bumps: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      step(g, 1 / 60);
+      for (const e of g.events) if (e.type === "bump") bumps.push(`${e.victim}:${e.own}`);
+      g.events.length = 0;
+    }
+    expect(bumps).toContain(`${mate.name}:true`);
+    expect(bumps).toContain(`${foe.name}:false`);
+  });
 });

@@ -149,6 +149,11 @@ export function feedFx(fx: Fx, g: Game, events: GameEvent[]) {
       };
       fx.cheer = 5;
       if (e.winner !== null) fx.cheerTeam = e.winner;
+    } else if (e.type === "bump") {
+      for (let i = 0; i < 12; i++) {
+        fx.bits.push({ x: e.x, y: e.y, z: 0.1, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5, vz: 1.5 + Math.random() * 2.5, life: 0.6, color: "#3f7d2c", size: 0.09 });
+      }
+      if (e.own && !fx.banner) fx.banner = { text: "OOPS!", sub: `${e.name} took out ${e.victim}`, color: "#fbbf24", t: 0 };
     } else if (e.type === "tackle") {
       for (let i = 0; i < 10; i++) {
         fx.bits.push({

@@ -141,6 +141,11 @@ export class CupAudio {
       case "tackle":
         this.burst(0, 0.15, 0.2, 500, 0.8);
         break;
+      case "bump":
+        this.burst(0, 0.18, 0.22, 380, 0.7);
+        this.tone(120, 0, 0.12, "sine", 0.3, 55);
+        this.swell(e.own ? 0.2 : 0.12, 0.6);
+        break;
       case "goal":
         this.burst(0, 0.35, 0.3, 3000, 0.7); // the net
         this.swell(0.42, 2.6);

@@ -167,6 +167,8 @@ export type GameEvent =
   | { type: "post" }
   | { type: "bounce"; power: number }
   | { type: "tackle"; team: TeamId; name: string }
+  /** A slide that took somebody out who did not have the ball, team-mates included. */
+  | { type: "bump"; name: string; victim: string; own: boolean; x: number; y: number }
   | { type: "goal"; team: TeamId; name: string; fire: boolean; own: boolean }
   | { type: "whistle"; long: boolean }
   | { type: "golden" }
@@ -601,6 +603,7 @@ export function step(g: Game, dt: number) {
   think(g, dt);
   moveBodies(g, dt, false);
   touches(g);
+  slideBumps(g);
   carry(g);
   physics(g, dt, false);
 }
@@ -1095,6 +1098,38 @@ function moveBodies(g: Game, dt: number, kickoff: boolean) {
         p.x = (p.x / d) * 4.5;
         p.y = (p.y / d) * 4.5;
       }
+    }
+  }
+}
+
+/**
+ * A slide is not careful. Anybody in its path goes over, the slider's own
+ * team-mates too, and a team-mate who had the ball loses it. (Sliding into an
+ * opponent on the ball is a tackle, handled in `touches`.)
+ */
+function slideBumps(g: Game) {
+  const b = g.ball;
+  for (const p of g.players) {
+    if (p.slide <= 0 || p.role === "gk" || Math.hypot(p.vx, p.vy) < 4) continue; // a keeper's dive is not a tackle
+    for (const q of g.players) {
+      if (q === p || q.stun > 0 || q.slide > 0) continue;
+      if (b.owner === q.i && q.team !== p.team) continue; // that is a tackle
+      if (q.role === "gk" && q.team !== p.team && Math.abs(q.x - goalX(p.team)) < BOX_L) continue; // keepers are protected in their area
+      if (dist(p.x, p.y, q.x, q.y) > 0.8) continue;
+      q.stun = 0.7;
+      q.cool = 0.5;
+      q.vx = p.vx * 0.45;
+      q.vy = p.vy * 0.45;
+      if (b.owner === q.i) {
+        b.owner = -1;
+        b.vx = p.vx * 0.5;
+        b.vy = p.vy * 0.5;
+        b.vz = 1.2;
+        b.lastTeam = p.team;
+        b.lastPlayer = p.i;
+      }
+      g.shake = Math.max(g.shake, 0.12);
+      g.events.push({ type: "bump", name: p.name, victim: q.name, own: q.team === p.team, x: q.x, y: q.y });
     }
   }
 }
