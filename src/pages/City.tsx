@@ -1792,7 +1792,7 @@ export default function City() {
         else snd.chime(n ?? 3);
       },
       wearHat: (id) => questHatRef.current?.(id),
-    });
+    }, { pitch: BLOCK + STREET });
     scene.add(quests.group);
     questsRef.current = quests;
     const hideouts = buildHideouts();
@@ -7721,6 +7721,12 @@ export default function City() {
         if (qs?.face != null) {
           modelYaw = qs.face;
           modelHolder.rotation.y = modelYaw;
+        }
+        if (qs?.cam != null) {
+          let dyaw = qs.cam - camYaw;
+          while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+          while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+          camYaw += dyaw * Math.min(1, dt * 2);
         }
       }
 

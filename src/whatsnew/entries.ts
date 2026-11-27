@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-sky-sprint",
+    date: "2026-11-27",
+    emoji: "🦎",
+    title: "Sky Sprint: climb the Empire State in sticky shoes",
+    body: "Gail lends gecko grip shoes from her stall by the Empire State's front doors. Walk into the tower and hold W to stick and climb, haul yourself over every ledge, and race the clock all the way up the mast to the gold flag. Grab the golden orbs on the way for coins. No jetpacks allowed!",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "city-street-races",
     date: "2026-11-27",
     emoji: "🏁",
