@@ -455,6 +455,8 @@ export interface Traffic {
    * one already off its lane. Returns true if it slipped.
    */
   slip(id: number): boolean;
+  /** Where a car is and which way it faces, for things that ride on it (paint). */
+  poseOf(id: number): { x: number; y: number; z: number; yaw: number } | null;
   /**
    * A car somebody was driving blows up under them. It leaves the driver,
    * stays exactly where it is (no snap to a lane), and burns as a wreck.
@@ -1570,6 +1572,16 @@ export function buildTraffic(opts: {
     soak(id, seconds) {
       const car = cars[id];
       if (car && !car.driven) car.soaked = Math.min(8, Math.max(car.soaked, seconds));
+    },
+
+    poseOf(id) {
+      const c = cars[id];
+      if (!c) return null;
+      if (c.hit) return { x: c.hit.x, y: c.hit.y, z: c.hit.z, yaw: c.hit.yaw };
+      return {
+        x: c.axis === 0 ? c.lane : c.t, y: 0, z: c.axis === 0 ? c.t : c.lane,
+        yaw: headingYaw(c),
+      };
     },
 
     slip(id) {

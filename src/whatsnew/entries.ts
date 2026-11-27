@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-paintball",
+    date: "2026-11-27",
+    emoji: "🎨",
+    title: "Paintball in Vibe City",
+    body: "Vibe Arms now sells a Paintball Marker for 120 coins. Every ball splats bright paint where it lands: on walls, on the street, and on cars and police cruisers, where the paint stays stuck as they drive away. Splats fade after about 45 seconds.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "haymaker-boxing",
     date: "2026-11-27",
     emoji: "🥊",
