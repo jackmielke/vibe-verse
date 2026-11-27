@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "cannon-chase-chopper-7",
+    date: "2026-11-27",
+    emoji: "🚁",
+    title: "Gatch News films the chase from Chopper 7",
+    body: "In Cannon Chase the Gatch News helicopter now hovers over the chase with its searchlight on, and the replay after a run is shot from up there, like real breaking news.",
+    tag: "update",
+    route: "/cannon-chase",
+    world: "Cannon Chase",
+  },
+  {
     id: "pool",
     date: "2026-11-27",
     emoji: "🎱",

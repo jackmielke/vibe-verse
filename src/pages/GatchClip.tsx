@@ -34,10 +34,9 @@ export default function GatchClip() {
           {clip ? (
             <div className="relative bg-black">
               <video src={clip.video} className="block aspect-video w-full bg-black" autoPlay muted loop playsInline controls />
-              <div className="pointer-events-none absolute inset-x-0 bottom-12 flex flex-col items-start px-3">
-                <div className="bg-[#d8202a] px-2 py-0.5 text-[11px] font-black tracking-wider">BREAKING</div>
-                <div className="bg-[#0a1230]/90 px-2 py-1 text-[15px] font-extrabold sm:text-[18px]">{clip.headline}</div>
-                {clip.sub ? <div className="bg-[#0a1230]/80 px-2 py-0.5 text-[11px] text-white/75">{clip.sub}</div> : null}
+              <div className="bg-[#0a1230] px-3 py-2">
+                <div className="text-[15px] font-extrabold sm:text-[17px]">{clip.headline}</div>
+                {clip.sub ? <div className="text-[12px] text-white/65">{clip.sub}</div> : null}
               </div>
             </div>
           ) : (

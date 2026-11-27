@@ -1,5 +1,6 @@
 /**
- * Gatch News keeps the tape rolling. Every time a bulletin goes out (a new
+ * Gatch News keeps the tape rolling, shot from Chopper 7 (the engine draws
+ * the chopper's view and the broadcast graphics into the canvas given here). Every time a bulletin goes out (a new
  * ride, a wreck, the henchmen, the train, the diner), the canvas is recorded
  * for a few seconds, so after the run there is a reel of everything that
  * happened to rewatch, headline by headline. Jack, Nov 2026: "I want on News
@@ -69,6 +70,9 @@ export class Replay {
       this.cur = null;
     }
   }
+
+  /** true while a clip is being recorded (the engine only films the chopper shot then) */
+  get rolling(): boolean { return !!this.rec; }
 
   /** Call every frame with the run clock. */
   tick(now: number): void {

@@ -2718,7 +2718,15 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
   hudScene.add(newsPlane);
   const newsCam = new THREE.PerspectiveCamera(36, 16 / 9, 0.5, 1200);
   // the tape: every bulletin is also recorded, for the replay after the run (replay.ts)
-  const replay: Replay | null = params.has("shot") ? null : new Replay(canvas);
+  // It is filmed from Chopper 7 (Jack, Nov 2026: "do it from the Gatches, like the Chopper 7"):
+  // while tape rolls, the chopper's view is drawn into its own canvas with the broadcast on it.
+  const TAPE_W = 960, TAPE_H = 540;
+  const tape = document.createElement("canvas");
+  tape.width = TAPE_W;
+  tape.height = TAPE_H;
+  const tc = tape.getContext("2d")!;
+  const replay: Replay | null = params.has("shot") ? null : new Replay(tape);
+  let tapeN = 0;
   let finStage = "";
   const news = { on: 0, cd: 6, headline: "", sub: "", radio: "", radioT: 0, radioCd: 9, tick: 0, drawT: 0, level: 1, lindaLevel: 1, wrecked: false, lindaWrecked: false, alert: "", linda: false, idle: 0 };
   const RADIO = [
@@ -2796,49 +2804,53 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     }
     news.tick += dt * 70;
   };
+  /** The broadcast graphics (frame, bug, CHOPPER 7, lower third) on any 640x360 context. */
+  const drawTV = (c: CanvasRenderingContext2D): void => {
+      // frame
+      c.lineWidth = 6;
+      c.strokeStyle = "#0b1230";
+      c.strokeRect(3, 3, NEWS_W - 6, NEWS_PIC - 3);
+      // the bug
+      c.fillStyle = "#c8101e";
+      c.fillRect(14, 14, 176, 40);
+      c.fillStyle = "#fff";
+      c.font = "900 24px Inter, system-ui, sans-serif";
+      c.fillText("GATCH NEWS", 24, 43);
+      c.fillStyle = "rgba(0,0,0,0.6)";
+      c.fillRect(196, 14, 84, 40);
+      c.fillStyle = Math.floor(time * 2) % 2 ? "#ff3a3a" : "#7a1a1a";
+      c.beginPath(); c.arc(214, 34, 7, 0, Math.PI * 2); c.fill();
+      c.fillStyle = "#fff";
+      c.font = "800 19px Inter, system-ui, sans-serif";
+      c.fillText("LIVE", 228, 41);
+      c.fillStyle = "rgba(0,0,0,0.5)";
+      c.fillRect(NEWS_W - 150, 14, 136, 32);
+      c.fillStyle = "#fff";
+      c.font = "700 15px Inter, system-ui, sans-serif";
+      c.fillText(space ? "SPACE CAM 7" : "CHOPPER 7", NEWS_W - 138, 36);
+      // lower third
+      c.fillStyle = "#0b1a4a";
+      c.fillRect(0, NEWS_PIC - 92, NEWS_W, 70);
+      c.fillStyle = "#c8101e";
+      c.fillRect(0, NEWS_PIC - 92, 132, 70);
+      c.fillStyle = "#fff";
+      c.font = "900 22px Inter, system-ui, sans-serif";
+      c.fillText("BREAKING", 12, NEWS_PIC - 50);
+      let size = 26;
+      c.font = `900 ${size}px Inter, system-ui, sans-serif`;
+      while (c.measureText(news.headline).width > NEWS_W - 156 && size > 14) { size -= 1; c.font = `900 ${size}px Inter, system-ui, sans-serif`; }
+      c.fillText(news.headline, 144, NEWS_PIC - 58);
+      c.fillStyle = "#c8d4ff";
+      c.font = "600 17px Inter, system-ui, sans-serif";
+      c.fillText(news.sub, 144, NEWS_PIC - 32);
+  };
   const paintNews = (): void => {
     nc.clearRect(0, 0, NEWS_W, NEWS_H);
     const tv = news.on > 0;
     if (tv) {
       const k = Math.min(1, news.on * 3, (8 - Math.min(8, news.on)) * 4 + 0.2);
       nc.globalAlpha = Math.min(1, k + 0.2);
-      // frame
-      nc.lineWidth = 6;
-      nc.strokeStyle = "#0b1230";
-      nc.strokeRect(3, 3, NEWS_W - 6, NEWS_PIC - 3);
-      // the bug
-      nc.fillStyle = "#c8101e";
-      nc.fillRect(14, 14, 176, 40);
-      nc.fillStyle = "#fff";
-      nc.font = "900 24px Inter, system-ui, sans-serif";
-      nc.fillText("GATCH NEWS", 24, 43);
-      nc.fillStyle = "rgba(0,0,0,0.6)";
-      nc.fillRect(196, 14, 84, 40);
-      nc.fillStyle = Math.floor(time * 2) % 2 ? "#ff3a3a" : "#7a1a1a";
-      nc.beginPath(); nc.arc(214, 34, 7, 0, Math.PI * 2); nc.fill();
-      nc.fillStyle = "#fff";
-      nc.font = "800 19px Inter, system-ui, sans-serif";
-      nc.fillText("LIVE", 228, 41);
-      nc.fillStyle = "rgba(0,0,0,0.5)";
-      nc.fillRect(NEWS_W - 150, 14, 136, 32);
-      nc.fillStyle = "#fff";
-      nc.font = "700 15px Inter, system-ui, sans-serif";
-      nc.fillText(space ? "SPACE CAM 7" : "CHOPPER 7", NEWS_W - 138, 36);
-      // lower third
-      nc.fillStyle = "#0b1a4a";
-      nc.fillRect(0, NEWS_PIC - 92, NEWS_W, 70);
-      nc.fillStyle = "#c8101e";
-      nc.fillRect(0, NEWS_PIC - 92, 132, 70);
-      nc.fillStyle = "#fff";
-      nc.font = "900 22px Inter, system-ui, sans-serif";
-      nc.fillText("BREAKING", 12, NEWS_PIC - 50);
-      let size = 26;
-      nc.font = `900 ${size}px Inter, system-ui, sans-serif`;
-      while (nc.measureText(news.headline).width > NEWS_W - 156 && size > 14) { size -= 1; nc.font = `900 ${size}px Inter, system-ui, sans-serif`; }
-      nc.fillText(news.headline, 144, NEWS_PIC - 58);
-      nc.fillStyle = "#c8d4ff";
-      nc.font = "600 17px Inter, system-ui, sans-serif";
-      nc.fillText(news.sub, 144, NEWS_PIC - 32);
+      drawTV(nc);
     }
     // the ticker (with the picture) or the truck radio (between broadcasts)
     const radio = !tv && news.radioT > 0;
@@ -2872,6 +2884,112 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     nc.globalAlpha = 1;
     newsTex.needsUpdate = true;
   };
+  /* Chopper 7 itself, up in the sky over the chase whenever Gatch News is on
+     the air or the tape is rolling. It lives on layer 1, which the main camera
+     sees and its own camera does not, so it never films its own belly. */
+  const chopper = new THREE.Group();
+  {
+    const paint = new THREE.MeshStandardMaterial({ color: 0x1d2c6a, roughness: 0.5, metalness: 0.3 });
+    const red = new THREE.MeshStandardMaterial({ color: 0xc8101e, roughness: 0.5 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0x9fc6ff, roughness: 0.1, metalness: 0.6, emissive: 0x1a2a4a });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.8 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1.3, 14, 10), paint);
+    body.scale.set(1, 0.85, 1.7);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.95, 12, 8), glass);
+    nose.position.set(0, 0.15, 1.45);
+    nose.scale.set(1, 0.8, 0.9);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.3, 3.2), red);
+    stripe.position.y = -0.2;
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 4.2), paint);
+    tail.position.set(0, 0.35, -3.6);
+    const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.3, 0.8), red);
+    tailFin.position.set(0, 0.9, -5.5);
+    const skid1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 3.6), dark);
+    skid1.position.set(0.95, -1.45, 0.2);
+    const skid2 = skid1.clone();
+    skid2.position.x = -0.95;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.6, 6), dark);
+    mast.position.y = 1.25;
+    chopper.add(body, nose, stripe, tail, tailFin, skid1, skid2, mast);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(9, 0.05, 0.35), dark);
+    const blade2 = blade.clone();
+    blade2.rotation.y = Math.PI / 2;
+    const rotor = new THREE.Group();
+    rotor.add(blade, blade2);
+    rotor.position.y = 1.55;
+    rotor.name = "rotor";
+    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.6, 0.18), dark);
+    tailRotor.position.set(0.25, 0.9, -5.6);
+    tailRotor.name = "tailRotor";
+    chopper.add(rotor, tailRotor);
+    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2a2a }));
+    blink.position.set(0, -1.1, 0);
+    blink.name = "blink";
+    chopper.add(blink);
+    // the searchlight: a faint cone from the chopper down onto the trucks
+    const beamGeo = new THREE.ConeGeometry(1, 1, 18, 1, true);
+    beamGeo.translate(0, -0.5, 0);
+    const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0.1, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    beam.name = "beam";
+    chopper.add(beam);
+    chopper.traverse((o) => o.layers.set(1));
+    chopper.visible = false;
+    chopper.scale.setScalar(1.3);
+    if (!space) scene.add(chopper);
+    camera.layers.enable(1);
+  }
+  const chopperLook = new THREE.Vector3();
+  const beamDir = new THREE.Vector3();
+  const DOWN = new THREE.Vector3(0, -1, 0);
+  /** Where Chopper 7 is and what it is looking at: high, off to the side, circling slowly. */
+  const aimChopper = (aspect: number): void => {
+    const sMid = (me.s * 2 + en.s) / 3;
+    const latMid = (me.lat + en.lat) / 2;
+    toWorld(sMid, latMid, 1, chopperLook);
+    const a = time * 0.12;
+    newsCam.position.set(chopperLook.x + Math.cos(a) * 34, chopperLook.y + 24, chopperLook.z + Math.sin(a) * 34);
+    newsCam.lookAt(chopperLook);
+    newsCam.aspect = aspect;
+    newsCam.updateProjectionMatrix();
+    // the helicopter itself hangs low over the road behind you, where your camera can see it,
+    // keeping pace and swaying; its lens (newsCam above) is the long zoom from higher up
+    const side = -(7 + Math.sin(time * 0.23) * 3);
+    toWorld(me.s - 40 + Math.sin(time * 0.31) * 4, latMid + side, 7 + Math.sin(time * 0.9) * 0.5, chopper.position);
+    toWorld(me.s + 10, latMid + side * 0.5, 7, beamDir);
+    chopper.lookAt(beamDir);
+    chopper.rotateX(0.14);
+    chopper.rotateZ(Math.sin(time * 0.7) * 0.08);
+    const rotor = chopper.getObjectByName("rotor");
+    if (rotor) rotor.rotation.y = time * 38;
+    const tr = chopper.getObjectByName("tailRotor");
+    if (tr) tr.rotation.x = time * 50;
+    const blink = chopper.getObjectByName("blink");
+    if (blink) blink.visible = Math.floor(time * 1.6) % 2 === 0;
+    const beam = chopper.getObjectByName("beam");
+    if (beam) {
+      beamDir.copy(chopperLook).sub(chopper.position);
+      const d = beamDir.length();
+      beam.quaternion.copy(chopper.quaternion).invert().multiply(new THREE.Quaternion().setFromUnitVectors(DOWN, beamDir.normalize()));
+      beam.scale.set(4, d, 4);
+    }
+  };
+  /** One frame of tape: the chopper's view of the chase with the broadcast over it. */
+  const rollTape = (W: number, H: number): void => {
+    const pr = renderer.getPixelRatio();
+    const rw = Math.min(W, (H * 16) / 9);
+    const rh = (rw * 9) / 16;
+    aimChopper(16 / 9);
+    renderer.setViewport(0, 0, rw, rh);
+    renderer.render(scene, newsCam);
+    renderer.setViewport(0, 0, W, H);
+    try { tc.drawImage(canvas, 0, (H - rh) * pr, rw * pr, rh * pr, 0, 0, TAPE_W, TAPE_H); } catch { /* a lost context: skip the frame */ }
+    tc.save();
+    tc.scale(TAPE_W / 640, TAPE_H / 360);
+    tc.globalAlpha = 1;
+    drawTV(tc);
+    tc.restore();
+  };
+
   /** The main view, then the chopper shot and the news graphics on top. */
   const renderAll = (): void => {
     if (fin) {
@@ -2880,8 +2998,19 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
       fin.aspect(W / H);
       renderer.render(fin.scene, fin.camera);
       fin.overlay(renderer, W, H);
+      // the diner has no chopper: the tape takes the picture as it is, cropped to the screen's middle
+      if (replay?.rolling && tapeN++ % 2 === 0) {
+        const pr = renderer.getPixelRatio();
+        const cw = Math.min(W, (H * 16) / 9), ch = (cw * 9) / 16;
+        try { tc.drawImage(canvas, ((W - cw) / 2) * pr, ((H - ch) / 2) * pr, cw * pr, ch * pr, 0, 0, TAPE_W, TAPE_H); } catch { /* skip */ }
+      }
       return;
     }
+    const rolling = !!replay?.rolling;
+    chopper.visible = news.on > 0 || rolling;
+    // every other frame while the tape rolls, film the chase from Chopper 7 first (the main view draws over it)
+    if (rolling && tapeN++ % 2 === 0) rollTape(canvas.clientWidth || mount.clientWidth || 1, canvas.clientHeight || mount.clientHeight || 1);
+    else if (chopper.visible) aimChopper(newsCam.aspect);
     renderer.render(scene, camera);
     const tv = news.on > 0;
     const radio = !tv && news.radioT > 0;
@@ -2897,14 +3026,7 @@ export function createCannonRun(mount: HTMLElement, opts: Opts = {}): CannonRun 
     const top = phoneView ? H - total - 170 : H - total - 16;
     if (tv) {
       // the chopper: high and off to the side, circling slowly, looking down at the chase
-      const sMid = (me.s * 2 + en.s) / 3;
-      const latMid = (me.lat + en.lat) / 2;
-      toWorld(sMid, latMid, 1, tmp);
-      const a = time * 0.12;
-      newsCam.position.set(tmp.x + Math.cos(a) * 34, tmp.y + 24, tmp.z + Math.sin(a) * 34);
-      newsCam.lookAt(tmp);
-      newsCam.aspect = pw / picH;
-      newsCam.updateProjectionMatrix();
+      aimChopper(pw / picH);
       const yGL = H - top - picH;
       renderer.setScissorTest(true);
       renderer.setViewport(x, yGL, pw, picH);

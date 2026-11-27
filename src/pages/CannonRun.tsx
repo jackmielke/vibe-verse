@@ -642,11 +642,6 @@ function GatchReplay({ load, onClose }: { load: () => ReplayClip[]; onClose: () 
           <>
             <div className="relative bg-black">
               <video key={c.url} src={c.url} className="block aspect-video w-full bg-black" autoPlay muted playsInline controls onEnded={() => setI((n) => (n + 1 < clips.length ? n + 1 : n))} />
-              <div className="pointer-events-none absolute inset-x-0 bottom-12 flex flex-col items-start px-3">
-                <div className="bg-[#d8202a] px-2 py-0.5 text-[11px] font-black tracking-wider">BREAKING</div>
-                <div className="bg-[#0a1230]/90 px-2 py-1 text-[15px] font-extrabold">{c.headlines[0]?.headline}</div>
-                <div className="bg-[#0a1230]/80 px-2 py-0.5 text-[11px] text-white/75">{c.headlines[0]?.sub}</div>
-              </div>
             </div>
             <div className="flex gap-2 px-3 py-2">
               <button className="rounded-full bg-white/10 px-4 py-1.5 text-[13px] font-semibold disabled:opacity-30" disabled={i === 0} onClick={() => setI(i - 1)}>◀ Back</button>
