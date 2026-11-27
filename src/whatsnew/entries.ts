@@ -38,6 +38,24 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "vibe-cup-highlights",
+    date: "2026-11-27",
+    emoji: "🎬",
+    title: "Vibe Cup goal replays",
+    body: "In the Vibe Cup the other matches of a round stay a surprise while you play yours. When your final whistle goes, their results come in, and you can watch a replay of every goal they scored. Each replay is gone once you have watched it.",
+    tag: "update",
+  },
+  {
+    id: "city-sky-sprint",
+    date: "2026-11-27",
+    emoji: "🦎",
+    title: "Sky Sprint: climb the Empire State in sticky shoes",
+    body: "Gail lends gecko grip shoes from her stall by the Empire State's front doors. Walk into the tower and hold W to stick and climb, haul yourself over every ledge, and race the clock all the way up the mast to the gold flag. Grab the golden orbs on the way for coins. No jetpacks allowed!",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "2026-11-27-vibe-links",
     date: "2026-11-27",
     emoji: "⛳",

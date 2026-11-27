@@ -53,19 +53,37 @@ s = await cup("state");
 const me2 = s.live.find((l) => l.mine);
 console.log("still the same player:", me2.active === me2.lock, me2.active, "clock", me2.clock);
 
-// Watch somebody else's match; ours waits.
-const other = s.live.find((l) => !l.mine);
-await page.click('[data-testid="vibecup-ticker"] button >> nth=' + s.live.findIndex((l) => l.id === other.id));
-await page.waitForTimeout(3000);
+// The other matches are hidden, and wait, while ours is on.
+const chips = await page.locator('[data-testid="vibecup-ticker"] button').count();
+await cup("watch", s.live.find((l) => !l.mine).id);
 s = await cup("state");
-console.log("watching", s.focus, "mine clock", s.live.find((l) => l.mine).clock, "theirs", s.live.find((l) => l.id === other.id).clock);
-await shot("3-watching-bots");
+console.log("ticker chips while playing (ours + Cup):", chips, "focus stays ours:", s.focus === mine.id, "bot clocks", s.live.filter((l) => !l.mine).map((l) => l.clock).join(" "));
+await shot("3-my-match-only");
 
-// The rest of the round passes.
+// Our match ends: the computer's matches are played out at once, with their goals filmed.
 await cup("settle", 220);
 await page.click('[data-testid="vibecup-ticker"] button >> text=Cup');
 await page.waitForTimeout(800);
+s = await cup("state");
+console.log("after ours:", s.live.map((l) => `${l.id}:${l.score.join("-")}:${l.done}:clips=${l.clips}:${l.frames.join(",")}`).join(" "));
 await shot("4-hub-round1-done");
+const reelBtn = page.locator('[data-testid="vibecup-cup-reel"]');
+if (await reelBtn.count()) {
+  const before = s.live.reduce((a, l) => a + l.clips, 0);
+  await reelBtn.click();
+  await page.waitForTimeout(2500);
+  console.log("reel", JSON.stringify((await cup("state")).reel));
+  await shot("4b-replay");
+  await page.waitForTimeout(2500);
+  await shot("4c-replay-goal");
+  await page.click('[data-testid="vibecup-reel-next"]');
+  await page.waitForTimeout(300);
+  s = await cup("state");
+  const after = s.live.reduce((a, l) => a + l.clips, 0);
+  console.log("clips before", before, "after watching one", after);
+  await cup("nextClip", true);
+  await page.waitForSelector('[data-testid="vibecup-hub"]');
+} else console.log("no goals in the other matches this round");
 await cup("next");
 
 // The rest of the Cup.

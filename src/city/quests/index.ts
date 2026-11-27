@@ -13,6 +13,7 @@ import type { Dialog, Prompt, QuestCtx, QuestHost, QuestStep } from "./common";
 import { buildGrannyQuest } from "./granny";
 import { buildFishing, type FishingUi } from "./fishing";
 import { buildRacing, type RaceUi } from "./racing";
+import { buildSprint, type SprintUi } from "./parkour";
 import { QUEST_HATS, earnedQuestHats, wornQuestHat } from "./hats";
 
 export type { QuestCtx, QuestHost, QuestStep } from "./common";
@@ -24,6 +25,7 @@ export interface QuestUi {
   tracker: { emoji: string; text: string; sub?: string; arrow?: number } | null;
   fishing: FishingUi | null;
   race: RaceUi | null;
+  sprint: SprintUi | null;
   /** A hold-to-act button is needed (the reel) on a phone. */
   hold: boolean;
 }
@@ -52,7 +54,7 @@ export interface Quests {
   dispose(): void;
 }
 
-export function buildQuests(host: QuestHost): Quests {
+export function buildQuests(host: QuestHost, opts: { pitch: number }): Quests {
   const group = new THREE.Group();
   group.name = "quests";
 
@@ -64,10 +66,12 @@ export function buildQuests(host: QuestHost): Quests {
     face: 0,
   });
   const racing = buildRacing(host);
-  group.add(granny.group, fishing.group, racing.group);
+  // The Empire State stands on cell (3, 2) of the 9x9 district.
+  const sprint = buildSprint(host, { cx: (3 - 4) * opts.pitch, cz: (2 - 4) * opts.pitch });
+  group.add(granny.group, fishing.group, racing.group, sprint.group);
 
   type Owner = { dialog(): Dialog | null; choose(id: string): void; closeDialog(): void };
-  const owners: Owner[] = [granny, fishing, racing];
+  const owners: Owner[] = [granny, fishing, racing, sprint];
 
   let prompt: Prompt | null = null;
   let tracker: QuestUi["tracker"] = null;
@@ -82,8 +86,9 @@ export function buildQuests(host: QuestHost): Quests {
       granny.update(c);
       const step = fishing.update(c);
       racing.update(c);
+      const climb = sprint.update(c);
       // The nearest prompt wins; an active quest's own prompt (strike!) is at distance 0.
-      const ps = [granny.prompt(c), fishing.prompt(c), racing.prompt(c)].filter((p): p is Prompt => !!p);
+      const ps = [granny.prompt(c), fishing.prompt(c), racing.prompt(c), sprint.prompt(c)].filter((p): p is Prompt => !!p);
       ps.sort((a, b) => a.dist - b.dist);
       prompt = ps[0] ?? null;
       const tr = granny.tracker(c);
@@ -97,7 +102,7 @@ export function buildQuests(host: QuestHost): Quests {
         }
         tracker = { emoji: tr.emoji, text: tr.text, sub: tr.sub, arrow };
       } else tracker = null;
-      return step;
+      return step ?? climb;
     },
     act() {
       // An open dialog takes E as its first option.
@@ -133,6 +138,7 @@ export function buildQuests(host: QuestHost): Quests {
         tracker,
         fishing: f,
         race: racing.ui(),
+        sprint: sprint.ui(),
         hold: f?.phase === "reel",
       };
     },
@@ -140,6 +146,7 @@ export function buildQuests(host: QuestHost): Quests {
       const g = granny.log();
       const f = fishing.log();
       const r = racing.log();
+      const sp = sprint.log();
       const earned = earnedQuestHats();
       return {
         quests: [
@@ -151,16 +158,18 @@ export function buildQuests(host: QuestHost): Quests {
             extra: f.journal.map((j) => `${j.emoji} ${j.name} ×${j.count} (best ${j.best} kg)`),
           },
           { title: r.title, status: r.status, at: [racing.at.x + 3, 0.3, racing.at.z - 2] },
+          { title: sp.title, status: sp.status, at: [sprint.at.x, 0.3, sprint.at.z + 2.5] },
         ],
         hats: QUEST_HATS.map((h) => ({ id: h.id, name: h.name, emoji: h.emoji, earned: earned.includes(h.id) })),
         worn: wornQuestHat(),
       };
     },
-    dev: () => ({ granny: granny.dev(), fishing: (op?: string) => fishing.dev(op), racing: (op?: string) => racing.dev(op), last: lastCtx?.player.toArray() }),
+    dev: () => ({ granny: granny.dev(), fishing: (op?: string) => fishing.dev(op), racing: (op?: string) => racing.dev(op), sprint: (op?: string) => sprint.dev(op), last: lastCtx?.player.toArray() }),
     dispose() {
       granny.dispose();
       fishing.dispose();
       racing.dispose();
+      sprint.dispose();
     },
   };
 }
