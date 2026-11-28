@@ -14,6 +14,7 @@
  * stable id, so React keeps the same DOM node across a move and the browser
  * animates the transform for free. Nothing schedules an animation frame.
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -246,6 +247,13 @@ export default function Twenty48() {
   );
   const stuck = game.over || !canMove(game);
   const showWin = game.won && !dismissedWin && !stuck;
+  // The Vibe Arcade hears about a finished board once.
+  const reportedRef = useRef<GameState | null>(null);
+  useEffect(() => {
+    if (!stuck || reportedRef.current === game || game.score <= 0) return;
+    reportedRef.current = game;
+    reportArcadeScore("2048", game.score, game.won);
+  }, [stuck, game]);
 
   return (
     <div

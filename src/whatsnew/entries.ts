@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-vibe-arcade-neon",
+    date: "2026-11-28",
+    emoji: "🕹️",
+    title: "The Vibe Arcade goes neon, with a high score wall",
+    body: "The arcade on Vibe Island is now a late night synthwave hall: sunset murals, a glowing floor, a mirror ball and DJ Vibey on the decks. Every machine plays its game on screen, and stepping up dives you right into it. Every run pays tickets for the Prize Counter, and a top score lets you sign the High Score wall with your initials.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe Island",
+  },
+  {
     id: "2026-11-28-the-monolith",
     date: "2026-11-28",
     emoji: "◼️",

@@ -12,6 +12,7 @@
  * the shop uses — change your face here and the city, the karts and the shop
  * all agree with you a second later.
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CoilEngine, SKILLS, type CoilStatus } from "@/coil/engine";
@@ -156,6 +157,14 @@ export default function Coil() {
        something in another tab has to add it here without a reload. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wardrobe.owned]);
+
+  // A run's length goes to the Vibe Arcade's wall when you die.
+  const deadRef = useRef(false);
+  useEffect(() => {
+    const dead = status?.phase === "dead";
+    if (dead && !deadRef.current && status && status.peak > 0) reportArcadeScore("coil", status.peak);
+    deadRef.current = dead;
+  }, [status]);
 
   const wearCharacter = useCallback((id: string) => {
     engineRef.current?.setCharacter(id);

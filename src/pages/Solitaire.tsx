@@ -18,6 +18,7 @@
  * `window.__solitaire` is the test hook: state(), tap(pile, index),
  * move(from, index, to), draw(), undo(), hint(), nearWin(), deal(seed).
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   Lightbulb, Palette, Plus, Settings, Undo2, Volume2, VolumeX,
@@ -527,6 +528,7 @@ export default function Solitaire() {
       setFinishing(false);
       pauseTimer();
       const time = elapsed();
+      reportArcadeScore("solitaire", Math.round(time / 1000), true);
       const s = readStats(kind);
       s.played += 1;
       s.won += 1;

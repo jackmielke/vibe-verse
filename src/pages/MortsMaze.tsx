@@ -18,6 +18,7 @@
  * `steer(dir)` and `start()`, because SwiftShader draws a frame a second and
  * nothing can be played at that speed.
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
@@ -179,7 +180,10 @@ export default function MortsMaze() {
         writeBest(g.score);
         setBest(g.score);
       }
-      if (g.phase === "over" && screenRef.current === "playing") setScreen("over");
+      if (g.phase === "over" && screenRef.current === "playing") {
+        setScreen("over");
+        reportArcadeScore("mortmaze", g.score);
+      }
 
       if (shown.score !== g.score || shown.lives !== g.lives || shown.level !== g.level) {
         shown = { score: g.score, lives: g.lives, level: g.level, maze: g.maze.def.name };

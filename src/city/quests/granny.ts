@@ -13,7 +13,7 @@
  */
 import * as THREE from "three";
 import { buildGranny, buildPet, type Pet, type PetKind } from "./npc";
-import { QUEST_HATS, earnQuestHat, earnedQuestHats } from "./hats";
+import { ARCADE_HAT_IDS, QUEST_HATS, earnQuestHat, earnedQuestHats } from "./hats";
 import { dist2, load, save, type Dialog, type Prompt, type QuestCtx, type QuestHost } from "./common";
 
 interface PetDef {
@@ -358,7 +358,8 @@ export function buildGrannyQuest(host: QuestHost, opts: { at: THREE.Vector3; fac
       return null;
     },
     log() {
-      const hats = earnedQuestHats().length;
+      const grannyHats = QUEST_HATS.filter((h) => !ARCADE_HAT_IDS.includes(h.id));
+      const hats = earnedQuestHats().filter((id) => grannyHats.some((h) => h.id === id)).length;
       return {
         title: "👵 Granny Mabel's lost pets",
         status:
@@ -366,7 +367,7 @@ export function buildGrannyQuest(host: QuestHost, opts: { at: THREE.Vector3; fac
             ? `Looking for ${PETS[state.pet].name}`
             : state.kind === "carry"
               ? `Bringing ${PETS[state.pet].name} home`
-              : `${saved.returned} ${saved.returned === 1 ? "pet" : "pets"} returned, ${hats} of ${QUEST_HATS.length} hats earned`,
+              : `${saved.returned} ${saved.returned === 1 ? "pet" : "pets"} returned, ${hats} of ${grannyHats.length} hats earned`,
       };
     },
     dev: () => ({ state, petPos: petPos.toArray(), saved, playerSpeed }),

@@ -19,6 +19,7 @@
  * `settle(seconds)`, `auto(on)` and `input(ctrl, input)`, because SwiftShader
  * draws a frame a second and nothing can be played at that speed.
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type PointerEvent as RPointerEvent } from "react";
 import { Copy, Pause, Play, Share2, Volume2, VolumeX } from "lucide-react";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
@@ -843,6 +844,11 @@ export default function VibeCup() {
       }
       if (ended && ended.type === "fulltime" && screenRef.current === "playing") {
         const res = { score: [...g.score] as [number, number], winner: ended.winner, stats: g.stats };
+        if (g.ctrls.length === 1 && !isShot()) {
+          // For the Vibe Arcade: goals for, a bonus for the margin and the win.
+          const margin = g.score[0] - g.score[1];
+          reportArcadeScore("vibecup", g.score[0] * 100 + Math.max(0, margin) * 50 + (ended.winner === 0 ? 200 : 0), ended.winner === 0);
+        }
         if (g.ctrls.length === 1 && !isShot()) {
           setRecord((r) => {
             const n = { ...r };

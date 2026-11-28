@@ -15,6 +15,7 @@
  * not in front of the camera, `settle(seconds, input)` steps the fight
  * without a frame rate, `snapshot()` is a JPEG of camera plus canvas.
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bout, PLAYER_HP, ROSTER, ROUNDS, type BoutEvent, type Opponent, type PlayerInput } from "@/boxing/fight";
 import type { BodyRead, Hand, Landmark, PunchKind } from "@/boxing/pose";
@@ -181,6 +182,9 @@ export default function Boxing() {
           }
           const how = e.type === "ko" ? "knockout" : "decision";
           const stats = { ...bout.stats };
+          // Points for the Vibe Arcade: punches landed, more for a win, more
+          // again for a knockout and for a tougher opponent.
+          reportArcadeScore("boxing", stats.landed * 5 + (win ? 150 * (pickRef.current + 1) + (e.type === "ko" ? 100 : 0) : 0), win);
           const opp = bout.opponent;
           setTimeout(() => {
             setResult({ win, how, stats, opp });
