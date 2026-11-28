@@ -17,15 +17,18 @@ export default function WhatsNewList({
   entries = WHATS_NEW,
   onNavigate,
   compact = false,
+  fresh: freshOverride,
 }: {
   entries?: WhatsNewEntry[];
   /** Called when a "Try it" link is followed, so a sheet can close itself. */
   onNavigate?: () => void;
   compact?: boolean;
+  /** Which entries get the "new" dot. Defaults to unseen on this device. */
+  fresh?: Set<string>;
 }) {
   // Read once, before the parent marks everything seen, so the dots stay put
   // for this visit.
-  const [fresh] = useState(() => new Set(entries.filter((e) => isUnseen(e.id)).map((e) => e.id)));
+  const [fresh] = useState(() => freshOverride ?? new Set(entries.filter((e) => isUnseen(e.id)).map((e) => e.id)));
   const days = byDay(entries);
   const thisYear = String(new Date().getFullYear());
   // "Try it" for the world you are already standing in would just reload it.
