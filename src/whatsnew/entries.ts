@@ -38,7 +38,6 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
-<<<<<<< HEAD
     id: "2026-11-28-vader-duel-reinforcements",
     date: "2026-11-28",
     emoji: "🪖",
@@ -47,7 +46,8 @@ export const ENTRIES: WhatsNewEntry[] = [
     tag: "update",
     route: "/vibequest",
     world: "VibeQuest",
-=======
+  },
+  {
     id: "2026-11-28-kart-gp-moves",
     date: "2026-11-28",
     emoji: "🏁",
@@ -76,7 +76,6 @@ export const ENTRIES: WhatsNewEntry[] = [
     tag: "update",
     route: "/city",
     world: "Vibe City",
->>>>>>> origin/main
   },
   {
     id: "2026-11-28-two-players-one-phone-everywhere",
