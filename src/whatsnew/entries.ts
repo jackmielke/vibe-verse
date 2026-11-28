@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-can-die",
+    date: "2026-11-28",
+    emoji: "💀",
+    title: "Turn on Can die in Vibe City",
+    body: "A new Can die button in the top settings. Off, nothing can take you down. On, the police shoot back once you hit three stars, the chopper and rams hurt, and when your health runs out you are wiped out and wake up at the police station with your heat cleared.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "2026-11-28-vibequest-two-on-one-phone",
     date: "2026-11-28",
     emoji: "📱",
