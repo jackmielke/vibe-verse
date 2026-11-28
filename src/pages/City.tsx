@@ -453,8 +453,12 @@ export default function City() {
      the overlay asking where to be is skipped — and skipped from the *first*
      render rather than by an effect, which is the difference between not
      showing it and showing it briefly. */
-  const isDirectSpawn =
-    typeof window !== "undefined" && !!directSpawn(window.location.search);
+  const firstSpawn = typeof window === "undefined" ? null : directSpawn(window.location.search);
+  /* Except Vibe Island's own link, which opens on the picker over the Glide
+     flyover and lands on the island when you press Enter (Jack, 2026-11-28). */
+  // Skipped under navigator.webdriver so the island scripts land as before.
+  const islandPicksFirst = firstSpawn === "island" && !(typeof navigator !== "undefined" && navigator.webdriver);
+  const isDirectSpawn = !!firstSpawn && !islandPicksFirst;
   const [entered, setEntered] = useState(isFreshDrop || isLive || isDirectSpawn);
   /**
    * In the water, for the UI only.
@@ -465,12 +469,20 @@ export default function City() {
    */
   const [inWater, setInWater] = useState(false);
   const enteredRef = useRef(isFreshDrop || isLive || isDirectSpawn);
-  /* `?entry=drone|glide|tour` puts the camera on a slow flyover of the real
-     city behind the picker instead of the painted backdrop (src/city/flyover.ts).
-     A preview for now; no param keeps the classic screen. */
-  const [entryLook, setEntryLook] = useState(() =>
-    typeof window === "undefined" ? null : flyoverFromSearch(window.location.search),
-  );
+  /* The picker sits over a slow drone flyover of the real city
+     (src/city/flyover.ts), Jack's pick on 2026-11-28. `?entry=glide|tour|classic`
+     still shows the other looks, with a switcher, for comparison. */
+  /* Desktop gets Drone, phones get Tour, the Vibe Island link gets Glide.
+     `?entry=demo` opens with a switcher to try every look on the live city. */
+  const entryParam = typeof window === "undefined" ? null : flyoverFromSearch(window.location.search);
+  const entryDemo =
+    !!entryParam || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("entry") === "demo");
+  const [entryLook, setEntryLook] = useState<ReturnType<typeof flyoverFromSearch>>(() => {
+    if (entryParam) return entryParam;
+    if (islandPicksFirst) return "glide";
+    const phone = typeof window !== "undefined" && Math.min(window.innerWidth, window.innerHeight) < 700;
+    return phone ? "tour" : "drone";
+  });
   const flyoverRef = useRef(entryLook);
   flyoverRef.current = entryLook;
   const [flyReady, setFlyReady] = useState(false);
@@ -9634,6 +9646,8 @@ export default function City() {
   // is clicked while already in the city).
   useEffect(() => {
     const spawn = directSpawn(routerLocation.search);
+    // Vibe Island's link waits for the picker; enter() lands it.
+    if (spawn === "island" && islandPicksFirst && !enteredRef.current) return;
     if (spawn) {
       if (spawn === "hub") hubSpawnRef.current?.();
       else if (spawn === "moon") moonSpawnRef.current?.();
@@ -9819,6 +9833,10 @@ export default function City() {
     }
     enteredRef.current = true;
     setEntered(true);
+    if (islandPicksFirst && directSpawn(window.location.search) === "island") {
+      islandSpawnRef.current?.();
+      setArriving(true);
+    }
     // AudioContext needs a user gesture — this click is it.
     ensureAudio();
   };
@@ -12311,7 +12329,7 @@ export default function City() {
                 onEnter={enter}
               />
             )}
-            {entryLook && <EntryLookSwitcher look={entryLook} onLook={setEntryLook} />}
+            {entryDemo && entryLook && <EntryLookSwitcher look={entryLook} onLook={setEntryLook} />}
           </motion.div>
         )}
       </AnimatePresence>

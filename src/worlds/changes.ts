@@ -92,6 +92,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "34300b82", iso: "2026-11-27T03:25:04+00:00", subject: "Haymaker: a camera boxing game where the opponent stands in your room" },
   ],
   "cannon-run": [
+    { sha: "6ac6c26d", iso: "2026-11-28T18:43:08+00:00", subject: "Two players on one phone in every two-player game" },
     { sha: "3c4b121a", iso: "2026-11-27T06:09:42+00:00", subject: "Cannon Chase: take the Chopper 7 helicopter out of the sky" },
     { sha: "ffd3c567", iso: "2026-11-27T05:43:35+00:00", subject: "Cannon Chase: Gatch News films from Chopper 7" },
     { sha: "1da6f4b5", iso: "2026-11-27T04:21:27+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
@@ -248,6 +249,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e65cc93f", iso: "2026-08-02T09:25:58+00:00", subject: "Home Alone: the stairs no longer eat the camera" },
   ],
   "hoops": [
+    { sha: "6ac6c26d", iso: "2026-11-28T18:43:08+00:00", subject: "Two players on one phone in every two-player game" },
     { sha: "1dedfa9a", iso: "2026-11-27T18:50:54+00:00", subject: "Vibe Hoops: replays filmed from the floor, and a How to play card" },
     { sha: "9c61a2f9", iso: "2026-11-27T08:09:15+00:00", subject: "Vibe Hoops: three-on-three basketball in the Vibe Dome" },
   ],
@@ -490,6 +492,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
   ],
   "vibe-cup": [
+    { sha: "6ac6c26d", iso: "2026-11-28T18:43:08+00:00", subject: "Two players on one phone in every two-player game" },
     { sha: "619caaa4", iso: "2026-11-27T05:37:16+00:00", subject: "Vibe Cup: the tournament, one player all match, and the Paint Pads" },
     { sha: "951de74d", iso: "2026-11-27T05:17:11+00:00", subject: "Vibe Cup: slides knock over anybody in the way, team-mates too" },
     { sha: "c62f0704", iso: "2026-11-27T05:01:51+00:00", subject: "Vibe Cup: open rooms list, off-screen switching, smarter computer players" },
@@ -497,6 +500,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
   ],
   "vibequest": [
+    { sha: "6ac6c26d", iso: "2026-11-28T18:43:08+00:00", subject: "Two players on one phone in every two-player game" },
     { sha: "880f2a72", iso: "2026-11-28T17:46:00+00:00", subject: "VibeQuest: two players on one phone" },
     { sha: "33edea3f", iso: "2026-11-28T16:40:18+00:00", subject: "VibeQuest Vader Duel: the moving arm replaces the painted one" },
     { sha: "9cab8456", iso: "2026-11-28T02:01:42+00:00", subject: "VibeQuest Vader Duel: real walk, shot, Force grip and breaking wave" },

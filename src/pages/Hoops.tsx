@@ -100,6 +100,8 @@ interface Hud {
   shoutKey: number;
   /** Context for the buttons: has the ball / our ball / their ball. */
   ctx: "has" | "off" | "def";
+  /** The same for Player 2, on one screen. */
+  ctx2?: "has" | "off" | "def";
   cine: boolean;
   phase: Game["phase"];
   sudden: boolean;
@@ -143,6 +145,8 @@ export default function Hoops() {
   const keys = useRef(new Set<string>());
   const tapped = useRef(new Set<string>());
   const touch = useRef({ mx: 0, my: 0, a: false, b: false, tapA: false, tapB: false });
+  /** Player 2's thumbs, when two people share one phone. */
+  const touch2 = useRef({ mx: 0, my: 0, a: false, b: false, tapA: false, tapB: false });
   const roomRef = useRef<HoopsRoom | null>(null);
   const boardRef = useRef<RoomBoard | null>(null);
   const netRef = useRef<{ inbox: Array<Extract<Wire, { t: "st" }>>; ended: number }>({ inbox: [], ended: 0 });
@@ -296,12 +300,16 @@ export default function Hoops() {
       const btn = (i: number) => !!p.buttons[i]?.pressed;
       return { mx, my, a: btn(0), b: btn(1) || btn(2), sprint: btn(5) || btn(7) || btn(4) || btn(6) };
     };
-    const t = touch.current;
-    const [tx, ty] = toCourt(t.mx, t.my);
-    const fromTouch: Input = { mx: tx, my: ty, a: t.a || t.tapA, b: t.b || t.tapB, sprint: Math.hypot(t.mx, t.my) > 0.85 };
-    t.tapA = t.tapB = false;
+    const readTouch = (t: typeof touch.current): Input => {
+      const [tx, ty] = toCourt(t.mx, t.my);
+      const out = { mx: tx, my: ty, a: t.a || t.tapA, b: t.b || t.tapB, sprint: Math.hypot(t.mx, t.my) > 0.85 };
+      t.tapA = t.tapB = false;
+      return out;
+    };
+    const fromTouch = readTouch(touch.current);
+    const fromTouch2 = readTouch(touch2.current);
     tap.clear();
-    if (couch) return [merge(merge(fromKeys(P1_KEYS), fromPad(pads[0])), fromTouch), merge(fromKeys(P2_KEYS), fromPad(pads[1]))];
+    if (couch) return [merge(merge(fromKeys(P1_KEYS), fromPad(pads[0])), fromTouch), merge(merge(fromKeys(P2_KEYS), fromPad(pads[1])), fromTouch2)];
     let inp = merge(fromKeys(SOLO_KEYS), fromTouch);
     for (const p of pads) inp = merge(inp, fromPad(p));
     return [inp];
@@ -527,6 +535,9 @@ export default function Hoops() {
         const p = c ? g.players[c.player] : null;
         const off = offence(g);
         const ctx: Hud["ctx"] = p && g.ball.owner === p.i ? "has" : p && off === p.team ? "off" : "def";
+        const c2 = !room && g.ctrls.length > 1 ? g.ctrls[1] : undefined;
+        const p2 = c2 ? g.players[c2.player] : null;
+        const ctx2: Hud["ctx"] = p2 && g.ball.owner === p2.i ? "has" : p2 && off === p2.team ? "off" : "def";
         if (view && view.shout.text && view.shout.text + view.shout.sub !== shoutSeen) {
           shoutSeen = view.shout.text + view.shout.sub;
           shoutKey++;
@@ -540,6 +551,7 @@ export default function Hoops() {
           sub: view?.shout.sub ?? "",
           shoutKey,
           ctx,
+          ctx2,
           cine: !!view && (view.replaying || g.slowmo > 0),
           phase: g.phase,
           sudden: g.sudden,
@@ -711,7 +723,14 @@ export default function Hoops() {
               </button>
             )}
           </div>
-          {touchUi && screen === "playing" && <TouchPad touch={touch} ctx={hud.ctx} />}
+          {touchUi && screen === "playing" && (g.ctrls.length > 1 && !roomRef.current ? (
+            <>
+              <TouchPad touch={touch} ctx={hud.ctx} side="left" />
+              <TouchPad touch={touch2} ctx={hud.ctx2 ?? "def"} side="right" />
+            </>
+          ) : (
+            <TouchPad touch={touch} ctx={hud.ctx} />
+          ))}
           {!touchUi && screen === "playing" && hud.phase === "intro" && (
             <div className="pointer-events-none absolute inset-x-0 bottom-6 text-center text-xs font-bold text-white/70">
               {g.ctrls.length > 1 ? "P1: WASD move · F pass · G shoot · Shift turbo    P2: arrows · K pass · L shoot · O turbo" : "Move WASD or arrows · J pass (hold to lob) · K or Space shoot (let go at the top) · Shift turbo · Gamepads work too"}
@@ -939,11 +958,9 @@ function Title({
             <button type="button" onClick={() => onMode("cpu")} className="w-full rounded-2xl bg-amber-400 py-3.5 text-lg font-black text-black shadow-lg active:scale-[0.98]" data-testid="hoops-cpu">
               🏀 Play the computer
             </button>
-            {!touchUi && (
-              <button type="button" onClick={() => onMode("versus")} className="w-full rounded-2xl bg-white/15 py-3 font-black" data-testid="hoops-couch">
-                👥 Two players, one screen
-              </button>
-            )}
+            <button type="button" onClick={() => onMode("versus")} className="w-full rounded-2xl bg-white/15 py-3 font-black" data-testid="hoops-couch">
+              👥 {touchUi ? "Two players, one phone" : "Two players, one screen"}
+            </button>
             <button type="button" onClick={() => setOnline(true)} className="w-full rounded-2xl bg-white/15 py-3 font-black" data-testid="hoops-online">
               🌐 Online with friends
             </button>
@@ -993,6 +1010,15 @@ function Controls({ touchUi, couch }: { touchUi: boolean; couch?: boolean }) {
       <span className="text-white/80">{v}</span>
     </div>
   );
+  if (touchUi && couch)
+    return (
+      <div data-testid="hoops-controls">
+        <Row k="Player 1" v="Left side of the screen: the stick on the edge, PASS and SHOOT next to it." />
+        <Row k="Player 2" v="Right side, the mirror of Player 1." />
+        <Row k="SHOOT" v="Hold, and let go when the meter hits the green band. Near the rim it is a dunk." />
+        <Row k="On defence" v="The buttons become STEAL and BLOCK." />
+      </div>
+    );
   if (touchUi)
     return (
       <div data-testid="hoops-controls">
@@ -1097,7 +1123,7 @@ function Setup({
       <div className="my-auto w-full max-w-lg space-y-3 rounded-3xl border border-white/10 bg-[#0d0a1c]/95 p-4 shadow-2xl backdrop-blur" data-testid="hoops-setup">
         <div className="flex items-center justify-between">
           <div className="text-lg font-black">{mode === "cpu" ? "Against the computer" : "Two players"}</div>
-          {mode !== "cpu" && !touchUi && (
+          {mode !== "cpu" && (
             <div className="flex rounded-xl bg-white/10 p-0.5 text-xs font-black">
               {(["versus", "coop"] as const).map((m) => (
                 <button key={m} type="button" onClick={() => setMode(m)} className={`rounded-lg px-2.5 py-1 ${mode === m ? "bg-white text-black" : ""}`}>
@@ -1262,14 +1288,24 @@ function Lobby({
   );
 }
 
-function TouchPad({ touch, ctx }: { touch: MutableRefObject<{ mx: number; my: number; a: boolean; b: boolean; tapA: boolean; tapB: boolean }>; ctx: Hud["ctx"] }) {
+/**
+ * Stick on the left half, two buttons on the right. With two people on one
+ * phone there are two of these: `side` gives each player half the screen,
+ * stick on the outside edge and buttons toward the middle.
+ */
+function TouchPad({ touch, ctx, side }: { touch: MutableRefObject<{ mx: number; my: number; a: boolean; b: boolean; tapA: boolean; tapB: boolean }>; ctx: Hud["ctx"]; side?: "left" | "right" }) {
   const [stick, setStick] = useState<{ ox: number; oy: number; x: number; y: number } | null>(null);
   const id = useRef<number | null>(null);
+  const origin = useRef({ x: 0, y: 0 });
   const R = 56;
   const down = (e: RPointerEvent<HTMLDivElement>) => {
     if (id.current !== null) return;
     id.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
+    // The rings are drawn inside this zone, which is not at the screen's
+    // left edge when two players share it.
+    const z = e.currentTarget.getBoundingClientRect();
+    origin.current = { x: z.left, y: z.top };
     setStick({ ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY });
   };
   const move = (e: RPointerEvent<HTMLDivElement>) => {
@@ -1296,19 +1332,27 @@ function TouchPad({ touch, ctx }: { touch: MutableRefObject<{ mx: number; my: nu
     if (on) touch.current[which === "a" ? "tapA" : "tapB"] = true;
   };
   const labels = ctx === "has" ? ["PASS", "SHOOT"] : ctx === "off" ? ["CALL", "JUMP"] : ["STEAL", "BLOCK"];
+  const stickZone = side === "left" ? "left-0 w-1/4" : side === "right" ? "right-0 w-1/4" : "left-0 w-1/2";
+  const buttonsAt = side === "left" ? "left-[calc(25%+8px)]" : side === "right" ? "right-[calc(25%+8px)] flex-row-reverse" : "right-4";
+  const tagCol = side === "left" ? "#38bdf8" : "#fb923c";
   return (
     <>
-      <div className="absolute bottom-0 left-0 top-16 w-1/2" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} data-testid="hoops-stick">
+      {side && (
+        <div className="pointer-events-none absolute bottom-[max(calc(env(safe-area-inset-bottom)+116px),134px)] text-[11px] font-black tracking-wider" style={{ color: tagCol, [side]: "calc(25% + 12px)" }}>
+          PLAYER {side === "left" ? 1 : 2}
+        </div>
+      )}
+      <div className={`absolute bottom-0 top-16 ${stickZone}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} data-testid={side === "right" ? "hoops-p2-stick" : "hoops-stick"}>
         {stick ? (
           <>
-            <div className="pointer-events-none absolute rounded-full border-2 border-white/30 bg-white/10" style={{ left: stick.ox - R, top: stick.oy - R, width: R * 2, height: R * 2 }} />
-            <div className="pointer-events-none absolute h-14 w-14 rounded-full bg-white/60" style={{ left: stick.x - 28, top: stick.y - 28 }} />
+            <div className="pointer-events-none absolute rounded-full border-2 border-white/30 bg-white/10" style={{ left: stick.ox - origin.current.x - R, top: stick.oy - origin.current.y - R, width: R * 2, height: R * 2 }} />
+            <div className="pointer-events-none absolute h-14 w-14 rounded-full bg-white/60" style={{ left: stick.x - origin.current.x - 28, top: stick.y - origin.current.y - 28 }} />
           </>
         ) : (
-          <div className="pointer-events-none absolute bottom-10 left-8 flex h-28 w-28 items-center justify-center rounded-full border-2 border-white/20 text-[10px] font-bold text-white/40">RUN · PUSH FOR TURBO</div>
+          <div className={`pointer-events-none absolute bottom-10 ${side === "right" ? "right-8" : "left-8"} flex h-28 w-28 items-center justify-center rounded-full border-2 text-center text-[10px] font-bold text-white/40`} style={{ borderColor: side ? `${tagCol}66` : "rgba(255,255,255,.2)" }}>{side ? `P${side === "left" ? 1 : 2} RUN` : "RUN · PUSH FOR TURBO"}</div>
         )}
       </div>
-      <div className="absolute bottom-[max(env(safe-area-inset-bottom),18px)] right-4 flex items-end gap-3">
+      <div className={`absolute bottom-[max(env(safe-area-inset-bottom),18px)] ${buttonsAt} flex items-end gap-3`}>
         {(
           [
             ["a", labels[0], "#38bdf8", 64],
@@ -1327,7 +1371,7 @@ function TouchPad({ touch, ctx }: { touch: MutableRefObject<{ mx: number; my: nu
             onContextMenu={(e) => e.preventDefault()}
             className="flex items-center justify-center rounded-full border-2 border-white/40 text-xs font-black shadow-lg active:scale-95"
             style={{ width: size, height: size, background: `${col}cc`, marginBottom: k === "a" ? 0 : 22 }}
-            data-testid={`hoops-${k}`}
+            data-testid={side === "right" ? `hoops-p2-${k}` : `hoops-${k}`}
           >
             {label}
           </button>
