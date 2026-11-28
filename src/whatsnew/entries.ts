@@ -38,6 +38,15 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-featured-city-clips",
+    date: "2026-11-28",
+    emoji: "🎬",
+    title: "Vibe City is playing on the front page",
+    body: "Scroll past the cover and Vibe City is right there, playing. Prism Skyway and VibeQuest cards now show a few seconds of real play when you point at them, and San Palmas has a new cover.",
+    tag: "update",
+    route: "/",
+  },
+  {
     id: "vibequest-vader-duel-polish",
     date: "2026-11-28",
     emoji: "⚔️",

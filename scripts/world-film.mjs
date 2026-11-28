@@ -7,6 +7,7 @@
  *   node scripts/world-film.mjs city kart hoops   # several
  *   node scripts/world-film.mjs --all             # every plan in film/plans.mjs
  *   node scripts/world-film.mjs city --keep       # also keep the JPEG frames
+ *   node scripts/world-film.mjs city --big --keep --out /tmp/x   # 960 px frames for card art
  *
  * The older `route-gif.mjs` records in real time, so on this container's
  * software renderer a heavy world gets two frames a second and the recording
@@ -110,6 +111,9 @@ async function film(key) {
   // `--seconds 1.5` for a quick probe take.
   const si = args.indexOf("--seconds");
   if (si >= 0) plan.seconds = Number(args[si + 1]);
+  // `--big` films at 960x540 for picking card art from the kept frames
+  // (use with --keep and --out so the card clip is not replaced).
+  if (args.includes("--big") && !plan.crop) Object.assign(plan, { viewport: [960, 540], width: 960, outWidth: 960 });
   const scratch = join(tmpdir(), `world-film-${key}`);
   rmSync(scratch, { recursive: true, force: true });
   mkdirSync(scratch, { recursive: true });
