@@ -38,11 +38,21 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "city-chopper-laser",
+    date: "2026-11-28",
+    emoji: "🟢",
+    title: "The chopper has a laser, and buildings fall over",
+    body: "At five stars the police chopper now charges a huge green laser and blasts the buildings around you. Hit a building hard enough and it tips over, and it can smash into the next one and knock that over too. The chopper can no longer take you down.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "city-police-chopper",
     date: "2026-11-27",
     emoji: "🚁",
     title: "Five stars brings the police chopper",
-    body: "Hit five stars in Vibe City and a police helicopter comes after you. It sprays bullets from above and fires rockets, and if it wears your health down you wake up at the police station. Keep moving, hide under cover, or shoot it out of the sky.",
+    body: "Hit five stars in Vibe City and a police helicopter comes after you. It sprays bullets from above and fires rockets. Keep moving, hide under cover, or shoot it out of the sky.",
     tag: "new",
     route: "/city",
     world: "Vibe City",

@@ -53,6 +53,7 @@
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { createCollapse, type BuildingRec, type Collapse } from "@/city/collapse";
 import type { WorldBox } from "@/components/city/cardboardIsland";
 import { createSmashables, type Smashables } from "./smash";
 import { buildTraffic, type Traffic } from "./traffic";
@@ -125,6 +126,8 @@ export interface District {
   traffic: Traffic;
   /** Trees, lamp posts, stop signs and signals a car can knock over. See `src/city/smash.ts`. */
   smash: Smashables;
+  /** Buildings that tip over when they have taken enough. See `src/city/collapse.ts`. */
+  collapse: Collapse;
   /**
    * Drive the traffic.
    *
@@ -639,6 +642,18 @@ export function buildDistrict(opts: DistrictOpts): District {
   /** Roof tops tall enough to warrant an aviation warning light. */
   const beaconAt: Array<{ x: number; y: number; z: number }> = [];
   const footprints: Footprint[] = [];
+  /**
+   * Where each building's pieces sit in the lists above, so `collapse.ts` can
+   * find its vertices and instances in the merged meshes later. Index ranges
+   * into the lists; turned into vertex ranges once the meshes are built.
+   */
+  interface LotRec {
+    minX: number; maxX: number; minZ: number; maxZ: number; height: number;
+    variant: number; walls: [number, number]; roofs: [number, number];
+    concrete: [number, number]; plant: [number, number]; tanks: [number, number]; vents: [number, number];
+    boxes: [number, number];
+  }
+  const lotRecs: LotRec[] = [];
 
   const M = new THREE.Matrix4();
   const S3 = new THREE.Vector3();
@@ -763,6 +778,7 @@ export function buildDistrict(opts: DistrictOpts): District {
             pads: pads.length,
             beacons: beaconAt.length,
             footprints: footprints.length,
+            lots: lotRecs.length,
           }
         : null;
 
@@ -807,6 +823,10 @@ export function buildDistrict(opts: DistrictOpts): District {
         const variant = Math.floor(r() * VARIANTS);
         const masses = massing(r, lx, lz, w, d, height);
         const hasPad = height > padMinHeight;
+        const rec0 = {
+          walls: wallsByVariant[variant].length, roofs: roofGeos.length, concrete: concrete.length,
+          plant: plant.length, tanks: tanks.length, vents: vents.length, boxes: boxes.length,
+        };
 
         for (const m of masses) {
           wallsByVariant[variant].push(wallGeometry(m.w, m.y1 - m.y0, m.d, m.cx, m.y0, m.cz));
@@ -825,6 +845,25 @@ export function buildDistrict(opts: DistrictOpts): District {
         // Anything an aircraft could hit gets a beacon, which above 60 m is
         // most of the skyline's tallest fifth.
         if (height > 60) beaconAt.push({ x: lx, y: height, z: lz });
+        {
+          let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, top = 0;
+          for (let i = rec0.boxes; i < boxes.length; i++) {
+            const b = boxes[i];
+            minX = Math.min(minX, b.minX); maxX = Math.max(maxX, b.maxX);
+            minZ = Math.min(minZ, b.minZ); maxZ = Math.max(maxZ, b.maxZ);
+            top = Math.max(top, b.height);
+          }
+          lotRecs.push({
+            minX, maxX, minZ, maxZ, height: top, variant,
+            walls: [rec0.walls, wallsByVariant[variant].length],
+            roofs: [rec0.roofs, roofGeos.length],
+            concrete: [rec0.concrete, concrete.length],
+            plant: [rec0.plant, plant.length],
+            tanks: [rec0.tanks, tanks.length],
+            vents: [rec0.vents, vents.length],
+            boxes: [rec0.boxes, boxes.length],
+          });
+        }
       }
 
       if (keep) {
@@ -838,12 +877,28 @@ export function buildDistrict(opts: DistrictOpts): District {
         pads.length = keep.pads;
         beaconAt.length = keep.beacons;
         footprints.length = keep.footprints;
+        lotRecs.length = keep.lots;
       }
     }
   }
 
   // ---- Facade meshes ---------------------------------------------------
+  /** Per variant: the facade mesh, and where each wall geometry's vertices start in it. */
+  const wallMeshes: Array<THREE.Mesh | null> = [];
+  const wallStarts: number[][] = [];
+  const vertStarts = (geos: THREE.BufferGeometry[]) => {
+    const out: number[] = [];
+    let n = 0;
+    for (const g of geos) {
+      out.push(n);
+      n += g.getAttribute("position").count;
+    }
+    out.push(n);
+    return out;
+  };
   wallsByVariant.forEach((geos, i) => {
+    wallMeshes[i] = null;
+    wallStarts[i] = vertStarts(geos);
     if (!geos.length) return;
     const night = makeFacade(`${seed}-n${i}`, NIGHT[i]);
     const day = makeFacade(`${seed}-d${i}`, DAY[i]);
@@ -861,6 +916,7 @@ export function buildDistrict(opts: DistrictOpts): District {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
+    wallMeshes[i] = mesh;
     skins.push({ mat, night, day });
     trash.push(merged, mat, night.map, night.emissiveMap, day.map, day.emissiveMap);
   });
@@ -869,6 +925,7 @@ export function buildDistrict(opts: DistrictOpts): District {
   const roofNight = makeRoof(false);
   const roofDay = makeRoof(true);
   const roofMat = new THREE.MeshStandardMaterial({ map: roofNight, roughness: 0.94 });
+  const roofStarts = vertStarts(roofGeos);
   const roofMerged = mergeGeometries(roofGeos, false)!;
   roofGeos.forEach((g) => g.dispose());
   const roofMesh = new THREE.Mesh(roofMerged, roofMat);
@@ -1173,10 +1230,35 @@ export function buildDistrict(opts: DistrictOpts): District {
     group.add(im);
     return im;
   };
-  instance(unitBox, concreteMat, concrete);
-  instance(unitBox, plantMat, plant);
-  instance(tankGeo, tankMat, tanks);
-  instance(ventGeo, plantMat, vents);
+  const concreteIM = instance(unitBox, concreteMat, concrete);
+  const plantIM = instance(unitBox, plantMat, plant);
+  const tanksIM = instance(tankGeo, tankMat, tanks);
+  const ventsIM = instance(ventGeo, plantMat, vents);
+
+  // ---- Buildings that can fall over: see `src/city/collapse.ts` ----------
+  const collapse = createCollapse(lotRecs.map((l): BuildingRec => {
+    const parts: BuildingRec["parts"] = [];
+    const wm = wallMeshes[l.variant];
+    if (wm && l.walls[1] > l.walls[0]) {
+      const s0 = wallStarts[l.variant][l.walls[0]];
+      parts.push({ kind: "geo", mesh: wm, start: s0, count: wallStarts[l.variant][l.walls[1]] - s0 });
+    }
+    if (l.roofs[1] > l.roofs[0]) {
+      const s0 = roofStarts[l.roofs[0]];
+      parts.push({ kind: "geo", mesh: roofMesh, start: s0, count: roofStarts[l.roofs[1]] - s0 });
+    }
+    const inst = (im: THREE.InstancedMesh | null, [a, b]: [number, number]) => {
+      if (im && b > a) parts.push({ kind: "inst", im, start: a, end: b });
+    };
+    inst(concreteIM, l.concrete);
+    inst(plantIM, l.plant);
+    inst(tanksIM, l.tanks);
+    inst(ventsIM, l.vents);
+    return {
+      minX: l.minX, maxX: l.maxX, minZ: l.minZ, maxZ: l.maxZ, height: l.height,
+      boxes: boxes.slice(l.boxes[0], l.boxes[1]), parts,
+    };
+  }));
   const trunkMesh = instance(trunkGeo, trunkMat, trunks);
   const crownMesh = instance(crownGeo, leafMat, crowns);
   // Not every tree the same green: a seeded spread of greens, a few autumn.
@@ -1386,6 +1468,7 @@ export function buildDistrict(opts: DistrictOpts): District {
     }
     traffic.update(dt, player);
     smash.update(dt, player);
+    collapse.update(dt);
   };
 
   return {
@@ -1394,6 +1477,7 @@ export function buildDistrict(opts: DistrictOpts): District {
     pads,
     traffic,
     smash,
+    collapse,
     setDay,
     footprints,
     ground: { road: roadMat, pave: paveMat },
