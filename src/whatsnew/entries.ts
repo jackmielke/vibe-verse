@@ -48,6 +48,14 @@ export const ENTRIES: WhatsNewEntry[] = [
     world: "Vibe City",
   },
   {
+    id: "2026-11-28-two-players-one-phone-everywhere",
+    date: "2026-11-28",
+    emoji: "👥",
+    title: "Two players on one phone in Vibe Cup, Vibe Hoops and Cannon Run",
+    body: "Every game with a two player mode now works with two people on one phone. Turn it sideways: Player 1 plays on the left edge and Player 2 on the right, each with their own stick and buttons. Picking clubs, players and trucks works just like before.",
+    tag: "update",
+  },
+  {
     id: "2026-11-28-vibequest-two-on-one-phone",
     date: "2026-11-28",
     emoji: "📱",
