@@ -453,8 +453,12 @@ export default function City() {
      the overlay asking where to be is skipped — and skipped from the *first*
      render rather than by an effect, which is the difference between not
      showing it and showing it briefly. */
-  const isDirectSpawn =
-    typeof window !== "undefined" && !!directSpawn(window.location.search);
+  const firstSpawn = typeof window === "undefined" ? null : directSpawn(window.location.search);
+  /* Except Vibe Island's own link, which opens on the picker over the Glide
+     flyover and lands on the island when you press Enter (Jack, 2026-11-28). */
+  // Skipped under navigator.webdriver so the island scripts land as before.
+  const islandPicksFirst = firstSpawn === "island" && !(typeof navigator !== "undefined" && navigator.webdriver);
+  const isDirectSpawn = !!firstSpawn && !islandPicksFirst;
   const [entered, setEntered] = useState(isFreshDrop || isLive || isDirectSpawn);
   /**
    * In the water, for the UI only.
@@ -465,12 +469,20 @@ export default function City() {
    */
   const [inWater, setInWater] = useState(false);
   const enteredRef = useRef(isFreshDrop || isLive || isDirectSpawn);
-  /* `?entry=drone|glide|tour` puts the camera on a slow flyover of the real
-     city behind the picker instead of the painted backdrop (src/city/flyover.ts).
-     A preview for now; no param keeps the classic screen. */
-  const [entryLook, setEntryLook] = useState(() =>
-    typeof window === "undefined" ? null : flyoverFromSearch(window.location.search),
-  );
+  /* The picker sits over a slow drone flyover of the real city
+     (src/city/flyover.ts), Jack's pick on 2026-11-28. `?entry=glide|tour|classic`
+     still shows the other looks, with a switcher, for comparison. */
+  /* Desktop gets Drone, phones get Tour, the Vibe Island link gets Glide.
+     `?entry=demo` opens with a switcher to try every look on the live city. */
+  const entryParam = typeof window === "undefined" ? null : flyoverFromSearch(window.location.search);
+  const entryDemo =
+    !!entryParam || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("entry") === "demo");
+  const [entryLook, setEntryLook] = useState<ReturnType<typeof flyoverFromSearch>>(() => {
+    if (entryParam) return entryParam;
+    if (islandPicksFirst) return "glide";
+    const phone = typeof window !== "undefined" && Math.min(window.innerWidth, window.innerHeight) < 700;
+    return phone ? "tour" : "drone";
+  });
   const flyoverRef = useRef(entryLook);
   flyoverRef.current = entryLook;
   const [flyReady, setFlyReady] = useState(false);
@@ -650,8 +662,34 @@ export default function City() {
   const [squad, setSquad] = useState<Bodyguards | null>(null);
   const [mayhemHud, setMayhemHud] = useState<MayhemHud>({
     stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bads: 0, bombs: null, atStall: false,
-    chopper: null,
+    chopper: null, hp: null,
   });
+  /**
+   * "Can die" mode (Jack, Nov 28 2026): off by default, because the city is a
+   * place you can not die; on, the police and the chopper take your health
+   * and at zero you are wiped out and wake up outside the police station,
+   * heat cleared, like GTA. Per device; `?die=1` turns it on for a script.
+   */
+  const [canDie, setCanDie] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const q = new URLSearchParams(window.location.search).get("die");
+    if (q === "1" || q === "on") return true;
+    if (q === "0" || q === "off") return false;
+    try {
+      return localStorage.getItem("city.canDie") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const canDieRef = useRef(canDie);
+  canDieRef.current = canDie;
+  /** Wiped out in "Can die" mode: a timestamp, the overlay shows ~3 s. */
+  const [downFx, setDownFx] = useState(0);
+  useEffect(() => {
+    if (downFx <= 0) return;
+    const timer = window.setTimeout(() => setDownFx(0), 3200);
+    return () => window.clearTimeout(timer);
+  }, [downFx]);
   /**
    * Camera mode, from the world controls (Jack, Nov 27 2026): the drag-to-orbit
    * view we always had, a chase cam that swings in behind wherever you face
@@ -1931,7 +1969,7 @@ export default function City() {
       arcade.setPrizes(ownedPrizes());
       setTicketCount(arcadeTickets());
     });
-    // The Vibe Kart GP: gates on the streets, a kiosk on the plaza's east edge.
+    // The Vibe Kart GP: gates on the streets, a kiosk by the start line on the Eiffel Tower's street.
     const race = buildKartRace({ lowDetail: smallScreen });
     scene.add(race.group);
     // Held live by reference — every world that loads after this pushes its
@@ -5213,6 +5251,22 @@ export default function City() {
       onShot: (dmg) => {
         if (drivingKartRef.current >= 0) hurtVehicle(drivingKartRef.current, "blast", dmg * 1.4, true);
       },
+      onDown: () => {
+        // "Can die" mode: down you go, then you wake up outside the police
+        // station with the slate wiped clean.
+        if (drivingKartRef.current >= 0) exitKartRef.current?.();
+        const a = Math.random() * Math.PI * 2;
+        if (!activeMountRef.current) bowlOver(Math.cos(a), Math.sin(a), 10);
+        soundsRef.current?.thud?.(1);
+        setDownFx(Date.now());
+        window.setTimeout(() => {
+          if (drivingKartRef.current >= 0 || activeMountRef.current || ridingBad !== null) return;
+          const [gx, gz, gyaw] = hideouts.garage;
+          player.position.set(gx + Math.sin(gyaw) * 6, 0.5, gz + Math.cos(gyaw) * 6);
+          vel.set(0, 0, 0);
+          peakY = player.position.y;
+        }, 2200);
+      },
       collapse: district.collapse,
       onChopper: (e) => {
         if (e === "up") {
@@ -5247,6 +5301,7 @@ export default function City() {
     });
     mayhemCycleRef.current = () => mayhem.cycle();
     mayhemRef.current = mayhem;
+    mayhem.setMortal(canDieRef.current);
     mayhem.setBought(ownedWeapons(getWardrobeState().owned));
     (window as unknown as Record<string, unknown>).__cityMayhem = mayhem;
 
@@ -7941,7 +7996,7 @@ export default function City() {
           const inRaceKart = drivingKartRef.current === 0 && k0.wreck <= 0;
           if (race.active() && !inRaceKart) {
             race.abort();
-            toast("🏁 Out of the race", { description: k0.wreck > 0 ? "The kart is wrecked. Walk back to the kiosk on the plaza to try again." : "You got out of the kart. The kiosk on the plaza starts another one." });
+            toast("🏁 Out of the race", { description: k0.wreck > 0 ? "The kart is wrecked. The Kart GP kiosk by the start line, on the Eiffel Tower's street, starts another." : "You got out of the kart. The kiosk by the start line starts another one." });
           }
           const ev = race.update(dt, now, inRaceKart ? k0 : null);
           if (ev?.type === "go") soundsRef.current?.chime(4);
@@ -9591,6 +9646,8 @@ export default function City() {
   // is clicked while already in the city).
   useEffect(() => {
     const spawn = directSpawn(routerLocation.search);
+    // Vibe Island's link waits for the picker; enter() lands it.
+    if (spawn === "island" && islandPicksFirst && !enteredRef.current) return;
     if (spawn) {
       if (spawn === "hub") hubSpawnRef.current?.();
       else if (spawn === "moon") moonSpawnRef.current?.();
@@ -9776,6 +9833,10 @@ export default function City() {
     }
     enteredRef.current = true;
     setEntered(true);
+    if (islandPicksFirst && directSpawn(window.location.search) === "island") {
+      islandSpawnRef.current?.();
+      setArriving(true);
+    }
     // AudioContext needs a user gesture — this click is it.
     ensureAudio();
   };
@@ -10058,6 +10119,29 @@ export default function City() {
               data-testid="camera-mode-toggle"
             >
               {CAM_MODES[camMode].emoji} {CAM_MODES[camMode].label}
+            </button>
+            <button
+              onClick={(e) => {
+                const next = !canDie;
+                setCanDie(next);
+                try {
+                  localStorage.setItem("city.canDie", next ? "1" : "0");
+                } catch {
+                  /* private window */
+                }
+                mayhemRef.current?.setMortal(next);
+                toast(next ? "💀 You can die now" : "😇 You can't die", {
+                  description: next
+                    ? "Cops and the chopper take your health. Run out and you wake up at the police station with no heat."
+                    : "Nothing the police do can take you down.",
+                });
+                e.currentTarget.blur();
+              }}
+              className={`glass-panel rounded-full px-3.5 py-2 text-xs transition-colors hover:bg-muted/50 ${canDie ? "text-rose-300" : ""}`}
+              title="Can die: off means nothing can take you down. On, cops and the chopper can wipe you out, and you respawn at the police station"
+              data-testid="can-die-toggle"
+            >
+              {canDie ? "💀 Can die: on" : "😇 Can die: off"}
             </button>
             {/* GOD MODE — summon weather. Opens a little palette rather
                 than cycling, so you can go straight to the storm. */}
@@ -11070,6 +11154,40 @@ export default function City() {
       <SquadPanel squad={squad} hidden={!entered || underground || Boolean(gameHud) || Boolean(rebelHud?.active)} />
 
       {/* GTA Junior: wanted stars, the gun in hand, and a fire button on touch. */}
+      {/* "Can die" mode: your health, while it matters (wanted, or hurt). */}
+      {entered && !gameHud && mayhemHud.hp !== null && (mayhemHud.stars > 0 || mayhemHud.hp < 100) && (
+        <div
+          className={`fixed left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-3 py-1 text-[11px] flex items-center gap-1.5 pointer-events-none select-none ${
+            isTouch ? "top-[6.6rem]" : "bottom-20"
+          }`}
+          data-testid="player-hp"
+        >
+          <span>❤️</span>
+          <span className="inline-block w-24 h-1.5 rounded-full bg-white/15 overflow-hidden">
+            <span
+              className={`block h-full transition-[width] ${mayhemHud.hp > 50 ? "bg-emerald-400" : mayhemHud.hp > 25 ? "bg-amber-300" : "bg-rose-500"}`}
+              style={{ width: `${mayhemHud.hp}%` }}
+            />
+          </span>
+          <span className="tabular-nums text-foreground/80 w-6 text-right">{mayhemHud.hp}</span>
+        </div>
+      )}
+      {/* Wiped out in "Can die" mode. */}
+      {entered && downFx > 0 && (
+        <div
+          key={downFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+          data-testid="wiped-out"
+        >
+          <div className="absolute inset-0 bg-slate-950/50 backdrop-grayscale" />
+          <div className="relative text-center animate-scale-in">
+            <div className="font-heading font-black text-5xl sm:text-7xl tracking-widest text-rose-500 drop-shadow-[0_0_24px_rgba(244,63,94,0.7)]">
+              WIPED OUT
+            </div>
+            <div className="mt-2 text-xs sm:text-sm text-white/80">Heat cleared. Waking up at the police station…</div>
+          </div>
+        </div>
+      )}
       {/* On a phone the full panel ran down the right side into the FIRE and
           gun buttons (Jack, Nov 28), so it is one short strip at the top
           instead: stars, cruisers, the chopper, and the countdown. */}
@@ -12211,7 +12329,7 @@ export default function City() {
                 onEnter={enter}
               />
             )}
-            {entryLook && <EntryLookSwitcher look={entryLook} onLook={setEntryLook} />}
+            {entryDemo && entryLook && <EntryLookSwitcher look={entryLook} onLook={setEntryLook} />}
           </motion.div>
         )}
       </AnimatePresence>

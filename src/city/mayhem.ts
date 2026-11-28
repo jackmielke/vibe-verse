@@ -122,6 +122,11 @@ export interface MayhemHud {
   bads: number;
   /** The police chopper's health, percent, while one is up. */
   chopper: number | null;
+  /**
+   * Your own health, 0 to 100, in "Can die" mode only (null otherwise). Jack
+   * (Nov 28): you can not die by default, and dying is a toggle.
+   */
+  hp: number | null;
 }
 
 export interface MayhemCtx {
@@ -191,6 +196,11 @@ export interface MayhemOpts {
   onBust(): void;
   /** The chopper's door gun hit the car you are driving. */
   onShot?(dmg: number): void;
+  /**
+   * "Can die" mode: your health ran out. Heat is already cleared and your
+   * health is full again; the city decides where you wake up.
+   */
+  onDown?(): void;
   /**
    * Buildings that can be knocked over (`src/city/collapse.ts`). The chopper's
    * laser, rockets and blown facades all hurt them.
@@ -265,6 +275,10 @@ export interface Mayhem {
     splats: Array<{ x: number; y: number; z: number; on: string | null }>;
     slips: number;
     bads: Array<{ id: number; x: number; z: number; hp: number; speed: number; boarding: boolean; chasers: number }>;
+    mortal: boolean;
+    hp: number;
+    downs: number;
+    copShots: number;
   };
   setHeat(h: number): void;
   /** For harnesses: put the police chopper up over (x, z) right now. */
@@ -273,6 +287,10 @@ export interface Mayhem {
   hurtChopper(dmg: number): void;
   /** For harnesses: make the chopper fire its laser at the next chance. */
   chopperLaser(): void;
+  /** "Can die" mode on or off. Off (the default) you can not be hurt. */
+  setMortal(on: boolean): void;
+  /** For harnesses: hurt the player as a police round would. */
+  hurtPlayer(dmg: number): void;
   give(kind: GunKind): void;
   /** For harnesses: leave a puddle here. */
   puddleAt(x: number, z: number): void;
@@ -682,6 +700,8 @@ interface Driver {
 }
 
 interface Cop extends Driver {
+  /** Seconds to its next pot shot at you ("Can die" mode, three stars up). */
+  shotCool?: number;
   mesh: CopMesh;
   hp: number;
   /** 0 while running; seconds since it was wrecked. */
@@ -1104,6 +1124,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       bombs: hasBombs ? bombsInHand : null,
       atStall,
       chopper: chopper?.hud()?.hp ?? null,
+      hp: mortal ? Math.round(playerHp) : null,
     };
     const key = JSON.stringify(h);
     if (key !== lastHud) {
@@ -1584,7 +1605,69 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (b) hurtBad(b, dmg);
       return;
     }
-    if (ctx.driving) opts.onShot?.(dmg * 0.6);
+    if (ctx.driving) {
+      opts.onShot?.(dmg * 0.6);
+      // Behind a windscreen you take a little of it, in "Can die" mode.
+      if (mortal) hurtMe(dmg * 0.25);
+      return;
+    }
+    if (mortal) hurtMe(dmg);
+  };
+  // ---- "Can die" mode ---------------------------------------------------
+  // Off by default: Jack wants a city where you can not die, and dying is a
+  // toggle in the world controls. On, police rounds, rockets and rams take
+  // your health, it grows back after a few quiet seconds, and at zero you are
+  // wiped out and wake up somewhere safe with the heat cleared.
+  let mortal = false;
+  let playerHp = 100;
+  let hpQuiet = 99;
+  let downs = 0;
+  let copShots = 0;
+  const hurtMe = (dmg: number) => {
+    if (!mortal || dmg <= 0) return;
+    playerHp -= dmg;
+    hpQuiet = 0;
+    if (playerHp <= 0) {
+      playerHp = 100;
+      heat = 0;
+      quiet = 0;
+      downs++;
+      opts.onDown?.();
+    }
+    hud();
+  };
+  /**
+   * At three stars and up, a cruiser close enough and in sight of you leans
+   * out and takes pot shots. Only in "Can die" mode: with nothing to lose it
+   * would be noise.
+   */
+  const copShoot = (
+    c: Cop, dt: number, ctx: MayhemCtx, dMe: number,
+    blocked: ((x: number, z: number, y: number) => boolean) | null,
+  ) => {
+    c.shotCool = (c.shotCool ?? 1 + Math.random()) - dt;
+    if (c.shotCool > 0) return;
+    if (starsFor(heat) < 3 || dMe > 24 || dMe < 3 || ctx.riding !== null) return;
+    c.shotCool = 1.1 + Math.random() * 0.9;
+    const me = ctx.driving ?? ctx.player;
+    const len = dMe;
+    if (blocked) {
+      for (let s = 2; s < len - 1; s += 1.5) {
+        const k = s / len;
+        if (blocked(c.x + (me.x - c.x) * k, c.z + (me.z - c.z) * k, 1.3)) return;
+      }
+    }
+    copShots++;
+    bang("glock");
+    const nx = (me.x - c.x) / (len || 1);
+    const nz = (me.z - c.z) / (len || 1);
+    crashFx.sparks(c.x + nx * 1.4, 1.4, c.z + nz * 1.4, nx, nz, 3);
+    const sp = ctx.driving ? Math.abs(ctx.driving.speed) : 0;
+    const p = THREE.MathUtils.clamp(0.45 - sp * 0.02 - len * 0.008, 0.1, 0.45);
+    if (Math.random() < p) {
+      crashFx.sparks(me.x, me.y + 1, me.z, nx, nz, 4);
+      hitPlayer(7);
+    } else crashFx.debris(me.x + (Math.random() - 0.5) * 3, 0.1, me.z + (Math.random() - 0.5) * 3, 2, 0x8a8f96, 3);
   };
   let chopperWas = false;
   // Falling buildings: the dust, the fire and the noise.
@@ -1637,6 +1720,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       if (d < r && Math.abs(me.y - y) < 6) {
         // A car's own damage is `onBlast`'s, so only the bad guy's car needs it here.
         if (ctx.riding !== null) hitPlayer(30 * (1 - d / r) + 10);
+        else if (mortal && !ctx.driving) hurtMe(45 * (1 - d / r) + 12);
       }
       // And the buildings around it.
       const col = opts.collapse;
@@ -2462,6 +2546,7 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
           crashFx.smoulder(dt, c.x + Math.sin(c.yaw) * 1.5, 1.1, c.z + Math.cos(c.yaw) * 1.5, hurt, c.hp < 30 ? hurt : 0);
         }
         c.ramCool = Math.max(0, c.ramCool - dt);
+        if (mortal && c.target === "player") copShoot(c, dt, ctx, dMe, blocked);
         if (c.target === "leave") {
           c.idle += dt;
           if (c.idle > 25 || (dMe > 140 && !loose.length)) {
@@ -2513,7 +2598,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
             crime(0.3);
           } else if (copInto > 3 && c.target === "player") {
             opts.onContact(nx, nz, copInto + 4, true);
-            if (!ctx.driving) footCool = 3;
+            if (!ctx.driving) {
+              footCool = 3;
+              if (mortal) hurtMe(14 + copInto * 1.6);
+            }
             // Ramming is not free for the ram either.
             hurtCop(c, copInto * 0.9, false);
             c.speed *= 0.3;
@@ -2578,6 +2666,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
 
       // Fire.
       fireCool -= dt;
+      if (mortal) {
+        hpQuiet += dt;
+        if (hpQuiet > 5 && playerHp < 100) playerHp = Math.min(100, playerHp + dt * 14);
+      }
       for (let i = fires.length - 1; i >= 0; i--) {
         const f = fires[i];
         f.t += dt;
@@ -2635,6 +2727,10 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
           id: b.id, x: b.x, z: b.z, hp: b.hp, speed: b.speed, boarding: b.jump < JUMP_T,
           chasers: cops.filter((c) => c.dead === 0 && c.target === "bad" && c.prey === b.id).length,
         })),
+        mortal,
+        hp: playerHp,
+        downs,
+        copShots,
       };
     },
     setHeat(h) {
@@ -2646,6 +2742,15 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     },
     chopperLaser() {
       chopper.fireLaser();
+    },
+    setMortal(on) {
+      mortal = on;
+      playerHp = 100;
+      hpQuiet = 99;
+      hud();
+    },
+    hurtPlayer(dmg) {
+      hurtMe(dmg);
     },
     hurtChopper(dmg) {
       if (chopper.hurt(dmg)) opts.onChopper?.("down");

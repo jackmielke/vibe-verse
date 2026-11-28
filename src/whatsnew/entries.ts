@@ -38,6 +38,7 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+<<<<<<< HEAD
     id: "2026-11-28-vader-duel-reinforcements",
     date: "2026-11-28",
     emoji: "🪖",
@@ -46,6 +47,36 @@ export const ENTRIES: WhatsNewEntry[] = [
     tag: "update",
     route: "/vibequest",
     world: "VibeQuest",
+=======
+    id: "2026-11-28-kart-gp-moves",
+    date: "2026-11-28",
+    emoji: "🏁",
+    title: "The Kart GP has a new start line",
+    body: "The Vibe Kart GP now starts on a quiet stretch of the Eiffel Tower's street in Vibe City, with its kiosk on the pavement by the grid. Warehouse 13 got a polish too: dark steel, a red line under the roof and lamps over the door.",
+    tag: "update",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
+    id: "city-can-die",
+    date: "2026-11-28",
+    emoji: "💀",
+    title: "Turn on Can die in Vibe City",
+    body: "A new Can die button in the top settings. Off, nothing can take you down. On, the police shoot back once you hit three stars, the chopper and rams hurt, and when your health runs out you are wiped out and wake up at the police station with your heat cleared.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
+    id: "2026-11-28-city-live-flyover-picker",
+    date: "2026-11-28",
+    emoji: "🚁",
+    title: "Pick your character over the live city",
+    body: "The Pick your vibe screen on Vibe City now floats over a slow drone flight around the real city, live, so you see whatever the sky, the weather and the latest landmarks look like right now before you jump in.",
+    tag: "update",
+    route: "/city",
+    world: "Vibe City",
+>>>>>>> origin/main
   },
   {
     id: "2026-11-28-two-players-one-phone-everywhere",
