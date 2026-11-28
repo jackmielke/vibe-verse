@@ -17,6 +17,8 @@
 //   tick_agent     { agentId }                            -> decays needs, may put agent to sleep / wake them
 //   game_reward    { ownerKind, ownerRef, game, score }   -> mints $VIBE for a sky-island mini-game run
 //                                                            (server-side score clamp + 3 rewarded plays/game/day)
+//   coin_pickup    { ownerKind, ownerRef, world, count }  -> mints the Vibey Coins floating in a world
+//                                                            (per-call, per-world and per-day ceilings)
 //   arcade_insert  { ownerKind, ownerRef, game }          -> debits a cabinet's stake, returns a playId
 //   arcade_settle  { ownerKind, ownerRef, playId, game, score }
 //                                                         -> pays out that ONE play, once, clamped + daily-capped
@@ -68,6 +70,7 @@ Deno.serve(async (req) => {
       case "claim_bounty":   return ok(await claimBounty(supabase, body));
       case "complete_bounty":return ok(await completeBounty(supabase, body));
       case "game_reward":    return ok(await gameReward(supabase, body));
+      case "coin_pickup":    return ok(await coinPickup(supabase, body));
       case "arcade_insert":  return ok(await arcadeInsert(supabase, body));
       case "arcade_settle":  return ok(await arcadeSettle(supabase, body));
       case "arcade_allowance": return ok(await arcadeAllowance(supabase, body));
@@ -380,6 +383,67 @@ async function gameReward(supabase: Supa, b: any) {
     balance: balance + amount,
     capped: false,
     playsLeft: GAME_PLAYS_PER_DAY - played - 1,
+  };
+}
+
+// ---- floating coins -------------------------------------------------------
+//
+// The coins that float in the worlds (Vibe City's hoops, the rooftops of Vibe
+// Francisco, the racing line in Vibe Kart, the platforms of VibeQuest) are
+// Vibey Coins: picking one up moves the same balance the chip shows. The
+// client batches a few pickups into one call. Nothing here can check that a
+// coin was really there, so the ceilings are what bound it: a handful per
+// call, a modest amount per world per day, and a total across every world.
+// The memo is "<world> · <n>" so the per-world tally is one LIKE.
+
+const PICKUP_WORLDS: Record<string, number> = {
+  city: 80,       // hoops + the zeppelin heist coin
+  frisco: 60,
+  kart: 40,       // they respawn, so this one is tighter
+  vibequest: 40,
+};
+const PICKUP_MAX_PER_CALL = 30;
+const PICKUP_DAILY_CAP = 180;
+
+async function coinPickup(supabase: Supa, b: any) {
+  const ownerKind = String(b.ownerKind ?? "");
+  const ownerRef = String(b.ownerRef ?? "");
+  const world = String(b.world ?? "");
+  if (ownerKind !== "user" || !ownerRef) throw new Error("player wallet required");
+  const worldCap = PICKUP_WORLDS[world];
+  if (!worldCap) throw new Error(`no coins float in: ${world}`);
+  const asked = Math.min(PICKUP_MAX_PER_CALL, Math.max(0, Math.floor(Number(b.count) || 0)));
+
+  const balance = await ensureWallet(supabase, ownerKind, ownerRef);
+  if (asked <= 0) return { amount: 0, balance, capped: false, leftToday: null };
+
+  const { data: rows } = await supabase.from("vibe_ledger")
+    .select("amount, memo")
+    .eq("to_kind", ownerKind).eq("to_ref", ownerRef)
+    .eq("reason", "coin_pickup")
+    .gte("created_at", utcMidnight());
+  let total = 0;
+  let inWorld = 0;
+  for (const r of rows ?? []) {
+    const a = Number((r as any).amount) || 0;
+    total += a;
+    if (String((r as any).memo ?? "").startsWith(`${world} ·`)) inWorld += a;
+  }
+  const headroom = Math.max(0, Math.min(worldCap - inWorld, PICKUP_DAILY_CAP - total));
+  const amount = Math.min(asked, headroom);
+  if (amount <= 0) return { amount: 0, balance, capped: true, leftToday: 0 };
+
+  await setBalance(supabase, ownerKind, ownerRef, balance + amount);
+  await supabase.from("vibe_ledger").insert({
+    from_kind: "system", from_ref: "treasury",
+    to_kind: ownerKind, to_ref: ownerRef,
+    amount, reason: "coin_pickup", memo: `${world} · ${amount}`,
+  });
+  return {
+    amount,
+    balance: balance + amount,
+    capped: amount < asked,
+    leftToday: headroom - amount,
   };
 }
 
