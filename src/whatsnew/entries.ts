@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "vibequest-arrives",
+    date: "2026-11-28",
+    emoji: "🤖",
+    title: "VibeQuest is in the Vibe Verse",
+    body: "The sky island platformer now lives here. Run and jump as the little orange robot, grab Vibe Coins, beat the boss rush, or grab a friend for a couch fight, co-op boss battles, or an online duel by room link.",
+    tag: "new",
+    route: "/vibequest",
+    world: "VibeQuest",
+  },
+  {
     id: "city-police-chopper",
     date: "2026-11-27",
     emoji: "🚁",
