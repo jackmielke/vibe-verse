@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-kart-gp-moves",
+    date: "2026-11-28",
+    emoji: "🏁",
+    title: "The Kart GP has a new start line",
+    body: "The Vibe Kart GP now starts on a quiet stretch of the Eiffel Tower's street in Vibe City, with its kiosk on the pavement by the grid. Warehouse 13 got a polish too: dark steel, a red line under the roof and lamps over the door.",
+    tag: "update",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "2026-11-28-vibequest-two-on-one-phone",
     date: "2026-11-28",
     emoji: "📱",

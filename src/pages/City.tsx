@@ -1931,7 +1931,7 @@ export default function City() {
       arcade.setPrizes(ownedPrizes());
       setTicketCount(arcadeTickets());
     });
-    // The Vibe Kart GP: gates on the streets, a kiosk on the plaza's east edge.
+    // The Vibe Kart GP: gates on the streets, a kiosk by the start line on the Eiffel Tower's street.
     const race = buildKartRace({ lowDetail: smallScreen });
     scene.add(race.group);
     // Held live by reference — every world that loads after this pushes its
@@ -7941,7 +7941,7 @@ export default function City() {
           const inRaceKart = drivingKartRef.current === 0 && k0.wreck <= 0;
           if (race.active() && !inRaceKart) {
             race.abort();
-            toast("🏁 Out of the race", { description: k0.wreck > 0 ? "The kart is wrecked. Walk back to the kiosk on the plaza to try again." : "You got out of the kart. The kiosk on the plaza starts another one." });
+            toast("🏁 Out of the race", { description: k0.wreck > 0 ? "The kart is wrecked. The Kart GP kiosk by the start line, on the Eiffel Tower's street, starts another." : "You got out of the kart. The kiosk by the start line starts another one." });
           }
           const ev = race.update(dt, now, inRaceKart ? k0 : null);
           if (ev?.type === "go") soundsRef.current?.chime(4);
