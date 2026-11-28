@@ -251,31 +251,39 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
 
   // ---- Gates ---------------------------------------------------------------
   const GATES = 12;
-  const checker = canvasTex(512, 128, (x) => {
-    for (let i = 0; i < 16; i++) for (let j = 0; j < 4; j++) {
-      x.fillStyle = (i + j) % 2 ? "#111" : "#fff";
-      x.fillRect(i * 32, j * 32, 32, 32);
+  // The start line: a fine two-row checker in the arcade's indigo and a
+  // soft lilac, not black and white, so it sits in the plaza instead of
+  // shouting over it.
+  const checker = canvasTex(512, 64, (x) => {
+    for (let i = 0; i < 32; i++) for (let j = 0; j < 4; j++) {
+      x.fillStyle = (i + j) % 2 ? "#1b1133" : "#cfc6f0";
+      x.fillRect(i * 16, j * 16, 16, 16);
     }
   });
   const bannerTex = canvasTex(1024, 160, (x) => {
-    x.fillStyle = "#12082a";
+    x.fillStyle = "#150d28";
     x.fillRect(0, 0, 1024, 160);
-    x.font = "900 96px system-ui, sans-serif";
+    // A hairline of cyan top and bottom, the same line as the arcade's cornice.
+    x.fillStyle = "#38e8ff";
+    x.fillRect(0, 0, 1024, 5);
+    x.fillRect(0, 155, 1024, 5);
+    x.font = "800 76px system-ui, sans-serif";
     x.textAlign = "center";
     x.textBaseline = "middle";
     x.shadowColor = "#38e8ff";
-    x.shadowBlur = 24;
-    x.fillStyle = "#ffffff";
-    x.fillText("VIBE KART GP", 512, 86);
+    x.shadowBlur = 18;
+    x.fillStyle = "#e9fbff";
+    x.fillText("V I B E   K A R T   G P", 512, 84);
   });
   texs.push(checker, bannerTex);
-  const pylonGeo = new THREE.CylinderGeometry(0.35, 0.45, 5.2, 10);
+  const pylonGeo = new THREE.CylinderGeometry(0.22, 0.3, 5.2, 12);
   const barGeo = new THREE.BoxGeometry(GATE_HALF * 2 + 0.8, 0.9, 0.25);
   const beamGeo = new THREE.CylinderGeometry(0.6, 0.6, 60, 10, 1, true);
   geos.push(pylonGeo, barGeo, beamGeo);
   const dim = mat(new THREE.MeshBasicMaterial({ color: 0x3b2a6a }));
   const lit = mat(new THREE.MeshBasicMaterial({ color: 0x38e8ff }));
-  const finishMat = mat(new THREE.MeshBasicMaterial({ map: checker }));
+  // The start arch is dark, like the arcade behind it, with one cyan line.
+  const finishMat = mat(new THREE.MeshStandardMaterial({ color: 0x150d28, roughness: 0.4, metalness: 0.4 }));
   const bannerMat = mat(new THREE.MeshBasicMaterial({ map: bannerTex }));
   const beamMat = mat(new THREE.MeshBasicMaterial({ color: 0x38e8ff, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }));
   type Gate = { s: number; pos: THREE.Vector3; pylons: THREE.Mesh[]; bar: THREE.Mesh };
@@ -300,6 +308,19 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
     bar.rotation.y = yaw + Math.PI / 2;
     group.add(bar);
     if (g === 0) {
+      // A neon line up the inside of each pylon and under the bar.
+      const stripGeo = new THREE.BoxGeometry(0.06, 5.0, 0.06);
+      const underGeo = new THREE.BoxGeometry(GATE_HALF * 2 - 0.4, 0.06, 0.06);
+      geos.push(stripGeo, underGeo);
+      for (const side of [-1, 1]) {
+        const st = new THREE.Mesh(stripGeo, lit);
+        st.position.set(pos.x + nx * (GATE_HALF - 0.26) * side, 2.5, pos.z + nz * (GATE_HALF - 0.26) * side);
+        group.add(st);
+      }
+      const under = new THREE.Mesh(underGeo, lit);
+      under.position.set(pos.x, 4.52, pos.z);
+      under.rotation.y = yaw + Math.PI / 2;
+      group.add(under);
       // The start/finish banner, both faces.
       const bGeo = new THREE.PlaneGeometry(GATE_HALF * 2, GATE_HALF * 2 * (160 / 1024));
       geos.push(bGeo);
@@ -319,7 +340,7 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
   {
     const p = at(0, new THREE.Vector3(), tan);
     const yaw = Math.atan2(tan.x, tan.z);
-    const geo = new THREE.PlaneGeometry(GATE_HALF * 2, 1.2).rotateX(-Math.PI / 2);
+    const geo = new THREE.PlaneGeometry(GATE_HALF * 2, 0.6).rotateX(-Math.PI / 2);
     geos.push(geo);
     const m = new THREE.Mesh(geo, mat(new THREE.MeshBasicMaterial({ map: checker, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 })));
     m.position.set(p.x, 0.03, p.z);

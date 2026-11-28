@@ -3207,8 +3207,27 @@ export default function City() {
     scene.add(club.group);
 
     // The way in: a lit disc beside the dance floor.
-    const stairMat = new THREE.MeshBasicMaterial({ color: 0xb46bff, toneMapped: false });
-    const stairPad = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24), stairMat);
+    // A violet ring round a dark well, so it reads as a way down rather than
+    // a flat purple blot on the arcade's doorstep.
+    const stairTex = (() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const x = c.getContext("2d")!;
+      const g = x.createRadialGradient(128, 128, 20, 128, 128, 128);
+      g.addColorStop(0, "#05030c");
+      g.addColorStop(0.62, "#1a0f33");
+      g.addColorStop(0.8, "#a66bff");
+      g.addColorStop(0.86, "#e2ccff");
+      g.addColorStop(0.92, "#a66bff");
+      g.addColorStop(1, "rgba(166,107,255,0)");
+      x.fillStyle = g;
+      x.fillRect(0, 0, 256, 256);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    const stairMat = new THREE.MeshBasicMaterial({ map: stairTex, transparent: true, toneMapped: false });
+    const stairPad = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), stairMat);
     stairPad.rotation.x = -Math.PI / 2;
     stairPad.position.set(22.5, 0.06, 4);
     scene.add(stairPad);
@@ -9385,6 +9404,7 @@ export default function City() {
       club.dispose();
       stairPad.geometry.dispose();
       stairMat.dispose();
+      stairTex.dispose();
       mp.dispose();
       mpRef.current = null;
       postWorldEvent("leave");

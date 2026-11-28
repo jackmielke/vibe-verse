@@ -593,7 +593,7 @@ export function buildArcade(opts: { lowDetail?: boolean } = {}): Arcade {
   };
 
   // ---- Materials -----------------------------------------------------------
-  const shell = mat(new THREE.MeshStandardMaterial({ color: 0x2a1747, roughness: 0.6, metalness: 0.2 }));
+  const shell = mat(new THREE.MeshStandardMaterial({ color: 0x150d28, roughness: 0.45, metalness: 0.35 }));
   const inner = mat(new THREE.MeshStandardMaterial({ color: 0x1a1236, roughness: 0.8, emissive: 0x0c0620 }));
   const roofM = mat(new THREE.MeshStandardMaterial({ color: 0x0c0818, roughness: 0.85 }));
   const pink = mat(new THREE.MeshBasicMaterial({ color: 0xff3fd1 }));
@@ -686,16 +686,20 @@ export function buildArcade(opts: { lowDetail?: boolean } = {}): Arcade {
     solid(black, x1 - 0.3, x1, z0, z1, H, H + 0.5, false);
     solid(black, x0, x0 + 0.3, z0, z1, H, H + 0.5, false);
 
-    // Neon bands round the outside: pink low, cyan high.
-    const band = (m: THREE.Material, y: number) => {
-      solid(m, x0 - 0.06, x1 + 0.06, z1, z1 + 0.06, y, y + 0.14, false);
-      solid(m, x0 - 0.06, x1 + 0.06, z0 - 0.06, z0, y, y + 0.14, false);
-      solid(m, x1, x1 + 0.06, z0, z1, y, y + 0.14, false);
-      solid(m, x0 - 0.06, x0, z0, cz - DOOR, y, y + 0.14, false);
-      solid(m, x0 - 0.06, x0, cz + DOOR, z1, y, y + 0.14, false);
-    };
-    band(pink, 0.9);
-    band(cyan, H - 1.1);
+    // Outside, one line of light and nothing else: a slim cyan cornice along
+    // the top of the parapet and down every corner, so the building reads as
+    // one clean shape at night and the sign is the only loud thing on it.
+    const top = H + 0.5;
+    const e = 0.05;
+    solid(cyan, x0 - e, x1 + e, z1, z1 + e, top - 0.09, top, false);
+    solid(cyan, x0 - e, x1 + e, z0 - e, z0, top - 0.09, top, false);
+    solid(cyan, x1, x1 + e, z0, z1, top - 0.09, top, false);
+    solid(cyan, x0 - e, x0, z0, z1, top - 0.09, top, false);
+    for (const [x, z] of [[x0, z0], [x0, z1], [x1, z0], [x1, z1]] as const) {
+      const sx = x === x0 ? -e : 0;
+      const sz = z === z0 ? -e : 0;
+      solid(cyan, x + sx, x + sx + e, z + sz, z + sz + e, 0, top, false);
+    }
     // Inside: a pink tube along the skirting and a cyan one under the ceiling,
     // all the way round, so every wall has a line of light to reflect.
     const inBand = (m: THREE.Material, y: number, th: number) => {
@@ -738,33 +742,34 @@ export function buildArcade(opts: { lowDetail?: boolean } = {}): Arcade {
   const bulbOff = mat(new THREE.MeshBasicMaterial({ color: 0x6d5a2a }));
   let signMesh: THREE.Mesh;
   {
+    // The one sign. Everything else on the front is quiet so this reads.
     const signM = mat(new THREE.MeshBasicMaterial({ map: tex(neonTex("VIBE ARCADE", "#ff3fd1")) }));
-    signMesh = plane(signM, 16, 4, x0 - 0.08, H - 2.6, cz, -Math.PI / 2);
-    halo("#ff3fd1", 20, 7, x0 - 0.1, H - 2.6, cz, -Math.PI / 2, 0.22);
-    // The sign's twin on the roof's edge facing the plaza, readable from far.
-    const roofSign = mat(new THREE.MeshBasicMaterial({ map: tex(neonTex("ARCADE", "#38e8ff", 1024, 256)), side: THREE.DoubleSide }));
-    plane(roofSign, 10, 2.5, x0 + 1.2, H + 1.9, cz, -Math.PI / 2);
-    solid(black, x0 + 1.1, x0 + 1.3, cz - 4.6, cz - 4.4, H, H + 3.2, false);
-    solid(black, x0 + 1.1, x0 + 1.3, cz + 4.4, cz + 4.6, H, H + 3.2, false);
-    // Marquee canopy over the door, with a ring of chasing bulbs.
-    solid(black, x0 - 2.2, x0, cz - DOOR - 0.8, cz + DOOR + 0.8, DOOR_H + 0.1, DOOR_H + 0.5, false);
-    solid(yellow, x0 - 2.26, x0 - 2.2, cz - DOOR - 0.8, cz + DOOR + 0.8, DOOR_H + 0.1, DOOR_H + 0.5, false);
-    const bulbGeo = new THREE.SphereGeometry(0.09, 8, 6);
+    signMesh = plane(signM, 15, 3.75, x0 - 0.08, H - 2.4, cz, -Math.PI / 2);
+    halo("#ff3fd1", 19, 6.5, x0 - 0.1, H - 2.4, cz, -Math.PI / 2, 0.2);
+    // Marquee canopy over the door: a dark slab with a pink edge and one
+    // row of warm bulbs underneath it.
+    solid(shell, x0 - 2.2, x0, cz - DOOR - 0.8, cz + DOOR + 0.8, DOOR_H + 0.15, DOOR_H + 0.45, false);
+    solid(pink, x0 - 2.26, x0 - 2.2, cz - DOOR - 0.8, cz + DOOR + 0.8, DOOR_H + 0.15, DOOR_H + 0.21, false);
+    const bulbGeo = new THREE.SphereGeometry(0.07, 8, 6);
     geos.push(bulbGeo);
-    const n = low ? 14 : 26;
+    const n = low ? 12 : 20;
     for (let i = 0; i < n; i++) {
       const z = cz - DOOR - 0.6 + ((DOOR + 0.6) * 2 * i) / (n - 1);
       const b = new THREE.Mesh(bulbGeo, bulbOn);
-      b.position.set(x0 - 2.32, DOOR_H + 0.3, z);
+      b.position.set(x0 - 2.0, DOOR_H + 0.08, z);
       group.add(b);
       bulbs.push(b);
     }
+    // The canopy's light on the pavement.
+    halo("#ffd9a0", 2.6, 9, x0 - 1.1, 0.1, cz, 0, 0.12).rotation.set(-Math.PI / 2, 0, Math.PI / 2);
     // Door frame, pink.
     solid(pink, x0 - 0.1, x0 + T + 0.1, cz - DOOR - 0.12, cz - DOOR, 0, DOOR_H, false);
     solid(pink, x0 - 0.1, x0 + T + 0.1, cz + DOOR, cz + DOOR + 0.12, 0, DOOR_H, false);
     solid(pink, x0 - 0.1, x0 + T + 0.1, cz - DOOR - 0.12, cz + DOOR + 0.12, DOOR_H, DOOR_H + 0.12, false);
-    // A red carpet out to the pavement.
-    solid(mat(new THREE.MeshStandardMaterial({ color: 0xb3123a, roughness: 0.95 })), x0 - 3, x0, cz - 1.6, cz + 1.6, 0, 0.035, false);
+    // A dark runner out to the pavement, and the sign's pink in the wet
+    // ground in front of it.
+    solid(mat(new THREE.MeshStandardMaterial({ color: 0x241542, roughness: 0.9 })), x0 - 3, x0, cz - 1.6, cz + 1.6, 0, 0.035, false);
+    smear("#ff3fd1", x0, cz, 14, 7, -1, 0, 0.14);
   }
 
   // ---- Screens -------------------------------------------------------------
@@ -1402,8 +1407,9 @@ export function buildArcade(opts: { lowDetail?: boolean } = {}): Arcade {
       const pulse = Math.pow(1 - bf, 3); // 1 on the beat, falling away
       const bar = Math.floor(beat / 4);
 
-      // Chasing bulbs: every third one lit, marching toward the door's middle.
-      const step = Math.floor(t * 6);
+      // Chasing bulbs: a slow march, one step a beat, so it reads as a
+      // marquee and not as a warning light.
+      const step = Math.floor(beat);
       for (let i = 0; i < bulbs.length; i++) bulbs[i].material = (i + step) % 3 === 0 ? bulbOff : bulbOn;
       // The big sign buzzes now and then, like a real one.
       const buzz = Math.sin(t * 0.7) > 0.96 && Math.sin(t * 47) > 0;

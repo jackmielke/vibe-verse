@@ -99,14 +99,18 @@ export function panelBrightness(
   return heat * (0.12 + checker * 0.35 + ring * pulse * 0.9);
 }
 
-/** The floor's four colours, one per bar — the chord cycle, as light. */
+/**
+ * The floor's four colours, one per bar — the chord cycle, as light. The
+ * Vibe Arcade's palette (pink, cyan, violet, rose), because the floor sits
+ * on the arcade's doorstep and four unrelated neons beside it read as noise.
+ */
 const BAR_COLORS = [
-  new THREE.Color("#ff4fd8"),
-  new THREE.Color("#7df0ff"),
-  new THREE.Color("#8bf07a"),
-  new THREE.Color("#ffc94a"),
+  new THREE.Color("#ff3fd1"),
+  new THREE.Color("#38e8ff"),
+  new THREE.Color("#a66bff"),
+  new THREE.Color("#ff6aa8"),
 ];
-const DARK = new THREE.Color("#141a2c");
+const DARK = new THREE.Color("#120a24");
 
 export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
   const tiles = opts.tiles ?? 7;
@@ -147,14 +151,14 @@ export function createDanceFloor(opts: DanceFloorOpts): DanceFloor {
 
   // A neon kerb, so the floor reads as somewhere to stand rather than as a
   // texture on the plaza.
-  const kerbMat = trackM(new THREE.MeshBasicMaterial({ color: 0x73ffb8, toneMapped: false }));
+  const kerbMat = trackM(new THREE.MeshBasicMaterial({ color: 0x38e8ff, toneMapped: false }));
   for (const [dx, dz, w, d] of [
-    [0, half + 0.2, half * 2 + 0.8, 0.4],
-    [0, -half - 0.2, half * 2 + 0.8, 0.4],
-    [half + 0.2, 0, 0.4, half * 2 + 0.8],
-    [-half - 0.2, 0, 0.4, half * 2 + 0.8],
+    [0, half + 0.12, half * 2 + 0.36, 0.12],
+    [0, -half - 0.12, half * 2 + 0.36, 0.12],
+    [half + 0.12, 0, 0.12, half * 2 + 0.36],
+    [-half - 0.12, 0, 0.12, half * 2 + 0.36],
   ] as const) {
-    const bar = new THREE.Mesh(track(new THREE.BoxGeometry(w, 0.12, d)), kerbMat);
+    const bar = new THREE.Mesh(track(new THREE.BoxGeometry(w, 0.1, d)), kerbMat);
     bar.position.set(dx, 0.06, dz);
     group.add(bar);
   }
