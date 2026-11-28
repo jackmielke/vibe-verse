@@ -98,6 +98,8 @@ import { createMayhem, GUNS, type GunKind, type Mayhem, type MayhemHud } from "@
 const GUN_SLOTS: readonly GunKind[] = ["glock", "water", "paint", "blaster", "rifle"];
 import { buildHideouts } from "@/city/hideouts";
 import { buildArcade, ARCADE_RESERVE, type ArcadeStation } from "@/city/arcade";
+import { buildConcert, CONCERT_RESERVE, type NowPlaying } from "@/city/concert";
+import { ConcertHud } from "@/city/concert/ConcertHud";
 import { ArcadeCabinet, type CabinetGame } from "@/components/city/ArcadeCabinet";
 import { PrizeCounter } from "@/components/city/PrizeCounter";
 import { fetchBoard, localBoard, type Board as ArcadeBoard } from "@/arcade/board";
@@ -420,6 +422,7 @@ const DIRECT_SPAWNS = new Set([
   "island",
   "hub",
   "club",
+  "concert",
   "moon",
   "mars",
   "tjs",
@@ -550,6 +553,7 @@ export default function City() {
   const hubSpawnRef = useRef<(() => void) | null>(null);
   const moonSpawnRef = useRef<(() => void) | null>(null);
   const clubSpawnRef = useRef<(() => void) | null>(null);
+  const concertSpawnRef = useRef<(() => void) | null>(null);
   const marsSpawnRef = useRef<(() => void) | null>(null);
   const tjsSpawnRef = useRef<(() => void) | null>(null);
   // Mars minigame: hunt down all the gremlins. The 3D scene owns the
@@ -1021,6 +1025,14 @@ export default function City() {
    */
   const ensureAudioRef = useRef<(() => void) | null>(null);
   const arcadeMusicRef = useRef<{ setMuted(m: boolean): void } | null>(null);
+  // The Vibe Bowl (src/city/concert): its sound, what is playing while you
+  // are there, whether you are up on the stage, and the solo button.
+  const concertMusicRef = useRef<{ setMuted(m: boolean): void } | null>(null);
+  const [concertNow, setConcertNow] = useState<NowPlaying | null>(null);
+  const [onConcertStage, setOnConcertStage] = useState(false);
+  const onConcertStageRef = useRef(false);
+  const concertSoloRef = useRef<(() => void) | null>(null);
+  const concertExternalRef = useRef<((on: boolean) => void) | null>(null);
   /** Dancers within earshot, including you — mirrored out for the HUD. */
   const [danceCrowd, setDanceCrowd] = useState(0);
   const ensureAudio = useCallback(() => {
@@ -1029,6 +1041,7 @@ export default function City() {
     soundsRef.current?.setMuted(mutedRef.current);
     musicRef.current?.setMuted(mutedRef.current);
     arcadeMusicRef.current?.setMuted(mutedRef.current);
+    concertMusicRef.current?.setMuted(mutedRef.current);
   }, []);
   ensureAudioRef.current = ensureAudio;
   const [charName, setCharName] = useState(initialCharacter);
@@ -1798,7 +1811,7 @@ export default function City() {
       lowDetail: smallScreen,
       // Landmarks, plus the warehouse (6,4) and police station (2,4) from
       // `src/city/hideouts.ts`.
-      reserve: [...LANDMARK_RESERVE, { gx: 6, gz: 4, ground: "pave", trees: true }, { gx: 2, gz: 4, ground: "pave", trees: true }, ARCADE_RESERVE],
+      reserve: [...LANDMARK_RESERVE, { gx: 6, gz: 4, ground: "pave", trees: true }, { gx: 2, gz: 4, ground: "pave", trees: true }, ARCADE_RESERVE, CONCERT_RESERVE],
     });
     scene.add(district.group);
     // The Space Needle, the Empire State and the Eiffel Tower, on the blocks
@@ -1921,6 +1934,14 @@ export default function City() {
     arcade.setBoard(localBoard());
     arcade.music.setMuted(mutedRef.current);
     arcadeMusicRef.current = arcade.music;
+    // The Vibe Bowl, on the quiet south-east corner block (8,6).
+    const concert = buildConcert({ lowDetail: smallScreen });
+    scene.add(concert.group);
+    district.boxes.push(...concert.boxes);
+    concert.music.setMuted(mutedRef.current);
+    concertMusicRef.current = concert.music;
+    concertSoloRef.current = () => concert.solo();
+    concertExternalRef.current = (on) => concert.setExternal(on);
     arcadeDiveRef.current = (st, done) => {
       arcade.music.setLevel(0);
       arcade.dive(st, camera, done);
@@ -2871,6 +2892,7 @@ export default function City() {
       for (const site of landmarks.sites) reg(site.key, site.name, "Vibe City", site.entrance.clone(), site.aliases);
       reg("vibe-links", "Vibe Links mini golf", "Vibe Island", golf.entrance.clone(), ["mini golf", "minigolf", "golf", "putt putt", "vibe links", "putting"]);
       reg("vibe-arcade", "Vibe Arcade", "Vibe City", arcade.entrance.clone(), ["vibe arcade", "the arcade", "game room", "arcade hall", "pool hall", "pool table", "foosball"]);
+      reg("vibe-bowl", "The Vibe Bowl", "Vibe City", concert.entrance.clone(), ["vibe bowl", "concert", "the concert", "amphitheater", "amphitheatre", "stage", "gig", "show", "live music", "band", "static bloom"]);
       reg("cardboard-island", "Vibe Island", "Vibe Island", new THREE.Vector3(ISLAND_X, ISLAND_TOP, ISLAND_Z), ["island", "cardboard", "edge island", "cardboard island"]);
       reg("jerry", "Jerry the Mayor", "Cardboard Island", island.jerry, ["jerry", "mayor", "snail", "ben"]);
       reg("arcade", "Esmeralda Jump Arcade", "Cardboard Island", island.arcade, ["arcade", "esmeralda jump", "jump cabinet", "cabinet"]);
@@ -4374,6 +4396,10 @@ export default function City() {
         setRaceLobby(true);
         return;
       }
+      if (e.code === "KeyE" && !e.repeat && onConcertStageRef.current) {
+        concertSoloRef.current?.();
+        return;
+      }
       if (e.code === "KeyE" && !e.repeat && arcadeStationRef.current && !cabinetOpenRef.current) {
         openCabinet(arcadeStationRef.current);
         return;
@@ -4856,6 +4882,12 @@ export default function City() {
         diving: () => divingRef.current,
         tickets: () => arcadeTickets(),
         prizes: (open = true) => setPrizeOpen(open),
+      };
+      (window as unknown as Record<string, unknown>).__cityConcert = {
+        now: () => concert.nowPlaying(),
+        entrance: () => concert.entrance.toArray(),
+        onStage: () => concert.onStage(player.position),
+        solo: () => concert.solo(),
       };
       (window as unknown as Record<string, unknown>).__cityQuests = {
         ui: () => quests.ui(),
@@ -6280,6 +6312,13 @@ export default function City() {
       vel.set(0, 0, 0);
       onGround = true;
       camYaw = 0; // looking at the floor and the DJ, not at the back wall
+    };
+    // /city?spawn=concert drops visitors in the Vibe Bowl's back aisle, facing the stage.
+    concertSpawnRef.current = () => {
+      player.position.copy(concert.entrance).add(new THREE.Vector3(4, 0, 0));
+      vel.set(0, 0, 0);
+      onGround = false;
+      camYaw = -Math.PI / 2;
     };
     moonSpawnRef.current = () => {
       player.position.copy(moonWorld.spawn);
@@ -7935,6 +7974,7 @@ export default function City() {
         const tmL = touchMoveRef.current;
         const tmLen = Math.hypot(tmL.x, tmL.y);
         arcade.update(dt, now, player.position);
+        concert.update(dt, player.position);
         {
           // The Kart GP rides kart 0, the red one on the plaza.
           const k0 = kartStates[0];
@@ -8234,6 +8274,18 @@ export default function City() {
             if (st !== arcadeStationRef.current) {
               arcadeStationRef.current = st;
               setArcadeStation(st);
+            }
+            const atShow = concert.near(pp);
+            const np = atShow ? concert.nowPlaying() : null;
+            setConcertNow((prev) =>
+              prev === np || (prev && np && prev.title === np.title && prev.section === np.section && prev.inBreak === np.inBreak && prev.soloing === np.soloing && Math.round(prev.nextIn) === Math.round(np.nextIn))
+                ? prev
+                : np,
+            );
+            const staged = drivingKartRef.current < 0 && !activeMountRef.current && concert.onStage(pp);
+            if (staged !== onConcertStageRef.current) {
+              onConcertStageRef.current = staged;
+              setOnConcertStage(staged);
             }
             const inHall = arcade.contains(pp);
             if (inHall !== inArcadeHallRef.current) {
@@ -8813,8 +8865,10 @@ export default function City() {
          here rather than in the music because only the world knows where
          anybody is standing. The radius is generous — you should hear a party
          from far enough away to want to walk over to it. */
-      const crowd =
-        (danceId ? 1 : 0) + peerDancers + floorDancers + (club.contains(pos) ? clubDancers : 0);
+      // At the Vibe Bowl the band is the music, so the dance track stays out of it.
+      const crowd = concert.near(pos)
+        ? 0
+        : (danceId ? 1 : 0) + peerDancers + floorDancers + (club.contains(pos) ? clubDancers : 0);
       musicRef.current?.update(crowd);
       if (crowd !== crowdShown) {
         crowdShown = crowd;
@@ -9450,6 +9504,10 @@ export default function City() {
       arcadeBoardSetRef.current = null;
       arcadeMusicRef.current = null;
       arcade.dispose();
+      concertMusicRef.current = null;
+      concertSoloRef.current = null;
+      concertExternalRef.current = null;
+      concert.dispose();
       race.dispose();
       golf.dispose();
       golfRef.current = null;
@@ -9595,6 +9653,7 @@ export default function City() {
       if (spawn === "hub") hubSpawnRef.current?.();
       else if (spawn === "moon") moonSpawnRef.current?.();
       else if (spawn === "club") clubSpawnRef.current?.();
+      else if (spawn === "concert") concertSpawnRef.current?.();
       else if (spawn === "mars") marsSpawnRef.current?.();
       else if (spawn === "tjs") tjsSpawnRef.current?.();
       else if (spawn === "ski") skiTravelRef.current?.("peak");
@@ -10011,6 +10070,8 @@ export default function City() {
                 setMuted(next);
                 soundsRef.current?.setMuted(next);
                 musicRef.current?.setMuted(next);
+                arcadeMusicRef.current?.setMuted(next);
+                concertMusicRef.current?.setMuted(next);
                 e.currentTarget.blur();
               }}
               className="glass-panel rounded-full px-3 py-2 text-xs hover:bg-muted/50 transition-colors"
@@ -11501,6 +11562,15 @@ export default function City() {
             >
               🏁 Race the Vibe Kart GP{isTouch ? "" : " (E)"}
             </button>
+          )}
+          {concertNow && (
+            <ConcertHud
+              now={concertNow}
+              onStage={onConcertStage}
+              isTouch={isTouch}
+              onSolo={() => concertSoloRef.current?.()}
+              onExternal={(on) => concertExternalRef.current?.(on)}
+            />
           )}
           {arcadeStation && !cabinetGame && !prizeOpen && (
             <button

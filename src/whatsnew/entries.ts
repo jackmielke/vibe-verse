@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-vibe-bowl-concert",
+    date: "2026-11-28",
+    emoji: "🎸",
+    title: "Live music at The Vibe Bowl",
+    body: "An open air amphitheater on the quiet south east corner of the city, by the beach. The Static Bloom play a four song set with lasers, moving lights and flame jets, and everyone hears the same chorus at the same moment. Dance in the pit, climb the steps onto the stage and take a solo, or tap Play your Spotify to put your own music on.",
+    tag: "new",
+    route: "/city?spawn=concert",
+    world: "Vibe Island",
+  },
+  {
     id: "2026-11-28-vibequest-two-on-one-phone",
     date: "2026-11-28",
     emoji: "📱",
