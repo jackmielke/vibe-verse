@@ -485,6 +485,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "99192bb2", iso: "2026-09-30T20:42:17+00:00", subject: "Venus Rising: night is a moment, not a stall" },
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
   ],
+  "vibequest": [
+    { sha: "dd259097", iso: "2026-11-28T01:23:19+00:00", subject: "Add VibeQuest: Jack's sky island platformer and boss rush as its own world" },
+  ],
   "vibe-cup": [
     { sha: "619caaa4", iso: "2026-11-27T05:37:16+00:00", subject: "Vibe Cup: the tournament, one player all match, and the Paint Pads" },
     { sha: "951de74d", iso: "2026-11-27T05:17:11+00:00", subject: "Vibe Cup: slides knock over anybody in the way, team-mates too" },
