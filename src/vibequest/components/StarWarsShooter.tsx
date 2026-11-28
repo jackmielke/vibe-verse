@@ -30,8 +30,52 @@ const ATTACK_INTERVAL = 2.4;
 const WINDUP_TIME = 0.85;
 
 interface Bolt { x: number; y: number; vx: number; alive: boolean }
-interface Trooper { x: number; hp: number; shootTimer: number; phase: number; dir: number; hitFlash: number }
-interface EnemyBolt { x: number; y: number; vx: number; alive: boolean }
+/**
+ * Imperial reinforcements. Vader stomps, the ceiling opens and they drop in.
+ * Numbers are Jack's spec (Nov 28 2026), all in one table so they are easy
+ * to tune: Ferdi (the player) has PLAYER_MAX_HP and every player bolt does
+ * PLAYER_BOLT_DMG.
+ */
+type TrooperKind = 'storm' | 'riot' | 'death';
+const TROOPER_SPEC: Record<TrooperKind, {
+  hp: number; shield: number; speed: number; fastSpeed: number; range: number;
+  fireEvery: number; damage: number; w: number; h: number; score: number;
+}> = {
+  // walks in until in range, stops and fires; walks again if you leave range
+  storm: { hp: 100, shield: 0, speed: 90, fastSpeed: 90, range: 260, fireEvery: 1.6, damage: 10, w: 40, h: 74, score: 25 },
+  // creeps in behind the shield, bashes up close; runs and melees once the shield is gone
+  riot: { hp: 175, shield: 100, speed: 42, fastSpeed: 185, range: 52, fireEvery: 1.3, damage: 30, w: 46, h: 76, score: 50 },
+  // a blaster only, but it takes a lot to put down
+  death: { hp: 300, shield: 0, speed: 90, fastSpeed: 90, range: 320, fireEvery: 1.25, damage: 20, w: 42, h: 80, score: 80 },
+};
+const PLAYER_MAX_HP = 100;
+const PLAYER_BOLT_DMG = 25;
+const SHOCKWAVE_DMG = 34;
+const SHIELD_BREAK_HEAL = 25;
+const CEILING_Y = 34;
+/** Where the ceiling hatches are, as x of their centre. */
+const HATCHES = [150, 290, 430, 560];
+/** The waves, in order; after the last one it keeps sending the last two mixed. */
+const WAVES: TrooperKind[][] = [
+  ['storm', 'storm'],
+  ['storm', 'riot'],
+  ['riot', 'death'],
+  ['storm', 'riot', 'death'],
+];
+
+interface Trooper {
+  kind: TrooperKind;
+  x: number; y: number; vy: number;
+  hp: number; maxHp: number; shield: number;
+  /** drop: falling from the hatch. land: crouched, not fighting yet. active: fighting. */
+  state: 'drop' | 'land' | 'active';
+  landT: number;
+  shootTimer: number; phase: number; dir: number; hitFlash: number;
+  /** Riot shield bash: wind-up and swing, 0..1. */
+  strike: number; struck: boolean;
+  shieldFlash: number;
+}
+interface EnemyBolt { x: number; y: number; vx: number; alive: boolean; dmg: number; death?: boolean }
 interface Shockwave { x: number; y: number; w: number; h: number; hitCooldown: number; age: number; seed: number }
 
 /** One spark, puff, foam fleck or Force mote. Everything that flies and fades. */
@@ -62,13 +106,22 @@ const makePlayer = () => ({
   /** Gun kick, eased out. */
   kick: 0,
   dustTimer: 0,
+  /** Ferdi's health. */
+  hp: PLAYER_MAX_HP,
+  /** Guard broken by a riot shield: knocked back, cannot shoot. */
+  stun: 0,
+  /** Green flash after a heal. */
+  healFlash: 0,
 });
 
 const makeVader = () => ({
   hp: VADER_MAX_HP, attackTimer: 1.5, windup: 0, handRaise: 0, hitFlash: 0, recoil: 0, offset: 0, walkDir: -1, walkPhase: 0,
   /** Where the glove is on screen, written by the renderer, read by the Force motes. */
   handX: 0, handY: 0,
+  /** Stomp that calls reinforcements: counts down from STOMP_TIME. */
+  stomp: 0,
 });
+const STOMP_TIME = 0.8;
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const easeOut = (x: number) => 1 - (1 - x) * (1 - x);
@@ -208,7 +261,6 @@ export const StarWarsShooter = ({
   const [isGameOver, setIsGameOver] = useState(false);
   const [isVictory, setIsVictory] = useState(false);
   const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(3);
   const [vaderHp, setVaderHp] = useState(VADER_MAX_HP);
   const [isTouch, setIsTouch] = useState(false);
 
@@ -221,10 +273,15 @@ export const StarWarsShooter = ({
     shockwaves: [] as Shockwave[],
     troopers: [] as Trooper[],
     enemyBolts: [] as EnemyBolt[],
-    trooperTimer: 4,
+    trooperTimer: 6,
+    wave: 0,
+    /** How open each ceiling hatch is, 0..1, and how long it stays open. */
+    hatchOpen: HATCHES.map(() => 0),
+    hatchHold: HATCHES.map(() => 0),
+    /** Kinds waiting to drop when the stomp lands. */
+    pendingWave: [] as TrooperKind[],
     vader: makeVader(),
     score: 0,
-    lives: 3,
     gameOver: false,
     victory: false,
     starField: Array.from({ length: 90 }, () => ({
@@ -307,14 +364,16 @@ export const StarWarsShooter = ({
     s.shockwaves = [];
     s.troopers = [];
     s.enemyBolts = [];
-    s.trooperTimer = 4;
+    s.trooperTimer = 6;
+    s.wave = 0;
+    s.hatchOpen = HATCHES.map(() => 0);
+    s.hatchHold = HATCHES.map(() => 0);
+    s.pendingWave = [];
     s.vader = makeVader();
     s.score = 0;
-    s.lives = 3;
     s.gameOver = false;
     s.victory = false;
     setScore(0);
-    setLives(3);
     setVaderHp(VADER_MAX_HP);
     setIsGameOver(false);
     setIsVictory(false);
@@ -335,7 +394,15 @@ export const StarWarsShooter = ({
     const vaderBaseX = CANVAS_W - VADER_W * 0.5; // half sticks out
     const vaderScreenY = GROUND_Y - VADER_H + 40; // small ground overlap
     const vaderHitRight = CANVAS_W;
-    const TROOPER_W = 40, TROOPER_H = 74;
+    /** Every way Ferdi gets hurt goes through here. */
+    const hurt = (n: number, invuln: number) => {
+      const pl = s.player;
+      if (pl.invuln > 0 || s.gameOver) return false;
+      pl.hp = Math.max(0, pl.hp - n);
+      pl.invuln = invuln;
+      if (pl.hp <= 0 && !s.gameOver) { s.gameOver = true; s.running = false; setIsGameOver(true); }
+      return true;
+    };
 
     const emit = (pt: Partial<Particle> & { x: number; y: number }) => {
       if (s.particles.length > 700) return;
@@ -377,7 +444,8 @@ export const StarWarsShooter = ({
       const shoot = K['KeyX'] || K['KeyZ'] || K['ControlLeft'] || K['ControlRight'] || T.shoot;
 
       const p = s.player;
-      if (left) { p.vx = -MOVE_SPEED; p.dir = -1; }
+      if (p.stun > 0.25) p.vx *= 0.9; // still sliding from the bash
+      else if (left) { p.vx = -MOVE_SPEED; p.dir = -1; }
       else if (right) { p.vx = MOVE_SPEED; p.dir = 1; }
       else p.vx *= 0.75;
 
@@ -390,7 +458,9 @@ export const StarWarsShooter = ({
       p.boltCooldown -= dt;
       if (p.muzzle > 0) p.muzzle -= dt;
       p.kick = Math.max(0, p.kick - dt * 9);
-      if (shoot && p.boltCooldown <= 0) {
+      if (p.stun > 0) p.stun -= dt;
+      if (p.healFlash > 0) p.healFlash -= dt;
+      if (shoot && p.boltCooldown <= 0 && p.stun <= 0) {
         p.boltCooldown = BOLT_COOLDOWN;
         p.muzzle = 0.07;
         p.kick = 1;
@@ -444,10 +514,39 @@ export const StarWarsShooter = ({
         b.x += b.vx * dt;
         if (b.x > CANVAS_W + 40 || b.x < -40) b.alive = false;
         for (const tr of s.troopers) {
-          if (b.alive && tr.hp > 0 && b.x > tr.x && b.x < tr.x + TROOPER_W && b.y > GROUND_Y - TROOPER_H && b.y < GROUND_Y) {
-            b.alive = false; tr.hp -= 1; tr.hitFlash = 0.2;
-            sparks(b.x, b.y, b.vx, '#d4ff7a', 10);
-            if (tr.hp <= 0) { s.score += 25; setScore(s.score); }
+          const sp = TROOPER_SPEC[tr.kind];
+          if (!b.alive || tr.hp <= 0 || tr.state === 'drop') continue;
+          if (b.x > tr.x && b.x < tr.x + sp.w && b.y > tr.y - sp.h && b.y < tr.y) {
+            b.alive = false;
+            // the riot shield takes anything that comes at its face
+            if (tr.shield > 0 && Math.sign(b.vx) === -tr.dir) {
+              tr.shield -= PLAYER_BOLT_DMG; tr.shieldFlash = 0.15;
+              sparks(b.x, b.y, b.vx, '#9fd8ff', 8);
+              if (tr.shield <= 0) {
+                tr.shield = 0;
+                // shield shattered: Ferdi gets some health back, the trooper gets angry
+                p.hp = Math.min(PLAYER_MAX_HP, p.hp + SHIELD_BREAK_HEAL);
+                p.healFlash = 0.6;
+                s.score += 15; setScore(s.score);
+                for (let i = 0; i < 22; i++) {
+                  emit({ x: tr.x + sp.w / 2 + tr.dir * 18, y: tr.y - sp.h * (0.2 + Math.random() * 0.6),
+                    vx: (Math.random() - 0.5) * 320, vy: -80 - Math.random() * 260, life: 0.6 + Math.random() * 0.4,
+                    size: 2 + Math.random() * 2.5, g: 1100, drag: 0.6, color: Math.random() < 0.5 ? '#cfe9ff' : '#8fb8d8', glow: Math.random() < 0.3 });
+                }
+                s.shake = Math.max(s.shake, 0.15);
+              }
+            } else {
+              tr.hp -= PLAYER_BOLT_DMG; tr.hitFlash = 0.2;
+              sparks(b.x, b.y, b.vx, '#d4ff7a', 10);
+              if (tr.hp <= 0) {
+                s.score += sp.score; setScore(s.score);
+                for (let i = 0; i < 14; i++) {
+                  emit({ x: tr.x + sp.w / 2, y: tr.y - sp.h * Math.random(), vx: (Math.random() - 0.5) * 260, vy: -100 - Math.random() * 200,
+                    life: 0.5 + Math.random() * 0.4, size: 2 + Math.random() * 2, g: 1000, drag: 0.8,
+                    color: tr.kind === 'death' ? '#1c1c1c' : tr.kind === 'riot' ? '#4a5568' : '#f2f2f2', glow: false });
+                }
+              }
+            }
           }
         }
         // Hit Vader
@@ -474,38 +573,131 @@ export const StarWarsShooter = ({
       if (v.hitFlash > 0) v.hitFlash -= dt;
       if (v.recoil > 0) v.recoil = Math.max(0, v.recoil - dt * 2.5);
       // Pace back and forth when not attacking
-      if (v.windup <= 0 && v.recoil <= 0) {
+      if (v.windup <= 0 && v.recoil <= 0 && v.stomp <= 0) {
         v.offset += v.walkDir * 45 * dt;
         v.walkPhase += dt * 6;
         if (v.offset < -90) { v.offset = -90; v.walkDir = 1; }
         if (v.offset > 0) { v.offset = 0; v.walkDir = -1; }
       }
-      // ---- Stormtroopers ----
-      s.trooperTimer -= dt;
-      if (s.trooperTimer <= 0 && s.troopers.length < 2) {
-        s.troopers.push({ x: -TROOPER_W, hp: 2, shootTimer: 1.2, phase: 0, dir: 1, hitFlash: 0 });
-        s.trooperTimer = 7;
+      // ---- Reinforcements ----
+      // When the arena is clear for a while, Vader stomps, the ceiling
+      // hatches open and the next wave drops in.
+      if (s.troopers.length === 0 && v.stomp <= 0 && v.windup <= 0) {
+        s.trooperTimer -= dt;
+        if (s.trooperTimer <= 0) {
+          const w = s.wave < WAVES.length
+            ? WAVES[s.wave]
+            : (['storm', 'riot', 'death'] as TrooperKind[]).sort(() => Math.random() - 0.5).slice(0, 3);
+          s.pendingWave = [...w];
+          s.wave += 1;
+          v.stomp = STOMP_TIME;
+          s.trooperTimer = 5;
+        }
+      }
+      if (v.stomp > 0) {
+        const before = v.stomp;
+        v.stomp -= dt;
+        // the foot comes down two thirds of the way through
+        if (before > STOMP_TIME * 0.35 && v.stomp <= STOMP_TIME * 0.35) {
+          s.shake = Math.max(s.shake, 0.5);
+          dust(vaderScreenX + VADER_W * 0.25, GROUND_Y, 18, 120, 140);
+          for (let i = 0; i < 18; i++) {
+            const a = -Math.PI * (0.1 + Math.random() * 0.8);
+            emit({ x: vaderScreenX + VADER_W * 0.25, y: GROUND_Y - 2, vx: Math.cos(a) * 300, vy: Math.sin(a) * 300,
+              life: 0.4 + Math.random() * 0.4, size: 1.5 + Math.random() * 2, g: 1200, drag: 1, color: '#6a4a4a', glow: false });
+          }
+          // grit shaken loose from the ceiling all along the arena
+          for (let i = 0; i < 24; i++) {
+            emit({ x: Math.random() * (CANVAS_W - 200), y: CEILING_Y + 2, vx: (Math.random() - 0.5) * 20, vy: 30 + Math.random() * 80,
+              life: 0.8 + Math.random() * 0.6, size: 1 + Math.random() * 1.5, g: 600, drag: 0.3, color: '#7a6a70', glow: false });
+          }
+          // open a hatch for each trooper, and drop them through
+          const free = HATCHES.map((_, k) => k).sort(() => Math.random() - 0.5);
+          s.pendingWave.forEach((kind, n) => {
+            const k = free[n % free.length];
+            const sp = TROOPER_SPEC[kind];
+            s.hatchHold[k] = 1.6;
+            s.troopers.push({
+              kind, x: HATCHES[k] - sp.w / 2, y: CEILING_Y - 10 - n * 30, vy: 0,
+              hp: sp.hp, maxHp: sp.hp, shield: sp.shield, state: 'drop', landT: 0,
+              shootTimer: 0.6 + Math.random() * 0.6, phase: 0, dir: 1, hitFlash: 0,
+              strike: 0, struck: false, shieldFlash: 0,
+            });
+          });
+          s.pendingWave = [];
+        }
+      }
+      for (let k = 0; k < HATCHES.length; k++) {
+        if (s.hatchHold[k] > 0) { s.hatchHold[k] -= dt; s.hatchOpen[k] = Math.min(1, s.hatchOpen[k] + dt * 5); }
+        else s.hatchOpen[k] = Math.max(0, s.hatchOpen[k] - dt * 2);
       }
       for (const tr of s.troopers) {
+        const sp = TROOPER_SPEC[tr.kind];
         if (tr.hitFlash > 0) tr.hitFlash -= dt;
-        const dist = p.x - tr.x;
-        tr.dir = dist >= 0 ? 1 : -1;
-        if (Math.abs(dist) > 220) { tr.x += tr.dir * 90 * dt; tr.phase += dt * 9; }
-        else tr.phase *= 0.9;
+        if (tr.shieldFlash > 0) tr.shieldFlash -= dt;
+        if (tr.state === 'drop') {
+          // a hatch only opens once the stomp has landed, so they fall through it
+          tr.vy += GRAVITY * 0.8 * dt;
+          tr.y += tr.vy * dt;
+          if (tr.y >= GROUND_Y) {
+            tr.y = GROUND_Y; tr.vy = 0; tr.state = 'land'; tr.landT = 0.6;
+            dust(tr.x + sp.w / 2, GROUND_Y, 10, 50, 80);
+            s.shake = Math.max(s.shake, 0.08);
+          }
+          continue;
+        }
+        if (tr.state === 'land') {
+          tr.landT -= dt;
+          tr.dir = p.x + PLAYER_W / 2 >= tr.x + sp.w / 2 ? 1 : -1;
+          if (tr.landT <= 0) tr.state = 'active';
+          continue;
+        }
+        const dist = p.x + PLAYER_W / 2 - (tr.x + sp.w / 2);
+        if (tr.strike <= 0) tr.dir = dist >= 0 ? 1 : -1;
+        const shielded = tr.shield > 0;
+        const speed = shielded ? sp.speed : sp.fastSpeed;
+        const reach = sp.range + (tr.kind === 'riot' ? PLAYER_W / 2 : 0);
+        if (Math.abs(dist) > reach && tr.strike <= 0) {
+          tr.x += tr.dir * speed * dt;
+          tr.phase += dt * (speed > 120 ? 16 : speed < 60 ? 5 : 9);
+        } else tr.phase *= 0.9;
+        tr.x = Math.max(0, Math.min(CANVAS_W - VADER_W * 0.4 - sp.w, tr.x));
         tr.shootTimer -= dt;
-        if (tr.shootTimer <= 0) {
-          tr.shootTimer = 1.8;
-          s.enemyBolts.push({ x: tr.x + (tr.dir > 0 ? TROOPER_W : 0), y: GROUND_Y - TROOPER_H * 0.55, vx: 420 * tr.dir, alive: true });
+        if (tr.kind === 'riot') {
+          // close-range bash: a short wind-up, then the swing
+          if (tr.strike > 0) {
+            tr.strike += dt / 0.55;
+            if (!tr.struck && tr.strike > 0.6) {
+              tr.struck = true;
+              if (Math.abs(dist) < reach + 14 && p.y + PLAYER_H > GROUND_Y - sp.h) {
+                if (hurt(sp.damage, 0.9)) {
+                  // the bash breaks your guard: knocked back, gun down for a moment
+                  p.vx = tr.dir * 520; p.vy = -260; p.onGround = false; p.stun = 0.7;
+                  sparks(p.x + PLAYER_W / 2, p.y + PLAYER_H * 0.5, -tr.dir, '#9fd8ff', 12);
+                  s.shake = Math.max(s.shake, 0.25);
+                }
+              }
+            }
+            if (tr.strike >= 1) { tr.strike = 0; tr.struck = false; }
+          } else if (Math.abs(dist) <= reach + 6 && tr.shootTimer <= 0) {
+            tr.shootTimer = shielded ? sp.fireEvery : sp.fireEvery * 0.7;
+            tr.strike = 0.001;
+          }
+        } else if (Math.abs(dist) <= reach + 4 && tr.shootTimer <= 0) {
+          tr.shootTimer = sp.fireEvery * (0.85 + Math.random() * 0.3);
+          s.enemyBolts.push({ x: tr.x + (tr.dir > 0 ? sp.w : 0), y: GROUND_Y - sp.h * 0.6, vx: (tr.kind === 'death' ? 520 : 430) * tr.dir, alive: true, dmg: sp.damage, death: tr.kind === 'death' });
         }
       }
       s.troopers = s.troopers.filter(tr => tr.hp > 0);
       for (const eb of s.enemyBolts) {
         eb.x += eb.vx * dt;
         if (eb.x < -40 || eb.x > CANVAS_W + 40) eb.alive = false;
-        if (eb.alive && p.invuln <= 0 && eb.x > p.x && eb.x < p.x + PLAYER_W && eb.y > p.y && eb.y < p.y + PLAYER_H) sparks(eb.x, eb.y, eb.vx, '#ff5a5a', 8);
-        if (eb.alive && p.invuln <= 0 && eb.x > p.x && eb.x < p.x + PLAYER_W && eb.y > p.y && eb.y < p.y + PLAYER_H) {
-          eb.alive = false; s.lives -= 1; p.invuln = 1.5; setLives(s.lives);
-          if (s.lives <= 0 && !s.gameOver) { s.gameOver = true; s.running = false; setIsGameOver(true); }
+        if (eb.alive && eb.x > p.x && eb.x < p.x + PLAYER_W && eb.y > p.y && eb.y < p.y + PLAYER_H) {
+          if (p.invuln <= 0) {
+            sparks(eb.x, eb.y, eb.vx, '#ff5a5a', 8);
+            eb.alive = false;
+            hurt(eb.dmg, 0.3);
+          }
         }
       }
       s.enemyBolts = s.enemyBolts.filter(eb => eb.alive);
@@ -549,8 +741,8 @@ export const StarWarsShooter = ({
         }
       } else {
         v.handRaise = Math.max(0, v.handRaise - dt * 3);
-        v.attackTimer -= dt;
-        if (v.attackTimer <= 0) v.windup = WINDUP_TIME;
+        if (v.stomp <= 0) v.attackTimer -= dt;
+        if (v.attackTimer <= 0 && v.stomp <= 0) v.windup = WINDUP_TIME;
       }
 
       // ---- Shockwaves ----
@@ -602,14 +794,7 @@ export const StarWarsShooter = ({
           p.y + PLAYER_H > sw.y
         ) {
           sw.hitCooldown = 0.5;
-          s.lives -= 1;
-          p.invuln = 1.5;
-          setLives(s.lives);
-          if (s.lives <= 0 && !s.gameOver) {
-            s.gameOver = true;
-            s.running = false;
-            setIsGameOver(true);
-          }
+          hurt(SHOCKWAVE_DMG, 1.2);
         }
       }
       s.shockwaves = s.shockwaves.filter(sw => sw.x + sw.w > -40);
@@ -693,6 +878,38 @@ export const StarWarsShooter = ({
       ctx.arc(vaderScreenX + VADER_W * 0.3, GROUND_Y, VADER_W * 0.7 * glowPulse, 0, Math.PI * 2);
       ctx.fill();
 
+      // The ceiling and its hatches. Reinforcements drop through these.
+      {
+        const cg = ctx.createLinearGradient(0, 0, 0, CEILING_Y);
+        cg.addColorStop(0, '#0d0d12'); cg.addColorStop(1, '#2a2730');
+        ctx.fillStyle = cg; ctx.fillRect(0, 0, CANVAS_W, CEILING_Y);
+        ctx.fillStyle = 'rgba(255,60,60,0.35)'; ctx.fillRect(0, CEILING_Y - 2, CANVAS_W, 2);
+        for (let x = 20; x < CANVAS_W; x += 60) { ctx.fillStyle = '#1a181f'; ctx.fillRect(x, 6, 30, 4); }
+        for (let k = 0; k < HATCHES.length; k++) {
+          const o = easeInOut(s.hatchOpen[k]);
+          const hx = HATCHES[k], hw = 64;
+          // light spilling down out of an open hatch
+          if (o > 0.02) {
+            const lg = ctx.createLinearGradient(0, CEILING_Y, 0, GROUND_Y);
+            lg.addColorStop(0, `rgba(255,230,200,${0.28 * o})`); lg.addColorStop(1, 'rgba(255,230,200,0)');
+            ctx.fillStyle = lg;
+            ctx.beginPath(); ctx.moveTo(hx - hw / 2, CEILING_Y); ctx.lineTo(hx + hw / 2, CEILING_Y);
+            ctx.lineTo(hx + hw, GROUND_Y); ctx.lineTo(hx - hw, GROUND_Y); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = `rgba(255,240,220,${0.8 * o})`; ctx.fillRect(hx - hw / 2, CEILING_Y - 8, hw, 8);
+          }
+          // two doors that swing down and apart
+          ctx.fillStyle = '#3b3742'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+          for (const sgn of [-1, 1]) {
+            ctx.save();
+            ctx.translate(hx + sgn * hw / 2, CEILING_Y - 2);
+            ctx.rotate(-sgn * o * 1.35);
+            ctx.beginPath(); ctx.rect(sgn > 0 ? -hw / 2 : 0, 0, hw / 2, 6); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#ff4040'; ctx.fillRect(sgn > 0 ? -6 : 2, 2, 4, 2); ctx.fillStyle = '#3b3742';
+            ctx.restore();
+          }
+        }
+      }
+
       // Vader
       if (s.vaderImg) {
         ctx.save();
@@ -707,8 +924,11 @@ export const StarWarsShooter = ({
         const shake = v.windup > 0 ? (Math.random() - 0.5) * 4 * v.handRaise : 0;
         const pivotX = vaderScreenX + VADER_W / 2;
         const pivotY = vaderScreenY + VADER_H;
-        const walking = v.windup <= 0 && v.recoil <= 0;
-        const stepBob = walking ? -Math.abs(Math.sin(v.walkPhase)) * 10 : 0;
+        const walking = v.windup <= 0 && v.recoil <= 0 && v.stomp <= 0;
+        // the stomp: rise onto one leg, then slam down and sink a little
+        const st = v.stomp > 0 ? 1 - v.stomp / STOMP_TIME : -1;
+        const stompY = st < 0 ? 0 : st < 0.65 ? -easeOut(st / 0.65) * 22 : 10 * (1 - (st - 0.65) / 0.35);
+        const stepBob = (walking ? -Math.abs(Math.sin(v.walkPhase)) * 10 : 0) + stompY;
         const stepTilt = walking ? Math.sin(v.walkPhase) * 0.035 : 0;
         ctx.translate(pivotX + shake - v.recoil * 18, pivotY + v.recoil * 6 + stepBob);
         ctx.rotate(lean + stepTilt);
@@ -937,42 +1157,111 @@ export const StarWarsShooter = ({
         ctx.restore();
       }
 
-      // Stormtroopers
+      // Imperial troopers: three kinds, one figure drawn in code each
       for (const tr of s.troopers) {
+        const sp = TROOPER_SPEC[tr.kind];
         ctx.save();
-        const bx = tr.x, by = GROUND_Y;
-        const swing = Math.sin(tr.phase) * 0.5;
-        const bob = -Math.abs(Math.sin(tr.phase)) * 3;
-        if (tr.hitFlash > 0) ctx.globalAlpha = 0.5;
-        ctx.translate(bx + TROOPER_W / 2, by + bob);
-        ctx.scale(tr.dir, 1);
-        ctx.fillStyle = '#f2f2f2'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-        // legs
+        const running = tr.kind === 'riot' && tr.shield <= 0;
+        const swing = Math.sin(tr.phase) * (running ? 0.85 : 0.5);
+        const bob = tr.state === 'active' ? -Math.abs(Math.sin(tr.phase)) * (running ? 5 : 3) : 0;
+        // landing: crouch on touchdown, then stand up into the fight
+        const crouch = tr.state === 'land' ? easeOut(clamp01(tr.landT / 0.6)) : 0;
+        const falling = tr.state === 'drop';
+        if (tr.hitFlash > 0) ctx.globalAlpha = 0.55;
+        // contact shadow, shrinking with height while they fall
+        const air = clamp01((GROUND_Y - tr.y) / 400);
+        ctx.fillStyle = `rgba(0,0,0,${0.4 * (1 - air)})`;
+        ctx.beginPath(); ctx.ellipse(tr.x + sp.w / 2, GROUND_Y + 2, sp.w * 0.45 * (1 - air * 0.6), 4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.translate(tr.x + sp.w / 2, tr.y + bob);
+        ctx.scale(tr.dir * (1 + crouch * 0.12), 1 - crouch * 0.22);
+        const lean = running ? 0.18 : tr.strike > 0 ? (tr.strike < 0.6 ? -0.15 : 0.22) : 0;
+        ctx.rotate(lean);
+        const armour = tr.kind === 'death' ? '#18191c' : tr.kind === 'riot' ? '#e9ecef' : '#f2f2f2';
+        const trim = tr.kind === 'death' ? '#3a3d44' : '#1a1a1a';
+        const scale = sp.h / 74;
+        ctx.scale(scale, scale);
+        ctx.fillStyle = armour; ctx.strokeStyle = tr.kind === 'death' ? '#000' : '#111'; ctx.lineWidth = 2;
+        // legs: tucked while falling, apart in a crouch, striding otherwise
         for (const sgn of [1, -1]) {
-          ctx.save(); ctx.translate(sgn * 6, -30); ctx.rotate(swing * sgn);
+          ctx.save(); ctx.translate(sgn * 6, -30);
+          ctx.rotate(falling ? sgn * 0.25 : crouch > 0 ? sgn * 0.35 * crouch : swing * sgn);
           ctx.beginPath(); ctx.roundRect(-5, 0, 10, 30, 4); ctx.fill(); ctx.stroke();
-          ctx.fillStyle = '#222'; ctx.fillRect(-5, 26, 12, 4); ctx.fillStyle = '#f2f2f2';
+          ctx.fillStyle = trim; ctx.fillRect(-5, 26, 12, 4); ctx.fillStyle = armour;
           ctx.restore();
         }
         // torso
         ctx.beginPath(); ctx.roundRect(-14, -58, 28, 30, 6); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#222'; ctx.fillRect(-14, -34, 28, 4);
-        // blaster arm
-        ctx.fillStyle = '#f2f2f2';
-        ctx.beginPath(); ctx.roundRect(4, -52, 20, 8, 3); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#1a1a1a'; ctx.fillRect(18, -54, 16, 6);
+        ctx.fillStyle = trim; ctx.fillRect(-14, -34, 28, 4);
+        if (tr.kind === 'riot') {
+          // blue riot stripes on the chest and shoulders
+          ctx.fillStyle = '#3b6ea8'; ctx.fillRect(-14, -52, 28, 4); ctx.fillRect(-16, -58, 8, 5);
+        }
+        if (tr.kind === 'death') {
+          ctx.fillStyle = '#2b2e35'; ctx.fillRect(-10, -54, 20, 3); ctx.fillRect(-10, -47, 20, 3);
+        }
+        // arms
+        if (falling) {
+          ctx.fillStyle = armour;
+          for (const sgn of [1, -1]) { ctx.beginPath(); ctx.roundRect(sgn > 0 ? 8 : -16, -66, 8, 16, 3); ctx.fill(); ctx.stroke(); }
+        } else if (tr.kind === 'riot') {
+          // baton arm swings over on a bash
+          const sw2 = tr.strike > 0 ? (tr.strike < 0.6 ? -1.6 * (tr.strike / 0.6) : -1.6 + 2.6 * ((tr.strike - 0.6) / 0.4)) : -0.3;
+          ctx.save(); ctx.translate(-6, -54); ctx.rotate(sw2);
+          ctx.fillStyle = armour; ctx.beginPath(); ctx.roundRect(-4, 0, 8, 20, 3); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#222'; ctx.fillRect(-2, 18, 4, 18);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = armour;
+          ctx.beginPath(); ctx.roundRect(4, -52, 20, 8, 3); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = tr.kind === 'death' ? '#0a0a0a' : '#1a1a1a'; ctx.fillRect(18, -54, tr.kind === 'death' ? 22 : 16, 6);
+        }
         // helmet
-        ctx.fillStyle = '#f7f7f7';
+        ctx.fillStyle = tr.kind === 'death' ? '#202227' : '#f7f7f7';
         ctx.beginPath(); ctx.arc(0, -68, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#111';
-        ctx.beginPath(); ctx.ellipse(5, -70, 5, 3, -0.2, 0, Math.PI * 2); ctx.fill();
-        ctx.fillRect(2, -62, 9, 2);
+        if (tr.kind === 'death') {
+          // visor and the green lights down the side of the helmet
+          ctx.fillStyle = '#05060a'; ctx.beginPath(); ctx.ellipse(5, -70, 6, 3.4, -0.2, 0, Math.PI * 2); ctx.fill();
+          ctx.save(); ctx.shadowColor = '#5dff8a'; ctx.shadowBlur = 8; ctx.fillStyle = '#7dffa0';
+          ctx.fillRect(9, -66, 2, 2); ctx.fillRect(9, -62, 2, 2); ctx.fillRect(7, -58, 2, 2);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = '#111';
+          ctx.beginPath(); ctx.ellipse(5, -70, 5, 3, -0.2, 0, Math.PI * 2); ctx.fill();
+          ctx.fillRect(2, -62, 9, 2);
+          if (tr.kind === 'riot') { ctx.fillStyle = 'rgba(160,200,255,0.5)'; ctx.fillRect(-2, -78, 16, 6); }
+        }
+        // the riot shield, held out front; it cracks as it takes hits
+        if (tr.kind === 'riot' && tr.shield > 0) {
+          const push = tr.strike > 0.6 ? 10 * Math.sin(((tr.strike - 0.6) / 0.4) * Math.PI) : 0;
+          ctx.save(); ctx.translate(16 + push, -40);
+          ctx.fillStyle = tr.shieldFlash > 0 ? 'rgba(210,235,255,0.75)' : 'rgba(150,190,230,0.42)';
+          ctx.strokeStyle = '#2a3a4a'; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.roundRect(-4, -36, 10, 74, 3); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#1d2a38'; ctx.fillRect(-4, -8, 10, 6);
+          const cracks = Math.floor((1 - tr.shield / sp.shield) * 4);
+          ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1;
+          for (let c = 0; c < cracks; c++) {
+            ctx.beginPath(); ctx.moveTo(-3, -28 + c * 18); ctx.lineTo(3, -22 + c * 18); ctx.lineTo(0, -16 + c * 18); ctx.stroke();
+          }
+          ctx.restore();
+        }
         ctx.restore();
+        // health (and shield) over their heads once they are on the ground
+        if (!falling) {
+          const bw = 40, bx = tr.x + sp.w / 2 - bw / 2, byy = tr.y - sp.h - 18;
+          ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx - 1, byy - 1, bw + 2, 6);
+          ctx.fillStyle = tr.kind === 'death' ? '#7dffa0' : '#ef4444';
+          ctx.fillRect(bx, byy, bw * Math.max(0, tr.hp) / tr.maxHp, 4);
+          if (sp.shield > 0 && tr.shield > 0) {
+            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx - 1, byy - 7, bw + 2, 5);
+            ctx.fillStyle = '#8fd0ff'; ctx.fillRect(bx, byy - 6, bw * tr.shield / sp.shield, 3);
+          }
+        }
       }
       for (const eb of s.enemyBolts) {
         ctx.save();
-        ctx.shadowColor = '#ff3030'; ctx.shadowBlur = 12;
-        ctx.fillStyle = '#ff4a4a'; ctx.fillRect(eb.x - 10, eb.y - 2, 20, 4);
+        ctx.shadowColor = '#ff3030'; ctx.shadowBlur = eb.death ? 18 : 12;
+        ctx.fillStyle = '#ff4a4a'; ctx.fillRect(eb.x - (eb.death ? 14 : 10), eb.y - (eb.death ? 3 : 2), eb.death ? 28 : 20, eb.death ? 6 : 4);
         ctx.fillStyle = '#fff'; ctx.fillRect(eb.x - 4, eb.y - 1, 8, 2);
         ctx.restore();
       }
@@ -1072,12 +1361,22 @@ export const StarWarsShooter = ({
       ctx.globalCompositeOperation = 'source-over';
       ctx.restore(); // end of screen shake
 
-      // HUD: lives + score
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 16px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText(`❤ ${s.lives}`, 16, 26);
-      ctx.fillText(`SCORE ${s.score}`, 16, 48);
+      // HUD: Ferdi's health + score. Sits right of the global home button.
+      {
+        const hx = 96, hy = 20, hw = 200, hh = 12;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(hx - 4, hy - 4, hw + 8, hh + 8);
+        ctx.fillStyle = '#1a2a10'; ctx.fillRect(hx, hy, hw, hh);
+        const k = p.hp / PLAYER_MAX_HP;
+        ctx.fillStyle = p.healFlash > 0 ? '#d9ffb0' : k > 0.5 ? '#7ddc3a' : k > 0.25 ? '#facc15' : '#ef4444';
+        ctx.fillRect(hx, hy, hw * k, hh);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(hx, hy, hw, hh);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+        ctx.fillText(`${selectedCharacter.name.toUpperCase()}  ${Math.ceil(p.hp)} HP`, hx, hy - 6);
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillText(`SCORE ${s.score}`, hx, hy + hh + 20);
+        if (p.stun > 0) { ctx.fillStyle = '#9fd8ff'; ctx.fillText('GUARD BROKEN', hx + 110, hy + hh + 20); }
+        if (p.healFlash > 0) { ctx.fillStyle = '#b6ff7a'; ctx.fillText(`+${SHIELD_BREAK_HEAL} HP`, hx + 110, hy + hh + 20); }
+      }
 
       // Vader HP bar top-right
       const hbW = 260, hbH = 12, hbX = CANVAS_W - hbW - 20, hbY = 20;
@@ -1100,9 +1399,21 @@ export const StarWarsShooter = ({
     };
 
     s.rafId = requestAnimationFrame(step);
+    // For scripts: read the fight, and call a given wave in now.
+    (window as unknown as { __vaderDuel?: unknown }).__vaderDuel = {
+      state: () => ({
+        hp: s.player.hp, stun: s.player.stun, wave: s.wave, vaderHp: s.vader.hp, stomp: s.vader.stomp,
+        hatches: [...s.hatchOpen],
+        troopers: s.troopers.map(tr => ({ kind: tr.kind, state: tr.state, hp: tr.hp, shield: tr.shield, x: Math.round(tr.x), y: Math.round(tr.y) })),
+      }),
+      wave: (n: number) => { s.wave = n; s.troopers = []; s.trooperTimer = 0; },
+      heal: () => { s.player.hp = PLAYER_MAX_HP; },
+      place: (x: number) => { s.player.x = x; },
+    };
     return () => {
       s.running = false;
       cancelAnimationFrame(s.rafId);
+      delete (window as unknown as { __vaderDuel?: unknown }).__vaderDuel;
     };
   }, [isStarted]);
 
@@ -1159,7 +1470,12 @@ export const StarWarsShooter = ({
             {!isGameOver && !isVictory && (
               <>
                 <h1 className="text-4xl sm:text-5xl font-bold text-white tracking-wide">VADER DUEL</h1>
-                <p className="text-base sm:text-lg text-white/80">Blast Vader and his stormtroopers. Jump the red wave.</p>
+                <p className="text-base sm:text-lg text-white/80">Blast Vader. Jump the red wave. When he stomps, troopers drop from the ceiling.</p>
+                <div className="text-left text-white/60 text-xs space-y-0.5">
+                  <p>⚪ Stormtrooper: 100 HP, walks into range and fires</p>
+                  <p>🛡️ Riot Trooper: 175 HP behind a shield. Shoot it from the front to break it and win back 25 HP, then watch out, it charges</p>
+                  <p>⚫ Death Trooper: 300 HP, hits harder</p>
+                </div>
                 {isTouch ? (
                   <div className="text-left text-white/70 text-sm space-y-1">
                     <p>◀ ▶ D-pad to move</p>

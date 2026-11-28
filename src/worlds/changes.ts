@@ -500,6 +500,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
   ],
   "vibequest": [
+    { sha: "6e45ea3e", iso: "2026-11-28T18:53:08+00:00", subject: "Vader Duel: Imperial reinforcements" },
     { sha: "6ac6c26d", iso: "2026-11-28T18:43:08+00:00", subject: "Two players on one phone in every two-player game" },
     { sha: "880f2a72", iso: "2026-11-28T17:46:00+00:00", subject: "VibeQuest: two players on one phone" },
     { sha: "33edea3f", iso: "2026-11-28T16:40:18+00:00", subject: "VibeQuest Vader Duel: the moving arm replaces the painted one" },
