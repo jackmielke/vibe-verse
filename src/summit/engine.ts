@@ -54,6 +54,8 @@ interface Opts {
   charId: string;
   onHud?: (h: SummitHud) => void;
   onReady?: () => void;
+  /** At the top of the rainbow beam: hand over to Vibe Kart's Prism Skyway. Without it, the old in-world road runs. */
+  onSkyway?: () => void;
 }
 
 const G = 9.81;
@@ -961,6 +963,8 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
           const e = k * k * (3 - 2 * k);
           pos.set(bx + (f.p.x - bx) * e * e, SUMMIT.y + (f.p.y - SUMMIT.y) * e, bz + (f.p.z - bz) * e * e);
           heading += dt * 3;
+        } else if (opts.onSkyway) {
+          if (beamT < 1000) { beamT = 1e6; opts.onSkyway(); }
         } else toKartStart();
         break;
       }

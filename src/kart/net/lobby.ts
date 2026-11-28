@@ -28,6 +28,7 @@
  * own channel for the 15 Hz pose traffic, so lobby chatter and race traffic
  * never share a topic.
  */
+import { coursePrefix } from "../course";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { isBlocked, setSafetyPeers, subscribeSafety } from "@/safety/safety";
@@ -206,7 +207,7 @@ export function useKartLobby({ code, peerId, name, characterId }: KartLobbyOptio
     setJoinedAt(stamp);
     setRemote([]);
     announced.current = false;
-    const channel = supabase.channel(`kart-lobby-${code}`, {
+    const channel = supabase.channel(`kart-lobby-${coursePrefix()}${code}`, {
       config: { presence: { key: peerId }, broadcast: { self: false } },
     });
     channelRef.current = channel;

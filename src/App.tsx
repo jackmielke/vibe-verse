@@ -445,7 +445,7 @@ const App = () => (
           <Route path="/conservatory" element={<Conservatory />} />
           <Route path="/glasshouse" element={<Conservatory />} />
 
-          {["/summit", "/vibe-summit", "/skyway", "/rainbow-road"].map((path) => (
+          {["/summit", "/vibe-summit"].map((path) => (
             <Route key={path} path={path} element={<Summit />} />
           ))}
           {["/fogcity", "/fog-city"].map((path) => (
@@ -518,7 +518,10 @@ const App = () => (
               Single player and multiplayer are the same route: the title screen
               picks, and `?room=CODE` is an invite straight into a lobby.
               `/kart-mp` was the old multiplayer world and still answers. */}
-          {["/kart", "/kart-mp"].map((path) => (
+          {/* Prism Skyway is Vibe Kart's rainbow road in the sky, above Vibe
+              Summit. Same engine, same route component; the path picks the
+              course (src/kart/course.ts). */}
+          {["/kart", "/kart-mp", "/rainbow-road", "/prism-skyway", "/skyway"].map((path) => (
             <Route key={path} path={path} element={<VibeKart />} />
           ))}
           {/* THE MIDNIGHT ZONE — a submersible descent to the floor of the

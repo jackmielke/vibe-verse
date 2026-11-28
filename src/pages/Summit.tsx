@@ -4,7 +4,7 @@
  * the HUD and the phone controls.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Joystick } from "@/magician/ui/Joystick";
 import { useActiveCharacter } from "@/hooks/use-active-character";
 import type { Summit as Game, SummitHud } from "@/summit/engine";
@@ -22,10 +22,11 @@ const CHOICES: { key: "ski" | "board" | "wingsuit" | "paraglider" | "skyway"; em
   { key: "board", emoji: "🏂", name: "Snowboard", line: "Spin off the jumps for points", color: "#6b2fb3" },
   { key: "wingsuit", emoji: "🪂", name: "Wingsuit", line: "Dive through the rings, pull the chute", color: "#d8342c" },
   { key: "paraglider", emoji: "🪁", name: "Paraglider", line: "Slow and high, ride the thermals", color: "#d98a1a" },
-  { key: "skyway", emoji: "🌈", name: "Prism Skyway", line: "Drive the rainbow road in the sky", color: "#7a3fd0" },
+  { key: "skyway", emoji: "🌈", name: "Prism Skyway", line: "Race Vibe Kart on the rainbow road", color: "#7a3fd0" },
 ];
 
 export default function Summit() {
+  const navigate = useNavigate();
   const mountRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Game | null>(null);
   const { character } = useActiveCharacter();
@@ -52,7 +53,14 @@ export default function Summit() {
       void import("@/summit/engine").then(({ createSummit }) => {
         if (cancelled || !mountRef.current) return;
         try {
-          game = createSummit(mountRef.current, { charId: character.id, onHud: setHud, onReady: () => setPhase("playing") });
+          game = createSummit(mountRef.current, {
+            charId: character.id,
+            onHud: setHud,
+            onReady: () => setPhase("playing"),
+            // The rainbow beam carries you up into Vibe Kart's Prism Skyway, which
+            // races above this very mountain. Scripts keep the old in-world road.
+            onSkyway: typeof navigator !== "undefined" && navigator.webdriver ? undefined : () => navigate("/rainbow-road"),
+          });
           gameRef.current = game;
         } catch (e) {
           console.error(e);

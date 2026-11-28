@@ -16,6 +16,7 @@
  * Transport is a Supabase Realtime channel: presence for "who is here", one
  * broadcast topic for poses at ~15 Hz.
  */
+import { coursePrefix } from "../course";
 import * as THREE from "three";
 import { supabase } from "@/integrations/supabase/client";
 import type { KartCtx, PhysicsService, RacerState, System } from "../types";
@@ -71,7 +72,7 @@ export default function createNetplay(config: KartNetConfig) {
     };
     (ctx.services as Record<string, unknown>).net = service;
 
-    const channel = supabase.channel(`kart-race-${config.room}`, {
+    const channel = supabase.channel(`kart-race-${coursePrefix()}${config.room}`, {
       config: { broadcast: { self: false }, presence: { key: config.peerId } },
     });
 

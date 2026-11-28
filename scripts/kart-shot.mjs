@@ -75,7 +75,7 @@ if (server && !(await up(BASE, 180000))) {
   process.exit(1);
 }
 
-const exe = ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome", "/opt/pw-browsers/chromium/chrome"].find(
+const exe = ["/opt/pw-browsers/chromium", "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", "/opt/pw-browsers/chromium/chrome"].find(
   (p) => existsSync(p),
 );
 const browser = await chromium.launch({
@@ -135,7 +135,7 @@ async function openPage() {
     );
   });
 
-  await page.goto(`${BASE}/kart?shot=1`, { waitUntil: "domcontentloaded", timeout: 180000 });
+  await page.goto(`${BASE}${process.env.KART_ROUTE ?? "/kart"}?shot=1`, { waitUntil: "domcontentloaded", timeout: 180000 });
 
   try {
     await page.waitForFunction(() => window.__kartReady === true, null, { timeout: 600000 });

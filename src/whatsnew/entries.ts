@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-prism-skyway-kart",
+    date: "2026-11-28",
+    emoji: "🌈",
+    title: "Race the rainbow road in Vibe Kart",
+    body: "Prism Skyway is now a real Vibe Kart course: a glowing rainbow ribbon at twilight, high above the Vibe Summit peak, with the same karts, drifting and items. Mind the open edges and the Comet Gap. Ride the rainbow beam on the summit to get there, or open it straight from the front page.",
+    tag: "new",
+    route: "/rainbow-road",
+    world: "Vibe Kart",
+  },
+  {
     id: "city-police-chopper",
     date: "2026-11-27",
     emoji: "🚁",

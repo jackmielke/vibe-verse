@@ -56,14 +56,14 @@ export function signTexture(lines: string[], opts: { bg?: string; fg?: string; w
   return t;
 }
 
-export function buildScenery(grid: Grid, scene: THREE.Scene): Scenery {
-  const group = new THREE.Group();
-  scene.add(group);
+/**
+ * The snow itself: the heightfield mesh with its rock-and-snow vertex colours
+ * and the wind-drift grain. Exported so Vibe Kart's Prism Skyway can race
+ * above the very same mountain.
+ */
+export function buildSnowField(grid: Grid): { mesh: THREE.Mesh; dispose(): void } {
   const disposables: { dispose(): void }[] = [];
   const keep = <T extends { dispose(): void }>(x: T) => (disposables.push(x), x);
-  const H = (x: number, z: number) => gridHeight(grid, x, z);
-
-  // ---- The snow ----------------------------------------------------------
   const geo = keep(new THREE.PlaneGeometry(HALF * 2, HALF * 2, GRID, GRID));
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -116,7 +116,21 @@ float snN(vec2 p) {
   diffuseColor.rgb *= 1.0 - fade * (0.07 * drift + 0.06 * grain) + (1.0 - fade) * 0.0;
 }`);
   };
-  const terrain = new THREE.Mesh(geo, snowMat);
+  const mesh = new THREE.Mesh(geo, snowMat);
+  mesh.receiveShadow = true;
+  return { mesh, dispose: () => disposables.forEach((d) => d.dispose()) };
+}
+
+export function buildScenery(grid: Grid, scene: THREE.Scene): Scenery {
+  const group = new THREE.Group();
+  scene.add(group);
+  const disposables: { dispose(): void }[] = [];
+  const keep = <T extends { dispose(): void }>(x: T) => (disposables.push(x), x);
+  const H = (x: number, z: number) => gridHeight(grid, x, z);
+
+  // ---- The snow ----------------------------------------------------------
+  const snowField = keep(buildSnowField(grid));
+  const terrain = snowField.mesh;
   terrain.receiveShadow = true;
   group.add(terrain);
 
