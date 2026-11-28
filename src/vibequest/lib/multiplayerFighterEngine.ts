@@ -86,6 +86,8 @@ export class MultiplayerFighterEngine {
   private ctx: CanvasRenderingContext2D;
   private config: FighterConfig;
   private animationId: number | null = null;
+  /** Off on touch screens, where the keyboard legend means nothing. */
+  showKeyHints = true;
   private keys: { [key: string]: boolean } = {};
   private prevKeys: { [key: string]: boolean } = {};
   private images: { [key: string]: HTMLImageElement } = {};
@@ -949,8 +951,8 @@ export class MultiplayerFighterEngine {
     // Controls hint at bottom
     ctx.font = '12px Arial';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.fillText('P1: WASD + Space(hold=charge) | Shift=Dash | Q=Shield', this.canvas.width / 4, this.canvas.height - 10);
-    ctx.fillText('P2: Arrows + Enter(hold=charge) | RShift=Dash | /=Shield', this.canvas.width * 3 / 4, this.canvas.height - 10);
+    if (this.showKeyHints) ctx.fillText('P1: WASD + Space(hold=charge) | Shift=Dash | Q=Shield', this.canvas.width / 4, this.canvas.height - 10);
+    if (this.showKeyHints) ctx.fillText('P2: Arrows + Enter(hold=charge) | RShift=Dash | /=Shield', this.canvas.width * 3 / 4, this.canvas.height - 10);
   }
 
   private renderAbilityIndicators(player: FighterPlayer, x: number, y: number) {

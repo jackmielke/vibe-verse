@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-vibequest-two-on-one-phone",
+    date: "2026-11-28",
+    emoji: "📱",
+    title: "VibeQuest: two players on one phone",
+    body: "2P Fighter, Co-op Goopy and Co-op Cagney now play with two people on one phone. Turn it sideways and each player gets their own buttons on their side of the screen: move, jump and shoot, plus dash and shield in the Fighter and duck against Goopy.",
+    tag: "update",
+    route: "/vibequest",
+    world: "VibeQuest",
+  },
+  {
     id: "2026-11-28-vibe-arcade-neon",
     date: "2026-11-28",
     emoji: "🕹️",
