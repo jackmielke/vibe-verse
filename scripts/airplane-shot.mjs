@@ -145,7 +145,7 @@ if (server && !(await up(BASE, 120000))) {
   process.exit(1);
 }
 
-const exe = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const exe = ["/opt/pw-browsers/chromium", "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].find((p) => existsSync(p)) ?? "";
 const browser = await chromium.launch({
   ...(existsSync(exe) ? { executablePath: exe } : {}),
   args: [

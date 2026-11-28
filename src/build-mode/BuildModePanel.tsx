@@ -30,6 +30,8 @@ import {
   type BuildScope,
 } from "./api";
 import { dictationSupported, say, useDictation } from "./voice";
+import WhatsNewList from "@/whatsnew/WhatsNewList";
+import { WHATS_NEW, markAllSeen } from "@/whatsnew";
 
 const STATUS_LABEL: Record<Build["status"], string> = {
   queued: "Queued",
@@ -55,6 +57,33 @@ const MODE_KEY = "vibe.buildMode.mode";
 const SHIP_KEY = "vibe.buildMode.ship";
 const BILLING_KEY = "vibe.buildMode.billing";
 const LAYOUT_KEY = "vibe.buildMode.layout";
+const TAB_KEY = "vibe.buildMode.tab";
+/** What's New entries already shown inside build mode, by id. */
+const NEWS_KEY = "vibe.buildMode.newsSeen";
+
+type PanelTab = "history" | "news";
+
+/**
+ * What's New entries this device has not seen in build mode yet. Kept apart
+ * from the site-wide badge, so reading the changelog on the front page does
+ * not hide what changed from the panel. A first ever open counts the latest
+ * day only, not the whole back catalogue.
+ */
+function freshNews(): Set<string> {
+  let seen: Set<string> | null = null;
+  try {
+    const raw = localStorage.getItem(NEWS_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(v)) seen = new Set(v.map(String));
+  } catch {
+    /* treat as a first visit */
+  }
+  if (!seen) {
+    const latest = WHATS_NEW[0]?.date;
+    return new Set(WHATS_NEW.filter((e) => e.date === latest).map((e) => e.id));
+  }
+  return new Set(WHATS_NEW.filter((e) => !seen!.has(e.id)).map((e) => e.id));
+}
 
 /** Width of the docked sidebar; the world shrinks by exactly this. */
 const DOCK_W = 380;
@@ -112,6 +141,27 @@ export default function BuildModePanel({
     setLayoutState(l);
     writePref(LAYOUT_KEY, l);
   };
+  /**
+   * The lower half of the sidebar: your builds, or What's New. It opens on
+   * What's New whenever something has shipped since you were last in here,
+   * and on whichever you left it on otherwise.
+   */
+  const [news] = useState(freshNews);
+  const [tab, setTabState] = useState<PanelTab>(() =>
+    news.size > 0 ? "news" : readPref(TAB_KEY, "history") === "news" ? "news" : "history",
+  );
+  const setTab = (t: PanelTab) => {
+    setTabState(t);
+    writePref(TAB_KEY, t);
+  };
+  const [newsRead, setNewsRead] = useState(false);
+  useEffect(() => {
+    if (tab !== "news" || layout !== "dock") return;
+    writePref(NEWS_KEY, JSON.stringify(WHATS_NEW.map((e) => e.id)));
+    markAllSeen();
+    setNewsRead(true);
+  }, [tab, layout]);
+  const unreadNews = newsRead ? 0 : news.size;
   const [wide, setWide] = useState(() => window.innerWidth >= DOCK_MIN_VIEWPORT);
   useEffect(() => {
     const onResize = () => setWide(window.innerWidth >= DOCK_MIN_VIEWPORT);
@@ -425,10 +475,27 @@ export default function BuildModePanel({
           </button>
         </div>
         {notes}
+        {unreadNews > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setTab("news");
+              setLayout("dock");
+            }}
+            className="flex w-full items-center gap-2 rounded-md bg-amber-300/10 px-2 py-1.5 text-left text-[11px] text-amber-100 hover:bg-amber-300/15"
+          >
+            <span aria-hidden>✨</span>
+            <span className="flex-1">{unreadNews} new since you were last here</span>
+            <span className="text-amber-100/60">See</span>
+          </button>
+        )}
         {latest && (
           <button
             type="button"
-            onClick={() => setLayout("dock")}
+            onClick={() => {
+              setTab("history");
+              setLayout("dock");
+            }}
             className="flex w-full items-center gap-2 rounded-md bg-white/[0.04] px-2 py-1.5 text-left hover:bg-white/[0.08]"
             title="Open the full history"
           >
@@ -527,8 +594,41 @@ export default function BuildModePanel({
         {notes}
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
-        {total > 0 && <div className="text-[10px] uppercase tracking-wide text-white/35">History · {total} builds</div>}
+      <div className="flex gap-1 border-b border-white/10 px-4 pt-2" role="tablist" aria-label="Build mode views">
+        {(
+          [
+            ["history", "History", total > 0 ? String(total) : ""],
+            ["news", "✨ What's New", ""],
+          ] as const
+        ).map(([t, label, count]) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+            className={`-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-1 text-xs ${
+              tab === t ? "border-white font-semibold text-white" : "border-transparent text-white/50 hover:text-white/80"
+            }`}
+          >
+            {label}
+            {count && <span className="text-[10px] font-normal text-white/35">{count}</span>}
+            {t === "history" && anyLive && (
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" aria-label="A build is running" />
+            )}
+            {t === "news" && unreadNews > 0 && (
+              <span className="rounded-full bg-amber-300 px-1.5 text-[10px] font-bold leading-4 text-black">{unreadNews}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "news" ? (
+        <div className="flex-1 overflow-y-auto px-4 pb-6 pt-3" role="tabpanel">
+          <WhatsNewList compact fresh={news} onNavigate={onClose} />
+        </div>
+      ) : (
+      <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3" role="tabpanel">
         {builds.length === 0 && <div className="text-xs text-white/40">Nothing built yet.</div>}
         {builds.map((b) => (
           <div key={b.id} className="rounded-md border border-white/10 bg-white/[0.03] p-3">
@@ -639,6 +739,7 @@ export default function BuildModePanel({
           </button>
         )}
       </div>
+      )}
     </div>,
     document.body,
   );
