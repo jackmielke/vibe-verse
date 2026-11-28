@@ -48,6 +48,16 @@ export const ENTRIES: WhatsNewEntry[] = [
     world: "Vibe City",
   },
   {
+    id: "2026-11-28-city-live-flyover-picker",
+    date: "2026-11-28",
+    emoji: "🚁",
+    title: "Pick your character over the live city",
+    body: "The Pick your vibe screen on Vibe City now floats over a slow drone flight around the real city, live, so you see whatever the sky, the weather and the latest landmarks look like right now before you jump in.",
+    tag: "update",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "2026-11-28-two-players-one-phone-everywhere",
     date: "2026-11-28",
     emoji: "👥",
