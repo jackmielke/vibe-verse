@@ -497,6 +497,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
   ],
   "vibequest": [
+    { sha: "880f2a72", iso: "2026-11-28T17:46:00+00:00", subject: "VibeQuest: two players on one phone" },
     { sha: "33edea3f", iso: "2026-11-28T16:40:18+00:00", subject: "VibeQuest Vader Duel: the moving arm replaces the painted one" },
     { sha: "9cab8456", iso: "2026-11-28T02:01:42+00:00", subject: "VibeQuest Vader Duel: real walk, shot, Force grip and breaking wave" },
     { sha: "dd259097", iso: "2026-11-28T01:23:19+00:00", subject: "Add VibeQuest: Jack's sky island platformer and boss rush as its own world" },
