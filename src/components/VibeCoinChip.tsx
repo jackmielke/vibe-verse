@@ -37,6 +37,7 @@ import { IOS_APP } from "@/lib/iosApp";
 const REASON_LABEL: Record<string, string> = {
   starter: "Welcome grant",
   game_reward: "Mini-game payout",
+  coin_pickup: "Coins picked up",
   arcade_play: "Arcade — coin in",
   arcade_win: "Arcade — payout",
   tip: "Tip",

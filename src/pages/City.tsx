@@ -161,6 +161,8 @@ import CharacterShelf from "@/components/shop/CharacterShelf";
 import { ownedWeapons } from "@/lib/weaponCatalog";
 import { getWardrobeState } from "@/lib/wardrobe";
 import { useVibecoin } from "@/hooks/use-vibecoin";
+import { pickUpVibeyCoin } from "@/lib/vibeyPickup";
+import { vibeyCoinMaterials } from "@/lib/vibeyCoin3d";
 import { formatVibecoin } from "@/lib/vibecoin";
 import RockPaperScissors, { RpsDevHook } from "@/components/city/RockPaperScissors";
 import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
@@ -2200,31 +2202,28 @@ export default function City() {
     // Chase the zeppelin down (jetpack or ride it) and grab the coin.
     const heist = (() => {
       const g = new THREE.Group();
-      const coinMat = new THREE.MeshStandardMaterial({
-        color: "#ffd166", emissive: "#ffb700", emissiveIntensity: 1.0,
-        roughness: 0.25, metalness: 0.7,
-      });
-      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 24), coinMat);
+      // A big Vibey Coin: the chip's face, the mint rim, a mint beacon.
+      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.14, 32), vibeyCoinMaterials({ glow: 1.3 }));
       coin.rotation.x = Math.PI / 2;
       g.add(coin);
       const rim = new THREE.Mesh(
-        new THREE.TorusGeometry(0.55, 0.06, 8, 24),
+        new THREE.TorusGeometry(0.75, 0.06, 8, 32),
         new THREE.MeshStandardMaterial({
-          color: "#fff3c2", emissive: "#ffd166", emissiveIntensity: 1.3, roughness: 0.3,
+          color: "#eafff8", emissive: "#7dffd4", emissiveIntensity: 1.3, roughness: 0.3,
         }),
       );
       g.add(rim);
       const beacon = new THREE.Mesh(
         new THREE.CylinderGeometry(0.5, 1.6, 70, 10, 1, true),
         new THREE.MeshBasicMaterial({
-          color: "#ffd166", transparent: true, opacity: 0.2,
+          color: "#7dffd4", transparent: true, opacity: 0.2,
           blending: THREE.AdditiveBlending, depthWrite: false,
           side: THREE.DoubleSide, fog: false,
         }),
       );
       beacon.position.y = 35;
       g.add(beacon);
-      const light = new THREE.PointLight(0xffc84a, 10, 10, 2);
+      const light = new THREE.PointLight(0x7dffd4, 10, 10, 2);
       g.add(light);
       g.visible = false;
       scene.add(g);
@@ -3076,14 +3075,10 @@ export default function City() {
       transparent: true,
       opacity: 0.95,
     });
-    const coinGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.12, 24);
-    const coinMat = new THREE.MeshStandardMaterial({
-      color: "#ffd166",
-      emissive: "#c9891a",
-      emissiveIntensity: 0.9,
-      metalness: 0.85,
-      roughness: 0.25,
-    });
+    // The hoop coins are Vibey Coins: the chip's face on both sides, and
+    // grabbing one pays into the shared balance (see vibeyPickup.ts).
+    const coinGeo = new THREE.CylinderGeometry(0.62, 0.62, 0.12, 32);
+    const coinMat = vibeyCoinMaterials();
     const hoopGeo = new THREE.TorusGeometry(1.3, 0.09, 10, 32);
     const hoopMat = new THREE.MeshBasicMaterial({
       color: "#baffe9",
@@ -3123,6 +3118,13 @@ export default function City() {
       return { mesh: group, baseY: p.y, taken: false, kind: "hoop" as const, coin, hoop };
     });
     let collectedCount = 0;
+    if (import.meta.env.DEV) {
+      // Where the untaken hoop coins are, for a script that wants to grab one.
+      (window as unknown as Record<string, unknown>).__cityHoops = () =>
+        collectibles
+          .filter((c) => c.kind === "hoop" && !c.taken)
+          .map((c) => [c.mesh.position.x, c.mesh.position.y, c.mesh.position.z]);
+    }
 
     // Star-run timer: starts on the first pickup, best time persists.
     let runStartMs: number | null = null;
@@ -7789,9 +7791,14 @@ export default function City() {
           c.taken = true;
           c.mesh.visible = false;
           collectedCount++;
-          vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 1;
-          setVibeBalanceTick((n) => n + 1);
-          persistVibeBalanceRef.current?.();
+          if (c.kind === "hoop") {
+            // A floating coin is a Vibey Coin: it lands in the chip's balance.
+            pickUpVibeyCoin("city");
+          } else {
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 1;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+          }
           if (i === collectibles.length - 1) rainbowOn = true; // the secret one
           if (collectedCount === 1) runStartMs = now;
           soundsRef.current?.chime(collectedCount);
@@ -8098,12 +8105,12 @@ export default function City() {
             heistActive = false;
             heist.visible = false;
             heistNextAt = now + HEIST_PERIOD_MS;
-            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + HEIST_REWARD;
-            setVibeBalanceTick((n) => n + 1);
-            persistVibeBalanceRef.current?.();
+            const paid = pickUpVibeyCoin("city", HEIST_REWARD);
             soundsRef.current?.fanfare?.();
-            toast.success(`+${HEIST_REWARD} ✦ — Zeppelin Heist!`, {
-              description: "You caught the sky coin. Another lands in a few minutes.",
+            toast.success(paid > 0 ? `+${paid} Vibey Coins, Zeppelin Heist!` : "Zeppelin Heist!", {
+              description: paid > 0
+                ? "You caught the sky coin. Another lands in a few minutes."
+                : "You caught the sky coin. Vibe City's coins are spent for today, more tomorrow.",
             });
           }
         }

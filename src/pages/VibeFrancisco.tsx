@@ -8,6 +8,7 @@
  * The page owns the chrome and nothing else. Everything that moves is in
  * `src/frisco/`.
  */
+import VibeCoinMark from "@/components/VibeCoinMark";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
@@ -636,7 +637,8 @@ function Scoreboard({
         className={`${CHIP} !min-h-[34px] !px-2.5 !text-[10px]`}
         style={{ WebkitTapHighlightColor: "transparent" }}
       >
-        🪙 {play.coins}
+        <VibeCoinMark size={13} className="mr-1 inline-block align-[-2px]" />
+        {play.coins}
         <span className="mx-1 text-white/25">·</span>
         📖 {play.found.length}/{play.totalLandmarks}
       </button>
@@ -702,7 +704,8 @@ function LogSheet({
     <Sheet title="Logbook" onClose={onClose}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="rounded-lg bg-white/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70 ring-1 ring-white/10">
-          🪙 {play?.coins ?? 0} / {play?.totalCoins ?? 0} coins this visit
+          <VibeCoinMark size={13} className="mr-1 inline-block align-[-2px]" />
+          {play?.coins ?? 0} / {play?.totalCoins ?? 0} Vibey Coins this visit
         </span>
       </div>
       <h3 className="mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-white/50">

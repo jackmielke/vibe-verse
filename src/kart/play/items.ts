@@ -46,6 +46,7 @@
  *   race     the phase, so nothing fires during the countdown
  *   env      the prefiltered environment map, for the shells' specular
  */
+import { pickUpVibeyCoin } from "@/lib/vibeyPickup";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import {
@@ -1154,7 +1155,8 @@ function coinGeo(detail: boolean): THREE.BufferGeometry {
     new THREE.Vector2(0.3, -0.045),
     new THREE.Vector2(0, -0.045),
   ];
-  const parts = [paint(new THREE.LatheGeometry(profile, detail ? 16 : 10), 0xffc327)];
+  // Vibey Coin colours: the chip's teal face and its mint ✦.
+  const parts = [paint(new THREE.LatheGeometry(profile, detail ? 16 : 10), 0x1a8f78)];
   if (detail) {
     for (const s of [-1, 1]) {
       const star = new THREE.ExtrudeGeometry(starShape(0.24, 0.1), {
@@ -1164,7 +1166,7 @@ function coinGeo(detail: boolean): THREE.BufferGeometry {
       });
       // Authored in XY facing +Z; a quarter turn about X lays it flat on the
       // coin's ±Y face, where the lathe left a plateau for it.
-      parts.push(paint(place(star, 0, s * 0.042, 0, -s * Math.PI * 0.5), 0xfff0a4));
+      parts.push(paint(place(star, 0, s * 0.042, 0, -s * Math.PI * 0.5), 0xb8ffe9));
     }
   }
   return merge(parts);
@@ -1336,8 +1338,8 @@ function buildArt(opts: ArtOptions): Art {
       vertexColors: true,
       roughness: 0.19,
       metalness: 0.92,
-      emissive: 0xff9d18,
-      emissiveIntensity: 0.16,
+      emissive: 0x2fe0b8,
+      emissiveIntensity: 0.22,
       envMapIntensity: 1.6,
     }),
   );
@@ -1504,7 +1506,7 @@ function buildArt(opts: ArtOptions): Art {
       case "blueShell":
         return { size: 2.4, color: 0x7fb4ff };
       case "coin":
-        return { size: 1.5, color: 0xffd469 };
+        return { size: 1.5, color: 0x7dffd4 };
       default:
         return null;
     }
@@ -2348,6 +2350,8 @@ export default function createItems(ctx: KartCtx): System {
     // The chime climbs with the count — ten coins is a little fanfare on its own.
     sfx("coin", coin.position, racer.isPlayer ? 0.9 : 0.4, 1 + Math.min(racer.coins, TUNE.coinMax) * 0.045);
     gainCoins(racer, 1);
+    // Track coins are Vibey Coins: the local racer's land in the shared balance.
+    if (racer.isPlayer) pickUpVibeyCoin("kart");
   }
 
   function stepPickupField(list: Pickup[], respawn: number, isBox: boolean, dt: number): void {

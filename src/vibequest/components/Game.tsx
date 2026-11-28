@@ -1,3 +1,4 @@
+import { vibeyCoinDataUrl } from '@/lib/vibeyCoinArt';
 import { useEffect, useRef, useState } from 'react';
 import { GameEngine } from '@/vibequest/lib/gameEngine';
 import { Character } from '@/vibequest/useCharacters';
@@ -108,7 +109,8 @@ export const Game = ({ selectedCharacter, gameMode, onChangeCharacter, onChangeM
 
     // Load all sprites based on game mode
     const enemySprite = gameMode === 'zombie' ? zombieEnemySprite : gameMode === 'candy-run' ? skeletonEnemySprite : fnafEnemySprite;
-    const collectibleSprite = gameMode === 'candy-run' ? candySprite : coinSprite;
+    // Coins are Vibey Coins (the chip's face); candy stays candy.
+    const collectibleSprite = gameMode === 'candy-run' ? candySprite : vibeyCoinDataUrl(128) || coinSprite;
     
     Promise.all([
       game.loadImage(selectedCharacter.image_url, 'player'),

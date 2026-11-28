@@ -341,6 +341,33 @@ export async function award(
   }
 }
 
+/**
+ * Bank Vibey Coins picked up off the floor (or out of the air) of a world.
+ * The server decides how many of `count` it will mint today; see
+ * `coin_pickup` in vibe-economy. Use `pickUpVibeyCoin` in `vibeyPickup.ts`
+ * rather than this directly: it batches, and moves the chip on the spot.
+ */
+export async function coinPickup(
+  world: string,
+  count: number,
+): Promise<{ amount: number; balance: number; capped: boolean; leftToday: number | null } | null> {
+  try {
+    const owner = await currentOwner();
+    const r = await call<{
+      amount: number;
+      balance: number;
+      capped: boolean;
+      leftToday: number | null;
+    }>("coin_pickup", { ownerKind: owner.kind, ownerRef: owner.ref, world, count });
+    set({ balance: Number(r.balance), stale: false });
+    void refreshVibecoin();
+    return r;
+  } catch {
+    set({ stale: true });
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The arcade: pay to play, settle to win
 // ---------------------------------------------------------------------------

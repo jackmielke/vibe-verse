@@ -1,3 +1,4 @@
+import { pickUpVibeyCoin } from '@/lib/vibeyPickup';
 import { WORLDS, type WorldData } from './levels';
 
 interface GameConfig {
@@ -869,8 +870,9 @@ export class GameEngine {
         this.score++;
         this.config.onScoreUpdate(this.score);
         this.playCoinSound();
-        // Spawn golden sparkle particles
-        this.createParticles(coin.x + coin.width / 2, coin.y + coin.height / 2, 8, ['#fbbf24', '#f59e0b', '#fde047', '#facc15']);
+        // A Vibey Coin: it lands in the shared balance too.
+        pickUpVibeyCoin('vibequest');
+        this.createParticles(coin.x + coin.width / 2, coin.y + coin.height / 2, 8, ['#7dffd4', '#59b8ff', '#9dffe0', '#eafff8']);
       }
     }
 
@@ -1189,9 +1191,9 @@ export class GameEngine {
               centerX, centerY, 0,
               centerX, centerY, glowSize
             );
-            glowGradient.addColorStop(0, `rgba(250, 204, 21, ${glowAlpha})`);
-            glowGradient.addColorStop(0.5, `rgba(245, 158, 11, ${glowAlpha * 0.5})`);
-            glowGradient.addColorStop(1, 'rgba(250, 204, 21, 0)');
+            glowGradient.addColorStop(0, `rgba(125, 255, 212, ${glowAlpha})`);
+            glowGradient.addColorStop(0.5, `rgba(89, 184, 255, ${glowAlpha * 0.5})`);
+            glowGradient.addColorStop(1, 'rgba(125, 255, 212, 0)');
             
             this.ctx.fillStyle = glowGradient;
             this.ctx.beginPath();
@@ -1208,8 +1210,8 @@ export class GameEngine {
             const sparkleSize = 2 + Math.sin(time * 4 + i) * 1.5;
             const sparkleAlpha = 0.6 + Math.sin(time * 5 + i) * 0.4;
             
-            this.ctx.fillStyle = `rgba(253, 224, 71, ${sparkleAlpha})`;
-            this.ctx.shadowColor = 'rgba(250, 204, 21, 1)';
+            this.ctx.fillStyle = `rgba(157, 255, 224, ${sparkleAlpha})`;
+            this.ctx.shadowColor = 'rgba(125, 255, 212, 1)';
             this.ctx.shadowBlur = 8;
             this.ctx.beginPath();
             this.ctx.arc(sparkleX, sparkleY, sparkleSize, 0, Math.PI * 2);
@@ -1217,7 +1219,7 @@ export class GameEngine {
           }
           
           // Main coin shadow
-          this.ctx.shadowColor = 'rgba(250, 204, 21, 0.9)';
+          this.ctx.shadowColor = 'rgba(125, 255, 212, 0.9)';
           this.ctx.shadowBlur = 30;
           
           // Draw coin with rotation and scale

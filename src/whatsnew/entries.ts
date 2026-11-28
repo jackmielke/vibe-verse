@@ -38,6 +38,17 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "floating-vibey-coins",
+    date: "2026-11-28",
+    emoji: "✦",
+    title: "Floating coins are Vibey Coins now",
+    body:
+      "The coins in Vibe City's hoops, the zeppelin heist coin, the rooftop coins in Vibe Francisco, the coins on the Vibe Kart track and the coins in VibeQuest now wear the Vibey Coin face, and every one you grab goes straight into your Vibey Coin balance. Each world pays out up to a daily limit.",
+    tag: "update",
+    route: "/city",
+    world: "Vibe City",
+  },
+  {
     id: "2026-11-28-vibequest-two-on-one-phone",
     date: "2026-11-28",
     emoji: "📱",
