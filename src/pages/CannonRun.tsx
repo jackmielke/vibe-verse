@@ -323,7 +323,8 @@ export default function CannonRun() {
             </button>
           </div>
 
-          {phone && !over && !takeback && !fz ? (
+          {phone && !over && !takeback && !fz && hud.mode === "duo" ? <DuoPad /> : null}
+          {phone && !over && !takeback && !fz && hud.mode !== "duo" ? (
             <>
               {/* Tap anywhere above the stick to aim there and fire. */}
               <div
@@ -425,11 +426,9 @@ export default function CannonRun() {
             <button className="w-64 rounded-full bg-[#ffd36a] px-6 py-2.5 text-[15px] font-semibold text-black" onClick={() => start("solo")}>
               Light the fuse
             </button>
-            {!phone ? (
-              <button className="w-64 rounded-full bg-white/10 px-6 py-2.5 text-[14px] font-semibold ring-1 ring-white/15" onClick={() => start("duo")}>
-                Two trucks, one screen
-              </button>
-            ) : null}
+            <button className="w-64 rounded-full bg-white/10 px-6 py-2.5 text-[14px] font-semibold ring-1 ring-white/15" onClick={() => start("duo")}>
+              {phone ? "Two trucks, one phone" : "Two trucks, one screen"}
+            </button>
             <button className="w-64 rounded-full bg-white/10 px-6 py-2.5 text-[14px] font-semibold ring-1 ring-white/15" onClick={() => { setRoom(""); setScreen("host"); }}>
               Play with a friend's phone
             </button>
@@ -577,7 +576,9 @@ function FinaleHud({ f, phone, mode, card, onStick, game }: { f: FinaleHudT; pho
           </div>
         </div>
       </div>
-      {!phone ? (
+      {phone && mode === "duo" ? (
+        <DuoPad finale />
+      ) : !phone ? (
         <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${card} px-4 py-2 text-center text-[11px] text-white/70`} style={{ bottom: "max(env(safe-area-inset-bottom), 16px)" }}>
           {mode === "duo" ? (
             <>
@@ -604,6 +605,73 @@ function FinaleHud({ f, phone, mode, card, onStick, game }: { f: FinaleHudT; pho
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Two people on one phone: Player 1 holds the left edge, Player 2 the right.
+ * The engine already reads two players off one keyboard (A D W S and Space,
+ * the arrows and Enter), so each button presses that key. Nobody taps the
+ * road to aim here, so both cannons aim themselves at Mort.
+ */
+const DUO_KEYS = {
+  1: { left: "a", right: "d", up: "w", down: "s", fire: " " },
+  2: { left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", fire: "Enter" },
+} as const;
+type DuoAction = keyof (typeof DUO_KEYS)[1];
+
+function DuoPad({ finale }: { finale?: boolean }) {
+  const held = useRef(new Set<string>());
+  const press = (key: string, down: boolean): void => {
+    if (down === held.current.has(key)) return;
+    if (down) held.current.add(key); else held.current.delete(key);
+    window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key, bubbles: true }));
+  };
+  useEffect(() => {
+    const all = held.current;
+    return () => { all.forEach((k) => window.dispatchEvent(new KeyboardEvent("keyup", { key: k }))); all.clear(); };
+  }, []);
+  const bind = (key: string) => ({
+    onPointerDown: (e: React.PointerEvent) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); press(key, true); },
+    onPointerUp: () => press(key, false),
+    onPointerCancel: () => press(key, false),
+    onLostPointerCapture: () => press(key, false),
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+  });
+  const side = (p: 1 | 2) => {
+    const k = DUO_KEYS[p];
+    const col = p === 1 ? "#5ab4ff" : "#ff7a4a";
+    const b = "flex select-none items-center justify-center rounded-full font-bold text-white active:scale-90";
+    const ring = { touchAction: "none" as const, background: `${col}40`, boxShadow: `inset 0 0 0 2px ${col}aa` };
+    const btn = (a: DuoAction, label: string, size = 56) => (
+      <button key={a} aria-label={`Player ${p} ${a}`} {...bind(k[a])} className={b} style={{ ...ring, width: size, height: size, fontSize: size > 60 ? 13 : 20 }}>{label}</button>
+    );
+    const move = (
+      <div className="flex flex-col items-center gap-2">
+        {btn("up", finale ? "▲" : "⚡")}
+        <div className="flex gap-2">{btn("left", "◀")}{finale ? btn("down", "▼") : null}{btn("right", "▶")}</div>
+      </div>
+    );
+    const fire = (
+      <button aria-label={`Player ${p} fire`} {...bind(k.fire)} className={b} style={{ ...ring, width: 76, height: 76, fontSize: 13, background: `${col}88` }}>
+        {finale ? "🥧 PIE" : "FIRE"}
+      </button>
+    );
+    return (
+      <div className="pointer-events-auto relative flex items-end gap-3">
+        <div className="absolute -top-5 text-[11px] font-black tracking-wider" style={{ color: col, [p === 1 ? "left" : "right"]: 0 }}>PLAYER {p}{finale ? "" : ", ⚡ IS NITRO"}</div>
+        {p === 1 ? <>{move}{fire}</> : <>{fire}{move}</>}
+      </div>
+    );
+  };
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between"
+      style={{ padding: "0 max(env(safe-area-inset-right), 14px) max(env(safe-area-inset-bottom), 16px) max(env(safe-area-inset-left), 14px)" }}
+    >
+      {side(1)}
+      {side(2)}
+    </div>
   );
 }
 
