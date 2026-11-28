@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "vibequest-vader-duel-polish",
+    date: "2026-11-28",
+    emoji: "⚔️",
+    title: "The Vader Duel got a glow up",
+    body: "In VibeQuest's Vader Duel your hero now runs, leans and lands with a bounce, every shot kicks with a muzzle flash and sparks, the dark lord reaches out and closes his fist before slamming the floor, and the red wave breaks and foams like a real one. Jump it.",
+    tag: "update",
+    route: "/vibequest",
+    world: "VibeQuest",
+  },
+  {
     id: "city-chopper-laser",
     date: "2026-11-28",
     emoji: "🟢",

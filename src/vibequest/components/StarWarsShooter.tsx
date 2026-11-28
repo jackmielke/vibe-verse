@@ -32,7 +32,169 @@ const WINDUP_TIME = 0.85;
 interface Bolt { x: number; y: number; vx: number; alive: boolean }
 interface Trooper { x: number; hp: number; shootTimer: number; phase: number; dir: number; hitFlash: number }
 interface EnemyBolt { x: number; y: number; vx: number; alive: boolean }
-interface Shockwave { x: number; y: number; w: number; h: number; hitCooldown: number }
+interface Shockwave { x: number; y: number; w: number; h: number; hitCooldown: number; age: number; seed: number }
+
+/** One spark, puff, foam fleck or Force mote. Everything that flies and fades. */
+interface Particle {
+  x: number; y: number; vx: number; vy: number;
+  life: number; max: number; size: number;
+  /** Gravity in px/s^2 (negative floats up). */
+  g: number;
+  /** Air drag per second, 0 keeps all speed. */
+  drag: number;
+  color: string;
+  /** Drawn with additive blending, so overlapping sparks bloom. */
+  glow: boolean;
+  /** Grows as it fades (dust, mist) instead of shrinking (sparks). */
+  grow?: boolean;
+  /** Pulled toward a point each frame (Force motes into Vader's palm). */
+  pull?: { x: number; y: number; k: number };
+}
+
+const makePlayer = () => ({
+  x: 120, y: GROUND_Y - PLAYER_H, vx: 0, vy: 0, onGround: true, dir: 1, invuln: 0, boltCooldown: 0,
+  /** Stride clock; advances with distance walked, not time, so feet never skate. */
+  walkPhase: 0,
+  /** 0..1 squash from a landing, eased out. */
+  land: 0,
+  /** Muzzle flash timer. */
+  muzzle: 0,
+  /** Gun kick, eased out. */
+  kick: 0,
+  dustTimer: 0,
+});
+
+const makeVader = () => ({
+  hp: VADER_MAX_HP, attackTimer: 1.5, windup: 0, handRaise: 0, hitFlash: 0, recoil: 0, offset: 0, walkDir: -1, walkPhase: 0,
+  /** Where the glove is on screen, written by the renderer, read by the Force motes. */
+  handX: 0, handY: 0,
+});
+
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const easeOut = (x: number) => 1 - (1 - x) * (1 - x);
+const easeInOut = (x: number) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+
+/** Cheap deterministic wobble for the wave's surface. */
+const ripple = (u: number, t: number, seed: number) =>
+  Math.sin(u * 17 - t * 11 + seed) * 0.5 + Math.sin(u * 31 + t * 7 + seed * 2.3) * 0.3 + Math.sin(u * 53 - t * 19) * 0.2;
+
+/**
+ * Vader's attack arm, drawn with two-bone IK so the elbow bends like an elbow.
+ * Coordinates are the body's local space with the shoulder at the origin and
+ * Vader facing -x (toward the player). `curl` is 0 for an open, spread hand
+ * and 1 for a clenched Force grip; `tremor` shakes the fingers.
+ */
+function drawVaderArm(
+  ctx: CanvasRenderingContext2D,
+  hx: number, hy: number,
+  L1: number, L2: number,
+  curl: number, tremor: number, t: number,
+) {
+  let d = Math.hypot(hx, hy);
+  const maxD = L1 + L2 - 0.5;
+  if (d > maxD) { hx *= maxD / d; hy *= maxD / d; d = maxD; }
+  if (d < 1) d = 1;
+  const a = Math.atan2(hy, hx);
+  const cosB = Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+  // Elbow points down and back, away from the player.
+  const upper = a + Math.acos(cosB) * (hx < 0 ? -1 : 1);
+  const ex = Math.cos(upper) * L1, ey = Math.sin(upper) * L1;
+  const fore = Math.atan2(hy - ey, hx - ex);
+
+  const limb = (x0: number, y0: number, ang: number, len: number, w0: number, w1: number) => {
+    ctx.save();
+    ctx.translate(x0, y0);
+    ctx.rotate(ang);
+    const g = ctx.createLinearGradient(0, -w0, 0, w0);
+    g.addColorStop(0, '#3a3a46');
+    g.addColorStop(0.35, '#15151b');
+    g.addColorStop(1, '#050507');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, -w0);
+    ctx.quadraticCurveTo(len * 0.5, -w0 * 1.08, len, -w1);
+    ctx.lineTo(len, w1);
+    ctx.quadraticCurveTo(len * 0.5, w0 * 1.02, 0, w0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(110,110,135,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // red rim light from the glow behind him, along the underside
+    ctx.strokeStyle = 'rgba(255,50,40,0.55)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(len * 0.05, w0 * 0.92);
+    ctx.quadraticCurveTo(len * 0.5, w0 * 0.98, len * 0.95, w1 * 0.92);
+    ctx.stroke();
+    // leather sheen along the top
+    ctx.strokeStyle = 'rgba(160,160,190,0.28)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(len * 0.1, -w0 * 0.7);
+    ctx.quadraticCurveTo(len * 0.5, -w0 * 0.85, len * 0.9, -w1 * 0.7);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // shoulder armour
+  ctx.fillStyle = '#0a0a0e';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 26, 22, upper, 0, Math.PI * 2);
+  ctx.fill();
+  limb(0, 0, upper, L1, 21, 18);
+  limb(ex, ey, fore, L2, 18, 14);
+  // elbow joint
+  ctx.fillStyle = '#101016';
+  ctx.strokeStyle = 'rgba(110,110,135,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(ex, ey, 17, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // gauntlet cuff and glove
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(fore);
+  ctx.scale(1.35, 1.35);
+  ctx.shadowColor = 'rgba(255,40,30,0.8)';
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = '#1c1c24';
+  ctx.beginPath(); ctx.roundRect(-16, -14, 16, 28, 5); ctx.fill();
+  ctx.strokeStyle = 'rgba(200,200,220,0.25)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(-13, -12); ctx.lineTo(-13, 12); ctx.stroke();
+  // palm
+  ctx.fillStyle = '#0c0c10';
+  ctx.beginPath(); ctx.ellipse(8, 0, 13, 12, 0, 0, Math.PI * 2); ctx.fill();
+  // four fingers, fanned when open, curled to a claw when gripping
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++) {
+    const spread = (i - 1.5) * (0.32 - curl * 0.18);
+    const shake = Math.sin(t * 47 + i * 1.7) * tremor * 0.12;
+    const segs = [11 - Math.abs(i - 1.5) * 1.2, 8, 6];
+    let x = 16, y = (i - 1.5) * 5.5, ang = spread + shake;
+    ctx.strokeStyle = '#0c0c10';
+    for (let k = 0; k < 3; k++) {
+      const nx = x + Math.cos(ang) * segs[k], ny = y + Math.sin(ang) * segs[k];
+      ctx.lineWidth = 6.5 - k * 1.2;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(nx, ny); ctx.stroke();
+      x = nx; y = ny;
+      ang += curl * 0.85 * (i < 2 ? 1 : 1) + shake;
+    }
+    // knuckle glint
+    ctx.fillStyle = 'rgba(180,180,210,0.25)';
+    ctx.beginPath(); ctx.arc(16, (i - 1.5) * 5.5, 1.6, 0, Math.PI * 2); ctx.fill();
+  }
+  // thumb
+  ctx.strokeStyle = '#0c0c10';
+  ctx.lineWidth = 6;
+  const ta = -1.1 + curl * 0.9;
+  ctx.beginPath();
+  ctx.moveTo(6, -9);
+  ctx.lineTo(6 + Math.cos(ta) * 10, -9 + Math.sin(ta) * 10);
+  ctx.lineTo(6 + Math.cos(ta) * 10 + Math.cos(ta + 0.6 + curl * 0.6) * 8, -9 + Math.sin(ta) * 10 + Math.sin(ta + 0.6 + curl * 0.6) * 8);
+  ctx.stroke();
+  ctx.restore();
+  return { ex, ey, fore };
+}
 
 export const StarWarsShooter = ({
   selectedCharacter,
@@ -52,13 +214,15 @@ export const StarWarsShooter = ({
 
   // Mutable game state in a ref so the loop can mutate without React re-renders.
   const stateRef = useRef({
-    player: { x: 120, y: GROUND_Y - PLAYER_H, vx: 0, vy: 0, onGround: true, dir: 1, invuln: 0, boltCooldown: 0 },
+    player: makePlayer(),
     bolts: [] as Bolt[],
+    particles: [] as Particle[],
+    shake: 0,
     shockwaves: [] as Shockwave[],
     troopers: [] as Trooper[],
     enemyBolts: [] as EnemyBolt[],
     trooperTimer: 4,
-    vader: { hp: VADER_MAX_HP, attackTimer: 1.5, windup: 0, handRaise: 0, hitFlash: 0, recoil: 0, offset: 0, walkDir: -1, walkPhase: 0 },
+    vader: makeVader(),
     score: 0,
     lives: 3,
     gameOver: false,
@@ -136,13 +300,15 @@ export const StarWarsShooter = ({
 
   const resetGame = useCallback(() => {
     const s = stateRef.current;
-    s.player = { x: 120, y: GROUND_Y - PLAYER_H, vx: 0, vy: 0, onGround: true, dir: 1, invuln: 0, boltCooldown: 0 };
+    s.player = makePlayer();
     s.bolts = [];
+    s.particles = [];
+    s.shake = 0;
     s.shockwaves = [];
     s.troopers = [];
     s.enemyBolts = [];
     s.trooperTimer = 4;
-    s.vader = { hp: VADER_MAX_HP, attackTimer: 1.5, windup: 0, handRaise: 0, hitFlash: 0, recoil: 0, offset: 0, walkDir: -1, walkPhase: 0 };
+    s.vader = makeVader();
     s.score = 0;
     s.lives = 3;
     s.gameOver = false;
@@ -171,6 +337,30 @@ export const StarWarsShooter = ({
     const vaderHitRight = CANVAS_W;
     const TROOPER_W = 40, TROOPER_H = 74;
 
+    const emit = (pt: Partial<Particle> & { x: number; y: number }) => {
+      if (s.particles.length > 700) return;
+      const q = { vx: 0, vy: 0, life: 0.5, size: 3, g: 0, drag: 0, color: '#fff', glow: false, ...pt } as Particle;
+      q.max = q.life;
+      s.particles.push(q);
+    };
+    const sparks = (x: number, y: number, dirX: number, color: string, n: number) => {
+      for (let i = 0; i < n; i++) {
+        const a = Math.atan2(0, dirX) + Math.PI + (Math.random() - 0.5) * 2.2;
+        const sp = 120 + Math.random() * 320;
+        emit({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60, life: 0.18 + Math.random() * 0.25,
+          size: 1.5 + Math.random() * 2, g: 900, drag: 2, color, glow: true });
+      }
+      emit({ x, y, life: 0.08, size: 5, color: '#ffffff', glow: true, grow: true });
+    };
+    const dust = (x: number, y: number, n: number, spread: number, up: number) => {
+      for (let i = 0; i < n; i++) {
+        emit({ x: x + (Math.random() - 0.5) * spread, y: y - Math.random() * 3,
+          vx: (Math.random() - 0.5) * 90, vy: -Math.random() * up,
+          life: 0.35 + Math.random() * 0.35, size: 2 + Math.random() * 2.5, g: -20, drag: 3,
+          color: 'rgba(150,120,130,0.4)', glow: false, grow: true });
+      }
+    };
+
     const step = (now: number) => {
       if (!s.running) return;
       const dt = Math.min((now - s.lastT) / 1000, 0.05);
@@ -191,18 +381,30 @@ export const StarWarsShooter = ({
       else if (right) { p.vx = MOVE_SPEED; p.dir = 1; }
       else p.vx *= 0.75;
 
-      if (jump && p.onGround) { p.vy = JUMP_V; p.onGround = false; }
+      if (jump && p.onGround) {
+        p.vy = JUMP_V; p.onGround = false;
+        dust(p.x + PLAYER_W / 2, GROUND_Y, 6, 26, 60);
+      }
 
       // Shooting
       p.boltCooldown -= dt;
+      if (p.muzzle > 0) p.muzzle -= dt;
+      p.kick = Math.max(0, p.kick - dt * 9);
       if (shoot && p.boltCooldown <= 0) {
         p.boltCooldown = BOLT_COOLDOWN;
-        s.bolts.push({
-          x: p.dir > 0 ? p.x + PLAYER_W : p.x - 12,
-          y: p.y + PLAYER_H * 0.4,
-          vx: BOLT_SPEED * p.dir,
-          alive: true,
-        });
+        p.muzzle = 0.07;
+        p.kick = 1;
+        const mx = p.dir > 0 ? p.x + PLAYER_W + 4 : p.x - 4;
+        const my = p.y + PLAYER_H * 0.42;
+        s.bolts.push({ x: mx, y: my, vx: BOLT_SPEED * p.dir, alive: true });
+        // a few hot flecks leave the muzzle with the bolt
+        for (let i = 0; i < 4; i++) {
+          emit({ x: mx, y: my, vx: p.dir * (150 + Math.random() * 200), vy: (Math.random() - 0.5) * 140,
+            life: 0.1 + Math.random() * 0.1, size: 1.4, g: 300, drag: 4, color: '#d4ff7a', glow: true });
+        }
+        // and a breath of smoke drifts up off the barrel
+        emit({ x: mx, y: my, vx: p.dir * 30, vy: -25, life: 0.5, size: 4, g: -40, drag: 2,
+          color: 'rgba(200,220,190,0.25)', glow: false, grow: true });
       }
 
       // ---- Physics ----
@@ -212,11 +414,30 @@ export const StarWarsShooter = ({
       if (p.x < 20) p.x = 20;
       if (p.x + PLAYER_W > CANVAS_W - VADER_W * 0.35) p.x = CANVAS_W - VADER_W * 0.35 - PLAYER_W;
       if (p.y + PLAYER_H >= GROUND_Y) {
+        if (!p.onGround) {
+          // landing: squash scales with how hard you came down
+          p.land = Math.min(1, p.vy / 900);
+          dust(p.x + PLAYER_W / 2, GROUND_Y, 5 + Math.round(p.land * 6), 34, 50);
+        }
         p.y = GROUND_Y - PLAYER_H;
         p.vy = 0;
         p.onGround = true;
       }
+      p.land = Math.max(0, p.land - dt * 5);
       if (p.invuln > 0) p.invuln -= dt;
+      // stride: one full step cycle every ~70 px of ground covered
+      if (p.onGround && Math.abs(p.vx) > 30) {
+        p.walkPhase += (Math.abs(p.vx) * dt) / 70 * Math.PI * 2;
+        p.dustTimer -= dt;
+        if (p.dustTimer <= 0) {
+          p.dustTimer = 0.16;
+          dust(p.x + PLAYER_W / 2 - p.dir * 12, GROUND_Y, 1, 8, 25);
+        }
+      } else {
+        // settle the stride back to a standing pose rather than freezing mid-step
+        const k = Math.round(p.walkPhase / Math.PI) * Math.PI;
+        p.walkPhase += (k - p.walkPhase) * Math.min(1, dt * 12);
+      }
 
       // ---- Bolts ----
       for (const b of s.bolts) {
@@ -225,6 +446,7 @@ export const StarWarsShooter = ({
         for (const tr of s.troopers) {
           if (b.alive && tr.hp > 0 && b.x > tr.x && b.x < tr.x + TROOPER_W && b.y > GROUND_Y - TROOPER_H && b.y < GROUND_Y) {
             b.alive = false; tr.hp -= 1; tr.hitFlash = 0.2;
+            sparks(b.x, b.y, b.vx, '#d4ff7a', 10);
             if (tr.hp <= 0) { s.score += 25; setScore(s.score); }
           }
         }
@@ -233,6 +455,8 @@ export const StarWarsShooter = ({
           b.alive = false;
           s.vader.hp -= 1;
           s.vader.hitFlash = 0.3;
+          sparks(b.x, b.y, b.vx, '#ffd27a', 14);
+          s.shake = Math.max(s.shake, 0.12);
           s.score += 10;
           setVaderHp(s.vader.hp);
           setScore(s.score);
@@ -278,6 +502,7 @@ export const StarWarsShooter = ({
       for (const eb of s.enemyBolts) {
         eb.x += eb.vx * dt;
         if (eb.x < -40 || eb.x > CANVAS_W + 40) eb.alive = false;
+        if (eb.alive && p.invuln <= 0 && eb.x > p.x && eb.x < p.x + PLAYER_W && eb.y > p.y && eb.y < p.y + PLAYER_H) sparks(eb.x, eb.y, eb.vx, '#ff5a5a', 8);
         if (eb.alive && p.invuln <= 0 && eb.x > p.x && eb.x < p.x + PLAYER_W && eb.y > p.y && eb.y < p.y + PLAYER_H) {
           eb.alive = false; s.lives -= 1; p.invuln = 1.5; setLives(s.lives);
           if (s.lives <= 0 && !s.gameOver) { s.gameOver = true; s.running = false; setIsGameOver(true); }
@@ -286,7 +511,18 @@ export const StarWarsShooter = ({
       s.enemyBolts = s.enemyBolts.filter(eb => eb.alive);
       if (v.windup > 0) {
         v.windup -= dt;
-        v.handRaise = Math.min(1, v.handRaise + dt * 4);
+        v.handRaise = Math.min(1, v.handRaise + dt * 2.2);
+        // the dark side gathering: motes drawn in from all round toward the glove
+        if (v.handX && Math.random() < 0.9) {
+          for (let i = 0; i < 2; i++) {
+            const a = Math.random() * Math.PI * 2, r = 70 + Math.random() * 90;
+            emit({ x: v.handX + Math.cos(a) * r, y: v.handY + Math.sin(a) * r,
+              vx: -Math.sin(a) * 60, vy: Math.cos(a) * 60,
+              life: 0.45, size: 1.5 + Math.random() * 2, drag: 1.5,
+              color: Math.random() < 0.3 ? '#ffd0d0' : '#ff2a2a', glow: true,
+              pull: { x: v.handX, y: v.handY, k: 18 } });
+          }
+        }
         if (v.windup <= 0) {
           // spawn shockwave
           s.shockwaves.push({
@@ -295,9 +531,21 @@ export const StarWarsShooter = ({
             w: 96,
             h: SHOCKWAVE_H,
             hitCooldown: 0,
+            age: 0,
+            seed: Math.random() * 10,
           });
           v.attackTimer = ATTACK_INTERVAL;
           v.recoil = 1;
+          s.shake = 0.35;
+          // the slam: a ring of grit thrown off the ground where the wave is born
+          for (let i = 0; i < 26; i++) {
+            const a = -Math.PI * (0.05 + Math.random() * 0.9);
+            const sp = 120 + Math.random() * 380;
+            emit({ x: vaderScreenX + 20, y: GROUND_Y - 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+              life: 0.4 + Math.random() * 0.5, size: 1.5 + Math.random() * 2.5, g: 1200, drag: 1,
+              color: Math.random() < 0.5 ? '#5a3a3a' : '#ff5a4a', glow: Math.random() < 0.4 });
+          }
+          dust(vaderScreenX + 20, GROUND_Y, 12, 90, 120);
         }
       } else {
         v.handRaise = Math.max(0, v.handRaise - dt * 3);
@@ -308,7 +556,42 @@ export const StarWarsShooter = ({
       // ---- Shockwaves ----
       for (const sw of s.shockwaves) {
         sw.x -= SHOCKWAVE_SPEED * dt;
+        sw.age += dt;
         if (sw.hitCooldown > 0) sw.hitCooldown -= dt;
+        const grow = easeOut(clamp01(sw.age / 0.35));
+        const WH = sw.h * 1.3 * grow;
+        // whitewater pouring off the lip and down the face, carried along with it
+        for (let i = 0; i < 3; i++) {
+          emit({ x: sw.x - WH * (0.35 + Math.random() * 0.2), y: GROUND_Y - WH * (0.45 + Math.random() * 0.15),
+            vx: -SHOCKWAVE_SPEED + (Math.random() - 0.5) * 60, vy: 20 + Math.random() * 60,
+            life: 0.25 + Math.random() * 0.2, size: 1.5 + Math.random() * 2.5, g: 700, drag: 0.5,
+            color: 'rgba(255,232,226,0.85)', glow: false });
+        }
+        // spray torn off the crest by its own speed, blowing back over the top
+        if (Math.random() < 0.7) {
+          emit({ x: sw.x + WH * 0.3 + (Math.random() - 0.5) * 16, y: GROUND_Y - WH,
+            vx: -SHOCKWAVE_SPEED + 90 + Math.random() * 160, vy: -70 - Math.random() * 120,
+            life: 0.35 + Math.random() * 0.3, size: 1 + Math.random() * 1.6, g: 500, drag: 1.5,
+            color: 'rgba(255,190,180,0.9)', glow: true });
+        }
+        // churned mist rolling at the foot
+        if (Math.random() < 0.6) {
+          emit({ x: sw.x - WH * 0.2 + Math.random() * WH * 0.4, y: GROUND_Y - Math.random() * 8,
+            vx: -SHOCKWAVE_SPEED * 0.9, vy: -15 - Math.random() * 25, life: 0.4 + Math.random() * 0.3,
+            size: 3.5 + Math.random() * 3.5, g: -20, drag: 1, color: 'rgba(255,215,210,0.22)', glow: false, grow: true });
+        }
+        // grit and sparks scraped off the floor at the front
+        if (Math.random() < 0.8) {
+          emit({ x: sw.x - 4, y: GROUND_Y - 1, vx: -SHOCKWAVE_SPEED * (0.6 + Math.random() * 0.6), vy: -40 - Math.random() * 160,
+            life: 0.3 + Math.random() * 0.3, size: 1 + Math.random() * 1.6, g: 1100, drag: 0.5,
+            color: Math.random() < 0.5 ? '#ffb070' : '#7a4040', glow: Math.random() < 0.5 });
+        }
+        // a low mist left lying behind it
+        if (Math.random() < 0.5) {
+          emit({ x: sw.x + sw.w * (0.4 + Math.random() * 0.8), y: GROUND_Y - Math.random() * 10,
+            vx: -40 + Math.random() * 30, vy: -10 - Math.random() * 20, life: 0.7 + Math.random() * 0.5,
+            size: 6 + Math.random() * 6, g: -10, drag: 1.5, color: 'rgba(255,70,60,0.18)', glow: false, grow: true });
+        }
         // Collide with player
         if (
           sw.hitCooldown <= 0 &&
@@ -331,7 +614,30 @@ export const StarWarsShooter = ({
       }
       s.shockwaves = s.shockwaves.filter(sw => sw.x + sw.w > -40);
 
+      // ---- Particles ----
+      for (const q of s.particles) {
+        q.life -= dt;
+        if (q.pull) {
+          const dx = q.pull.x - q.x, dy = q.pull.y - q.y;
+          q.vx += dx * q.pull.k * dt; q.vy += dy * q.pull.k * dt;
+          if (dx * dx + dy * dy < 100) q.life = Math.min(q.life, 0.05);
+        }
+        q.vy += q.g * dt;
+        const dr = Math.max(0, 1 - q.drag * dt);
+        q.vx *= dr; q.vy *= dr;
+        q.x += q.vx * dt; q.y += q.vy * dt;
+        // grit bounces once off the floor and skids
+        if (q.g > 500 && q.y > GROUND_Y) { q.y = GROUND_Y; q.vy *= -0.3; q.vx *= 0.6; }
+      }
+      s.particles = s.particles.filter(q => q.life > 0);
+      s.shake = Math.max(0, s.shake - dt);
+
       // ---- Render ----
+      ctx.save();
+      if (s.shake > 0) {
+        const m = s.shake * 22;
+        ctx.translate((Math.random() - 0.5) * m, (Math.random() - 0.5) * m);
+      }
       // Sky/space background
       const bg = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
       bg.addColorStop(0, '#02020a');
@@ -383,7 +689,9 @@ export const StarWarsShooter = ({
       rg.addColorStop(0, 'rgba(255,40,40,0.5)');
       rg.addColorStop(1, 'rgba(255,40,40,0)');
       ctx.fillStyle = rg;
-      ctx.fillRect(vaderScreenX - 120, GROUND_Y - 120, VADER_W + 150, 220);
+      ctx.beginPath();
+      ctx.arc(vaderScreenX + VADER_W * 0.3, GROUND_Y, VADER_W * 0.7 * glowPulse, 0, Math.PI * 2);
+      ctx.fill();
 
       // Vader
       if (s.vaderImg) {
@@ -411,40 +719,79 @@ export const StarWarsShooter = ({
         ctx.rotate(-v.handRaise * 0.08 + v.recoil * 0.12);
         ctx.drawImage(s.vaderImg, -VADER_W / 2, -VADER_H * 0.5, VADER_W, VADER_H);
         ctx.restore();
-        // Attack arm: hangs, rises overhead on wind-up, slams down on release
+        // Attack arm. Two joints, solved each frame from where the hand should be:
+        // hanging and swinging with his stride, then reaching out toward the
+        // player and slowly closing into a Force grip, then driven down,
+        // palm open, into the floor to send the wave.
         ctx.shadowBlur = 0;
-        const shX = -VADER_W * 0.22, shY = -VADER_H * 0.64;
-        const restA = Math.PI * 0.62 + (walking ? Math.sin(v.walkPhase) * 0.15 : 0);
-        const upA = -Math.PI * 0.62;
-        const slamA = Math.PI * 0.85;
-        let armA = restA + (upA - restA) * v.handRaise;
-        if (v.recoil > 0) armA = slamA + (restA - slamA) * (1 - v.recoil);
-        const armL = VADER_H * 0.3;
+        const shX = -VADER_W * 0.2, shY = -VADER_H * 0.66;
+        const L1 = VADER_H * 0.17, L2 = VADER_H * 0.16, reach = L1 + L2;
+        const swing = walking ? Math.sin(v.walkPhase) : 0;
+        const rest = { x: -14 + swing * 16, y: reach * 0.9 };
+        const grip = { x: -reach * 0.86, y: -reach * 0.28 };
+        const slam = { x: -reach * 0.8, y: reach * 0.62 };
+        let hx: number, hy: number, curl: number;
+        if (v.recoil > 0) {
+          // 1 -> 0: the first fifth is the strike itself, then the arm recovers
+          const k = v.recoil > 0.8 ? easeOut((1 - v.recoil) / 0.2) : 1;
+          const back = v.recoil > 0.8 ? 0 : easeInOut(1 - v.recoil / 0.8);
+          const sx2 = grip.x + (slam.x - grip.x) * k, sy2 = grip.y + (slam.y - grip.y) * k;
+          hx = sx2 + (rest.x - sx2) * back; hy = sy2 + (rest.y - sy2) * back;
+          curl = 0.15 * back;
+        } else {
+          const r = easeInOut(v.handRaise);
+          hx = rest.x + (grip.x - rest.x) * r;
+          hy = rest.y + (grip.y - rest.y) * r;
+          // the fingers lag the arm, closing in the last stretch of the reach
+          curl = 0.2 + clamp01((v.handRaise - 0.35) / 0.65) * 0.7;
+        }
+        const tremor = v.windup > 0 ? v.handRaise : 0;
+        hx += Math.sin(t * 38) * tremor * 2;
+        hy += Math.cos(t * 33) * tremor * 2;
         ctx.save();
         ctx.translate(shX, shY);
-        ctx.rotate(armA);
-        ctx.fillStyle = '#0b0b0f';
-        ctx.strokeStyle = '#2a2a33';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.roundRect(0, -14, armL, 28, 14);
-        ctx.fill(); ctx.stroke();
-        // gloved fist
-        ctx.beginPath();
-        ctx.arc(armL, 0, 20, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
-        // charging orb in hand
-        if (v.handRaise > 0.02) {
-          const orbR = 10 + v.handRaise * 28 + Math.sin(t * 20) * 3;
-          const og = ctx.createRadialGradient(armL, 0, 0, armL, 0, orbR);
-          og.addColorStop(0, 'rgba(255,220,220,1)');
-          og.addColorStop(0.4, 'rgba(255,40,40,0.9)');
-          og.addColorStop(1, 'rgba(255,40,40,0)');
+        const arm = drawVaderArm(ctx, hx, hy, L1, L2, curl, tremor, t);
+        // the glove's on-screen position, for the motes to fly to
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(arm.fore);
+        ctx.translate(14, 0);
+        const m = ctx.getTransform();
+        v.handX = m.e; v.handY = m.f;
+        // Force glow in the palm, growing with the grip
+        if (v.handRaise > 0.02 || v.recoil > 0.8) {
+          const power = v.recoil > 0.8 ? 1 : v.handRaise;
+          const orbR = 10 + power * 26 + Math.sin(t * 22) * 2;
+          ctx.globalCompositeOperation = 'lighter';
+          const og = ctx.createRadialGradient(0, 0, 0, 0, 0, orbR);
+          og.addColorStop(0, 'rgba(255,220,220,0.75)');
+          og.addColorStop(0.3, 'rgba(255,50,40,0.45)');
+          og.addColorStop(1, 'rgba(255,0,0,0)');
           ctx.fillStyle = og;
-          ctx.beginPath();
-          ctx.arc(armL, 0, orbR, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.beginPath(); ctx.arc(0, 0, orbR, 0, Math.PI * 2); ctx.fill();
+          // forked crackle, new every frame, reaching out from the fingers
+          ctx.lineCap = 'round';
+          const forks = 1 + Math.round(power * 2);
+          for (let i = 0; i < forks; i++) {
+            let a = (Math.random() - 0.5) * 2.4 + (i % 2 ? Math.PI : 0) * 0.3;
+            let px = 10, py = 0;
+            ctx.beginPath(); ctx.moveTo(px, py);
+            const segs = 5 + Math.floor(Math.random() * 3);
+            for (let k2 = 0; k2 < segs; k2++) {
+              a += (Math.random() - 0.5) * 1.1;
+              const st = (orbR * 1.4) / segs;
+              px += Math.cos(a) * st; py += Math.sin(a) * st;
+              ctx.lineTo(px, py);
+            }
+            ctx.globalAlpha = power * (0.5 + Math.random() * 0.5);
+            ctx.strokeStyle = 'rgba(255,90,80,0.9)'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,235,235,0.95)'; ctx.lineWidth = 1; ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
         }
+        ctx.restore();
+        ctx.restore();
         ctx.restore();
         ctx.restore();
       } else {
@@ -461,52 +808,131 @@ export const StarWarsShooter = ({
         ctx.restore();
       }
 
-      // Shockwaves drawn as curling red waves (moving left, crest at front)
+      // Shockwaves: a breaking wave of red energy. The hitbox is still the
+      // plain sw.x..sw.x+w box; this is only how it looks. It moves left, so
+      // a steep hollow face leads, the lip pitches forward over it, whitewater
+      // pours down the front, and a long swell trails off behind.
       for (const sw of s.shockwaves) {
-        const x0 = sw.x, x1 = sw.x + sw.w, base = sw.y + sw.h, top = sw.y;
-        const bob = Math.sin(t * 10 + sw.x * 0.03) * 3;
+        const grow = easeOut(clamp01(sw.age / 0.35));
+        const H = sw.h * 1.3 * grow;
+        if (H < 2) continue;
+        const front = sw.x, base = GROUND_Y, len = sw.w + 110;
+        const crestX = front + H * 0.38, crestY = base - H;
+        const breathe = Math.sin(sw.age * 9 + sw.seed) * 0.04;
+        const lipX = front - H * (0.5 + breathe), lipY = base - H * (0.52 - breathe * 0.5);
+        // the swell behind the crest
+        const N = 28;
+        const back: { x: number; y: number }[] = [];
+        for (let i = 0; i <= N; i++) {
+          const u = i / N;
+          const x = crestX + u * (front + len - crestX);
+          const fall = Math.exp(-Math.pow(u / 0.5, 2)) * (1 - u * 0.15);
+          back.push({ x, y: base - H * fall * (1 + ripple(u, t, sw.seed) * 0.05 * u) });
+        }
         ctx.save();
-        ctx.shadowColor = 'rgba(255,50,50,0.9)';
-        ctx.shadowBlur = 14;
-        const wg = ctx.createLinearGradient(0, top, 0, base);
-        wg.addColorStop(0, '#ffb3a3');
-        wg.addColorStop(0.5, '#e01b1b');
-        wg.addColorStop(1, '#5a0000');
-        ctx.fillStyle = wg;
+        // light thrown on the floor
+        const fg = ctx.createRadialGradient(crestX, base, 0, crestX, base, len * 0.75);
+        fg.addColorStop(0, 'rgba(255,40,30,0.4)');
+        fg.addColorStop(1, 'rgba(255,40,30,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.arc(crestX, base, len * 0.75, Math.PI, Math.PI * 2); ctx.fill();
+        // its reflection in the floor
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = '#ff2a20';
         ctx.beginPath();
-        ctx.moveTo(x1 + 30, base);
-        ctx.quadraticCurveTo(x1, base - sw.h * 0.3, x0 + sw.w * 0.45, top + bob);
-        ctx.quadraticCurveTo(x0 + sw.w * 0.1, top - 6 + bob, x0 - 4, top + sw.h * 0.35);
-        ctx.quadraticCurveTo(x0 + sw.w * 0.18, top + sw.h * 0.3, x0 + sw.w * 0.2, top + sw.h * 0.55);
-        ctx.quadraticCurveTo(x0 + sw.w * 0.05, base - 6, x0 - 10, base);
+        ctx.moveTo(front, base);
+        for (const q of back) ctx.lineTo(q.x, base + (base - q.y) * 0.25);
+        ctx.lineTo(crestX, base + H * 0.25);
         ctx.closePath();
         ctx.fill();
-        // Inner curl (tube)
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = 'rgba(60,0,0,0.75)';
+        ctx.globalAlpha = 1;
+
+        // body
+        const body = ctx.createLinearGradient(0, crestY, 0, base);
+        body.addColorStop(0, '#ff7a64');
+        body.addColorStop(0.18, '#f0281e');
+        body.addColorStop(0.6, '#9a0a0e');
+        body.addColorStop(1, '#3c0006');
+        ctx.fillStyle = body;
+        ctx.shadowColor = 'rgba(255,40,30,0.85)';
+        ctx.shadowBlur = 16;
         ctx.beginPath();
-        ctx.ellipse(x0 + sw.w * 0.24, top + sw.h * 0.5, sw.w * 0.08, sw.h * 0.16, 0, 0, Math.PI * 2);
+        ctx.moveTo(front, base);
+        // the hollow, concave face climbing to the crest
+        ctx.bezierCurveTo(front + H * 0.05, base - H * 0.55, crestX - H * 0.3, crestY + H * 0.04, crestX, crestY);
+        for (const q of back) ctx.lineTo(q.x, q.y);
+        ctx.lineTo(front + len, base);
+        ctx.closePath();
         ctx.fill();
-        // Foam on crest
-        ctx.fillStyle = 'rgba(255,230,225,0.95)';
-        for (let i = 0; i < 7; i++) {
-          const fx = x0 + sw.w * (0.02 + i * 0.07) + Math.sin(t * 14 + i) * 2;
-          const fy = top + bob + Math.abs(i - 2) * 3 - 2;
+        // the lip, thrown forward from the crest and curling down
+        ctx.beginPath();
+        ctx.moveTo(crestX + H * 0.05, crestY + H * 0.02);
+        ctx.bezierCurveTo(crestX - H * 0.35, crestY - H * 0.16, lipX + H * 0.05, crestY + H * 0.02, lipX, lipY);
+        ctx.quadraticCurveTo(lipX + H * 0.28, crestY + H * 0.3, crestX - H * 0.08, crestY + H * 0.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // the barrel under the lip, dark and deep
+        const tx = front + H * 0.02, ty = base - H * 0.4;
+        const tube = ctx.createRadialGradient(tx, ty, 1, tx, ty, H * 0.42);
+        tube.addColorStop(0, 'rgba(25,0,2,0.9)');
+        tube.addColorStop(0.6, 'rgba(70,0,6,0.5)');
+        tube.addColorStop(1, 'rgba(90,0,8,0)');
+        ctx.fillStyle = tube;
+        ctx.beginPath(); ctx.ellipse(tx, ty, H * 0.36, H * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+
+        ctx.globalCompositeOperation = 'lighter';
+        // backlight: the thin water near the crest glows
+        const bl = ctx.createRadialGradient(crestX + H * 0.15, crestY + H * 0.2, 0, crestX + H * 0.15, crestY + H * 0.2, H * 0.9);
+        bl.addColorStop(0, 'rgba(255,140,110,0.35)');
+        bl.addColorStop(1, 'rgba(255,60,40,0)');
+        ctx.fillStyle = bl;
+        ctx.beginPath(); ctx.arc(crestX + H * 0.15, crestY + H * 0.2, H * 0.9, 0, Math.PI * 2); ctx.fill();
+        // rim along the lip and the top of the swell
+        ctx.strokeStyle = 'rgba(255,215,205,0.8)';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(lipX, lipY);
+        ctx.bezierCurveTo(lipX + H * 0.05, crestY + H * 0.02, crestX - H * 0.35, crestY - H * 0.16, crestX + H * 0.05, crestY + H * 0.02);
+        for (let i = 1; i < N * 0.55; i++) ctx.lineTo(back[i].x, back[i].y + 1);
+        ctx.stroke();
+        // swell lines sliding back along the slope
+        ctx.strokeStyle = 'rgba(255,150,130,0.25)';
+        ctx.lineWidth = 1.4;
+        for (let k = 0; k < 4; k++) {
+          const ph = ((sw.age * 0.9 + k / 4) % 1);
+          const i0 = Math.floor(ph * N * 0.8) + 1;
+          if (i0 + 4 > N) continue;
+          ctx.globalAlpha = Math.sin(ph * Math.PI);
           ctx.beginPath();
-          ctx.arc(fx, fy, 3.5 - i * 0.3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        // Spray droplets
-        for (let i = 0; i < 5; i++) {
-          ctx.globalAlpha = 0.5 + Math.random() * 0.5;
-          ctx.beginPath();
-          ctx.arc(x0 - Math.random() * 14, top + Math.random() * sw.h * 0.5, 1.6, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.moveTo(back[i0].x, back[i0].y + 6);
+          for (let i = i0 + 1; i < i0 + 5; i++) ctx.lineTo(back[i].x, back[i].y + 6 + (i - i0) * 1.5);
+          ctx.stroke();
         }
         ctx.globalAlpha = 1;
-        // Foamy wake along the ground
-        ctx.fillStyle = 'rgba(255,120,110,0.6)';
-        ctx.fillRect(x0, base - 3, sw.w + 50, 3);
+        ctx.globalCompositeOperation = 'source-over';
+        // whitewater: a churning foam mane along the lip and boiling at the foot
+        for (let k = 0; k < 9; k++) {
+          const f = k / 8;
+          const fx = lipX + (crestX - lipX) * f * 0.9 + Math.sin(t * 14 + k * 2.1 + sw.seed) * 1.5;
+          const fy = lipY + (crestY - lipY) * Math.sin(f * Math.PI / 2) - 1 + Math.cos(t * 17 + k) * 1.2;
+          ctx.fillStyle = `rgba(255,${228 - k * 6},${222 - k * 8},${0.85 - f * 0.4})`;
+          ctx.beginPath(); ctx.arc(fx, fy, 3.2 - f * 1.4 + Math.sin(k * 1.9 + t * 9) * 0.8, 0, Math.PI * 2); ctx.fill();
+        }
+        for (let k = 0; k < 7; k++) {
+          const fx = front - H * 0.15 + k * H * 0.08 + Math.sin(t * 11 + k * 1.3 + sw.seed) * 3;
+          const fy = base - 3 - Math.abs(Math.sin(t * 8 + k * 2.2)) * H * 0.18;
+          ctx.fillStyle = 'rgba(255,225,218,0.55)';
+          ctx.beginPath(); ctx.arc(fx, fy, 2.5 + Math.abs(Math.sin(k * 3.1 + t * 6)) * 3, 0, Math.PI * 2); ctx.fill();
+        }
+        // scorched streak left on the floor
+        const wake = ctx.createLinearGradient(front, 0, front + len + 80, 0);
+        wake.addColorStop(0, 'rgba(255,140,120,0.7)');
+        wake.addColorStop(1, 'rgba(255,60,40,0)');
+        ctx.fillStyle = wake;
+        ctx.fillRect(front, base - 1.5, len + 80, 3);
         ctx.restore();
       }
 
@@ -550,30 +976,100 @@ export const StarWarsShooter = ({
         ctx.restore();
       }
 
-      // Player
+      // Player: one still sprite, animated by how it is held. Feet stay on
+      // the ground; the body bobs twice a stride, leans into the run, squashes
+      // on landing, stretches in the air, and kicks back when it fires.
       if (s.playerImg) {
         ctx.save();
         if (p.invuln > 0 && Math.floor(p.invuln * 20) % 2 === 0) ctx.globalAlpha = 0.4;
-        if (p.dir < 0) {
-          ctx.scale(-1, 1);
-          ctx.drawImage(s.playerImg, -p.x - PLAYER_W, p.y, PLAYER_W, PLAYER_H);
-        } else {
-          ctx.drawImage(s.playerImg, p.x, p.y, PLAYER_W, PLAYER_H);
+        const moving = p.onGround && Math.abs(p.vx) > 30;
+        const stride = Math.sin(p.walkPhase);
+        const bob = moving ? Math.abs(stride) * 5 : 0;
+        const breathe = !moving && p.onGround ? Math.sin(t * 3) * 0.02 : 0;
+        let sx4 = 1 + breathe * 0.5, sy4 = 1 + breathe;
+        if (!p.onGround) {
+          const st = clamp01(Math.abs(p.vy) / 900) * 0.12;
+          sx4 -= st * 0.6; sy4 += st;
+        }
+        const sq = easeOut(p.land) * 0.22;
+        sx4 += sq; sy4 -= sq;
+        if (moving) { sy4 += Math.abs(stride) * 0.04 - 0.02; }
+        const lean = (p.vx / MOVE_SPEED) * 0.12 + (moving ? stride * 0.06 : 0) + (!p.onGround ? p.vy / 9000 * p.dir : 0);
+        const kickX = -p.dir * easeOut(p.kick) * 6;
+        const kickA = -p.dir * easeOut(p.kick) * 0.08;
+        // contact shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        const air = clamp01((GROUND_Y - (p.y + PLAYER_H)) / 200);
+        ctx.beginPath();
+        ctx.ellipse(p.x + PLAYER_W / 2, GROUND_Y + 2, PLAYER_W * 0.42 * (1 - air * 0.5), 5 * (1 - air * 0.5), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.translate(p.x + PLAYER_W / 2 + kickX, p.y + PLAYER_H - bob);
+        ctx.rotate(lean + kickA);
+        ctx.scale(p.dir * sx4, sy4);
+        ctx.drawImage(s.playerImg, -PLAYER_W / 2, -PLAYER_H, PLAYER_W, PLAYER_H);
+        ctx.restore();
+      }
+
+      // Muzzle flash: a star of light at the barrel for a few frames
+      if (p.muzzle > 0) {
+        const mx = p.dir > 0 ? p.x + PLAYER_W + 4 : p.x - 4;
+        const my = p.y + PLAYER_H * 0.42;
+        const k = p.muzzle / 0.07;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const mg = ctx.createRadialGradient(mx, my, 0, mx, my, 26 * k + 6);
+        mg.addColorStop(0, 'rgba(255,255,240,1)');
+        mg.addColorStop(0.3, 'rgba(190,255,120,0.8)');
+        mg.addColorStop(1, 'rgba(120,255,60,0)');
+        ctx.fillStyle = mg;
+        ctx.beginPath(); ctx.arc(mx, my, 26 * k + 6, 0, Math.PI * 2); ctx.fill();
+        ctx.translate(mx, my);
+        ctx.rotate(t * 40);
+        ctx.fillStyle = 'rgba(240,255,200,0.9)';
+        for (let i = 0; i < 4; i++) {
+          ctx.rotate(Math.PI / 2);
+          ctx.beginPath();
+          ctx.moveTo(0, -2); ctx.lineTo(18 * k + 4, 0); ctx.lineTo(0, 2);
+          ctx.fill();
         }
         ctx.restore();
       }
 
       // Bolts (green blaster)
+      // a long glowing bolt with a hot white core and a tail that fades
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
       for (const b of s.bolts) {
-        ctx.save();
-        ctx.shadowColor = '#a3ff5c';
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = '#d4ff7a';
-        ctx.fillRect(b.x - 10, b.y - 2, 20, 4);
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(b.x - 4, b.y - 1, 8, 2);
-        ctx.restore();
+        const dir = Math.sign(b.vx);
+        const tail = b.x - dir * 46;
+        const grad = ctx.createLinearGradient(tail, 0, b.x, 0);
+        grad.addColorStop(0, 'rgba(120,255,60,0)');
+        grad.addColorStop(1, 'rgba(140,255,80,0.55)');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 9;
+        ctx.beginPath(); ctx.moveTo(tail, b.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.strokeStyle = 'rgba(210,255,140,0.9)';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(b.x - dir * 26, b.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(b.x - dir * 20, b.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       }
+      ctx.restore();
+
+      // particles last, over everything in the scene
+      for (const q of s.particles) {
+        const k = q.life / q.max;
+        const r = q.grow ? q.size * (1 + (1 - k) * 2.2) : q.size * (0.4 + k * 0.6);
+        ctx.globalAlpha = q.grow ? k * 0.9 : Math.min(1, k * 1.6);
+        ctx.globalCompositeOperation = q.glow ? 'lighter' : 'source-over';
+        ctx.fillStyle = q.color;
+        ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.restore(); // end of screen shake
 
       // HUD: lives + score
       ctx.fillStyle = '#fff';
