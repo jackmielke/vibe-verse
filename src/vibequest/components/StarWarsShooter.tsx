@@ -724,7 +724,8 @@ export const StarWarsShooter = ({
         // player and slowly closing into a Force grip, then driven down,
         // palm open, into the floor to send the wave.
         ctx.shadowBlur = 0;
-        const shX = -VADER_W * 0.2, shY = -VADER_H * 0.66;
+        // The painted arm is erased from boss-vader.webp; this one hangs from the same shoulder.
+        const shX = -VADER_W * 0.16, shY = -VADER_H * 0.68;
         const L1 = VADER_H * 0.17, L2 = VADER_H * 0.16, reach = L1 + L2;
         const swing = walking ? Math.sin(v.walkPhase) : 0;
         const rest = { x: -14 + swing * 16, y: reach * 0.9 };
