@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
+    PostgrestVersion: "12.2.3"
   }
   public: {
     Tables: {
@@ -678,6 +678,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      arcade_scores: {
+        Row: {
+          created_at: string
+          game: string
+          id: number
+          initials: string
+          score: number
+        }
+        Insert: {
+          created_at?: string
+          game: string
+          id?: number
+          initials: string
+          score: number
+        }
+        Update: {
+          created_at?: string
+          game?: string
+          id?: number
+          initials?: string
+          score?: number
+        }
+        Relationships: []
       }
       automation_recipients: {
         Row: {
@@ -6486,6 +6510,23 @@ export type Database = {
       admin_set_inquiry_status: {
         Args: { _id: string; _password: string; _status: string }
         Returns: undefined
+      }
+      arcade_board: {
+        Args: never
+        Returns: {
+          created_at: string
+          game: string
+          initials: string
+          score: number
+        }[]
+      }
+      arcade_game_rule: {
+        Args: { p_game: string }
+        Returns: Record<string, unknown>
+      }
+      arcade_submit_score: {
+        Args: { p_game: string; p_initials: string; p_score: number }
+        Returns: boolean
       }
       auto_join_community_as_admin: {
         Args: { target_community_id: string }
