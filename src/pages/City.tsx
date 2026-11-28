@@ -165,6 +165,8 @@ import CharacterDashboardModal from "@/components/city/CharacterDashboardModal";
 import { STICKER_ART, STICKER_SLOTS, placeSticker, sanitizeStickers, type Sticker } from "@/components/city/stickers";
 import { applyStickers } from "@/components/city/stickerMesh";
 import CityEntryScreen, { generateFunName } from "@/components/city/CityEntryScreen";
+import CityFlyoverEntry, { EntryLookSwitcher } from "@/components/city/CityFlyoverEntry";
+import { flyoverFromSearch, flyoverShot } from "@/city/flyover";
 import { generateCharacterName } from "@/lib/character-naming";
 import { CHARACTERS as UNIVERSAL_CHARACTERS } from "@/lib/characters";
 import { buildProceduralPilot, type ProceduralPilot } from "@/components/city/proceduralPilot";
@@ -460,6 +462,15 @@ export default function City() {
    */
   const [inWater, setInWater] = useState(false);
   const enteredRef = useRef(isFreshDrop || isLive || isDirectSpawn);
+  /* `?entry=drone|glide|tour` puts the camera on a slow flyover of the real
+     city behind the picker instead of the painted backdrop (src/city/flyover.ts).
+     A preview for now; no param keeps the classic screen. */
+  const [entryLook, setEntryLook] = useState(() =>
+    typeof window === "undefined" ? null : flyoverFromSearch(window.location.search),
+  );
+  const flyoverRef = useRef(entryLook);
+  flyoverRef.current = entryLook;
+  const [flyReady, setFlyReady] = useState(false);
   const [showFreshChip, setShowFreshChip] = useState(isFreshDrop);
   const [liveLines, setLiveLines] = useState<string[]>([]);
   const [liveShot, setLiveShot] = useState("");
@@ -6546,8 +6557,17 @@ export default function City() {
       referenceSpace: "local-floor",
     });
 
+    // True while the picker's flyover owns the camera (see flyoverRef).
+    let flyActive = false;
+    let flyDprDropped = false;
+    let flyFrames = 0;
     const tick = () => {
       const now = performance.now();
+      // Phones: the flyover is a backdrop, so draw it at 1x until Enter.
+      if (smallScreen && flyActive !== flyDprDropped) {
+        flyDprDropped = flyActive;
+        renderer.setPixelRatio(flyActive ? 1 : Math.min(window.devicePixelRatio, 2));
+      }
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
       // At a Vibe Arcade cabinet the game in the frame gets the whole GPU;
@@ -8974,7 +8994,10 @@ export default function City() {
         // Binoculars (and dev shots): the landmarks take the camera.
         {
           const golfShot = golf.cameraShot();
-          const shot = golfShot ?? landmarks.cameraShot(camYaw, camPitch);
+          const flyId = flyoverRef.current;
+          flyActive = !enteredRef.current && !xrPresenting && !!flyId && flyId !== "classic";
+          const flyShot = flyActive && flyId && flyId !== "classic" ? flyoverShot(flyId, now * 0.001) : null;
+          const shot = golfShot ?? flyShot ?? landmarks.cameraShot(camYaw, camPitch);
           const fov = shot ? shot.fov : 60;
           if (shot) {
             camera.position.copy(shot.eye);
@@ -9039,6 +9062,11 @@ export default function City() {
         const fogNow = scene.fog as THREE.Fog;
         fogNow.near = Math.max(baseFogNear, camDist * 1.2);
         fogNow.far = Math.max(baseFogFar, camDist * 3 + 250);
+        // A flyover sees the whole district from a few hundred metres out.
+        if (flyActive) {
+          fogNow.near = Math.max(fogNow.near, 260);
+          fogNow.far = Math.max(fogNow.far, 1300);
+        }
 
         /**
          * The near plane moves with the zoom, and that is what stops the city
@@ -9064,7 +9092,7 @@ export default function City() {
          * tight behind them. `polygonOffset` on the pavement in district.ts is
          * the other half, and that one is resolution-independent.
          */
-        const wantNear = THREE.MathUtils.clamp(camDist * 0.02, 0.12, 6);
+        const wantNear = flyActive ? 4 : THREE.MathUtils.clamp(camDist * 0.02, 0.12, 6);
         if (Math.abs(camera.near - wantNear) > wantNear * 0.04) {
           camera.near = wantNear;
           camera.updateProjectionMatrix();
@@ -9253,6 +9281,7 @@ export default function City() {
       }
 
       if (!devSkipRender) renderer.render(scene, camera);
+      if (flyActive && flyFrames < 12 && ++flyFrames === 12) setFlyReady(true);
     };
     renderer.setAnimationLoop(tick);
 
@@ -12053,12 +12082,24 @@ export default function City() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.5 } }}
           >
-            <CityEntryScreen
-              characters={CHARACTERS}
-              initialCharacter={charName}
-              initialName={playerName}
-              onEnter={enter}
-            />
+            {entryLook && entryLook !== "classic" ? (
+              <CityFlyoverEntry
+                look={entryLook}
+                ready={flyReady}
+                characters={CHARACTERS}
+                initialCharacter={charName}
+                initialName={playerName}
+                onEnter={enter}
+              />
+            ) : (
+              <CityEntryScreen
+                characters={CHARACTERS}
+                initialCharacter={charName}
+                initialName={playerName}
+                onEnter={enter}
+              />
+            )}
+            {entryLook && <EntryLookSwitcher look={entryLook} onLook={setEntryLook} />}
           </motion.div>
         )}
       </AnimatePresence>

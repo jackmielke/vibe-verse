@@ -18,7 +18,7 @@ import { characterArt } from "@/lib/characterArt";
 import { ArrowRight, Check, Copy, Dices, Shuffle } from "lucide-react";
 import loginBg from "@/assets/island-explorer/new-login-bg.jpg";
 
-type CityChar = {
+export type CityChar = {
   name: string;
   url: string;
   label?: string;
@@ -37,7 +37,7 @@ const ACCENTS = [
   "#d7a4ff",
 ];
 
-const FEATURED_CHARACTER_IDS = [
+export const FEATURED_CHARACTER_IDS = [
   "Pirate_Anne",
   "Wizard",
   "Ninja_Female",
@@ -54,7 +54,7 @@ function prettyName(raw: string): string {
   return raw.replace(/_/g, " ").replace(/\bMale\b|\bFemale\b/g, "").trim();
 }
 
-function toOption(c: CityChar, i: number): CharacterOption {
+export function toOption(c: CityChar, i: number): CharacterOption {
   const accent = c.accent ?? ACCENTS[i % ACCENTS.length];
   return {
     id: c.name,
