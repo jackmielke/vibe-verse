@@ -109,12 +109,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "7dad4f4a", iso: "2026-08-14T06:58:33+00:00", subject: "The Chronicle: every world, in the order it appeared" },
   ],
   "city": [
-    { sha: "534f6570", iso: "2026-11-27T18:25:26+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
-    { sha: "e0fc9ae6", iso: "2026-11-27T18:18:47+00:00", subject: "Vibe City: the Sky Sprint, sticky shoes up the Empire State" },
-    { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
-    { sha: "e91d969d", iso: "2026-11-27T18:09:07+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
-    { sha: "37dd6d40", iso: "2026-11-27T18:00:29+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
-    { sha: "250ad5bb", iso: "2026-11-27T18:00:09+00:00", subject: "Vibe City: Vinnie's Street Races with Vibe coin bets" },
+    { sha: "21f2476a", iso: "2026-11-28T01:34:08+00:00", subject: "Vibe City: chopper laser topples buildings, no chopper deaths, phone pursuit strip" },
+    { sha: "3602d1c8", iso: "2026-11-27T21:07:50+00:00", subject: "Vibe City: police chopper at five stars, camera mode toggle" },
+    { sha: "8169639f", iso: "2026-11-27T19:09:01+00:00", subject: "Wizard: walk up to him instead of an always-on button" },
+    { sha: "dcc88f57", iso: "2026-11-27T19:07:15+00:00", subject: "Sky Sprint: a Quit / Shoes off button on the sprint chip" },
+    { sha: "e8fa119b", iso: "2026-11-27T18:49:52+00:00", subject: "Merge remote-tracking branch 'origin/main'" },
+    { sha: "98090191", iso: "2026-11-27T18:48:56+00:00", subject: "Vibe Island: Vibe Links, six holes of mini golf on a floating green" },
   ],
   "coast-road": [
     { sha: "7101a68e", iso: "2026-09-06T21:28:22+00:00", subject: "Coast Road: a longboard down a headland to the sea, in two looks" },
@@ -268,12 +268,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "ee1f96cf", iso: "2026-08-02T21:05:51+00:00", subject: "Nothing is spawned. It is drawn." },
   ],
   "island": [
+    { sha: "98090191", iso: "2026-11-27T18:48:56+00:00", subject: "Vibe Island: Vibe Links, six holes of mini golf on a floating green" },
     { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
     { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
     { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
-    { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
   ],
   "island-2": [
     { sha: "0779cb94", iso: "2026-07-29T16:57:01+00:00", subject: "Island II: hanging roots, rope bridges, and the White Peak" },
@@ -288,12 +288,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "e6d6df50", iso: "2026-08-06T17:19:43+00:00", subject: "🦇 Four new code-built characters, and the heist stops nagging" },
   ],
   "kart": [
+    { sha: "219751db", iso: "2026-11-28T01:49:50+00:00", subject: "Vibe Kart: Prism Skyway, the rainbow road in the sky above Vibe Summit" },
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
     { sha: "50900813", iso: "2026-08-18T22:28:17+00:00", subject: "Every world now hands its WebGL context back" },
     { sha: "26a8a939", iso: "2026-08-07T16:36:48+00:00", subject: "🏁 One Vibe Kart, and a lobby that starts the race for you" },
     { sha: "10c85339", iso: "2026-08-04T17:48:06+00:00", subject: "Changes" },
     { sha: "2dd76057", iso: "2026-08-04T17:47:56+00:00", subject: "Changes" },
-    { sha: "ff173129", iso: "2026-08-04T17:47:51+00:00", subject: "Changes" },
   ],
   "lobby": [
     { sha: "2a5b64e4", iso: "2026-10-01T16:56:25-07:00", subject: "App Store edition: report/block, terms gate, iOS-only world list, account deletion" },
@@ -318,12 +318,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "f4715e0e", iso: "2026-09-04T09:28:00+00:00", subject: "Mars College: ten weeks in the desert on one wheel, at /mars" },
   ],
   "moon": [
+    { sha: "98090191", iso: "2026-11-27T18:48:56+00:00", subject: "Vibe Island: Vibe Links, six holes of mini golf on a floating green" },
     { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
     { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
     { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
-    { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
   ],
   "mort-maze": [
     { sha: "d06b0315", iso: "2026-11-27T03:19:48+00:00", subject: "Mort's Maze: a maze chase on Vibe Island" },
@@ -374,6 +374,9 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "1ece01a5", iso: "2026-08-10T07:08:13+00:00", subject: "Anybody can hand the arcade a game now" },
     { sha: "88a12640", iso: "2026-08-09T07:49:03+00:00", subject: "The portal: other people's games, paying real Vibey Coins" },
   ],
+  "rainbow-road": [
+    { sha: "219751db", iso: "2026-11-28T01:49:50+00:00", subject: "Vibe Kart: Prism Skyway, the rainbow road in the sky above Vibe Summit" },
+  ],
   "run": [
     { sha: "1109f8c7", iso: "2026-08-02T07:24:16+00:00", subject: "A whole life, at a run" },
   ],
@@ -408,12 +411,12 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "fe9bd3e8", iso: "2026-08-07T04:14:36+00:00", subject: "🛍️ Vibecoin buys something you keep: cosmetics move onto the ledger" },
   ],
   "ski": [
+    { sha: "98090191", iso: "2026-11-27T18:48:56+00:00", subject: "Vibe Island: Vibe Links, six holes of mini golf on a floating green" },
     { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
     { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
     { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
-    { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
   ],
   "solitaire": [
     { sha: "03961c07", iso: "2026-11-27T04:21:58+00:00", subject: "Solitaire: Klondike and FreeCell, five looks, made for a phone" },
@@ -446,6 +449,7 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "1a0094c6", iso: "2026-06-15T22:23:49+00:00", subject: "Changes" },
   ],
   "summit": [
+    { sha: "219751db", iso: "2026-11-28T01:49:50+00:00", subject: "Vibe Kart: Prism Skyway, the rainbow road in the sky above Vibe Summit" },
     { sha: "1988a39c", iso: "2026-11-27T17:39:57+00:00", subject: "Vibe Summit: rivals on the Skyway, trees you can hit, birds" },
     { sha: "86ad7815", iso: "2026-11-27T17:25:02+00:00", subject: "Add Vibe Summit: a 5,000 ft mountain with four ways down and a rainbow road" },
   ],
@@ -485,10 +489,6 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "99192bb2", iso: "2026-09-30T20:42:17+00:00", subject: "Venus Rising: night is a moment, not a stall" },
     { sha: "311cf459", iso: "2026-09-30T20:25:55+00:00", subject: "Venus Rising: a palace for the Habsburg season, four moods of light" },
   ],
-  "vibequest": [
-    { sha: "9cab8456", iso: "2026-11-28T02:01:42+00:00", subject: "VibeQuest Vader Duel: real walk, shot, Force grip and breaking wave" },
-    { sha: "dd259097", iso: "2026-11-28T01:23:19+00:00", subject: "Add VibeQuest: Jack's sky island platformer and boss rush as its own world" },
-  ],
   "vibe-cup": [
     { sha: "619caaa4", iso: "2026-11-27T05:37:16+00:00", subject: "Vibe Cup: the tournament, one player all match, and the Paint Pads" },
     { sha: "951de74d", iso: "2026-11-27T05:17:11+00:00", subject: "Vibe Cup: slides knock over anybody in the way, team-mates too" },
@@ -496,13 +496,17 @@ export const WORLD_CHANGES: Record<string, WorldChange[]> = {
     { sha: "91dbe0b9", iso: "2026-11-27T04:46:12+00:00", subject: "Vibe Cup: online rooms, up to two a side on your own devices" },
     { sha: "b7b7b2d5", iso: "2026-11-27T03:58:09+00:00", subject: "Soccer: Vibe Cup arcade game, and real matches on the Vibe Commons pitch" },
   ],
+  "vibequest": [
+    { sha: "9cab8456", iso: "2026-11-28T02:01:42+00:00", subject: "VibeQuest Vader Duel: real walk, shot, Force grip and breaking wave" },
+    { sha: "dd259097", iso: "2026-11-28T01:23:19+00:00", subject: "Add VibeQuest: Jack's sky island platformer and boss rush as its own world" },
+  ],
   "vibestar": [
+    { sha: "98090191", iso: "2026-11-27T18:48:56+00:00", subject: "Vibe Island: Vibe Links, six holes of mini golf on a floating green" },
     { sha: "6e8066dd", iso: "2026-11-27T18:18:03+00:00", subject: "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race" },
     { sha: "d9ac6b38", iso: "2026-11-27T17:44:55+00:00", subject: "Vibe City: the Vibe Kart GP, three laps of city streets with a stake" },
     { sha: "8cf84ac8", iso: "2026-11-27T17:24:21+00:00", subject: "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games" },
     { sha: "40e969d7", iso: "2026-11-26T21:45:48+00:00", subject: "City: samurai bodyguards you can order by voice or text (behind ?squad)" },
     { sha: "5e77bee9", iso: "2026-11-26T20:13:19+00:00", subject: "City: police cars explode, 63 s forgiveness, grounded-only knocks, black city-car cruisers, rideable helicopter" },
-    { sha: "a9e59548", iso: "2026-11-26T17:53:46+00:00", subject: "GTA Junior on Vibe City: guns, burning trees, exploding buildings, police" },
   ],
   "vibeverse": [
     { sha: "d06b0315", iso: "2026-11-27T03:19:48+00:00", subject: "Mort's Maze: a maze chase on Vibe Island" },

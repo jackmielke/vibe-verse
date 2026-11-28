@@ -16,6 +16,7 @@ import { useKartFrame, useRuntime } from "./runtime";
 import { formatTime } from "./util";
 import { GRAPHICS_LABEL, type KartSettings } from "./settings";
 import { MuteButton, Seg } from "./widgets";
+import { courseHref, kartCourse, type KartCourse } from "../course";
 import type { AudioView, CameraView, RaceView, TrackView } from "./views";
 
 /** Seconds on each beauty mark before the camera cuts to the next. */
@@ -141,6 +142,18 @@ export function TitleScreen({ settings, patch, onSingle, onMultiplayer }: TitleP
         </div>
 
         <div className="vk-settings vk-anim-rise" style={{ animationDelay: "0.42s" }}>
+          {/* A course is built at boot, so switching is a page load. */}
+          <Seg<KartCourse>
+            label="Course"
+            value={kartCourse()}
+            onChange={(c) => {
+              if (c !== kartCourse()) window.location.assign(courseHref(c));
+            }}
+            options={[
+              { value: "sunset", label: "Sunset Bluff" },
+              { value: "prism", label: "🌈 Prism Skyway" },
+            ]}
+          />
           <Seg
             label="Graphics"
             value={settings.graphics}

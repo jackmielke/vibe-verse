@@ -15,6 +15,8 @@ import createInput from "./engine/input";
 import createMaterials from "./materials";
 import createEnvironment from "./env";
 import createTrack from "./track";
+import createPrismTrack from "./rainbow";
+import { kartCourse } from "./course";
 import createScenery from "./scenery";
 import createModels from "./models";
 import createPhysics from "./physics";
@@ -65,7 +67,12 @@ export async function bootKart(
   // physics and writes remote poses, and the UI bolts it on with `engine.add`
   // the moment a room's race starts — so a session that never opens the
   // multiplayer menu never opens a socket. See `ui/KartUI.tsx`.
-  const stages = [...STAGES];
+  // Prism Skyway swaps the course and has no ground for Sunset Bluff's
+  // grandstands, gulls and sea to stand on, so it leaves the scenery out.
+  const prism = kartCourse() === "prism";
+  const stages = STAGES.filter((s) => !(prism && s.factory === createScenery)).map((s) =>
+    prism && s.factory === createTrack ? { label: "Painting the rainbow", factory: createPrismTrack } : s,
+  );
 
   for (let i = 0; i < stages.length; i++) {
     const stage = stages[i];

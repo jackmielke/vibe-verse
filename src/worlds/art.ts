@@ -37,6 +37,7 @@ import spaceArt from "@/assets/worlds/space.jpg";
 import thalassaArt from "@/assets/worlds/thalassa.jpg";
 import fogCityArt from "@/assets/worlds/fogcity.jpg";
 import summitArt from "@/assets/worlds/summit.jpg";
+import rainbowRoadArt from "@/assets/worlds/rainbow-road.jpg";
 import cannonRunArt from "@/assets/worlds/cannon-run.jpg";
 import boxingArt from "@/assets/worlds/boxing.jpg";
 import terminalArt from "@/assets/worlds/terminal.jpg";
@@ -147,6 +148,7 @@ export const WORLD_ART: Record<string, string> = {
   thalassa: thalassaArt,
   fogcity: fogCityArt,
   summit: summitArt,
+  "rainbow-road": rainbowRoadArt,
   "cannon-run": cannonRunArt,
   boxing: boxingArt,
   lobby: lobbyArt,
