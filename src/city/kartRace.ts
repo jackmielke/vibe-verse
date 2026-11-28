@@ -6,10 +6,12 @@
  *
  * A loop of streets east and north of the plaza, laid on the street
  * centre-lines (blocks are 28 m on a 40 m pitch, so streets run along
- * x, z = ±20, ±60, ±100). It starts on the street between the plaza and the
- * Vibe Arcade, runs north past the Empire State, west to the police station,
- * south to the Eiffel Tower's street and back east. Traffic is real traffic:
- * it does not stop for the race.
+ * x, z = ±20, ±60, ±100). It starts on a quiet stretch of the Eiffel Tower's
+ * street, west of the tower, runs east, up past the plaza and the Vibe
+ * Arcade, north past the Empire State, west to the police station and back
+ * south. The start used to stand on the street between the plaza and the
+ * arcade, where it was one more loud thing on the busiest corner in town.
+ * Traffic is real traffic: it does not stop for the race.
  *
  * Gates stand across the road. The next one burns bright with a beam of
  * light over it; the rest are dim. A lap counts only when every gate was
@@ -31,18 +33,20 @@
  */
 import * as THREE from "three";
 import { buildKart, type KartMesh } from "@/components/city/karts";
+import { registerPOI, unregisterPOI } from "@/world/worldIndex";
 
 export const RACE_LAPS = 3;
 const COUNTDOWN = 3.2;
 /** Course corners, on street centre-lines, driven in this order. */
 const CORNERS: Array<[number, number]> = [
-  [20, 12],
-  [20, -60],
-  [-60, -60],
-  [-60, 60],
+  // The start: not a real corner, a point on the straight where the line is.
+  [-40, 60],
   [60, 60],
   [60, 20],
   [20, 20],
+  [20, -60],
+  [-60, -60],
+  [-60, 60],
 ];
 const GATE_HALF = 6.6;
 const GATE_REACH = 9;
@@ -199,13 +203,15 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
   const cum: number[] = [0];
   for (let i = 1; i <= pts.length; i++) cum.push(cum[i - 1] + pts[i % pts.length].distanceTo(pts[i - 1]));
   const LEN = cum[cum.length - 1];
-  // Distance along the loop of the start corner's fillet start, so s = 0 is
-  // just past the start line. The start line is the first corner's point
-  // itself (a straight, since it is only a jog of 8 m), so offset to it.
+  // Distance along the loop of the start line, 4 m past the first point
+  // (which sits on a straight), toward the second.
   const startS = (() => {
     let best = 0;
     let bd = Infinity;
-    const sp = new THREE.Vector3(CORNERS[0][0], 0, CORNERS[0][1] - 4);
+    const [ax, az] = CORNERS[0];
+    const [bx, bz] = CORNERS[1];
+    const dl = Math.hypot(bx - ax, bz - az) || 1;
+    const sp = new THREE.Vector3(ax + ((bx - ax) / dl) * 4, 0, az + ((bz - az) / dl) * 4);
     for (let i = 0; i < pts.length; i++) {
       const d = pts[i].distanceTo(sp);
       if (d < bd) {
@@ -348,16 +354,30 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
     group.add(m);
   }
 
-  // ---- The kiosk on the plaza's east edge ---------------------------------
-  // Clear of Granny (10.5, 5), whose E is the lost-pets quest.
-  const kiosk = new THREE.Vector3(11.5, 0, 12.5);
+  // ---- The kiosk on the sidewalk by the start line ------------------------
+  // On the north pavement of the Eiffel Tower's street, just behind the grid,
+  // facing the road.
+  const kiosk = new THREE.Vector3(-43, 0, 52.9);
+  registerPOI({
+    key: "city-kart-gp",
+    name: "Vibe Kart GP",
+    region: "Vibe City",
+    kind: "landmark",
+    aliases: ["kart gp", "kart race", "go karts", "karts", "race"],
+    position: kiosk.clone(),
+  });
   {
-    const post = mat(new THREE.MeshStandardMaterial({ color: 0x1a1030, roughness: 0.5 }));
+    const post = mat(new THREE.MeshStandardMaterial({ color: 0x150d28, roughness: 0.4, metalness: 0.4 }));
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 0.6), post);
     geos.push(body.geometry);
     body.position.set(kiosk.x, 1.1, kiosk.z);
-    body.rotation.y = Math.PI / 2;
     group.add(body);
+    // The arch's cyan line, round the kiosk's top edge.
+    const capGeo = new THREE.BoxGeometry(1.66, 0.06, 0.66);
+    geos.push(capGeo);
+    const cap = new THREE.Mesh(capGeo, lit);
+    cap.position.set(kiosk.x, 2.23, kiosk.z);
+    group.add(cap);
     const signTex = canvasTex(512, 512, (x) => {
       x.fillStyle = "#12082a";
       x.fillRect(0, 0, 512, 512);
@@ -376,9 +396,9 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
     const sm = mat(new THREE.MeshBasicMaterial({ map: signTex }));
     const sg = new THREE.PlaneGeometry(1.4, 1.4);
     geos.push(sg);
-    for (const [dx, yaw] of [[0.31, Math.PI / 2], [-0.31, -Math.PI / 2]] as const) {
+    for (const [dz, yaw] of [[0.31, 0], [-0.31, Math.PI]] as const) {
       const s = new THREE.Mesh(sg, sm);
-      s.position.set(kiosk.x + dx, 1.35, kiosk.z);
+      s.position.set(kiosk.x, 1.35, kiosk.z + dz);
       s.rotation.y = yaw;
       group.add(s);
     }
@@ -624,6 +644,7 @@ export function buildKartRace(opts: { lowDetail?: boolean } = {}): KartRace {
       playerS = LEN - 10;
     },
     dispose() {
+      unregisterPOI("city-kart-gp");
       for (const r of rivals) {
         r.mesh.group.traverse((o) => {
           const m = o as THREE.Mesh;

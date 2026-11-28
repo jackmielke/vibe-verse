@@ -360,8 +360,8 @@ export const FX_COLORS = {
   /** Landing dust — neutral, it takes its tint from the surface. */
   landing: lin(0xd8cfc0),
   /** Coins and item boxes. */
-  coin: lin(0xffd23f),
-  coinCore: lin(0xfff6d0),
+  coin: lin(0x5cf2c8),
+  coinCore: lin(0xe6fff7),
   boxA: lin(0x59e6ff),
   boxB: lin(0xffe14d),
   /** Star power. */

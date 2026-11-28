@@ -28,11 +28,12 @@
  * that runs at sixty until you turn the collectibles on is a world with no
  * collectibles.
  */
+import { vibeyCoinMaterials } from "@/lib/vibeyCoin3d";
 import * as THREE from "three";
 import { makeRng } from "@/shared/proc/rng";
 import type { BuildingBox } from "./city";
 import type { CityCollision } from "./collision";
-import { COLORS, flat, toon } from "./look";
+import { flat } from "./look";
 import {
   BOUNDS,
   MARKET_DIR,
@@ -413,7 +414,8 @@ export class Playground {
     this.coinGeo.rotateX(Math.PI / 2);
     this.coinMesh = new THREE.InstancedMesh(
       this.coinGeo,
-      toon(COLORS.gold, { emissive: 0x6b4a00, emissiveIntensity: 0.55 }),
+      // Vibey Coins: the chip's face on both sides; see vibeyCoin3d.ts.
+      vibeyCoinMaterials({ toon: true }),
       this.coins.length,
     );
     this.coinMesh.name = "frisco-coins";
@@ -624,6 +626,11 @@ export class Playground {
       best: { ...this.best },
       nearest: this.nearest,
     };
+  }
+
+  /** Where the untaken coins are, for scripts that want to stand by one. */
+  coinSpots(): Array<{ x: number; y: number; z: number }> {
+    return this.coins.filter((c) => !c.taken).map((c) => ({ x: c.x, y: c.y, z: c.z }));
   }
 
   dispose(): void {

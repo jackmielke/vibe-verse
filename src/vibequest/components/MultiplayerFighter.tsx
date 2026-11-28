@@ -127,7 +127,7 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
           
           {/* Controls guide */}
           {isTouch ? (
-            <div className="mb-4 max-w-xl"><TouchControlsGuide extras={['dash', 'shield']} /></div>
+            <div className="mb-4 max-w-xl"><TouchControlsGuide extras={['dash']} /></div>
           ) : (
           <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
             <div className="bg-cyan-500/20 border border-cyan-400/50 rounded-lg p-4">
@@ -167,7 +167,7 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
         </div>
       )}
 
-      {isTouch && isStarted && !winner && <TwoPlayerTouchPad extras={['dash', 'shield']} />}
+      {isTouch && isStarted && !winner && <TwoPlayerTouchPad extras={['dash']} />}
       {isTouch && portrait && !isStarted && <RotateHint />}
 
       {/* Winner overlay */}

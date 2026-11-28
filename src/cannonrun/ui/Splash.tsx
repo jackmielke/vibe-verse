@@ -167,7 +167,7 @@ function Reel(p: SplashProps) {
             <button className={`${item} bg-[#ffd36a] text-black hover:bg-[#ffe08f]`} onClick={p.onSolo}>
               <span className="text-lg">💣</span><span className="flex-1">Light the fuse</span><span className="opacity-50">▶</span>
             </button>
-            {!p.phone ? <button className={item} onClick={p.onDuo}><span className="w-6 text-center text-[#5ab4ff]">2P</span><span className="flex-1">Two trucks, one screen</span></button> : null}
+            <button className={item} onClick={p.onDuo}><span className="w-6 text-center text-[#5ab4ff]">2P</span><span className="flex-1">{p.phone ? "Two trucks, one phone" : "Two trucks, one screen"}</span></button>
             <button className={item} onClick={p.onHost}><span className="w-6 text-center">📱</span><span className="flex-1">Play with a friend's phone</span></button>
             <button className={item} onClick={p.onGarage}>
               <span className="w-6 text-center">🔧</span><span className="flex-1">Garage</span><span className="text-[#4de0a8]" style={{ fontFamily: MONO }}>${p.bank.toLocaleString()}</span>
@@ -271,7 +271,7 @@ function News(p: SplashProps) {
         <div className="bg-[#0e1f4a] px-4 py-2 text-[11px] font-black tracking-[0.25em] text-[#ffd36a]">UP NEXT: YOU</div>
         <div className="flex flex-col bg-black/75 backdrop-blur">
           <button className={`${btn} bg-[#ffd36a] text-black hover:bg-[#ffe08f]`} onClick={p.onSolo}>Light the fuse <span>▶</span></button>
-          {!p.phone ? <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onDuo}>Two trucks, one screen <span className="text-white/40">2P</span></button> : null}
+          <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onDuo}>{p.phone ? "Two trucks, one phone" : "Two trucks, one screen"} <span className="text-white/40">2P</span></button>
           <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onHost}>Play with a friend's phone <span className="text-white/40">📱</span></button>
           <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onGarage}>Garage <span className="text-[#4de0a8]" style={{ fontFamily: MONO }}>${p.bank.toLocaleString()}</span></button>
           <button className={`${btn} border-t border-white/10 text-white hover:bg-white/10`} onClick={p.onStory}>Read the story <span className="text-white/40">📖</span></button>
@@ -363,7 +363,7 @@ function Wanted(p: SplashProps) {
             <div className="mt-5 flex flex-col gap-2" style={{ fontFamily: "'CC Rye', Georgia, serif" }}>
               <button className={`${stamp} text-[#fbe9c6]`} style={{ background: "#8c1d12", borderColor: "#5a1008", boxShadow: "0 3px 0 #5a1008" }} onClick={p.onSolo}>💣 Light the fuse</button>
               <div className={`grid gap-2 ${p.phone ? "grid-cols-1" : "grid-cols-2"}`}>
-                {!p.phone ? <button className={`${stamp} text-[13px]`} style={{ borderColor: ink }} onClick={p.onDuo}>Two trucks</button> : null}
+                <button className={`${stamp} text-[13px]`} style={{ borderColor: ink }} onClick={p.onDuo}>Two trucks</button>
                 <button className={`${stamp} text-[13px]`} style={{ borderColor: ink }} onClick={p.onHost}>Friend's phone</button>
               </div>
             </div>
@@ -449,7 +449,7 @@ function Buttons({ p, yellow, boxBtn }: { p: SplashProps; yellow: string; boxBtn
     <>
       <button className={`${boxBtn} w-full`} style={{ background: yellow, boxShadow: "4px 4px 0 #000" }} onClick={p.onSolo}>LIGHT THE FUSE! 💣</button>
       <div className="grid grid-cols-2 gap-2">
-        {!p.phone ? <button className={`${boxBtn} bg-white text-[16px]`} style={{ boxShadow: "3px 3px 0 #000" }} onClick={p.onDuo}>TWO TRUCKS</button> : null}
+        <button className={`${boxBtn} bg-white text-[16px]`} style={{ boxShadow: "3px 3px 0 #000" }} onClick={p.onDuo}>TWO TRUCKS</button>
         <button className={`${boxBtn} bg-white text-[16px] ${p.phone ? "col-span-2" : ""}`} style={{ boxShadow: "3px 3px 0 #000" }} onClick={p.onHost}>FRIEND'S PHONE</button>
       </div>
       <div className="grid grid-cols-2 gap-2">

@@ -216,6 +216,8 @@ interface Hud {
   score: [number, number];
   clock: string;
   has: boolean;
+  /** Player 2 has the ball, in versus on one screen. */
+  has2?: boolean;
 }
 
 export default function VibeCup() {
@@ -234,6 +236,8 @@ export default function VibeCup() {
   /** Keys pressed since the last frame: a tap quicker than a frame still counts as one frame held. */
   const tapped = useRef(new Set<string>());
   const touch = useRef({ mx: 0, my: 0, a: false, b: false, on: false, tapA: false, tapB: false });
+  /** Player 2's thumbs, in versus on one phone. */
+  const touch2 = useRef({ mx: 0, my: 0, a: false, b: false, on: false, tapA: false, tapB: false });
   /** The online room, when there is one. */
   const roomRef = useRef<CupRoom | null>(null);
   /** Guest side of a match: states not yet applied, and how far each body was pulled by the last correction. */
@@ -664,13 +668,17 @@ export default function VibeCup() {
       const btn = (i: number) => !!p.buttons[i]?.pressed;
       return { mx: w.x, my: w.y, a: btn(0), b: btn(1) || btn(2), sprint: btn(5) || btn(7) || btn(4) || btn(6) };
     };
-    const t = touch.current;
-    const tw = screenToWorld(v, t.mx, t.my);
-    const fromTouch: Input = { mx: tw.x, my: tw.y, a: t.a || t.tapA, b: t.b || t.tapB, sprint: Math.hypot(t.mx, t.my) > 0.85 };
-    t.tapA = t.tapB = false;
+    const readTouch = (t: typeof touch.current): Input => {
+      const tw = screenToWorld(v, t.mx, t.my);
+      const out = { mx: tw.x, my: tw.y, a: t.a || t.tapA, b: t.b || t.tapB, sprint: Math.hypot(t.mx, t.my) > 0.85 };
+      t.tapA = t.tapB = false;
+      return out;
+    };
+    const fromTouch = readTouch(touch.current);
+    const fromTouch2 = readTouch(touch2.current);
     tap.clear();
     if (versus && !roomRef.current) {
-      return [merge(merge(fromKeys(P1_KEYS), fromPad(pads[0])), fromTouch), merge(fromKeys(P2_KEYS), fromPad(pads[1]))];
+      return [merge(merge(fromKeys(P1_KEYS), fromPad(pads[0])), fromTouch), merge(merge(fromKeys(P2_KEYS), fromPad(pads[1])), fromTouch2)];
     }
     let inp = merge(fromKeys(SOLO_KEYS), fromTouch);
     for (const p of pads) inp = merge(inp, fromPad(p));
@@ -868,10 +876,12 @@ export default function VibeCup() {
       }
       const c0 = g.ctrls[room?.match ? Math.max(0, room.myCtrl) : 0];
       const has = !!c0 && g.ball.owner === c0.active && (!room?.match || room.myCtrl >= 0);
-      const key = `${g.score[0]}-${g.score[1]}-${clockLabel(g)}-${has}`;
+      const c1 = !room?.match && g.ctrls.length > 1 ? g.ctrls[1] : undefined;
+      const has2 = !!c1 && g.ball.owner === c1.active;
+      const key = `${g.score[0]}-${g.score[1]}-${clockLabel(g)}-${has}-${has2}`;
       if (key !== shown) {
         shown = key;
-        setHud({ score: [...g.score] as [number, number], clock: clockLabel(g), has });
+        setHud({ score: [...g.score] as [number, number], clock: clockLabel(g), has, has2 });
       }
       if (online && !room.isHost) {
         // Draw where the bodies were heading, easing out the referee's corrections.
@@ -993,6 +1003,11 @@ export default function VibeCup() {
             const p = c ? g.players[c.active] : null;
             return p ? { i: p.i, x: p.x, y: p.y } : null;
           })(),
+          /** Where each controller's player is, so a script can see Player 2 move too. */
+          at: g.ctrls.map((c) => {
+            const p = g.players[c.active];
+            return p ? { x: p.x, y: p.y } : null;
+          }),
         };
       },
       start: (o?: Partial<Prefs> & { seed?: number }) => {
@@ -1130,7 +1145,14 @@ export default function VibeCup() {
       </div>
 
       {/* Touch controls */}
-      {touchUi && screen === "playing" && (!liveRef.current || focusMine) && <TouchPad touch={touch} has={hud.has} locked={!!liveRef.current} />}
+      {touchUi && screen === "playing" && (!liveRef.current || focusMine) && (versus && !roomRef.current ? (
+        <>
+          <TouchPad touch={touch} has={hud.has} side="left" />
+          <TouchPad touch={touch2} has={!!hud.has2} side="right" />
+        </>
+      ) : (
+        <TouchPad touch={touch} has={hud.has} locked={!!liveRef.current} />
+      ))}
 
       {/* The Cup, mid-round: every other match's score, tap one to watch it. */}
       {liveRef.current && screen === "playing" && !shot && !reel && (
@@ -1446,7 +1468,7 @@ function TitleCard({
             [
               ["cup", "🏆 The Vibe Cup", "Six clubs, a league and a final"],
               ["cpu", "Quick match", "You against the computer"],
-              ["versus", "2 players", touchUi ? "Two pads on one screen" : "One keyboard, or two pads"],
+              ["versus", "2 players", touchUi ? "Two players on this phone" : "One keyboard, or two pads"],
               ["online", "Online", "Friends on their own phones"],
             ] as const
           ).map(([m, t, sub]) => (
@@ -2040,15 +2062,25 @@ function CupHub({
   );
 }
 
-/** A floating thumb stick on the left half, two buttons on the right. */
-function TouchPad({ touch, has, locked }: { touch: MutableRefObject<{ mx: number; my: number; a: boolean; b: boolean; on: boolean; tapA: boolean; tapB: boolean }>; has: boolean; locked?: boolean }) {
+/**
+ * A floating thumb stick on the left half, two buttons on the right. In
+ * versus on one phone there are two of these: `side` gives each player
+ * half the screen, stick on the outside edge and buttons toward the middle,
+ * so the two pairs of thumbs mirror each other.
+ */
+function TouchPad({ touch, has, locked, side }: { touch: MutableRefObject<{ mx: number; my: number; a: boolean; b: boolean; on: boolean; tapA: boolean; tapB: boolean }>; has: boolean; locked?: boolean; side?: "left" | "right" }) {
   const [stick, setStick] = useState<{ ox: number; oy: number; x: number; y: number } | null>(null);
   const id = useRef<number | null>(null);
+  const origin = useRef({ x: 0, y: 0 });
   const R = 56;
   const down = (e: RPointerEvent<HTMLDivElement>) => {
     if (id.current !== null) return;
     id.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
+    // The rings are drawn inside this zone, which is not at the screen's
+    // left edge when two players share it.
+    const z = e.currentTarget.getBoundingClientRect();
+    origin.current = { x: z.left, y: z.top };
     setStick({ ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY });
   };
   const move = (e: RPointerEvent<HTMLDivElement>) => {
@@ -2074,21 +2106,30 @@ function TouchPad({ touch, has, locked }: { touch: MutableRefObject<{ mx: number
     touch.current[which] = on;
     if (on) touch.current[which === "a" ? "tapA" : "tapB"] = true;
   };
+  const stickZone = side === "left" ? "left-0 w-1/4" : side === "right" ? "right-0 w-1/4" : "left-0 w-1/2";
+  const buttonsAt = side === "left" ? "left-[calc(25%+8px)]" : side === "right" ? "right-[calc(25%+8px)] flex-row-reverse" : "right-4";
+  const tag = side ? (side === "left" ? "P1" : "P2") : "";
+  const tagCol = side === "left" ? "#38bdf8" : "#fb923c";
   return (
     <>
-      <div className="absolute bottom-0 left-0 top-16 w-1/2" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} data-testid="vibecup-stick">
+      {side && (
+        <div className="pointer-events-none absolute bottom-[max(calc(env(safe-area-inset-bottom)+112px),130px)] text-[11px] font-black tracking-wider" style={{ color: tagCol, [side]: "calc(25% + 12px)" }}>
+          PLAYER {side === "left" ? 1 : 2}
+        </div>
+      )}
+      <div className={`absolute bottom-0 top-16 ${stickZone}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} data-testid={side === "right" ? "vibecup-p2-stick" : "vibecup-stick"}>
         {stick ? (
           <>
-            <div className="pointer-events-none absolute rounded-full border-2 border-white/30 bg-white/10" style={{ left: stick.ox - R, top: stick.oy - R, width: R * 2, height: R * 2 }} />
-            <div className="pointer-events-none absolute h-14 w-14 rounded-full bg-white/60" style={{ left: stick.x - 28, top: stick.y - 28 }} />
+            <div className="pointer-events-none absolute rounded-full border-2 border-white/30 bg-white/10" style={{ left: stick.ox - origin.current.x - R, top: stick.oy - origin.current.y - R, width: R * 2, height: R * 2 }} />
+            <div className="pointer-events-none absolute h-14 w-14 rounded-full bg-white/60" style={{ left: stick.x - origin.current.x - 28, top: stick.y - origin.current.y - 28 }} />
           </>
         ) : (
-          <div className="pointer-events-none absolute bottom-10 left-8 flex h-28 w-28 items-center justify-center rounded-full border-2 border-white/20 text-xs font-bold text-white/40">
-            RUN
+          <div className={`pointer-events-none absolute bottom-10 ${side === "right" ? "right-8" : "left-8"} flex h-28 w-28 items-center justify-center rounded-full border-2 text-xs font-bold text-white/40`} style={{ borderColor: side ? `${tagCol}66` : "rgba(255,255,255,.2)" }}>
+            {tag ? `${tag} RUN` : "RUN"}
           </div>
         )}
       </div>
-      <div className="absolute bottom-[max(env(safe-area-inset-bottom),18px)] right-4 flex items-end gap-3">
+      <div className={`absolute bottom-[max(env(safe-area-inset-bottom),18px)] ${buttonsAt} flex items-end gap-3`}>
         {(
           [
             ["a", has ? "PASS" : locked ? "CALL" : "SWITCH", "#38bdf8", 64],
@@ -2107,7 +2148,7 @@ function TouchPad({ touch, has, locked }: { touch: MutableRefObject<{ mx: number
             onContextMenu={(e) => e.preventDefault()}
             className="flex items-center justify-center rounded-full border-2 border-white/40 text-xs font-black shadow-lg active:scale-95"
             style={{ width: size, height: size, background: `${col}cc`, marginBottom: k === "a" ? 0 : 22 }}
-            data-testid={`vibecup-${k}`}
+            data-testid={side === "right" ? `vibecup-p2-${k}` : `vibecup-${k}`}
           >
             {label}
           </button>

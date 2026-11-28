@@ -163,6 +163,8 @@ import CharacterShelf from "@/components/shop/CharacterShelf";
 import { ownedWeapons } from "@/lib/weaponCatalog";
 import { getWardrobeState } from "@/lib/wardrobe";
 import { useVibecoin } from "@/hooks/use-vibecoin";
+import { pickUpVibeyCoin } from "@/lib/vibeyPickup";
+import { vibeyCoinMaterials } from "@/lib/vibeyCoin3d";
 import { formatVibecoin } from "@/lib/vibecoin";
 import RockPaperScissors, { RpsDevHook } from "@/components/city/RockPaperScissors";
 import { PhotoGalleryModal } from "@/components/city/PhotoGalleryModal";
@@ -456,8 +458,12 @@ export default function City() {
      the overlay asking where to be is skipped — and skipped from the *first*
      render rather than by an effect, which is the difference between not
      showing it and showing it briefly. */
-  const isDirectSpawn =
-    typeof window !== "undefined" && !!directSpawn(window.location.search);
+  const firstSpawn = typeof window === "undefined" ? null : directSpawn(window.location.search);
+  /* Except Vibe Island's own link, which opens on the picker over the Glide
+     flyover and lands on the island when you press Enter (Jack, 2026-11-28). */
+  // Skipped under navigator.webdriver so the island scripts land as before.
+  const islandPicksFirst = firstSpawn === "island" && !(typeof navigator !== "undefined" && navigator.webdriver);
+  const isDirectSpawn = !!firstSpawn && !islandPicksFirst;
   const [entered, setEntered] = useState(isFreshDrop || isLive || isDirectSpawn);
   /**
    * In the water, for the UI only.
@@ -468,12 +474,20 @@ export default function City() {
    */
   const [inWater, setInWater] = useState(false);
   const enteredRef = useRef(isFreshDrop || isLive || isDirectSpawn);
-  /* `?entry=drone|glide|tour` puts the camera on a slow flyover of the real
-     city behind the picker instead of the painted backdrop (src/city/flyover.ts).
-     A preview for now; no param keeps the classic screen. */
-  const [entryLook, setEntryLook] = useState(() =>
-    typeof window === "undefined" ? null : flyoverFromSearch(window.location.search),
-  );
+  /* The picker sits over a slow drone flyover of the real city
+     (src/city/flyover.ts), Jack's pick on 2026-11-28. `?entry=glide|tour|classic`
+     still shows the other looks, with a switcher, for comparison. */
+  /* Desktop gets Drone, phones get Tour, the Vibe Island link gets Glide.
+     `?entry=demo` opens with a switcher to try every look on the live city. */
+  const entryParam = typeof window === "undefined" ? null : flyoverFromSearch(window.location.search);
+  const entryDemo =
+    !!entryParam || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("entry") === "demo");
+  const [entryLook, setEntryLook] = useState<ReturnType<typeof flyoverFromSearch>>(() => {
+    if (entryParam) return entryParam;
+    if (islandPicksFirst) return "glide";
+    const phone = typeof window !== "undefined" && Math.min(window.innerWidth, window.innerHeight) < 700;
+    return phone ? "tour" : "drone";
+  });
   const flyoverRef = useRef(entryLook);
   flyoverRef.current = entryLook;
   const [flyReady, setFlyReady] = useState(false);
@@ -654,8 +668,34 @@ export default function City() {
   const [squad, setSquad] = useState<Bodyguards | null>(null);
   const [mayhemHud, setMayhemHud] = useState<MayhemHud>({
     stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bads: 0, bombs: null, atStall: false,
-    chopper: null,
+    chopper: null, hp: null,
   });
+  /**
+   * "Can die" mode (Jack, Nov 28 2026): off by default, because the city is a
+   * place you can not die; on, the police and the chopper take your health
+   * and at zero you are wiped out and wake up outside the police station,
+   * heat cleared, like GTA. Per device; `?die=1` turns it on for a script.
+   */
+  const [canDie, setCanDie] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const q = new URLSearchParams(window.location.search).get("die");
+    if (q === "1" || q === "on") return true;
+    if (q === "0" || q === "off") return false;
+    try {
+      return localStorage.getItem("city.canDie") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const canDieRef = useRef(canDie);
+  canDieRef.current = canDie;
+  /** Wiped out in "Can die" mode: a timestamp, the overlay shows ~3 s. */
+  const [downFx, setDownFx] = useState(0);
+  useEffect(() => {
+    if (downFx <= 0) return;
+    const timer = window.setTimeout(() => setDownFx(0), 3200);
+    return () => window.clearTimeout(timer);
+  }, [downFx]);
   /**
    * Camera mode, from the world controls (Jack, Nov 27 2026): the drag-to-orbit
    * view we always had, a chase cam that swings in behind wherever you face
@@ -1952,7 +1992,7 @@ export default function City() {
       arcade.setPrizes(ownedPrizes());
       setTicketCount(arcadeTickets());
     });
-    // The Vibe Kart GP: gates on the streets, a kiosk on the plaza's east edge.
+    // The Vibe Kart GP: gates on the streets, a kiosk by the start line on the Eiffel Tower's street.
     const race = buildKartRace({ lowDetail: smallScreen });
     scene.add(race.group);
     // Held live by reference — every world that loads after this pushes its
@@ -2221,31 +2261,28 @@ export default function City() {
     // Chase the zeppelin down (jetpack or ride it) and grab the coin.
     const heist = (() => {
       const g = new THREE.Group();
-      const coinMat = new THREE.MeshStandardMaterial({
-        color: "#ffd166", emissive: "#ffb700", emissiveIntensity: 1.0,
-        roughness: 0.25, metalness: 0.7,
-      });
-      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 24), coinMat);
+      // A big Vibey Coin: the chip's face, the mint rim, a mint beacon.
+      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.14, 32), vibeyCoinMaterials({ glow: 1.3 }));
       coin.rotation.x = Math.PI / 2;
       g.add(coin);
       const rim = new THREE.Mesh(
-        new THREE.TorusGeometry(0.55, 0.06, 8, 24),
+        new THREE.TorusGeometry(0.75, 0.06, 8, 32),
         new THREE.MeshStandardMaterial({
-          color: "#fff3c2", emissive: "#ffd166", emissiveIntensity: 1.3, roughness: 0.3,
+          color: "#eafff8", emissive: "#7dffd4", emissiveIntensity: 1.3, roughness: 0.3,
         }),
       );
       g.add(rim);
       const beacon = new THREE.Mesh(
         new THREE.CylinderGeometry(0.5, 1.6, 70, 10, 1, true),
         new THREE.MeshBasicMaterial({
-          color: "#ffd166", transparent: true, opacity: 0.2,
+          color: "#7dffd4", transparent: true, opacity: 0.2,
           blending: THREE.AdditiveBlending, depthWrite: false,
           side: THREE.DoubleSide, fog: false,
         }),
       );
       beacon.position.y = 35;
       g.add(beacon);
-      const light = new THREE.PointLight(0xffc84a, 10, 10, 2);
+      const light = new THREE.PointLight(0x7dffd4, 10, 10, 2);
       g.add(light);
       g.visible = false;
       scene.add(g);
@@ -3098,14 +3135,10 @@ export default function City() {
       transparent: true,
       opacity: 0.95,
     });
-    const coinGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.12, 24);
-    const coinMat = new THREE.MeshStandardMaterial({
-      color: "#ffd166",
-      emissive: "#c9891a",
-      emissiveIntensity: 0.9,
-      metalness: 0.85,
-      roughness: 0.25,
-    });
+    // The hoop coins are Vibey Coins: the chip's face on both sides, and
+    // grabbing one pays into the shared balance (see vibeyPickup.ts).
+    const coinGeo = new THREE.CylinderGeometry(0.62, 0.62, 0.12, 32);
+    const coinMat = vibeyCoinMaterials();
     const hoopGeo = new THREE.TorusGeometry(1.3, 0.09, 10, 32);
     const hoopMat = new THREE.MeshBasicMaterial({
       color: "#baffe9",
@@ -3145,6 +3178,13 @@ export default function City() {
       return { mesh: group, baseY: p.y, taken: false, kind: "hoop" as const, coin, hoop };
     });
     let collectedCount = 0;
+    if (import.meta.env.DEV) {
+      // Where the untaken hoop coins are, for a script that wants to grab one.
+      (window as unknown as Record<string, unknown>).__cityHoops = () =>
+        collectibles
+          .filter((c) => c.kind === "hoop" && !c.taken)
+          .map((c) => [c.mesh.position.x, c.mesh.position.y, c.mesh.position.z]);
+    }
 
     // Star-run timer: starts on the first pickup, best time persists.
     let runStartMs: number | null = null;
@@ -5245,6 +5285,22 @@ export default function City() {
       onShot: (dmg) => {
         if (drivingKartRef.current >= 0) hurtVehicle(drivingKartRef.current, "blast", dmg * 1.4, true);
       },
+      onDown: () => {
+        // "Can die" mode: down you go, then you wake up outside the police
+        // station with the slate wiped clean.
+        if (drivingKartRef.current >= 0) exitKartRef.current?.();
+        const a = Math.random() * Math.PI * 2;
+        if (!activeMountRef.current) bowlOver(Math.cos(a), Math.sin(a), 10);
+        soundsRef.current?.thud?.(1);
+        setDownFx(Date.now());
+        window.setTimeout(() => {
+          if (drivingKartRef.current >= 0 || activeMountRef.current || ridingBad !== null) return;
+          const [gx, gz, gyaw] = hideouts.garage;
+          player.position.set(gx + Math.sin(gyaw) * 6, 0.5, gz + Math.cos(gyaw) * 6);
+          vel.set(0, 0, 0);
+          peakY = player.position.y;
+        }, 2200);
+      },
       collapse: district.collapse,
       onChopper: (e) => {
         if (e === "up") {
@@ -5279,6 +5335,7 @@ export default function City() {
     });
     mayhemCycleRef.current = () => mayhem.cycle();
     mayhemRef.current = mayhem;
+    mayhem.setMortal(canDieRef.current);
     mayhem.setBought(ownedWeapons(getWardrobeState().owned));
     (window as unknown as Record<string, unknown>).__cityMayhem = mayhem;
 
@@ -7828,9 +7885,14 @@ export default function City() {
           c.taken = true;
           c.mesh.visible = false;
           collectedCount++;
-          vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 1;
-          setVibeBalanceTick((n) => n + 1);
-          persistVibeBalanceRef.current?.();
+          if (c.kind === "hoop") {
+            // A floating coin is a Vibey Coin: it lands in the chip's balance.
+            pickUpVibeyCoin("city");
+          } else {
+            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + 1;
+            setVibeBalanceTick((n) => n + 1);
+            persistVibeBalanceRef.current?.();
+          }
           if (i === collectibles.length - 1) rainbowOn = true; // the secret one
           if (collectedCount === 1) runStartMs = now;
           soundsRef.current?.chime(collectedCount);
@@ -7981,7 +8043,7 @@ export default function City() {
           const inRaceKart = drivingKartRef.current === 0 && k0.wreck <= 0;
           if (race.active() && !inRaceKart) {
             race.abort();
-            toast("🏁 Out of the race", { description: k0.wreck > 0 ? "The kart is wrecked. Walk back to the kiosk on the plaza to try again." : "You got out of the kart. The kiosk on the plaza starts another one." });
+            toast("🏁 Out of the race", { description: k0.wreck > 0 ? "The kart is wrecked. The Kart GP kiosk by the start line, on the Eiffel Tower's street, starts another." : "You got out of the kart. The kiosk by the start line starts another one." });
           }
           const ev = race.update(dt, now, inRaceKart ? k0 : null);
           if (ev?.type === "go") soundsRef.current?.chime(4);
@@ -8138,12 +8200,12 @@ export default function City() {
             heistActive = false;
             heist.visible = false;
             heistNextAt = now + HEIST_PERIOD_MS;
-            vibeBalanceRef.current = Math.max(0, vibeBalanceRef.current) + HEIST_REWARD;
-            setVibeBalanceTick((n) => n + 1);
-            persistVibeBalanceRef.current?.();
+            const paid = pickUpVibeyCoin("city", HEIST_REWARD);
             soundsRef.current?.fanfare?.();
-            toast.success(`+${HEIST_REWARD} ✦ — Zeppelin Heist!`, {
-              description: "You caught the sky coin. Another lands in a few minutes.",
+            toast.success(paid > 0 ? `+${paid} Vibey Coins, Zeppelin Heist!` : "Zeppelin Heist!", {
+              description: paid > 0
+                ? "You caught the sky coin. Another lands in a few minutes."
+                : "You caught the sky coin. Vibe City's coins are spent for today, more tomorrow.",
             });
           }
         }
@@ -9649,6 +9711,8 @@ export default function City() {
   // is clicked while already in the city).
   useEffect(() => {
     const spawn = directSpawn(routerLocation.search);
+    // Vibe Island's link waits for the picker; enter() lands it.
+    if (spawn === "island" && islandPicksFirst && !enteredRef.current) return;
     if (spawn) {
       if (spawn === "hub") hubSpawnRef.current?.();
       else if (spawn === "moon") moonSpawnRef.current?.();
@@ -9835,6 +9899,10 @@ export default function City() {
     }
     enteredRef.current = true;
     setEntered(true);
+    if (islandPicksFirst && directSpawn(window.location.search) === "island") {
+      islandSpawnRef.current?.();
+      setArriving(true);
+    }
     // AudioContext needs a user gesture — this click is it.
     ensureAudio();
   };
@@ -10119,6 +10187,29 @@ export default function City() {
               data-testid="camera-mode-toggle"
             >
               {CAM_MODES[camMode].emoji} {CAM_MODES[camMode].label}
+            </button>
+            <button
+              onClick={(e) => {
+                const next = !canDie;
+                setCanDie(next);
+                try {
+                  localStorage.setItem("city.canDie", next ? "1" : "0");
+                } catch {
+                  /* private window */
+                }
+                mayhemRef.current?.setMortal(next);
+                toast(next ? "💀 You can die now" : "😇 You can't die", {
+                  description: next
+                    ? "Cops and the chopper take your health. Run out and you wake up at the police station with no heat."
+                    : "Nothing the police do can take you down.",
+                });
+                e.currentTarget.blur();
+              }}
+              className={`glass-panel rounded-full px-3.5 py-2 text-xs transition-colors hover:bg-muted/50 ${canDie ? "text-rose-300" : ""}`}
+              title="Can die: off means nothing can take you down. On, cops and the chopper can wipe you out, and you respawn at the police station"
+              data-testid="can-die-toggle"
+            >
+              {canDie ? "💀 Can die: on" : "😇 Can die: off"}
             </button>
             {/* GOD MODE — summon weather. Opens a little palette rather
                 than cycling, so you can go straight to the storm. */}
@@ -11131,6 +11222,40 @@ export default function City() {
       <SquadPanel squad={squad} hidden={!entered || underground || Boolean(gameHud) || Boolean(rebelHud?.active)} />
 
       {/* GTA Junior: wanted stars, the gun in hand, and a fire button on touch. */}
+      {/* "Can die" mode: your health, while it matters (wanted, or hurt). */}
+      {entered && !gameHud && mayhemHud.hp !== null && (mayhemHud.stars > 0 || mayhemHud.hp < 100) && (
+        <div
+          className={`fixed left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-3 py-1 text-[11px] flex items-center gap-1.5 pointer-events-none select-none ${
+            isTouch ? "top-[6.6rem]" : "bottom-20"
+          }`}
+          data-testid="player-hp"
+        >
+          <span>❤️</span>
+          <span className="inline-block w-24 h-1.5 rounded-full bg-white/15 overflow-hidden">
+            <span
+              className={`block h-full transition-[width] ${mayhemHud.hp > 50 ? "bg-emerald-400" : mayhemHud.hp > 25 ? "bg-amber-300" : "bg-rose-500"}`}
+              style={{ width: `${mayhemHud.hp}%` }}
+            />
+          </span>
+          <span className="tabular-nums text-foreground/80 w-6 text-right">{mayhemHud.hp}</span>
+        </div>
+      )}
+      {/* Wiped out in "Can die" mode. */}
+      {entered && downFx > 0 && (
+        <div
+          key={downFx}
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
+          data-testid="wiped-out"
+        >
+          <div className="absolute inset-0 bg-slate-950/50 backdrop-grayscale" />
+          <div className="relative text-center animate-scale-in">
+            <div className="font-heading font-black text-5xl sm:text-7xl tracking-widest text-rose-500 drop-shadow-[0_0_24px_rgba(244,63,94,0.7)]">
+              WIPED OUT
+            </div>
+            <div className="mt-2 text-xs sm:text-sm text-white/80">Heat cleared. Waking up at the police station…</div>
+          </div>
+        </div>
+      )}
       {/* On a phone the full panel ran down the right side into the FIRE and
           gun buttons (Jack, Nov 28), so it is one short strip at the top
           instead: stars, cruisers, the chopper, and the countdown. */}
@@ -12281,7 +12406,7 @@ export default function City() {
                 onEnter={enter}
               />
             )}
-            {entryLook && <EntryLookSwitcher look={entryLook} onLook={setEntryLook} />}
+            {entryDemo && entryLook && <EntryLookSwitcher look={entryLook} onLook={setEntryLook} />}
           </motion.div>
         )}
       </AnimatePresence>

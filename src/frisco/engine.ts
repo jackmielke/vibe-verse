@@ -11,6 +11,7 @@
  * no temporal anything. A flat-shaded city with no textures does not need help
  * looking good, and every effect not present is an effect that cannot flicker.
  */
+import { pickUpVibeyCoin } from "@/lib/vibeyPickup";
 import * as THREE from "three";
 import { CityAudio } from "./audio";
 import { createCableCars, type CableCarLine } from "./cablecar";
@@ -345,8 +346,11 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
     const events = play.update(dt, elapsed, player.state.position);
     if (events.length) {
       for (const e of events) {
-        if (e.kind === "coin") audio.cue("coin");
-        else if (e.kind === "landmark") audio.cue("landmark");
+        if (e.kind === "coin") {
+          audio.cue("coin");
+          // The self-playing card capture collects coins too; those are nobody's.
+          if (!attract) pickUpVibeyCoin("frisco");
+        } else if (e.kind === "landmark") audio.cue("landmark");
         else if (e.kind === "ring") audio.cue("ring");
         else if (e.kind === "course" || e.kind === "tour-done") audio.cue("finish");
         else if (e.kind === "tour") audio.cue("landmark");
@@ -461,6 +465,7 @@ export function mountFrisco(o: MountOptions): FriscoHandle {
       crowd: () => life.crowd(),
       nextRing: () => { const v = play.nextRingPosition(); return v ? { x: v.x, y: v.y, z: v.z } : null; },
       playState: () => play.snapshot(),
+      coins: () => play.coinSpots(),
       landmarks: () =>
         landmarkPositions().map((l) => ({
           key: l.key, name: l.name, x: l.x, z: l.z, height: l.height,
@@ -506,6 +511,7 @@ declare global {
       audioRunning: () => boolean;
       nextRing: () => { x: number; y: number; z: number } | null;
       playState: () => unknown;
+      coins: () => Array<{ x: number; y: number; z: number }>;
       landmarks: () => Array<{
         key: string; name: string; x: number; z: number; height: number; ground: number;
       }>;
