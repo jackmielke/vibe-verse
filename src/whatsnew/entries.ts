@@ -38,6 +38,16 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-vader-duel-reinforcements",
+    date: "2026-11-28",
+    emoji: "🪖",
+    title: "Vader Duel: Imperial reinforcements",
+    body: "When the arena goes quiet, Vader stomps, the ceiling hatches open and troopers drop in. Stormtroopers walk into range and shoot, Riot Troopers creep in behind a shield that breaks your guard (break it to win back 25 HP, then run), and Death Troopers take 300 HP to put down. You now have a health bar instead of three lives.",
+    tag: "update",
+    route: "/vibequest",
+    world: "VibeQuest",
+  },
+  {
     id: "2026-11-28-two-players-one-phone-everywhere",
     date: "2026-11-28",
     emoji: "👥",
