@@ -13,6 +13,7 @@
  * and bridges to stand on, and water to swim in.
  */
 import * as THREE from "three";
+import { mountMonolith } from "@/monolith/monolith";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { createPlayer } from "@/magician/world/player";
@@ -297,6 +298,16 @@ export function createThalassa(container: HTMLElement, options: ThalassaOptions 
   goTo("quay");
   if (intro >= 0) intro = 0;
 
+  /* ---- the Monolith, on the days it stands here (src/monolith) ---- */
+  const monolith = mountMonolith({
+    host: "thalassa",
+    scene,
+    container,
+    feet: () => player.position,
+    groundAt: (x, z) => groundAt(x, z, 999),
+    canTouch: () => intro < 0 && !shot,
+  });
+
   /* ---- the loop ---- */
   const clock = new THREE.Clock();
   let time = 0;
@@ -335,6 +346,7 @@ export function createThalassa(container: HTMLElement, options: ThalassaOptions 
       night: 0,
     });
     ambience.update(dt, { x: player.position.x, y: player.position.y, z: player.position.z, swimming });
+    monolith.update(dt);
 
     // VR aiming marker.
     if (xr) {
@@ -475,6 +487,7 @@ export function createThalassa(container: HTMLElement, options: ThalassaOptions 
         c.removeEventListener("selectend", selectHandlers[i].e);
       });
       void renderer.xr.getSession()?.end().catch(() => undefined);
+      monolith.dispose();
       player.dispose();
       for (const p of parts) p.dispose();
       grass.dispose();

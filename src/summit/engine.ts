@@ -10,6 +10,7 @@
  * h = 0 faces +z, which is downhill from the summit toward the village.
  */
 import * as THREE from "three";
+import { mountMonolith } from "@/monolith/monolith";
 import { loadCharacterRig, type CharacterRig } from "@/lib/characterRig";
 import { findCharacter } from "@/lib/characters";
 import { FT, SUMMIT, VILLAGE, buildGrid, groundAt, normalAt, thermalLift, runX } from "./world";
@@ -246,6 +247,17 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
   const pos = new THREE.Vector3(SUMMIT.x, SUMMIT.y, SUMMIT.z + 6);
   const vel = new THREE.Vector3();
   let mode: Mode = "walk";
+  // The Monolith, on the days it stands here (src/monolith); and the star
+  // skin, every day, for anyone it has touched.
+  const monolith = mountMonolith({
+    host: "summit",
+    scene,
+    container: mount,
+    feet: () => pos,
+    groundAt: (x, z) => ground(x, z),
+    avatar: () => inner,
+    canTouch: () => mode === "walk",
+  });
   let heading = 0;
   let grounded = true;
   let airTime = 0;
@@ -470,6 +482,7 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
   // ---- The API the page uses ---------------------------------------------
   const api: Summit = {
     dispose() {
+      monolith.dispose();
       disposed = true;
       cancelAnimationFrame(raf);
       window.removeEventListener("keydown", kd);
@@ -1168,6 +1181,7 @@ export function createSummit(mount: HTMLElement, opts: Opts): Summit {
   let raf = 0;
   let paused = false;
   const advance = (dt: number) => {
+    monolith.update(dt);
     clock += dt;
     const sub = Math.max(1, Math.ceil(dt / (1 / 120)));
     for (let i = 0; i < sub; i++) step(dt / sub);

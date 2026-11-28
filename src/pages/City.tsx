@@ -91,6 +91,7 @@ import { createSnowCover } from "@/city/snowCover";
 import { createUnderwater } from "@/city/underwater";
 import { createCarSink } from "@/city/carSink";
 import { createCrashFx } from "@/city/crashFx";
+import { mountMonolith } from "@/monolith/monolith";
 import { createMayhem, GUNS, type GunKind, type Mayhem, type MayhemHud } from "@/city/mayhem";
 
 /** The weapon bar's order, and what the 1 to 5 keys count along. */
@@ -5035,6 +5036,20 @@ export default function City() {
     // See `src/city/mayhem.ts`. The callbacks reach back into the vehicle
     // and avatar code further down this effect; they only run once the tick
     // has started, by which time all of it exists.
+    // ---- The Monolith (src/monolith) --------------------------------
+    // Stands on Vibe Island's lawn on the days the schedule picks the island,
+    // and keeps the star skin on anyone it has touched, every day.
+    const monolith = mountMonolith({
+      host: "island",
+      scene,
+      container: canvas.parentElement ?? document.body,
+      feet: () => player.position,
+      groundAt: () => ISLAND_TOP,
+      origin: { x: ISLAND_X, z: ISLAND_Z },
+      avatar: () => pilotModel,
+      canTouch: () => drivingKartRef.current < 0 && !activeMountRef.current,
+    });
+
     const mayhem: Mayhem = createMayhem({
       scene,
       crashFx,
@@ -8054,6 +8069,7 @@ export default function City() {
           if (camModeRef.current === "first" && !dk && !activeMountRef.current && ridingBad === null) {
             modelYaw = camYaw + Math.PI;
           }
+          monolith.update(dt);
           mayhem.update(dt, {
             player: player.position,
             yaw: modelYaw,
@@ -9288,6 +9304,7 @@ export default function City() {
       agentResidentsRef.current = null;
       unsubRoster();
       rosterBoard.dispose();
+      monolith.dispose();
       mayhem.dispose();
       mayhemRef.current = null;
       district.dispose();

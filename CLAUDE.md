@@ -139,6 +139,26 @@ in the world for everybody, live. All of it is `src/wizard/` plus
 - Device ids are capabilities (undo, editing your fork), so only their
   SHA-256 is stored and the tables are public to read.
 
+## The Monolith
+
+A black slab that stands in a different world every day, the same one for
+everybody: `src/monolith/schedule.ts` picks it from the UTC date, walking the
+hosts (Vibe Island, Thalassa, Vibe Summit, the Magician's valley) in a
+shuffled order that never repeats a world two days running. Touch it (walk
+into it, or the Touch button) and a light-streak warp (`warp.ts`, a 2D canvas
+over any engine) takes you to `/beyond`, a secret route that is deliberately
+**not** in the registry. Walk into the light there and you come back
+starborn: `starSkin.ts` swaps your avatar's materials for night sky with a
+violet rim, in every host that passes `avatar`. This device only.
+
+- A host is one `mountMonolith({...})` call plus `update(dt)` and `dispose()`,
+  and one entry in `HOSTS` with spots in that world's coordinates. The slab
+  has no collider, so a spot must be open ground; check it with a frame.
+- `?monolith` on any host's URL stands it there whatever the date.
+  `node scripts/monolith-shot.mjs <dir> [beyond|thalassa|summit|magician|island]`
+  photographs it (`STAR=1` arrives already starborn). On /city the character
+  GLB takes most of a minute to appear under SwiftShader, so the skin does too.
+
 ## What's New
 
 `/whats-new` is the player-facing changelog, reachable from the ✨ New chip in

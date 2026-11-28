@@ -101,6 +101,7 @@ const FirstLight = lazy(() => import("./pages/FirstLight.tsx"));
 const VibeGolf = lazy(() => import("./pages/VibeGolf.tsx"));
 const VibeIsland2 = lazy(() => import("./pages/VibeIsland2.tsx"));
 const Thalassa = lazy(() => import("./pages/Thalassa.tsx"));
+const Beyond = lazy(() => import("./pages/Beyond.tsx"));
 const FogCity = lazy(() => import("./pages/FogCity.tsx"));
 const Summit = lazy(() => import("./pages/Summit.tsx"));
 const CannonRun = lazy(() => import("./pages/CannonRun.tsx"));
@@ -157,7 +158,9 @@ const queryClient = new QueryClient();
     (`chromeless: true`, aliases included) so a world cannot ship fullscreen on
     one URL and chromed on another, plus /live, the one surface that is not a
     world: a clean broadcast with no UI at all. */
-const CHROMELESS = new Set([...CHROMELESS_ROUTES, "/live"]);
+/* /beyond is the Monolith's secret world: not in the registry on purpose,
+    so it is listed here by hand. */
+const CHROMELESS = new Set([...CHROMELESS_ROUTES, "/live", "/beyond"]);
 
 const AppChrome = () => {
   const { pathname, search } = useLocation();
@@ -271,6 +274,7 @@ const App = () => (
               names, because there is no version of this where two different
               grids of the same worlds stay in agreement. */}
           <Route path="/" element={<Home />} />
+          <Route path="/beyond" element={<Beyond />} />
           {/* Bot Battle: X handle -> bot -> one RPS match -> share card. */}
           <Route path="/bots" element={<Bots />} />
           <Route path="/bot" element={<Bots />} />

@@ -38,6 +38,14 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-the-monolith",
+    date: "2026-11-28",
+    emoji: "◼️",
+    title: "Something tall and dark has appeared",
+    body: "A black Monolith now stands somewhere in the Vibe Verse, in a different world every day: Vibe Island, Thalassa, Vibe Summit or the Magician's valley. Find it and touch it. Where it takes you is a secret, and you will not come back the same.",
+    tag: "new",
+  },
+  {
     id: "vibequest-vader-duel-polish",
     date: "2026-11-28",
     emoji: "⚔️",

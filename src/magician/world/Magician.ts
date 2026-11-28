@@ -16,6 +16,7 @@
  * three's own VRButton so it can put it in the HUD.
  */
 import * as THREE from "three";
+import { mountMonolith } from "@/monolith/monolith";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import {
@@ -702,6 +703,17 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
   // Everybody else sees us as our roster character; over the shoulder, so do we.
   const self = createAvatar({ id: myId, name: options.name ?? "you", char: myChar, noTag: true });
   scene.add(self.group);
+  // The Monolith, on the days it stands here (src/monolith); and the star
+  // skin, every day, for anyone it has touched. The projector has no body.
+  const monolith = mountMonolith({
+    host: "magician",
+    scene,
+    container,
+    feet: () => player.position,
+    groundAt: (x, z) => groundAt(x, z),
+    avatar: () => (options.spectator ? null : self.group),
+    canTouch: () => !options.spectator && intro < 0 && !playing && !sitting,
+  });
   let thirdPerson = true;
   let camBack = 0;
   let lastSelf = new THREE.Vector3();
@@ -1468,6 +1480,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     const th = tag.hud();
     if (th !== lastTagHud) { lastTagHud = th; events.onTag?.(th); }
     updateSelf(dt, !!xr);
+    monolith.update(dt);
     applyState(dt, time);
     propCtx.wind = s.wind; propCtx.windDir = s.windDirection; propCtx.season = s.season; propCtx.lanterns = look.lanterns > 0.5; propCtx.night = look.night; propCtx.snow = look.snowCover;
     for (const p of fixed) p.update?.(dt, time, propCtx);
@@ -1687,6 +1700,7 @@ export function createMagician(container: HTMLElement, events: MagicianEvents = 
     inVR: () => renderer.xr.isPresenting,
     dispose() {
       disposed = true;
+      monolith.dispose();
       renderer.setAnimationLoop(null);
       window.removeEventListener("resize", onResize);
       player.dispose();
