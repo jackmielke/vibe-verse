@@ -53,6 +53,87 @@ function signTexture(text: string, bg: string, fg: string, w = 1024, h = 256): T
   return t;
 }
 
+function canvasTexture(w: number, h: number, draw: (x: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  draw(c.getContext("2d")!);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/** Corrugated cladding: vertical ribs with a soft highlight, tiling across. */
+function corrugatedTexture(): THREE.CanvasTexture {
+  const t = canvasTexture(256, 64, (x) => {
+    for (let i = 0; i < 256; i++) {
+      const k = 0.5 + 0.5 * Math.cos((i / 32) * Math.PI * 2);
+      const v = Math.round(118 + 62 * k);
+      x.fillStyle = `rgb(${v},${v + 4},${v + 12})`;
+      x.fillRect(i, 0, 1, 64);
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/** The warehouse's name, as a sign: warm white on black steel, a red 13. */
+function warehouseSign(): THREE.CanvasTexture {
+  return canvasTexture(1024, 256, (x) => {
+    x.fillStyle = "#121418";
+    x.fillRect(0, 0, 1024, 256);
+    x.strokeStyle = "#3a3f46";
+    x.lineWidth = 10;
+    x.strokeRect(8, 8, 1008, 240);
+    x.font = "800 128px system-ui, sans-serif";
+    x.textBaseline = "middle";
+    const a = "WAREHOUSE ";
+    const b = "13";
+    const wa = x.measureText(a).width;
+    const wb = x.measureText(b).width;
+    const left = 512 - (wa + wb) / 2;
+    x.shadowColor = "rgba(255,236,200,0.6)";
+    x.shadowBlur = 16;
+    x.fillStyle = "#f4ead8";
+    x.fillText(a, left, 134);
+    x.shadowColor = "rgba(255,40,50,0.8)";
+    x.fillStyle = "#ff3341";
+    x.fillText(b, left + wa, 134);
+  });
+}
+
+/** Yellow and black hazard stripes, for the door jambs. */
+function hazardTexture(): THREE.CanvasTexture {
+  const t = canvasTexture(64, 64, (x) => {
+    x.fillStyle = "#16171a";
+    x.fillRect(0, 0, 64, 64);
+    x.fillStyle = "#f2b417";
+    for (let i = -64; i < 128; i += 32) {
+      x.beginPath();
+      x.moveTo(i, 64);
+      x.lineTo(i + 16, 64);
+      x.lineTo(i + 80, 0);
+      x.lineTo(i + 64, 0);
+      x.fill();
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/** A soft round pool of light, for lamps on the ground. */
+function poolTexture(): THREE.CanvasTexture {
+  return canvasTexture(128, 128, (x) => {
+    const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.5, "rgba(255,255,255,0.35)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    x.fillStyle = g;
+    x.fillRect(0, 0, 128, 128);
+  });
+}
+
 /** The red button inside the warehouse, by the door: [x, y, z] of its top. */
 const rideButton: [number, number, number] = [WAREHOUSE_AT[0] - 9, 1.06, WAREHOUSE_AT[1] - 8];
 
@@ -95,16 +176,21 @@ export function buildHideouts(): Hideouts {
   };
 
   // ---- The warehouse -------------------------------------------------
-  // 24 by 22 m and 12 m tall, corrugated grey with a red band, a big roll-up
-  // door open on the west side facing town, and stairs up the south wall.
+  // 24 by 22 m and 12 m tall: dark corrugated steel, one red line under the
+  // roof, a big roll-up door open on the west side facing town under two wall
+  // lamps, and stairs up the south wall.
   {
     const [cx, cz] = WAREHOUSE_AT;
     const hx = 12;
     const hz = 11;
     const H = 12;
     const T = 0.4;
-    const shed = mat(new THREE.MeshStandardMaterial({ color: 0x8b939c, roughness: 0.72, metalness: 0.35 }));
-    const band = mat(new THREE.MeshStandardMaterial({ color: 0xa3262c, roughness: 0.6, metalness: 0.2 }));
+    const ribs = corrugatedTexture();
+    ribs.repeat.set(10, 1);
+    texs.push(ribs);
+    const shed = mat(new THREE.MeshStandardMaterial({ color: 0xb8c3d2, map: ribs, roughness: 0.55, metalness: 0.3 }));
+    const band = mat(new THREE.MeshBasicMaterial({ color: 0xff2a3a }));
+    const trim = mat(new THREE.MeshStandardMaterial({ color: 0x23272e, roughness: 0.5, metalness: 0.6 }));
     const floor = mat(new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.95 }));
     const roofM = mat(new THREE.MeshStandardMaterial({ color: 0x5e656d, roughness: 0.85, metalness: 0.3 }));
     const wood = mat(new THREE.MeshStandardMaterial({ color: 0xa57c4b, roughness: 0.9 }));
@@ -127,26 +213,54 @@ export function buildHideouts(): Hideouts {
     solid(shed, x0, x0 + T, z0 + T, cz - door, 0, H);
     solid(shed, x0, x0 + T, cz + door, z1 - T, 0, H);
     solid(shed, x0, x0 + T, cz - door, cz + door, doorH, H);
-    // The roll-up door, rolled up: a drum over the opening.
+    // The roll-up door, rolled up into a steel housing flush over the
+    // opening, with its bottom slats still showing, and hazard-striped jambs.
+    solid(trim, x0 - 0.3, x0, cz - door - 0.35, cz + door + 0.35, doorH, doorH + 0.8, false);
+    solid(trim, x0 + 0.02, x0 + T - 0.02, cz - door, cz + door, doorH - 0.55, doorH, false);
     {
-      const geo = new THREE.CylinderGeometry(0.45, 0.45, door * 2 + 0.6, 16).rotateX(Math.PI / 2);
-      geos.push(geo);
-      const drum = new THREE.Mesh(geo, steel);
-      drum.position.set(x0 - 0.35, doorH + 0.3, cz);
-      group.add(drum);
+      const hz = hazardTexture();
+      hz.repeat.set(1, 12);
+      texs.push(hz);
+      const stripe = mat(new THREE.MeshStandardMaterial({ map: hz, roughness: 0.7 }));
+      solid(stripe, x0 - 0.12, x0 + T, cz - door - 0.3, cz - door, 0, doorH, false);
+      solid(stripe, x0 - 0.12, x0 + T, cz + door, cz + door + 0.3, 0, doorH, false);
     }
-    // A red band round the top, just proud of the walls.
-    solid(band, x0 - 0.05, x1 + 0.05, z1 - 0.05, z1 + 0.05, H - 1.6, H - 0.8, false);
-    solid(band, x0 - 0.05, x1 + 0.05, z0 - 0.05, z0 + 0.05, H - 1.6, H - 0.8, false);
-    solid(band, x1 - 0.05, x1 + 0.05, z0, z1, H - 1.6, H - 0.8, false);
-    solid(band, x0 - 0.05, x0 + 0.05, z0, z1, H - 1.6, H - 0.8, false);
+    // A dark steel cornice and one red line under it, all the way round.
+    for (const [a, b, c, d] of [
+      [x0 - 0.08, x1 + 0.08, z1, z1 + 0.08], [x0 - 0.08, x1 + 0.08, z0 - 0.08, z0],
+      [x1, x1 + 0.08, z0, z1], [x0 - 0.08, x0, z0, z1],
+    ] as const) {
+      solid(trim, a, b, c, d, H - 0.7, H, false);
+      solid(band, a - 0.01, b + 0.01, c - 0.01, d + 0.01, H - 0.92, H - 0.84, false);
+    }
     // The roof: a slab you can stand on and a ceiling you can bump into.
     solid(roofM, x0, x1, z0, z1, H - 0.4, H);
     // A low lip round the roof that you can step over.
     for (const [a, b, c, d] of [
       [x0, x1, z1 - 0.3, z1], [x0, x1, z0, z0 + 0.3], [x0, x0 + 0.3, z0, z1], [x1 - 0.3, x1, z0, z1],
     ] as const) solid(steel, a, b, c, d, H, H + 0.35, false);
-    sign(signTexture("WAREHOUSE 13", "#1d2024", "#f4f1ea"), 12, 3, x0 - 0.06, H - 3.8, cz, -Math.PI / 2);
+    // The name, on a steel sign box between the cornice and the door.
+    solid(trim, x0 - 0.3, x0, cz - 5.4, cz + 5.4, H - 4.5, H - 1.8, false);
+    sign(warehouseSign(), 10.6, 2.65, x0 - 0.31, H - 3.15, cz, -Math.PI / 2);
+    // Two wall lamps over the door, and the light they throw on the apron.
+    {
+      const pool = poolTexture();
+      texs.push(pool);
+      const poolM = mat(new THREE.MeshBasicMaterial({
+        map: pool, color: 0xffd9a0, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending,
+        polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8,
+      }));
+      const pg = new THREE.PlaneGeometry(7, 7).rotateX(-Math.PI / 2);
+      geos.push(pg);
+      for (const dz of [-door - 1.2, door + 1.2]) {
+        solid(trim, x0 - 0.5, x0, cz + dz - 0.3, cz + dz + 0.3, doorH + 0.9, doorH + 1.2, false);
+        solid(lamp, x0 - 0.48, x0 - 0.02, cz + dz - 0.26, cz + dz + 0.26, doorH + 0.86, doorH + 0.9, false);
+        const p = new THREE.Mesh(pg, poolM);
+        p.position.set(x0 - 2.6, 0.04, cz + dz);
+        p.renderOrder = 1;
+        group.add(p);
+      }
+    }
 
     // Inside: pallets of crates, shelving, a forklift, strip lights.
     const crate = (x: number, z: number, s: number, y = 0) => solid(wood, x - s / 2, x + s / 2, z - s / 2, z + s / 2, y, y + s);
@@ -224,6 +338,13 @@ export function buildHideouts(): Hideouts {
       rail.position.set(start - len / 2, H / 2 + 1, sz0 + 0.05);
       rail.rotation.z = -Math.atan2(rise, run);
       group.add(rail);
+      // Posts under it every few steps, so it reads as a rail and not as a
+      // stick leaning on the wall.
+      for (let i = 2; i < steps; i += 5) {
+        const xb = start - run * (i + 0.5);
+        const y = rise * (i + 1);
+        solid(yellow, xb - 0.04, xb + 0.04, sz0 + 0.01, sz0 + 0.09, y, y + 1 - 0.05, false);
+      }
     }
   }
 
