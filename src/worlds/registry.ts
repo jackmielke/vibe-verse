@@ -44,6 +44,7 @@ const ORDER: string[] = [
   "kart",                // …and the racer it runs on, one tap from the front page
   "summit",              // new: the 5,000 ft mountain, four ways down, and the rainbow road above it
   "hoops",               // new: three-on-three in the Vibe Dome, solo, couch or online
+  "vibequest",           // new: the 2D platformer and boss rush from Jack's own VibeQuest
   "pool",                // new: 8-ball with real spin, vs the computer or a friend by link
   "solitaire",           // new: Klondike and FreeCell, five looks, made for a phone
   "vibe-cup",            // new: five-a-side arcade soccer, solo, couch or online
@@ -517,6 +518,24 @@ const WORLDS_RAW: WorldEntry[] = [
     nav: true,
     passport: true,
     chromeless: true,
+  },
+  {
+    key: "vibequest",
+    route: "/vibequest",
+    aliases: ["/vibe-quest", "/quest"],
+    name: "VibeQuest",
+    emoji: "🤖",
+    kind: "game",
+    blurb:
+      "A side-scrolling platformer across floating sky islands: run and jump as a little orange robot, grab Vibe Coins and reach the portal, then take on a boss rush, a spooky zombie run, a candy run, a two-player couch fighter and co-op boss fights. Pick a character or upload your own, and challenge a friend online with a room link.",
+    status: "Playable on desktop and phone (touch pad), solo, couch co-op and online fighter",
+    accent: "#ff8a1f",
+    featured: true,
+    source: "src/vibequest",
+    nav: true,
+    passport: true,
+    chromeless: true,
+    backdrop: "#bfe9ff",
   },
   {
     key: "pool",

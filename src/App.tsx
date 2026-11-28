@@ -131,6 +131,7 @@ const Coil = lazy(() => import("./pages/Coil.tsx"));
 const Twenty48 = lazy(() => import("./pages/Twenty48.tsx"));
 const Solitaire = lazy(() => import("./pages/Solitaire.tsx"));
 const Pool = lazy(() => import("./pages/Pool.tsx"));
+const VibeQuest = lazy(() => import("./pages/VibeQuest.tsx"));
 const MortsMaze = lazy(() => import("./pages/MortsMaze.tsx"));
 const VibeCup = lazy(() => import("./pages/VibeCup.tsx"));
 const Hoops = lazy(() => import("./pages/Hoops.tsx"));
@@ -564,6 +565,10 @@ const App = () => (
               dodge Mad Mort's crew, soak them with a water balloon. */}
           {["/mort-maze", "/maze", "/chomp", "/munch"].map((path) => (
             <Route key={path} path={path} element={<MortsMaze />} />
+          ))}
+          {/* VIBEQUEST: Jack's 2D platformer and boss rush, ported from its own Lovable project. */}
+          {["/vibequest", "/vibe-quest", "/quest"].map((path) => (
+            <Route key={path} path={path} element={<VibeQuest />} />
           ))}
           {/* 8-BALL CLUB: pool with real spin. The computer, pass and play, or a friend by link. */}
           {["/pool", "/8-ball", "/8ball", "/eight-ball", "/billiards"].map((path) => (

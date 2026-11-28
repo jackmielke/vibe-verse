@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * city-chopper — five stars in Vibe City: the police chopper comes out, shoots
- * and fires rockets, you get taken down, then it gets shot down. Also cycles
- * the camera mode toggle and photographs each mode.
+ * city-chopper — five stars in Vibe City: the police chopper comes out, shoots,
+ * fires rockets and its laser at the buildings, a tower tips over into the
+ * next one, then the chopper gets shot down. Also cycles the camera mode
+ * toggle and photographs each mode.
  *
  *     node scripts/city-chopper.mjs [outDir]
  *
@@ -44,7 +45,7 @@ const shot = async (name, wait = 2500) => {
 };
 const dbg = () => page.evaluate(() => {
   const d = window.__cityMayhem.debug();
-  return { heat: d.heat, hp: Math.round(d.hp), downs: d.downs, chopper: d.chopper };
+  return { heat: d.heat, chopper: d.chopper, collapse: window.__cityCollapse?.debug() };
 });
 const warp = async (x, y, z, cam) => {
   for (let i = 0; i < 3; i++) {
@@ -64,6 +65,35 @@ for (let i = 0; i < 8; i++) {
   if (i === 2) await shot("01-chopper-hunting", 2000);
 }
 await shot("02-under-fire", 2000);
+
+console.log("· laser");
+for (let i = 0; i < 4; i++) {
+  await page.evaluate(() => { window.__cityMayhem.setHeat(5); window.__cityMayhem.chopperLaser(); });
+  await page.waitForTimeout(7000);
+  console.log("  ", JSON.stringify(await dbg()));
+}
+await shot("02b-laser", 1000);
+
+console.log("· topple a tower toward the camera");
+const id = await page.evaluate(() => {
+  const c = window.__cityCollapse;
+  const ids = c.near(0, 14, 60).filter((i) => c.info(i).height > 30);
+  const id = ids[0] ?? c.near(0, 14, 60)[0];
+  const b = c.info(id);
+  c.damage(id, 9999, b.cx + (b.cx > 0 ? 30 : -30), b.cz);
+  return { id, ...b };
+});
+console.log("  ", JSON.stringify(id));
+{
+  const px = id.cx + (id.cx > 0 ? -70 : 70);
+  const pz = id.cz + 60;
+  await warp(px, 0, pz, [25, 0.25, Math.atan2(px - id.cx, pz - id.cz)]);
+}
+for (let i = 0; i < 3; i++) {
+  await page.waitForTimeout(1500);
+  await shot(`02c-topple-${i}`, 500);
+}
+console.log("  ", JSON.stringify(await dbg()));
 console.log("· shoot it down");
 await page.evaluate(() => window.__cityMayhem.hurtChopper(1000));
 await page.waitForTimeout(6000);

@@ -635,15 +635,8 @@ export default function City() {
   const [squad, setSquad] = useState<Bodyguards | null>(null);
   const [mayhemHud, setMayhemHud] = useState<MayhemHud>({
     stars: 0, forgiveIn: null, cops: 0, gun: null, owned: [], bads: 0, bombs: null, atStall: false,
-    hp: 100, chopper: null,
+    chopper: null,
   });
-  /** The police chopper took you down: a timestamp, the overlay shows ~2.6 s. */
-  const [downFx, setDownFx] = useState(0);
-  useEffect(() => {
-    if (downFx <= 0) return;
-    const timer = window.setTimeout(() => setDownFx(0), 2600);
-    return () => window.clearTimeout(timer);
-  }, [downFx]);
   /**
    * Camera mode, from the world controls (Jack, Nov 27 2026): the drag-to-orbit
    * view we always had, a chase cam that swings in behind wherever you face
@@ -1760,6 +1753,13 @@ export default function City() {
     // Neon on the shopfronts, and its streaks in the road when it rains.
     const neon = buildNeon({ footprints: district.footprints, seed: CITY_SEED, lowDetail: smallScreen });
     scene.add(neon.group);
+    (window as unknown as Record<string, unknown>).__cityCollapse = district.collapse;
+    // A building that falls over takes its neon sign with it.
+    district.collapse.onEvent((e) => {
+      if (e.kind !== "fall") return;
+      const b = district.collapse.info(e.id);
+      if (b) neon.hideIn(b.minX, b.maxX, b.minZ, b.maxZ);
+    });
     const wetStreets = createWetStreets({ renderer, road: district.ground.road, pave: district.ground.pave });
     // Gulls over the marina, the beach and the towers; pigeons on the plaza.
     const birds = createBirds({
@@ -5104,25 +5104,11 @@ export default function City() {
       onShot: (dmg) => {
         if (drivingKartRef.current >= 0) hurtVehicle(drivingKartRef.current, "blast", dmg * 1.4, true);
       },
-      onDown: () => {
-        // The chopper got you: down you go, then you wake up outside the
-        // police station with the slate wiped clean.
-        const a = Math.random() * Math.PI * 2;
-        if (!activeMountRef.current) bowlOver(Math.cos(a), Math.sin(a), 10);
-        soundsRef.current?.thud?.(1);
-        setDownFx(Date.now());
-        window.setTimeout(() => {
-          if (drivingKartRef.current >= 0 || activeMountRef.current || ridingBad !== null) return;
-          const [gx, gz, gyaw] = hideouts.garage;
-          player.position.set(gx + Math.sin(gyaw) * 6, 0.5, gz + Math.cos(gyaw) * 6);
-          vel.set(0, 0, 0);
-          peakY = player.position.y;
-        }, 1800);
-      },
+      collapse: district.collapse,
       onChopper: (e) => {
         if (e === "up") {
           toast("🚁 Police chopper inbound", {
-            description: "Five stars. It shoots from the sky and fires rockets. Keep moving, get under cover, or shoot it down.",
+            description: "Five stars. It shoots, fires rockets, and its laser blows up the buildings around you. Shoot it down.",
           });
         } else {
           soundsRef.current?.fanfare?.();
@@ -10630,22 +10616,6 @@ export default function City() {
         </div>
       )}
 
-      {/* Taken down by the police chopper. */}
-      {entered && downFx > 0 && (
-        <div
-          key={downFx}
-          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center animate-fade-in"
-          data-testid="taken-down"
-        >
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-grayscale" />
-          <div className="relative glass-panel rounded-2xl px-6 py-4 text-center animate-scale-in">
-            <div className="text-5xl mb-1">🚁</div>
-            <div className="text-sm font-semibold text-rose-300">TAKEN DOWN</div>
-            <div className="text-xs text-muted-foreground">The police chopper got you. Heat cleared, waking up at the station…</div>
-          </div>
-        </div>
-      )}
-
       {/* Whimsical fall-damage splat → plaza respawn flash. */}
       {entered && respawnFx > 0 && (
         <div
@@ -10942,7 +10912,35 @@ export default function City() {
       <SquadPanel squad={squad} hidden={!entered || underground || Boolean(gameHud) || Boolean(rebelHud?.active)} />
 
       {/* GTA Junior: wanted stars, the gun in hand, and a fire button on touch. */}
-      {entered && !gameHud && !rebelHud?.active && (mayhemHud.stars > 0 || mayhemHud.gun || mayhemHud.bombs !== null) && (
+      {/* On a phone the full panel ran down the right side into the FIRE and
+          gun buttons (Jack, Nov 28), so it is one short strip at the top
+          instead: stars, cruisers, the chopper, and the countdown. */}
+      {entered && isTouch && !gameHud && !rebelHud?.active && mayhemHud.stars > 0 && (
+        <div
+          className="fixed top-[4.25rem] left-1/2 -translate-x-1/2 z-30 glass-panel rounded-full px-3 py-1.5 text-[11px] flex items-center gap-2 whitespace-nowrap pointer-events-none select-none"
+          data-testid="pursuit-strip"
+        >
+          <span className="text-[13px] tracking-tight">
+            <span className="text-amber-300">{"★".repeat(mayhemHud.stars)}</span>
+            <span className="text-muted-foreground/30">{"★".repeat(5 - mayhemHud.stars)}</span>
+          </span>
+          <span className="text-rose-300 font-heading font-semibold">🚓 {mayhemHud.cops}</span>
+          {mayhemHud.chopper !== null && (
+            <span className="text-sky-300 font-heading font-semibold flex items-center gap-1">
+              🚁 1
+              <span className="inline-block w-8 h-1 rounded-full bg-white/15 overflow-hidden">
+                <span className="block h-full bg-sky-300" style={{ width: `${mayhemHud.chopper}%` }} />
+              </span>
+            </span>
+          )}
+          {mayhemHud.forgiveIn !== null && (
+            <span className="text-muted-foreground tabular-nums">
+              {Math.floor(mayhemHud.forgiveIn / 60)}:{String(mayhemHud.forgiveIn % 60).padStart(2, "0")}
+            </span>
+          )}
+        </div>
+      )}
+      {entered && !isTouch && !gameHud && !rebelHud?.active && (mayhemHud.stars > 0 || mayhemHud.gun || mayhemHud.bombs !== null) && (
         <div className="fixed top-40 right-4 z-30 glass-panel rounded-2xl px-3 py-2 text-xs flex flex-col items-end gap-1 pointer-events-none select-none">
           {mayhemHud.stars > 0 && (
             <div className="flex items-center gap-1.5">
@@ -10954,7 +10952,9 @@ export default function City() {
           )}
           {mayhemHud.stars > 0 && (
             <span className="text-rose-300 font-heading font-semibold">
-              {mayhemHud.cops > 0 ? `🚓 ${mayhemHud.cops} on your tail` : "🚨 Police on the way"}
+              {mayhemHud.cops > 0 || mayhemHud.chopper !== null
+                ? `🚓 ${mayhemHud.cops}${mayhemHud.chopper !== null ? " + 🚁 1" : ""} on your tail`
+                : "🚨 Police on the way"}
             </span>
           )}
           {mayhemHud.chopper !== null && (
@@ -10962,17 +10962,6 @@ export default function City() {
               🚁 Police chopper
               <span className="inline-block w-14 h-1.5 rounded-full bg-white/15 overflow-hidden">
                 <span className="block h-full bg-sky-300" style={{ width: `${mayhemHud.chopper}%` }} />
-              </span>
-            </span>
-          )}
-          {(mayhemHud.chopper !== null || mayhemHud.hp < 100) && (
-            <span className="text-foreground/90 flex items-center gap-1.5" data-testid="player-hp">
-              ❤️ You
-              <span className="inline-block w-20 h-1.5 rounded-full bg-white/15 overflow-hidden">
-                <span
-                  className={`block h-full ${mayhemHud.hp > 50 ? "bg-emerald-400" : mayhemHud.hp > 25 ? "bg-amber-300" : "bg-rose-500"}`}
-                  style={{ width: `${mayhemHud.hp}%` }}
-                />
               </span>
             </span>
           )}
@@ -11002,7 +10991,7 @@ export default function City() {
       {entered && !gameHud && !rebelHud?.active && mayhemHud.owned.length > 0 && (
         <div
           className={`fixed z-30 flex gap-1.5 select-none ${
-            isTouch ? "bottom-48 right-[5.75rem] flex-row" : "right-4 top-1/2 -translate-y-1/2 flex-col"
+            isTouch ? "bottom-48 right-[5.75rem] flex-row [@media(max-height:500px)]:bottom-7 [@media(max-height:500px)]:right-[13.5rem]" : "right-4 top-1/2 -translate-y-1/2 flex-col"
           }`}
           role="toolbar"
           aria-label="Weapons"
@@ -11043,7 +11032,7 @@ export default function City() {
           onPointerCancel={() => {
             touchFireRef.current = false;
           }}
-          className="fixed bottom-48 right-5 z-30 w-16 h-16 rounded-full bg-amber-500/90 text-white font-heading font-bold text-xs shadow-[0_0_24px_rgba(245,158,11,0.5)] active:scale-90 transition-transform select-none touch-none"
+          className="fixed bottom-48 right-5 [@media(max-height:500px)]:bottom-5 [@media(max-height:500px)]:right-[9rem] z-30 w-16 h-16 rounded-full bg-amber-500/90 text-white font-heading font-bold text-xs shadow-[0_0_24px_rgba(245,158,11,0.5)] active:scale-90 transition-transform select-none touch-none"
         >
           FIRE
         </button>
@@ -11062,9 +11051,10 @@ export default function City() {
           }}
           disabled={mayhemHud.bombs <= 0}
           aria-label="Throw a pineapple bomb"
-          className="fixed bottom-[17rem] right-7 z-30 w-12 h-12 rounded-full bg-yellow-400/90 text-xl shadow-[0_0_20px_rgba(250,204,21,0.5)] active:scale-90 transition-transform select-none touch-none disabled:opacity-40"
+          className="fixed bottom-[17rem] right-7 [@media(max-height:500px)]:bottom-[6rem] [@media(max-height:500px)]:right-[9.5rem] z-30 w-12 h-12 rounded-full bg-yellow-400/90 text-xl shadow-[0_0_20px_rgba(250,204,21,0.5)] active:scale-90 transition-transform select-none touch-none disabled:opacity-40"
         >
           🍍
+          <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] rounded-full bg-black/70 text-[10px] font-bold text-white grid place-items-center">{mayhemHud.bombs}</span>
         </button>
       )}
 

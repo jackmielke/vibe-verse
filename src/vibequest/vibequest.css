@@ -1,0 +1,76 @@
+/*
+ * VibeQuest's own look, scoped to `.vq-root`.
+ *
+ * The game was built as its own Lovable site with its own design tokens
+ * (orange primary, sky blue background, Pixelify headings). The vibeverse has
+ * different ones on :root, so the original's are redeclared here, on the
+ * game's wrapper only, rather than on :root where they would repaint every
+ * other world.
+ */
+@font-face {
+  font-family: "VQ Pixelify";
+  src: url("../assets/redesign/pixelify-sans-latin-700-normal.woff2") format("woff2");
+  font-weight: 600 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "VQ Pixelify";
+  src: url("../assets/redesign/pixelify-sans-latin-500-normal.woff2") format("woff2");
+  font-weight: 100 599;
+  font-display: swap;
+}
+@font-face {
+  font-family: "VQ Instrument";
+  src: url("../assets/redesign/instrument-serif-latin-400-normal.woff2") format("woff2");
+  font-display: swap;
+}
+
+.vq-root {
+  --background: 200 100% 92%;
+  --foreground: 220 30% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 30% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 30% 15%;
+  --primary: 25 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 280 65% 60%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 200 40% 85%;
+  --muted-foreground: 220 20% 40%;
+  --accent: 45 100% 51%;
+  --accent-foreground: 220 30% 15%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 200 30% 80%;
+  --input: 200 30% 80%;
+  --ring: 25 95% 53%;
+  --radius: 1rem;
+  --game-coin: 45 100% 55%;
+
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: "VQ Instrument", "Instrument Serif", serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.vq-root h1, .vq-root h2, .vq-root h3, .vq-root h4, .vq-root h5, .vq-root h6 {
+  font-family: "VQ Pixelify", "Pixelify Sans", monospace;
+}
+/* Zero specificity, so the Tailwind utilities beside it win, exactly as they
+   did when this lived in the original's @layer components. */
+:where(.vq-root .game-button) {
+  border-radius: 9999px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  transition: all 0.3s;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 4px 20px hsl(var(--primary) / 0.15);
+}
+:where(.vq-root .game-button:hover) { box-shadow: 0 0 30px hsl(var(--game-coin) / 0.6); }

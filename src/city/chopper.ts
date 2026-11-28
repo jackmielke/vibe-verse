@@ -44,6 +44,14 @@ const ROUND_DMG = 6;
 const ROCKET_EVERY = 6.5;
 const ROCKET_SPEED = 34;
 const ROCKET_R = 7.5;
+/**
+ * The big green laser (Jack, Nov 28: "like a Death Star laser"): it never aims
+ * at you, only at the buildings around you. A charge you can see coming, then
+ * a beam, then the wall goes up.
+ */
+const LASER_EVERY = 7.5;
+const LASER_CHARGE = 1.4;
+const LASER_FIRE = 0.7;
 
 export interface ChopperTarget {
   x: number;
@@ -69,6 +77,13 @@ export interface ChopperOpts {
   onRocket(x: number, y: number, z: number, r: number): void;
   /** It hit the ground and exploded. */
   onCrash(x: number, z: number): void;
+  /**
+   * The laser wants a building near (x, z) to aim at: its id and the point on
+   * its wall facing (fromX, fromZ), or null if there is none.
+   */
+  pickBuilding?(x: number, z: number, fromX: number, fromZ: number): { id: number; x: number; y: number; z: number } | null;
+  /** The laser hit that building at that point. */
+  onLaser?(id: number, x: number, y: number, z: number, fromX: number, fromZ: number): void;
   audio: () => AudioContext | null;
 }
 
@@ -83,7 +98,10 @@ export interface Chopper {
   debug(): {
     state: string; x: number; y: number; z: number; hp: number;
     rounds: number; roundHits: number; rockets: number; respawnIn: number;
+    lasers: number; laser: string;
   };
+  /** For harnesses: start a laser shot now (at the best building near the target). */
+  fireLaser(): void;
   /** For harnesses: put one up right now, over (x, z). */
   spawnAt(x: number, z: number): void;
   dispose(): void;
@@ -190,6 +208,98 @@ export function createChopper(opts: ChopperOpts): Chopper {
   const rocketMat = new THREE.MeshStandardMaterial({ color: 0xd8dde3, roughness: 0.4, metalness: 0.5 });
   const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa040 });
   const flameGeo = new THREE.ConeGeometry(0.16, 0.7, 8).rotateX(-Math.PI / 2).translate(0, 0, -0.85);
+  // The laser: a charging orb under the nose, a core and a glow, and a shock ring.
+  const laserGreen = new THREE.MeshBasicMaterial({
+    color: 0x6bff7a, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const laserCore = new THREE.MeshBasicMaterial({
+    color: 0xeaffea, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 12, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5);
+  const orbGeo = new THREE.SphereGeometry(1, 16, 12);
+  const ringGeo = new THREE.RingGeometry(0.85, 1, 48);
+  const laserGlow = new THREE.Mesh(beamGeo, laserGreen);
+  const laserBeam = new THREE.Mesh(beamGeo, laserCore);
+  const laserOrb = new THREE.Mesh(orbGeo, laserGreen);
+  for (const l of [laserGlow, laserBeam, laserOrb]) {
+    l.visible = false;
+    l.renderOrder = 6;
+    opts.group.add(l);
+  }
+  interface Blast { flash: THREE.Mesh; ring: THREE.Mesh; t: number; size: number }
+  const blasts: Blast[] = [];
+  const blastMats: THREE.Material[] = [];
+  const spawnBlast = (bx: number, by: number, bz: number, size: number, faceX: number, faceZ: number) => {
+    const fm = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending });
+    const rm = new THREE.MeshBasicMaterial({ color: 0x9dff9a, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    blastMats.push(fm, rm);
+    const flash = new THREE.Mesh(orbGeo, fm);
+    const ring = new THREE.Mesh(ringGeo, rm);
+    flash.position.set(bx, by, bz);
+    ring.position.set(bx, by, bz);
+    // The ring stands on the wall, facing out toward whoever fired.
+    ring.lookAt(bx + faceX, by, bz + faceZ);
+    flash.renderOrder = ring.renderOrder = 7;
+    opts.group.add(flash, ring);
+    blasts.push({ flash, ring, t: 0, size });
+  };
+  type LaserPhase = "idle" | "charge" | "fire";
+  let laserPhase: LaserPhase = "idle";
+  let laserT = 0;
+  let laserCool = 5;
+  let lasers = 0;
+  let laserAim: { id: number; x: number; y: number; z: number } | null = null;
+  let laserWant = false;
+  const zap = () => {
+    const a = opts.audio();
+    if (!a) return;
+    const o = a.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(140, a.currentTime);
+    o.frequency.exponentialRampToValueAtTime(38, a.currentTime + 0.9);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.16, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 1.0);
+    o.connect(g).connect(a.destination);
+    o.start();
+    o.stop(a.currentTime + 1.05);
+  };
+  const hum = () => {
+    const a = opts.audio();
+    if (!a) return;
+    const o = a.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(90, a.currentTime);
+    o.frequency.exponentialRampToValueAtTime(620, a.currentTime + LASER_CHARGE);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.06, a.currentTime + LASER_CHARGE);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + LASER_CHARGE + 0.1);
+    o.connect(g).connect(a.destination);
+    o.start();
+    o.stop(a.currentTime + LASER_CHARGE + 0.15);
+  };
+  const hideLaser = () => {
+    laserGlow.visible = laserBeam.visible = laserOrb.visible = false;
+  };
+  const updateBlasts = (dt: number) => {
+    for (let i = blasts.length - 1; i >= 0; i--) {
+      const b = blasts[i];
+      b.t += dt;
+      const k = b.t / 1.1;
+      if (k >= 1) {
+        opts.group.remove(b.flash, b.ring);
+        (b.flash.material as THREE.Material).dispose();
+        (b.ring.material as THREE.Material).dispose();
+        blasts.splice(i, 1);
+        continue;
+      }
+      b.flash.scale.setScalar(b.size * (0.4 + Math.sqrt(k) * 1.2));
+      (b.flash.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k * 1.6);
+      b.ring.scale.setScalar(b.size * (0.5 + k * 4.5));
+      (b.ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - k);
+    }
+  };
   interface Rocket { mesh: THREE.Group; x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number }
   const rockets: Rocket[] = [];
 
@@ -413,6 +523,7 @@ export function createChopper(opts: ChopperOpts): Chopper {
         if (tr.t > 0.05) tr.mesh.visible = false;
       }
       updateRockets(dt, 0);
+      updateBlasts(dt);
 
       if (state === "none") {
         respawnIn = Math.max(0, respawnIn - dt);
@@ -481,9 +592,69 @@ export function createChopper(opts: ChopperOpts): Chopper {
             }
           }
           rocketCool -= dt;
-          if (rocketCool <= 0) {
+          if (rocketCool <= 0 && laserPhase === "idle") {
             fireRocket(t);
             rocketCool = ROCKET_EVERY * (0.8 + Math.random() * 0.4);
+          }
+          laserCool -= dt;
+          if ((laserCool <= 0 || laserWant) && laserPhase === "idle") {
+            laserWant = false;
+            laserAim = opts.pickBuilding?.(t.x, t.z, x, z) ?? null;
+            laserCool = LASER_EVERY * (0.8 + Math.random() * 0.4);
+            if (laserAim) {
+              laserPhase = "charge";
+              laserT = 0;
+              hum();
+            }
+          }
+        }
+        if (laserPhase !== "idle" && laserAim) {
+          laserT += dt;
+          // Nose on the building, not on you, while it charges and fires.
+          let lf = Math.atan2(laserAim.x - x, laserAim.z - z) - yaw;
+          while (lf > Math.PI) lf -= Math.PI * 2;
+          while (lf < -Math.PI) lf += Math.PI * 2;
+          yaw += lf * Math.min(1, dt * 6);
+          const nx = x + Math.sin(yaw) * 2.2;
+          const ny = y - 0.9;
+          const nz = z + Math.cos(yaw) * 2.2;
+          laserOrb.visible = true;
+          laserOrb.position.set(nx, ny, nz);
+          if (laserPhase === "charge") {
+            const k = Math.min(1, laserT / LASER_CHARGE);
+            laserOrb.scale.setScalar(0.2 + k * 1.1 + Math.sin(clock * 40) * 0.08);
+            // A thin flickering aiming line while it charges.
+            laserBeam.visible = Math.sin(clock * 30) > 0;
+            laserBeam.position.set(nx, ny, nz);
+            laserBeam.lookAt(laserAim.x, laserAim.y, laserAim.z);
+            laserBeam.scale.set(0.04, 0.04, Math.hypot(laserAim.x - nx, laserAim.y - ny, laserAim.z - nz));
+            laserGlow.visible = false;
+            if (laserT >= LASER_CHARGE) {
+              laserPhase = "fire";
+              laserT = 0;
+              lasers++;
+              zap();
+              spawnBlast(laserAim.x, laserAim.y, laserAim.z, 3.5, nx - laserAim.x, nz - laserAim.z);
+              crashFx.kick(0.5);
+              opts.onLaser?.(laserAim.id, laserAim.x, laserAim.y, laserAim.z, x, z);
+            }
+          } else {
+            const k = laserT / LASER_FIRE;
+            const w = (1 - k) * 0.9 + 0.25;
+            const len = Math.hypot(laserAim.x - nx, laserAim.y - ny, laserAim.z - nz);
+            for (const [mesh, r] of [[laserGlow, w * 1.6], [laserBeam, w * 0.5]] as Array<[THREE.Mesh, number]>) {
+              mesh.visible = true;
+              mesh.position.set(nx, ny, nz);
+              mesh.lookAt(laserAim.x, laserAim.y, laserAim.z);
+              mesh.scale.set(r, r, len);
+            }
+            laserOrb.scale.setScalar(1.3 * (1 - k) + 0.3);
+            crashFx.smoulder(dt, laserAim.x, laserAim.y, laserAim.z, 1, 1);
+            if (laserT >= LASER_FIRE) {
+              laserPhase = "idle";
+              laserAim = null;
+              hideLaser();
+            }
           }
         }
 
@@ -498,6 +669,11 @@ export function createChopper(opts: ChopperOpts): Chopper {
         spot.position.set(t.x, t.y + 0.06, t.z);
         spot.scale.setScalar(3.4);
       } else if (state === "leave") {
+        if (laserPhase !== "idle") {
+          laserPhase = "idle";
+          laserAim = null;
+          hideLaser();
+        }
         // Climb and head home.
         const [hx, hz] = opts.home;
         let dx = hx - x, dz = hz - z;
@@ -567,6 +743,9 @@ export function createChopper(opts: ChopperOpts): Chopper {
       crashFx.sparks(x, y, z, 0, 0, 6);
       if (hp > 0) return false;
       hp = 0;
+      laserPhase = "idle";
+      laserAim = null;
+      hideLaser();
       state = "falling";
       stateT = 0;
       vy = 2;
@@ -580,13 +759,24 @@ export function createChopper(opts: ChopperOpts): Chopper {
       return state === "hunt" || state === "leave" ? { hp: Math.max(0, Math.round((hp / CHOPPER_HP) * 100)) } : null;
     },
     debug() {
-      return { state, x, y, z, hp, rounds, roundHits, rockets: rocketsFired, respawnIn };
+      return { state, x, y, z, hp, rounds, roundHits, rockets: rocketsFired, respawnIn, lasers, laser: laserPhase };
+    },
+    fireLaser() {
+      laserWant = true;
     },
     spawnAt(sx, sz) {
       respawnIn = 0;
       spawn(sx, sz);
     },
     dispose() {
+      for (const b of blasts.splice(0)) opts.group.remove(b.flash, b.ring);
+      blastMats.forEach((mm) => mm.dispose());
+      opts.group.remove(laserGlow, laserBeam, laserOrb);
+      laserGreen.dispose();
+      laserCore.dispose();
+      beamGeo.dispose();
+      orbGeo.dispose();
+      ringGeo.dispose();
       for (const r of rockets.splice(0)) opts.group.remove(r.mesh);
       opts.group.remove(m.group, m.beam, spot);
       for (const tr of tracers) opts.group.remove(tr.mesh);

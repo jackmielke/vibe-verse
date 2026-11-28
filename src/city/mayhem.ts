@@ -48,6 +48,7 @@ import type { CrashFx } from "@/city/crashFx";
 import type { Smashables } from "@/city/smash";
 import { buildCityCar, type Traffic } from "@/city/traffic";
 import { createChopper } from "@/city/chopper";
+import type { Collapse } from "@/city/collapse";
 
 export type GunKind = "rifle" | "glock" | "water" | "blaster" | "paint";
 /** Guns you buy rather than find. Ids match `weapon:<id>` in the inventory. */
@@ -119,11 +120,6 @@ export interface MayhemHud {
   atStall: boolean;
   /** Bad guys on the loose right now, out of `MAX_BAD`. */
   bads: number;
-  /**
-   * Your own health, 0 to 100. Only the police chopper hurts it; it grows
-   * back after a few quiet seconds, and at zero you are taken down.
-   */
-  hp: number;
   /** The police chopper's health, percent, while one is up. */
   chopper: number | null;
 }
@@ -196,10 +192,10 @@ export interface MayhemOpts {
   /** The chopper's door gun hit the car you are driving. */
   onShot?(dmg: number): void;
   /**
-   * The chopper took you down on foot. Heat is already cleared; the city
-   * decides where you wake up.
+   * Buildings that can be knocked over (`src/city/collapse.ts`). The chopper's
+   * laser, rockets and blown facades all hurt them.
    */
-  onDown?(): void;
+  collapse?: Collapse;
   /** The police chopper came out ("up") or was shot down ("down"). */
   onChopper?(e: "up" | "down"): void;
   onHud(h: MayhemHud): void;
@@ -254,8 +250,6 @@ export interface Mayhem {
   /** For harnesses. */
   debug(): {
     heat: number;
-    hp: number;
-    downs: number;
     chopper: ReturnType<import("@/city/chopper").Chopper["debug"]>;
     cops: Array<{ x: number; z: number; hp: number; target: string; speed: number }>;
     fires: number;
@@ -277,6 +271,8 @@ export interface Mayhem {
   spawnChopper(x: number, z: number): void;
   /** For harnesses: shoot the chopper for `dmg`. */
   hurtChopper(dmg: number): void;
+  /** For harnesses: make the chopper fire its laser at the next chance. */
+  chopperLaser(): void;
   give(kind: GunKind): void;
   /** For harnesses: leave a puddle here. */
   puddleAt(x: number, z: number): void;
@@ -1107,7 +1103,6 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       bads: bads.length,
       bombs: hasBombs ? bombsInHand : null,
       atStall,
-      hp: Math.round(playerHp),
       chopper: chopper?.hud()?.hp ?? null,
     };
     const key = JSON.stringify(h);
@@ -1575,35 +1570,51 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
   const cands: Array<{ x: number; z: number; weight: number; kind: "cop" | "car" | "tree" | "bad" | "chopper"; ref: number }> = [];
 
   // ---- The police chopper, at five stars: see `chopper.ts` -------------
-  let playerHp = 100;
-  /** Seconds since the chopper last hit you; health grows back after a few. */
-  let hpQuiet = 99;
-  let downs = 0;
-  /** Something the chopper fired hit you, or whatever you are in. */
+  /**
+   * Something the chopper fired hit you, or whatever you are in. Jack's rule
+   * (Nov 28): you can not die. On foot a hit is sparks at your feet and
+   * nothing more; a car you are driving still takes the damage, and so does
+   * the bad guy's car you are riding in.
+   */
   const hitPlayer = (dmg: number) => {
     const ctx = lastCtx;
     if (!ctx) return;
     if (ctx.riding !== null) {
       const b = bads.find((o) => o.id === ctx.riding);
-      if (b) hurtBad(b, dmg * 1.5);
+      if (b) hurtBad(b, dmg);
       return;
     }
-    if (ctx.driving) {
-      opts.onShot?.(dmg);
-      return;
-    }
-    playerHp -= dmg;
-    hpQuiet = 0;
-    if (playerHp <= 0) {
-      playerHp = 100;
-      heat = 0;
-      quiet = 0;
-      downs++;
-      opts.onDown?.();
-    }
-    hud();
+    if (ctx.driving) opts.onShot?.(dmg * 0.6);
   };
   let chopperWas = false;
+  // Falling buildings: the dust, the fire and the noise.
+  opts.collapse?.onEvent((e) => {
+    if (e.kind === "fall") {
+      crashFx.debris(e.x, 2, e.z, 16, 0x8a8f98, 8);
+      crashFx.kick(0.3);
+    } else if (e.kind === "crash") {
+      crashFx.explode(e.x, e.y, e.z, e.power, 0x9aa2ab);
+      crashFx.debris(e.x, e.y, e.z, 14, 0x8a8f98, 10);
+      crashFx.kick(0.6);
+      opts.boom?.(e.x, e.z);
+    } else {
+      // A line of dust and fire where it came down.
+      const n = Math.max(3, Math.min(8, Math.round(e.length / 10)));
+      for (let i = 0; i < n; i++) {
+        const s = (e.length * (i + 0.5)) / n;
+        const x = e.x + e.dx * s;
+        const z = e.z + e.dz * s;
+        crashFx.explode(x, 2, z, 1.2, 0x8a8f98);
+        crashFx.debris(x, 3, z, 8, 0x8a8f98, 10);
+        traffic.blast(x, z, e.width * 0.6 + 4, 14);
+        smash.blast(x, z, e.width * 0.6 + 3, 12);
+        opts.onBlast(x, z, e.width * 0.5 + 4);
+        if (i % 2 === 0) ignite(x, z, 6);
+      }
+      crashFx.kick(1);
+      opts.boom?.(e.x + e.dx * e.length * 0.5, e.z + e.dz * e.length * 0.5);
+    }
+  });
   const chopperLast = new THREE.Vector3(NaN, 0, 0);
   const chopper = createChopper({
     group,
@@ -1624,11 +1635,41 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       const me = ctx.driving ?? ctx.player;
       const d = Math.hypot(me.x - x, me.z - z);
       if (d < r && Math.abs(me.y - y) < 6) {
-        // On foot that is most of your health; a car's own damage is
-        // `onBlast`'s, so only the bad guy's car needs it here.
+        // A car's own damage is `onBlast`'s, so only the bad guy's car needs it here.
         if (ctx.riding !== null) hitPlayer(30 * (1 - d / r) + 10);
-        else if (!ctx.driving) hitPlayer(45 * (1 - d / r) + 12);
       }
+      // And the buildings around it.
+      const col = opts.collapse;
+      if (col) for (const id of col.near(x, z, 3)) col.damage(id, 22, x, z);
+    },
+    pickBuilding: (tx, tz, fx, fz) => {
+      const col = opts.collapse;
+      if (!col) return null;
+      const ids = col.near(tx, tz, 40);
+      const ctx = lastCtx;
+      const mine = ctx ? col.at(ctx.player.x, ctx.player.z, 1) : -1;
+      const cands = ids.filter((id) => id !== mine).slice(0, 7);
+      if (!cands.length) return null;
+      // Usually finish off one it has already hurt; otherwise any of the nearest.
+      const hurt = cands.filter((id) => {
+        const i = col.info(id);
+        return i && i.hp < 110 + i.height * 1.6;
+      });
+      const id = hurt.length && Math.random() < 0.7 ? hurt[0] : cands[Math.floor(Math.random() * cands.length)];
+      const b = col.info(id)!;
+      // The point on its walls nearest the chopper, two thirds of the way up.
+      const px = THREE.MathUtils.clamp(fx, b.minX, b.maxX);
+      const pz = THREE.MathUtils.clamp(fz, b.minZ, b.maxZ);
+      return { id, x: px, y: Math.max(3, Math.min(b.height - 2, b.height * 0.62)), z: pz };
+    },
+    onLaser: (id, x, y, z, fx, fz) => {
+      crashFx.explode(x, y, z, 2.4, 0xff8a3a);
+      crashFx.debris(x, y, z, 18, 0x8a8f98, 12);
+      opts.boom?.(x, z);
+      if (fires.length < MAX_FIRES + 6) fires.push({ x, y, z, t: 0, life: 20, tree: false, fallen: true, nextSpread: 99 });
+      opts.collapse?.damage(id, 75, fx, fz);
+      // Debris rains on the street below.
+      opts.onBlast(x, z, Math.max(0, 8 - y * 0.3));
     },
     onCrash: (x, z) => {
       traffic.blast(x, z, 10, 18);
@@ -2250,6 +2291,11 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
       const bz = z - fz * 0.6;
       boom(bx, y + 1.4, bz, volatile ? 1.8 : 1.5);
       crashFx.debris(bx, y + 3, bz, 14, 0x8a8f98, 9);
+      {
+        const col = opts.collapse;
+        const id = col ? col.at(x, z, 2) : -1;
+        if (col && id >= 0) col.damage(id, volatile ? 60 : 40, bx - fx * 6, bz - fz * 6);
+      }
       crime(1.1);
       // The facade keeps burning: one fire at the hole and one up the wall.
       for (const h of [1.2, 4.5]) {
@@ -2527,8 +2573,6 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
         const up = chopper.aimPoint() !== null;
         if (up && !chopperWas && chopper.debug().state === "hunt") opts.onChopper?.("up");
         chopperWas = up;
-        hpQuiet += dt;
-        if (hpQuiet > 5 && playerHp < 100) playerHp = Math.min(100, playerHp + dt * 14);
       }
       if (hideoutBeacon) (hideoutBeacon.material as THREE.MeshBasicMaterial).opacity = 0.16 + Math.sin(clock * 2.5) * 0.08;
 
@@ -2567,8 +2611,6 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     debug() {
       return {
         heat,
-        hp: playerHp,
-        downs,
         chopper: chopper.debug(),
         cops: cops.map((c) => ({ x: c.x, z: c.z, hp: c.hp, target: c.dead > 0 ? "wreck" : c.target, speed: c.speed })),
         fires: fires.length,
@@ -2601,6 +2643,9 @@ export function createMayhem(opts: MayhemOpts): Mayhem {
     },
     spawnChopper(x, z) {
       chopper.spawnAt(x, z);
+    },
+    chopperLaser() {
+      chopper.fireLaser();
     },
     hurtChopper(dmg) {
       if (chopper.hurt(dmg)) opts.onChopper?.("down");

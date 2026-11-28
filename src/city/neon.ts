@@ -153,6 +153,8 @@ export interface NeonSigns {
   /** 0 (dry) to 1 (soaked): how strongly the signs show in the street. */
   setWet(wet: number): void;
   update(dt: number): void;
+  /** Take down every sign on (and every streak under) this footprint: its building fell over. */
+  hideIn(minX: number, maxX: number, minZ: number, maxZ: number): void;
   dispose(): void;
 }
 
@@ -349,7 +351,30 @@ export function buildNeon(opts: { footprints: Footprint[]; seed: string; lowDeta
 
   let t = 0;
   let nextBlink = 0;
+  /** Collapse every quad whose centre is inside the box (plus a margin) to a point. */
+  const collapseIn = (mesh: THREE.Mesh, minX: number, maxX: number, minZ: number, maxZ: number, pad: number) => {
+    const pos = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | undefined;
+    if (!pos) return;
+    let changed = false;
+    for (let q = 0; q < pos.count / 4; q++) {
+      let x = 0;
+      let z = 0;
+      for (let k = 0; k < 4; k++) {
+        x += pos.getX(q * 4 + k) / 4;
+        z += pos.getZ(q * 4 + k) / 4;
+      }
+      if (x < minX - pad || x > maxX + pad || z < minZ - pad || z > maxZ + pad) continue;
+      for (let k = 1; k < 4; k++) pos.setXYZ(q * 4 + k, pos.getX(q * 4), pos.getY(q * 4), pos.getZ(q * 4));
+      changed = true;
+    }
+    if (changed) pos.needsUpdate = true;
+  };
   return {
+    hideIn(minX, maxX, minZ, maxZ) {
+      collapseIn(steadyMesh, minX, maxX, minZ, maxZ, 2.5);
+      collapseIn(flickerMesh, minX, maxX, minZ, maxZ, 2.5);
+      collapseIn(poolMesh, minX, maxX, minZ, maxZ, 9);
+    },
     group,
     count,
     setDay(d) {
