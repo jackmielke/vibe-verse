@@ -1,7 +1,239 @@
 {
-  "generated_at": "2026-11-27T17:23:00.768Z",
+  "generated_at": "2026-11-28T01:51:06.802Z",
   "window_days": 45,
   "commits": [
+    {
+      "sha": "219751db",
+      "date": "2026-11-28",
+      "subject": "Vibe Kart: Prism Skyway, the rainbow road in the sky above Vibe Summit",
+      "lede": "Jack wanted the rainbow road to play with Vibe Kart's graphics and feel, reusing the snowy mountain. Prism Skyway is now a second Vibe Kart course (src/kart/rainbow) that publishes the same TrackService, so physics, AI, items, camera and post run unchanged. The Vibe Summit heightfield sits below with its peak under the middle of the lap.",
+      "places": [
+        "Vibe Kart"
+      ],
+      "files": 17
+    },
+    {
+      "sha": "21f2476a",
+      "date": "2026-11-28",
+      "subject": "Vibe City: chopper laser topples buildings, no chopper deaths, phone pursuit strip",
+      "lede": "At five stars the police chopper now charges a green laser and fires it at buildings near you. Buildings have health (src/city/collapse.ts): the laser, rockets and blown facades wear it down, and at zero the real building (its own vertices in the merged facade and roof meshes, and its rooftop instances) swings over its base edge, smashes whatever stands in its path (which can send that one over too, a chain), lands i",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 9
+    },
+    {
+      "sha": "5c9556c2",
+      "date": "2026-11-28",
+      "subject": "Stamp VibeQuest's card date",
+      "lede": "Hand-stamped: the clone is shallow and npm run stamp refuses to write in one.",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "dd259097",
+      "date": "2026-11-28",
+      "subject": "Add VibeQuest: Jack's sky island platformer and boss rush as its own world",
+      "lede": "Ports github.com/jackmielke/VibeQuest into /vibequest (also /vibe-quest, /quest) with a registry entry, card art and a What's New line. All nine modes come over: Classic, Zombie, Candy Run, Boss Rush, the duel, 2P couch fighter, both co-op boss fights, the online fighter by room link, and the hangout lobby.",
+      "places": [],
+      "files": 55
+    },
+    {
+      "sha": "37ca360e",
+      "date": "2026-11-27",
+      "subject": "Five more gameplay clips for world cards: trek, Beck Road, Agentocracy, San Palmas, Drop Zero",
+      "lede": "New film plans: San Palmas drops you over the city in a wingsuit, Drop Zero and Splash Royale skip to the live match and take the pointer, Flight 209 tries the cockpit approach (still too dark to keep). --seconds override fixed.",
+      "places": [],
+      "files": 7
+    },
+    {
+      "sha": "3602d1c8",
+      "date": "2026-11-27",
+      "subject": "Vibe City: police chopper at five stars, camera mode toggle",
+      "lede": "Five stars now brings a police helicopter (src/city/chopper.ts) that circles you with a searchlight, fires door-gun bursts and rockets, and can take you down: a new player health bar, and at zero you wake up outside the police station with the heat cleared. Buildings give cover, and it can be shot down with the assisted aim; another comes 25 s later if you stay at five stars.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 8
+    },
+    {
+      "sha": "73a6d079",
+      "date": "2026-11-27",
+      "subject": "Moving cards for Run Vibey Run, House Rules and Dipsea",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNTY9fRj1QgGxyPc61a",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "8169639f",
+      "date": "2026-11-27",
+      "subject": "Wizard: walk up to him instead of an always-on button",
+      "lede": "The 🧙 pill sat on screen at all times and crowded phones next to the weapon buttons. Now a 'Talk to the Wizard' prompt appears only within 6 m of him, and 🧙 Wizard lives in the world menu (the ⋯ on phones). Y still opens him on a keyboard.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "dcc88f57",
+      "date": "2026-11-27",
+      "subject": "Sky Sprint: a Quit / Shoes off button on the sprint chip",
+      "lede": "Jack could not find a way to cancel a run. The chip at the top of the screen now has a button (tap or click) that ends the run, lets go of the wall and takes the sticky shoes off.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 3
+    },
+    {
+      "sha": "ae107e35",
+      "date": "2026-11-27",
+      "subject": "Moving world cards: filmed gameplay loops for Vibe City and 12 more",
+      "lede": "world-film.mjs freezes the page clock and plays each world frame by frame (keys held, camera swung, test hooks), so even worlds that draw two frames a second here come out as smooth 24 fps MP4 loops. motion.ts picks up every src/assets/worlds/*.mp4 by name; cards play them on hover, or on a phone when the card is in the middle of the screen. film-library.mjs builds a shareable folder with MP4, GIF and a gallery page.",
+      "places": [],
+      "files": 24
+    },
+    {
+      "sha": "4a2a3201",
+      "date": "2026-11-27",
+      "subject": "Stamp Vibe Hoops",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXHN2PaU6qCQ1Y5QFt",
+      "places": [],
+      "files": 2
+    },
+    {
+      "sha": "1dedfa9a",
+      "date": "2026-11-27",
+      "subject": "Vibe Hoops: replays filmed from the floor, and a How to play card",
+      "lede": "The instant replay camera stood behind the baseline, inside the front rows and ad boards, so replays came out black from an odd angle. Dunks now replay low from the corner, jumpers from the TV sideline, always inside the lines. The title screen has How to play, and every timeout shows the controls for keyboard, couch, phone and gamepad.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "98090191",
+      "date": "2026-11-27",
+      "subject": "Vibe Island: Vibe Links, six holes of mini golf on a floating green",
+      "lede": "A green off the island's east rim, over a rope bridge behind Ninja's Palace. Six holes with names and pars: Warm Up (a speed bump), Dogleg, Windmill (turning sails block the gap), Bank Shot, Volcano (cup on the summit of a height field) and Bumper Bash (kicking bumpers). E at a tee starts the round from there; A/D aims, hold W or the PUTT button and let go. 2D ball physics on the green's height field with wall bounce",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "cee8e31e",
+      "date": "2026-11-27",
+      "subject": "Vibe Cup: other matches wait for yours, then replay every goal",
+      "lede": "While you play your Cup match, the round's computer matches are hidden and paused. At your final whistle they are played out at once, filming each goal (4 s before, 2 s after) as snapshots in memory. The hub offers a highlights reel, per match or all together; each replay is deleted once it has played.",
+      "places": [],
+      "files": 5
+    },
+    {
+      "sha": "e0fc9ae6",
+      "date": "2026-11-27",
+      "subject": "Vibe City: the Sky Sprint, sticky shoes up the Empire State",
+      "lede": "Gail lends climbing shoes at the tower's south doors. With them on, W against any face sticks and climbs (Shift faster, A/D sideways, S down, Space kicks off); each setback's top hauls you onto the ledge, and flush faces (crown to mast) carry straight on. A timed Sky Sprint runs from the first grip to a gold flag on the mast at 153 m, with splits per setback, 13 coin orbs on the faces, and a void for jetpacks or touc",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 7
+    },
+    {
+      "sha": "6e8066dd",
+      "date": "2026-11-27",
+      "subject": "Kart GP: same 400 a day winnings ceiling as Vinnie's races, course shows only during a race",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNWFk1gp3dFfBiZUw1D",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 2
+    },
+    {
+      "sha": "250ad5bb",
+      "date": "2026-11-27",
+      "subject": "Vibe City: Vinnie's Street Races with Vibe coin bets",
+      "lede": "Vinnie Two-Tires takes bets (10 to 100, or just for fun) on the west avenue by the police station. Two laps of a 13-gate loop round the big block, under the Eiffel and past the Empire State, against three rivals who run the course as distance along the line with corner braking and a light rubber band. Gates must be taken in order. Win pays triple, second refunds, with a 400 a day net winnings ceiling per device. No C",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "d9ac6b38",
+      "date": "2026-11-27",
+      "subject": "Vibe City: the Vibe Kart GP, three laps of city streets with a stake",
+      "lede": "A kiosk on the plaza's east edge opens the race board: race free (15 for a win) or stake 10 to 100 Vibey Coins, paid three times over for a win and returned for second. The red plaza kart is put on the grid and held through a 3, 2, 1 countdown, then it is three laps of a loop through real traffic past the Empire State and the police station, through twelve gates in order with a beam of light over the next one. Mad Mo",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
+    {
+      "sha": "1988a39c",
+      "date": "2026-11-27",
+      "subject": "Vibe Summit: rivals on the Skyway, trees you can hit, birds",
+      "lede": "Five computer racers line up behind you on the Prism Skyway, each with its own lane and pace, easing through the bends and bumping you when you share a lane; the HUD shows your place and the finish card says where you came. Skiing or boarding into a tree at speed is now a wipeout, and walking into one stops you. Flocks of birds wheel over the village, the forest hill and two of the thermals.",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "7a743e11",
+      "date": "2026-11-27",
+      "subject": "Vibe City side quests: Granny's lost pets and marina fishing",
+      "lede": "Granny Mabel waits on a bench by the plaza. Her cat, pug and bunny run off to one of six spots; a hot and cold tracker with an arrow finds them, they bolt if you run at them, and they trot home behind you. Each first return pays a hat you cannot buy (feathered fedora, captain's cap, wizard hat), worn through the same head mount as shop hats and swappable in the new Quests menu.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 10
+    },
+    {
+      "sha": "b181788e",
+      "date": "2026-11-27",
+      "subject": "Vibe City: sunsets, aurora, neon, wet streets, birds, talkable locals, bridge to The Rock",
+      "lede": "- Sky button cycles Day, Sunset (sun over the Pacific), Night, Aurora (src/city/sky.ts); shared lobby setting keeps working with old clients. - Neon signs on street fronts from district footprints (src/city/neon.ts), and wet streets that soak in rain and dry over ~2.5 min (src/city/wet.ts). - Gulls and plaza pigeons that scatter (src/city/birds.ts); fuller, varied trees. - Ten pedestrians with routines; T or Talk ope",
+      "places": [
+        "Vibe Island",
+        "the machinery underneath"
+      ],
+      "files": 17
+    },
+    {
+      "sha": "26d470b2",
+      "date": "2026-11-27",
+      "subject": "The Wizard of Vibe Island: wish for things and everybody sees them",
+      "lede": "A Mage on a rune circle on the island lawn (Y or the Wizard pill anywhere on /city) turns typed or spoken wishes into things in the world. A wish becomes data, never code: primitives with a little motion, sanitised on both sides by supabase/functions/vibe-wizard/spec.ts. Grants are rows in wizard_edits, folded in order and pushed to every browser through postgres_changes, so the shared island updates live and survive",
+      "places": [
+        "Vibe Island",
+        "the machinery underneath"
+      ],
+      "files": 11
+    },
+    {
+      "sha": "4c76f09b",
+      "date": "2026-11-27",
+      "subject": "Stamp Vibe Summit's date on its card",
+      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNXkpX8zsL7JbLKv7KD",
+      "places": [],
+      "files": 3
+    },
+    {
+      "sha": "86ad7815",
+      "date": "2026-11-27",
+      "subject": "Add Vibe Summit: a 5,000 ft mountain with four ways down and a rainbow road",
+      "lede": "/summit is a new world: a snowy mountain whose deck is 5,000 ft and whose village is 300 ft, with a forest hill at its feet. From the summit you pick skis, a snowboard (spins off five kickers on the Main Run), a wingsuit (thirteen rings on a glide line, Space pulls the chute) or a paraglider (thermals you circle to climb). A gondola runs village to summit.",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 13
+    },
+    {
+      "sha": "8cf84ac8",
+      "date": "2026-11-27",
+      "subject": "Vibe City: the Vibe Arcade, a neon hall you walk in and play the table games",
+      "lede": "A building on the block east of the plaza (cell 5,4) with a real thing to walk up to for each game: a pool table for 8-Ball Club, a basketball machine for Vibe Hoops, a foosball table for Vibe Cup, a card table for Solitaire, and upright cabinets for Mort Maze, Haymaker and 2048. E (or the pill) opens the game's own route over the city in a cabinet frame with ?embed=1, so there is one copy of each game. The city stop",
+      "places": [
+        "Vibe Island"
+      ],
+      "files": 5
+    },
     {
       "sha": "ea8b4b68",
       "date": "2026-11-27",
@@ -817,120 +1049,6 @@
       "lede": "Adds the project north star (.lovable/north-star/north-star.md).",
       "places": [],
       "files": 1
-    },
-    {
-      "sha": "6479738c",
-      "date": "2026-11-25",
-      "subject": "Add rideable sky mounts, aerial tag, and fix multiplayer identities",
-      "lede": "",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 11
-    },
-    {
-      "sha": "1286e73b",
-      "date": "2026-11-25",
-      "subject": "Add Pegasus flying over Vibe Island; fix typecheck errors",
-      "lede": "",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 2
-    },
-    {
-      "sha": "2c812ab4",
-      "date": "2026-11-25",
-      "subject": "Updated session expiry and auth",
-      "lede": "Co-authored-by: jackmielke <95660965+jackmielke@users.noreply.github.com>",
-      "places": [
-        "Vibe Island"
-      ],
-      "files": 2
-    },
-    {
-      "sha": "9a2c079c",
-      "date": "2026-11-25",
-      "subject": "Work in progress",
-      "lede": "",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "74e199a7",
-      "date": "2026-11-22",
-      "subject": "Free Fall: draw the water and the weapon effects, skip the night shadow pass, open in daylight",
-      "lede": "The renderer runs with a logarithmic depth buffer, and five custom shaders never included three's logdepthbuf chunks. They wrote ordinary perspective depth (about 0.999 at any useful distance) against a scene writing log depth, so they lost the depth test to everything:",
-      "places": [
-        "San Francisco"
-      ],
-      "files": 8
-    },
-    {
-      "sha": "8eb38981",
-      "date": "2026-11-22",
-      "subject": "Stamp Fog City's date on its card",
-      "lede": "Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNVi6kzvkjDEKmkx21V",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "3b479f42",
-      "date": "2026-11-22",
-      "subject": "Fog City: a new open-world San Francisco, built from scratch to run fast",
-      "lede": "/fogcity is a separate game from /sf, written for frame rate first: plain three.js, no physics engine, no post-processing, no downloaded textures, and about thirty draw calls for the whole city.",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "09564359",
-      "date": "2026-11-22",
-      "subject": "Stamp San Francisco's date on its card",
-      "lede": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_012b7fNVi6kzvkjDEKmkx21V",
-      "places": [],
-      "files": 2
-    },
-    {
-      "sha": "7e6ae7b4",
-      "date": "2026-11-22",
-      "subject": "San Francisco: fix the white roofs, relight for hard sun and a real sunset, /free-fall opens the game",
-      "lede": "Every flat roof on every corniced building was drawn white: the cornice band is a solid slab the size of the building and its lid sat on or above the roof deck. The band now has no lid, only the overhanging ring.",
-      "places": [
-        "San Francisco"
-      ],
-      "files": 6
-    },
-    {
-      "sha": "d867b818",
-      "date": "2026-11-22",
-      "subject": "New favicon and app icon: the pixel V tile from the Arcade look",
-      "lede": "Jack picked option 1 from the coin and favicon sheet. Sky-blue tile, white pixel V, navy drop shadow on the larger sizes; strokes are two pixels wide so the V still reads in a 16 px browser tab. Regenerated every size index.html and the manifest point at, added a favicon.ico (baseAccount already asked for one), cache-busted the favicon links and moved theme-color to the Arcade blue. scripts/make-app-icon.py replaces ",
-      "places": [],
-      "files": 14
-    },
-    {
-      "sha": "12ffd439",
-      "date": "2026-11-18",
-      "subject": "Make Arcade the front page, with Sky and Postcard one click away",
-      "lede": "- / now renders the Arcade look. On desktop a small Look switcher in the corner flips to Sky or Postcard and remembers the choice; phones always get Arcade. ?look= previews one without saving it. - $VIBE shows market cap instead of price per coin in all three looks. - Arcade headings and cards use Fredoka (self-hosted) so the pixel font is kept for the wordmark and HUD labels only. - The 3D VibeVerse mark sits beside",
-      "places": [],
-      "files": 10
-    },
-    {
-      "sha": "e86beb98",
-      "date": "2026-11-18",
-      "subject": "Three cover-art directions for the front door, at /redesign",
-      "lede": "Jack's note: the homepage does not look like the VibeVerse cover (blue sky, floating islands, a white pixel wordmark, a serif \"What kind of adventure do you want today?\") and feels glitchy on first open. These are three working candidates for /, for him to choose between. The live homepage is untouched.",
-      "places": [],
-      "files": 14
-    },
-    {
-      "sha": "ce03095f",
-      "date": "2026-11-18",
-      "subject": "Show the $VIBE price to first-time visitors",
-      "lede": "The market chip had one source, the vibe-holdings edge function, and a first visit has no cached figure, so any miss on that one request left the chip reading \"$VIBE —\" for the whole visit. The function logs show far more browser preflights than POSTs, and the function returns price: null whenever its own GeckoTerminal read fails.",
-      "places": [],
-      "files": 2
     }
   ]
 }
