@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "12.2.3"
+    PostgrestVersion: "12.2.3 (519615d)"
   }
   public: {
     Tables: {
@@ -5681,6 +5681,139 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "wc_leaderboard"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      wizard_edits: {
+        Row: {
+          author: string | null
+          created_at: string
+          device_hash: string
+          id: number
+          model: string | null
+          ops: Json
+          prompt: string | null
+          reply: string | null
+          tier: string | null
+          undone: boolean
+          world_id: string
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          device_hash: string
+          id?: never
+          model?: string | null
+          ops?: Json
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          undone?: boolean
+          world_id: string
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          device_hash?: string
+          id?: never
+          model?: string | null
+          ops?: Json
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          undone?: boolean
+          world_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wizard_edits_world_id_fkey"
+            columns: ["world_id"]
+            isOneToOne: false
+            referencedRelation: "wizard_worlds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wizard_requests: {
+        Row: {
+          author: string | null
+          created_at: string
+          device_hash: string
+          id: number
+          model: string | null
+          ms: number | null
+          prompt: string | null
+          reply: string | null
+          tier: string | null
+          verdict: string | null
+          why: string | null
+          world_id: string | null
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          device_hash: string
+          id?: never
+          model?: string | null
+          ms?: number | null
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          verdict?: string | null
+          why?: string | null
+          world_id?: string | null
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          device_hash?: string
+          id?: never
+          model?: string | null
+          ms?: number | null
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          verdict?: string | null
+          why?: string | null
+          world_id?: string | null
+        }
+        Relationships: []
+      }
+      wizard_worlds: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_hash: string | null
+          owner_name: string | null
+          parent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          name: string
+          owner_hash?: string | null
+          owner_name?: string | null
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_hash?: string | null
+          owner_name?: string | null
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wizard_worlds_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "wizard_worlds"
+            referencedColumns: ["id"]
           },
         ]
       }
