@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { CagneyBossEngine, Difficulty } from '@/vibequest/lib/cagneyBossEngine';
 import { Character } from '@/vibequest/useCharacters';
+import { TwoPlayerTouchPad, TouchControlsGuide, RotateHint, useIsTouch, usePortrait } from '@/vibequest/components/TwoPlayerTouchPad';
 import { toast } from 'sonner';
 import landingBackground from '@/assets/vibequest/landing-background.webp';
 import projectileSprite from '@/assets/vibequest/projectile.webp';
@@ -50,6 +51,8 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
   const engineRef = useRef<CagneyBossEngine | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
+  const isTouch = useIsTouch();
+  const portrait = usePortrait();
   const [isGameOver, setIsGameOver] = useState(false);
   const [isVictory, setIsVictory] = useState(false);
   const [score, setScore] = useState(0);
@@ -141,22 +144,22 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
   if (!selectedDifficulty) {
     return (
       <div 
-        className="fixed inset-0 flex items-center justify-center"
+        className="fixed inset-0 flex overflow-y-auto p-3"
         style={{ 
           backgroundImage: `url(${landingBackground})`, 
           backgroundSize: 'cover',
           backgroundPosition: 'center'
         }}
       >
-        <div className="bg-black/85 backdrop-blur-xl rounded-3xl p-8 text-center space-y-8 max-w-3xl mx-4 border border-white/10">
+        <div className="m-auto bg-black/85 backdrop-blur-xl rounded-3xl p-4 md:p-8 text-center space-y-4 md:space-y-8 max-w-3xl border border-white/10">
           <div className="space-y-2">
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-pink-400 via-red-400 to-yellow-400 bg-clip-text text-transparent animate-pulse">
+            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-pink-400 via-red-400 to-yellow-400 bg-clip-text text-transparent animate-pulse">
               🌸 CAGNEY CARNATION 🌸
             </h1>
             <p className="text-xl text-white/80">Choose Your Challenge</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-2 md:gap-4">
             {(['easy', 'medium', 'hard'] as Difficulty[]).map((difficulty) => {
               const info = DIFFICULTY_INFO[difficulty];
               const isHovered = hoveredDifficulty === difficulty;
@@ -168,7 +171,7 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
                   onMouseEnter={() => setHoveredDifficulty(difficulty)}
                   onMouseLeave={() => setHoveredDifficulty(null)}
                   className={`
-                    relative overflow-hidden rounded-2xl p-6 transition-all duration-300 border-2 
+                    relative overflow-hidden rounded-2xl p-3 md:p-6 transition-all duration-300 border-2 
                     bg-gradient-to-b ${info.bgColor}
                     ${isHovered ? 'scale-105 border-white/50 shadow-2xl' : 'border-white/20'}
                   `}
@@ -180,14 +183,14 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
                     }}
                   />
                   
-                  <div className="relative z-10 space-y-4">
-                    <div className={`text-6xl transition-transform duration-300 ${isHovered ? 'scale-125' : ''}`}>
+                  <div className="relative z-10 space-y-2 md:space-y-4">
+                    <div className={`text-4xl md:text-6xl transition-transform duration-300 ${isHovered ? 'scale-125' : ''}`}>
                       {info.emoji}
                     </div>
-                    <div className={`text-2xl font-black ${info.color}`}>
+                    <div className={`text-lg md:text-2xl font-black ${info.color}`}>
                       {info.name}
                     </div>
-                    <p className="text-white/70 text-sm min-h-[40px]">
+                    <p className="text-white/70 text-xs md:text-sm md:min-h-[40px]">
                       {info.description}
                     </p>
                     <div className="space-y-1">
@@ -227,28 +230,29 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
         width={900} 
         height={550} 
         className="border-4 border-pink-500 rounded-lg"
+        style={{ maxWidth: '100vw', maxHeight: '100dvh' }}
       />
       
       {showMenu && (
         <div 
-          className="absolute inset-0 flex items-center justify-center"
+          className="absolute inset-0 flex overflow-y-auto p-3"
           style={{ 
             backgroundImage: `url(${landingBackground})`, 
             backgroundSize: 'cover',
             backgroundPosition: 'center'
           }}
         >
-          <div className="bg-black/80 backdrop-blur-xl rounded-3xl p-8 text-center space-y-6 max-w-lg border border-white/10">
+          <div className="m-auto bg-black/80 backdrop-blur-xl rounded-3xl p-4 md:p-8 text-center space-y-3 md:space-y-6 max-w-lg border border-white/10">
             {isGameOver && (
               <>
-                <h1 className="text-5xl font-bold text-red-500">GAME OVER</h1>
+                <h1 className="text-3xl md:text-5xl font-bold text-red-500">GAME OVER</h1>
                 <p className="text-2xl text-white">Score: {score}</p>
                 <p className="text-lg text-white/70">Cagney Carnation wins!</p>
               </>
             )}
             {isVictory && (
               <>
-                <h1 className="text-5xl font-bold text-yellow-400">VICTORY!</h1>
+                <h1 className="text-3xl md:text-5xl font-bold text-yellow-400">VICTORY!</h1>
                 <p className="text-2xl text-white">Cagney Carnation defeated!</p>
                 <p className="text-xl text-white">Final Score: {score}</p>
                 {selectedDifficulty === 'hard' && (
@@ -258,12 +262,15 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
             )}
             {!isGameOver && !isVictory && (
               <>
-                <h1 className="text-5xl font-bold text-pink-400">🌸 CAGNEY CARNATION 🌸</h1>
+                <h1 className="text-3xl md:text-5xl font-bold text-pink-400">🌸 CAGNEY CARNATION 🌸</h1>
                 <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r ${difficultyInfo.bgColor}`}>
                   <span className="text-2xl">{difficultyInfo.emoji}</span>
                   <span className={`font-bold ${difficultyInfo.color}`}>{difficultyInfo.name} MODE</span>
                 </div>
                 <p className="text-lg text-white/80">Co-op Boss Fight!</p>
+                {isTouch ? (
+                  <TouchControlsGuide extras={[]} />
+                ) : (
                 <div className="grid grid-cols-2 gap-4 text-left text-white/70 text-sm">
                   <div className="bg-yellow-500/20 rounded-xl p-3">
                     <p className="text-yellow-400 font-bold mb-2">Player 1</p>
@@ -278,6 +285,7 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
                     <p>💥 Enter to shoot</p>
                   </div>
                 </div>
+                )}
                 <div className="text-sm text-white/60 space-y-1">
                   <p>🌺 Use platforms to dodge attacks!</p>
                   <p>⚠️ Watch for root warnings in Phase 2!</p>
@@ -321,6 +329,8 @@ export const CagneyBossRush = ({ player1Character, player2Character, onBack }: C
           </div>
         </div>
       )}
+      {isTouch && !showMenu && <TwoPlayerTouchPad extras={[]} />}
+      {isTouch && portrait && showMenu && <RotateHint />}
     </div>
   );
 };

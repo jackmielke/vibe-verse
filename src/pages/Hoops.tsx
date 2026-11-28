@@ -18,6 +18,7 @@
  * `auto(on)`, `input(ctrl, input)` and `snapshot()`, because SwiftShader draws
  * a frame a second and `page.screenshot()` cannot see a WebGL canvas there.
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type PointerEvent as RPointerEvent } from "react";
 import { Link } from "react-router-dom";
 import { Copy, Pause, Play, Share2, Volume2, VolumeX } from "lucide-react";
@@ -490,6 +491,7 @@ export default function Hoops() {
         const best = mvp(g);
         setResult({ score: [g.score[0], g.score[1]], winner: fin.winner, stats: g.stats, mvp: { name: best.who.id === "me" ? meRef.current.label : best.who.name, pts: best.pts, team: best.team }, mine: mineTeams });
         if (room) netRef.current.ended = room.match?.k ?? 0;
+        reportArcadeScore("hoops", g.score[mineTeams[0]] ?? 0, mineTeams[0] === fin.winner);
         if (modeRef.current === "cpu") {
           const won = mineTeams[0] === fin.winner;
           setRecord((r) => {

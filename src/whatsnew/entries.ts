@@ -38,6 +38,26 @@ export interface WhatsNewEntry {
 
 export const ENTRIES: WhatsNewEntry[] = [
   {
+    id: "2026-11-28-vibequest-two-on-one-phone",
+    date: "2026-11-28",
+    emoji: "📱",
+    title: "VibeQuest: two players on one phone",
+    body: "2P Fighter, Co-op Goopy and Co-op Cagney now play with two people on one phone. Turn it sideways and each player gets their own buttons on their side of the screen: move, jump and shoot, plus dash and shield in the Fighter and duck against Goopy.",
+    tag: "update",
+    route: "/vibequest",
+    world: "VibeQuest",
+  },
+  {
+    id: "2026-11-28-vibe-arcade-neon",
+    date: "2026-11-28",
+    emoji: "🕹️",
+    title: "The Vibe Arcade goes neon, with a high score wall",
+    body: "The arcade on Vibe Island is now a late night synthwave hall: sunset murals, a glowing floor, a mirror ball and DJ Vibey on the decks. Every machine plays its game on screen, and stepping up dives you right into it. Every run pays tickets for the Prize Counter, and a top score lets you sign the High Score wall with your initials.",
+    tag: "new",
+    route: "/city",
+    world: "Vibe Island",
+  },
+  {
     id: "2026-11-28-the-monolith",
     date: "2026-11-28",
     emoji: "◼️",

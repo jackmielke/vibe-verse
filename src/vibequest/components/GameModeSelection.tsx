@@ -21,7 +21,7 @@ export const GameModeSelection = ({ onSelectMode, onBack }: GameModeSelectionPro
     { id: 'zombie' as GameMode, emoji: '🧟', title: 'Zombie Mode', description: 'Survive the undead', gradient: 'from-purple-600 to-red-600', type: 'single' },
     { id: 'candy-run' as GameMode, emoji: '🍬', title: 'Candy Run', description: 'Escape spooky skeletons', gradient: 'from-pink-500 to-purple-500', type: 'single' },
     { id: 'boss-rush' as GameMode, emoji: '🥕', title: 'Boss Rush', description: 'Defeat the Root Pack!', gradient: 'from-orange-500 to-red-600', type: 'single' },
-    { id: 'star-wars-shooter' as GameMode, emoji: '🗡️', title: 'Vader Duel', description: 'Blast Darth Vader — dodge the shockwave!', gradient: 'from-slate-900 to-red-700', type: 'single' },
+    { id: 'star-wars-shooter' as GameMode, emoji: '🗡️', title: 'Vader Duel', description: 'Blast Darth Vader, dodge the shockwave!', gradient: 'from-slate-900 to-red-700', type: 'single' },
     { id: 'multiplayer-fighter' as GameMode, emoji: '⚔️', title: '2P Fighter', description: 'Local multiplayer battle!', gradient: 'from-cyan-500 to-orange-500', type: 'multiplayer' },
     { id: 'multiplayer-boss-rush' as GameMode, emoji: '🫧', title: 'Co-op Goopy', description: 'Team up vs Goopy Le Grande!', gradient: 'from-blue-500 to-cyan-400', type: 'multiplayer' },
     { id: 'cagney-boss-rush' as GameMode, emoji: '🌸', title: 'Co-op Cagney', description: 'Team up vs Cagney Carnation!', gradient: 'from-pink-500 to-red-400', type: 'multiplayer' },

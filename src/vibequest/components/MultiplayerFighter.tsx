@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MultiplayerFighterEngine } from '@/vibequest/lib/multiplayerFighterEngine';
 import { Character } from '@/vibequest/useCharacters';
+import { TwoPlayerTouchPad, TouchControlsGuide, RotateHint, useIsTouch, usePortrait } from '@/vibequest/components/TwoPlayerTouchPad';
 
 interface MultiplayerFighterProps {
   player1Character: Character;
@@ -17,17 +18,17 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
   const [player1Score, setPlayer1Score] = useState(0);
   const [player2Score, setPlayer2Score] = useState(0);
   const [winner, setWinner] = useState<1 | 2 | null>(null);
+  const isTouch = useIsTouch();
+  const portrait = usePortrait();
 
   useEffect(() => {
     if (!canvasRef.current) return;
 
     const canvas = canvasRef.current;
-    const resizeCanvas = () => {
-      canvas.width = Math.min(1000, window.innerWidth - 40);
-      canvas.height = 600;
-    };
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    // A fixed arena, scaled to fit by CSS, so a phone gets the same fight
+    // (and the same platforms) as a laptop instead of a squeezed one.
+    canvas.width = 1000;
+    canvas.height = 600;
 
     const game = new MultiplayerFighterEngine(canvas, {
       onHealthUpdate: (p1Health, p2Health) => {
@@ -55,9 +56,12 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
 
     return () => {
       game.dispose();
-      window.removeEventListener('resize', resizeCanvas);
     };
   }, [player1Character, player2Character]);
+
+  useEffect(() => {
+    if (gameEngineRef.current) gameEngineRef.current.showKeyHints = !isTouch;
+  }, [isTouch]);
 
   const handleStart = () => {
     setIsStarted(true);
@@ -78,7 +82,7 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#1a1a2e] to-[#16213e] overflow-hidden">
       {/* Character display */}
-      <div className="absolute top-4 left-24 flex items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-2">
+      <div className="absolute top-4 left-24 hidden sm:flex [@media(max-height:500px)]:hidden items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-2">
         <img src={player1Character.image_url} alt={player1Character.name} className="w-12 h-12 object-contain rounded" />
         <div>
           <p className="text-xs text-cyan-400">Player 1</p>
@@ -86,7 +90,7 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 flex items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-2">
+      <div className="absolute top-4 right-4 hidden sm:flex [@media(max-height:500px)]:hidden items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-2">
         <div className="text-right">
           <p className="text-xs text-orange-400">Player 2</p>
           <p className="text-white font-bold">{player2Character.name}</p>
@@ -98,29 +102,33 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
       <canvas
         ref={canvasRef}
         className="border-4 border-white/20 rounded-lg shadow-2xl"
-        style={{ maxWidth: '100%' }}
+        style={{ maxWidth: '100vw', maxHeight: '100dvh' }}
       />
 
       {/* Start overlay */}
       {!isStarted && !winner && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 z-20">
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-4 text-center">
+        <div className="absolute inset-0 flex overflow-y-auto bg-black/70 z-20 p-4">
+          <div className="m-auto flex flex-col items-center">
+          <h1 className="text-3xl md:text-7xl font-bold text-white mb-2 md:mb-4 text-center">
             ⚔️ Fighter Arena ⚔️
           </h1>
-          <p className="text-xl text-white/80 mb-2">Best of 3 rounds!</p>
-          <div className="flex gap-8 mb-6">
+          <p className="text-base md:text-xl text-white/80 mb-2">Best of 3 rounds!</p>
+          <div className="flex gap-8 mb-3 md:mb-6">
             <div className="text-center">
-              <img src={player1Character.image_url} alt={player1Character.name} className="w-24 h-24 object-contain mx-auto mb-2" />
+              <img src={player1Character.image_url} alt={player1Character.name} className="w-14 h-14 md:w-24 md:h-24 object-contain mx-auto mb-1 md:mb-2" />
               <p className="text-cyan-400 font-bold">{player1Character.name}</p>
             </div>
             <div className="text-4xl text-white self-center">VS</div>
             <div className="text-center">
-              <img src={player2Character.image_url} alt={player2Character.name} className="w-24 h-24 object-contain mx-auto mb-2" />
+              <img src={player2Character.image_url} alt={player2Character.name} className="w-14 h-14 md:w-24 md:h-24 object-contain mx-auto mb-1 md:mb-2" />
               <p className="text-orange-400 font-bold">{player2Character.name}</p>
             </div>
           </div>
           
           {/* Controls guide */}
+          {isTouch ? (
+            <div className="mb-4 max-w-xl"><TouchControlsGuide extras={['dash', 'shield']} /></div>
+          ) : (
           <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
             <div className="bg-cyan-500/20 border border-cyan-400/50 rounded-lg p-4">
               <p className="text-cyan-400 font-bold mb-2 text-center">Player 1 Controls</p>
@@ -141,6 +149,7 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
               </div>
             </div>
           </div>
+          )}
 
           <button
             onClick={handleStart}
@@ -154,16 +163,20 @@ export const MultiplayerFighter = ({ player1Character, player2Character, onBack 
           >
             ← Back to Menu
           </button>
+          </div>
         </div>
       )}
 
+      {isTouch && isStarted && !winner && <TwoPlayerTouchPad extras={['dash', 'shield']} />}
+      {isTouch && portrait && !isStarted && <RotateHint />}
+
       {/* Winner overlay */}
       {winner && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-4 animate-pulse">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 p-4 text-center">
+          <h1 className="text-4xl md:text-7xl font-bold text-white mb-4 animate-pulse">
             🏆 Player {winner} Wins! 🏆
           </h1>
-          <p className="text-2xl text-white/80 mb-8">
+          <p className="text-xl md:text-2xl text-white/80 mb-6 md:mb-8">
             Final Score: {player1Score} - {player2Score}
           </p>
           <div className="flex gap-4">

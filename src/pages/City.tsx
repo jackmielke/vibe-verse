@@ -99,6 +99,9 @@ const GUN_SLOTS: readonly GunKind[] = ["glock", "water", "paint", "blaster", "ri
 import { buildHideouts } from "@/city/hideouts";
 import { buildArcade, ARCADE_RESERVE, type ArcadeStation } from "@/city/arcade";
 import { ArcadeCabinet, type CabinetGame } from "@/components/city/ArcadeCabinet";
+import { PrizeCounter } from "@/components/city/PrizeCounter";
+import { fetchBoard, localBoard, type Board as ArcadeBoard } from "@/arcade/board";
+import { onTicketsChanged, ownedPrizes, tickets as arcadeTickets } from "@/arcade/tickets";
 import { buildKartRace, type RaceUi } from "@/city/kartRace";
 import { KartRaceHud } from "@/components/city/KartRaceHud";
 import { buildMiniGolf, type GolfUi, type MiniGolf } from "@/city/miniGolf";
@@ -1017,6 +1020,7 @@ export default function City() {
    * repeating the two constructors.
    */
   const ensureAudioRef = useRef<(() => void) | null>(null);
+  const arcadeMusicRef = useRef<{ setMuted(m: boolean): void } | null>(null);
   /** Dancers within earshot, including you — mirrored out for the HUD. */
   const [danceCrowd, setDanceCrowd] = useState(0);
   const ensureAudio = useCallback(() => {
@@ -1024,6 +1028,7 @@ export default function City() {
     if (!musicRef.current) musicRef.current = createCityMusic();
     soundsRef.current?.setMuted(mutedRef.current);
     musicRef.current?.setMuted(mutedRef.current);
+    arcadeMusicRef.current?.setMuted(mutedRef.current);
   }, []);
   ensureAudioRef.current = ensureAudio;
   const [charName, setCharName] = useState(initialCharacter);
@@ -1130,14 +1135,56 @@ export default function City() {
   const golfActRef = useRef<(() => boolean) | null>(null);
   const [golfUi, setGolfUi] = useState<GolfUi | null>(null);
   const [golfCardOpen, setGolfCardOpen] = useState(false);
+  // The arcade's live parts the page needs: the high score wall, the prize
+  // counter, the ticket count, whether you are inside, and the camera dive.
+  const [arcadeBoard, setArcadeBoard] = useState<ArcadeBoard | null>(null);
+  const [prizeOpen, setPrizeOpen] = useState(false);
+  const [inArcadeHall, setInArcadeHall] = useState(false);
+  const inArcadeHallRef = useRef(false);
+  const [ticketCount, setTicketCount] = useState(0);
+  const [wornHatId, setWornHatId] = useState<string | null>(null);
+  const arcadeDiveRef = useRef<((st: ArcadeStation, done: () => void) => void) | null>(null);
+  const arcadeEndDiveRef = useRef<(() => void) | null>(null);
+  const arcadeBoardSetRef = useRef<((b: ArcadeBoard) => void) | null>(null);
+  const divingRef = useRef(false);
+  const refreshArcadeBoard = useCallback(() => {
+    void fetchBoard().then((b) => {
+      setArcadeBoard(b);
+      arcadeBoardSetRef.current?.(b);
+    });
+  }, []);
+  useEffect(() => {
+    if (!inArcadeHall) return;
+    setTicketCount(arcadeTickets());
+    refreshArcadeBoard();
+    const t = window.setInterval(refreshArcadeBoard, 45_000);
+    return () => window.clearInterval(t);
+  }, [inArcadeHall, refreshArcadeBoard]);
   const closeCabinet = useCallback(() => {
     cabinetOpenRef.current = false;
+    divingRef.current = false;
+    arcadeEndDiveRef.current?.();
     setCabinetGame(null);
   }, []);
   const openCabinet = useCallback((st: ArcadeStation | null) => {
-    if (!st) return;
-    cabinetOpenRef.current = true;
-    setCabinetGame({ key: st.key, title: st.title, emoji: st.emoji, route: st.route, accent: st.accent });
+    if (!st || divingRef.current || cabinetOpenRef.current) return;
+    if (st.kind === "prizes") {
+      setWornHatId(wornQuestHat());
+      setPrizeOpen(true);
+      return;
+    }
+    const game = { key: st.key, title: st.title, emoji: st.emoji, route: st.route, accent: st.accent };
+    const show = () => {
+      divingRef.current = false;
+      cabinetOpenRef.current = true;
+      setCabinetGame(game);
+    };
+    // Dive the camera into the machine's screen first, then switch the
+    // cabinet on. Skipped for scripts, which want the cabinet now.
+    if (arcadeDiveRef.current && !navigator.webdriver) {
+      divingRef.current = true;
+      arcadeDiveRef.current(st, show);
+    } else show();
   }, []);
   const [nearTv, setNearTv] = useState(false);
   // VIBE FM boomboxes — walking up shows the tune-in prompt; walking
@@ -1870,6 +1917,20 @@ export default function City() {
     const arcade = buildArcade({ lowDetail: smallScreen });
     scene.add(arcade.group);
     district.boxes.push(...arcade.boxes);
+    arcade.setPrizes(ownedPrizes());
+    arcade.setBoard(localBoard());
+    arcade.music.setMuted(mutedRef.current);
+    arcadeMusicRef.current = arcade.music;
+    arcadeDiveRef.current = (st, done) => {
+      arcade.music.setLevel(0);
+      arcade.dive(st, camera, done);
+    };
+    arcadeEndDiveRef.current = () => arcade.endDive();
+    arcadeBoardSetRef.current = (b) => arcade.setBoard(b);
+    const offTickets = onTicketsChanged(() => {
+      arcade.setPrizes(ownedPrizes());
+      setTicketCount(arcadeTickets());
+    });
     // The Vibe Kart GP: gates on the streets, a kiosk on the plaza's east edge.
     const race = buildKartRace({ lowDetail: smallScreen });
     scene.add(race.group);
@@ -3146,8 +3207,27 @@ export default function City() {
     scene.add(club.group);
 
     // The way in: a lit disc beside the dance floor.
-    const stairMat = new THREE.MeshBasicMaterial({ color: 0xb46bff, toneMapped: false });
-    const stairPad = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24), stairMat);
+    // A violet ring round a dark well, so it reads as a way down rather than
+    // a flat purple blot on the arcade's doorstep.
+    const stairTex = (() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const x = c.getContext("2d")!;
+      const g = x.createRadialGradient(128, 128, 20, 128, 128, 128);
+      g.addColorStop(0, "#05030c");
+      g.addColorStop(0.62, "#1a0f33");
+      g.addColorStop(0.8, "#a66bff");
+      g.addColorStop(0.86, "#e2ccff");
+      g.addColorStop(0.92, "#a66bff");
+      g.addColorStop(1, "rgba(166,107,255,0)");
+      x.fillStyle = g;
+      x.fillRect(0, 0, 256, 256);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    const stairMat = new THREE.MeshBasicMaterial({ map: stairTex, transparent: true, toneMapped: false });
+    const stairPad = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), stairMat);
     stairPad.rotation.x = -Math.PI / 2;
     stairPad.position.set(22.5, 0.06, 4);
     scene.add(stairPad);
@@ -4773,6 +4853,9 @@ export default function City() {
         open: (key?: string) => openCabinet(key ? arcade.stations.find((s) => s.key === key) ?? null : arcadeStationRef.current),
         close: () => closeCabinet(),
         entrance: () => arcade.entrance.toArray(),
+        diving: () => divingRef.current,
+        tickets: () => arcadeTickets(),
+        prizes: (open = true) => setPrizeOpen(open),
       };
       (window as unknown as Record<string, unknown>).__cityQuests = {
         ui: () => quests.ui(),
@@ -8152,6 +8235,11 @@ export default function City() {
               arcadeStationRef.current = st;
               setArcadeStation(st);
             }
+            const inHall = arcade.contains(pp);
+            if (inHall !== inArcadeHallRef.current) {
+              inArcadeHallRef.current = inHall;
+              setInArcadeHall(inHall);
+            }
           }
           nearBadNow = null;
           if (ridingBad === null && drivingKartRef.current < 0 && !activeMountRef.current) {
@@ -8997,7 +9085,7 @@ export default function City() {
           const flyId = flyoverRef.current;
           flyActive = !enteredRef.current && !xrPresenting && !!flyId && flyId !== "classic";
           const flyShot = flyActive && flyId && flyId !== "classic" ? flyoverShot(flyId, now * 0.001) : null;
-          const shot = golfShot ?? flyShot ?? landmarks.cameraShot(camYaw, camPitch);
+          const shot = golfShot ?? flyShot ?? arcade.cameraShot(performance.now()) ?? landmarks.cameraShot(camYaw, camPitch);
           const fov = shot ? shot.fov : 60;
           if (shot) {
             camera.position.copy(shot.eye);
@@ -9316,6 +9404,7 @@ export default function City() {
       club.dispose();
       stairPad.geometry.dispose();
       stairMat.dispose();
+      stairTex.dispose();
       mp.dispose();
       mpRef.current = null;
       postWorldEvent("leave");
@@ -9355,6 +9444,11 @@ export default function City() {
       setWizardApi(null);
       mayhem.dispose();
       hideouts.dispose();
+      offTickets();
+      arcadeDiveRef.current = null;
+      arcadeEndDiveRef.current = null;
+      arcadeBoardSetRef.current = null;
+      arcadeMusicRef.current = null;
       arcade.dispose();
       race.dispose();
       golf.dispose();
@@ -10520,7 +10614,25 @@ export default function City() {
       )}
 
       <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
-      <ArcadeCabinet game={cabinetGame} onClose={closeCabinet} />
+      <ArcadeCabinet game={cabinetGame} onClose={closeCabinet} board={arcadeBoard} onBoardChanged={refreshArcadeBoard} />
+      {inArcadeHall && !cabinetGame && !prizeOpen && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-[calc(env(safe-area-inset-top)+64px)] z-[40] -translate-x-1/2 rounded-full border-2 border-[#ff3fd1] bg-[#0b0620]/80 px-4 py-1 font-mono text-sm font-black text-white shadow-[0_0_18px_#ff3fd188]"
+          data-arcade-tickets
+        >
+          🎟️ {ticketCount} <span className="font-sans text-[11px] font-semibold text-white/60">tickets</span>
+        </div>
+      )}
+      <PrizeCounter
+        open={prizeOpen}
+        onClose={() => setPrizeOpen(false)}
+        board={arcadeBoard}
+        wornHat={wornHatId}
+        onWear={(id) => {
+          questHatRef.current?.(id);
+          setWornHatId(id);
+        }}
+      />
       <MiniGolfHud
         ui={golfUi && (golfUi.playing || golfCardOpen) ? golfUi : null}
         touch={isTouch}
@@ -11390,7 +11502,7 @@ export default function City() {
               🏁 Race the Vibe Kart GP{isTouch ? "" : " (E)"}
             </button>
           )}
-          {arcadeStation && !cabinetGame && (
+          {arcadeStation && !cabinetGame && !prizeOpen && (
             <button
               onClick={(e) => {
                 openCabinet(arcadeStation);
@@ -11399,7 +11511,7 @@ export default function City() {
               className="glass-panel rounded-full px-5 py-2.5 text-sm text-white border-2 backdrop-blur-md transition-colors hover:bg-white/10"
               style={{ borderColor: arcadeStation.accent, boxShadow: `0 0 24px ${arcadeStation.accent}88`, background: "rgba(10,6,24,0.55)" }}
             >
-              {arcadeStation.emoji} Play {arcadeStation.title}{isTouch ? "" : " (E)"}
+              {arcadeStation.emoji} {arcadeStation.kind === "prizes" ? `Prize Counter, ${ticketCount} tickets` : `Play ${arcadeStation.title}`}{isTouch ? "" : " (E)"}
             </button>
           )}
           {nearArcade && !arcadeOpen && (

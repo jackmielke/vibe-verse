@@ -17,6 +17,7 @@
  * `window.__pool` is the test hook, because a browser without a GPU draws a
  * frame every so often and a shot needs about four hundred of them.
  */
+import { reportArcadeScore } from "@/arcade/report";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Menu, Share2, Volume2, VolumeX, X } from "lucide-react";
 import { useWorldStamp } from "@/hooks/use-world-stamp";
@@ -331,6 +332,13 @@ export default function Pool() {
       const human =
         modeRef.current === "local" ? true : modeRef.current === "cpu" ? state.winner === 0 : state.winner === meRef.current;
       if (human) a.win(); else a.lose();
+      if (modeRef.current === "cpu" && !isShot()) {
+        // For the Vibe Arcade: a win is worth more against a harder computer,
+        // and more again for every ball it still had on the table.
+        const tier = { easy: 1, normal: 2, hard: 3 }[levelRef.current] ?? 1;
+        const onTable = state.balls.filter((b) => b.id !== 0 && b.on).length;
+        reportArcadeScore("pool", human ? tier * 100 + onTable * 15 : (15 - onTable) * 5, human);
+      }
       if (modeRef.current === "cpu" && !isShot()) {
         const st = readStats();
         const lv = levelRef.current;

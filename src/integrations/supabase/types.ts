@@ -679,6 +679,30 @@ export type Database = {
           },
         ]
       }
+      arcade_scores: {
+        Row: {
+          created_at: string
+          game: string
+          id: number
+          initials: string
+          score: number
+        }
+        Insert: {
+          created_at?: string
+          game: string
+          id?: number
+          initials: string
+          score: number
+        }
+        Update: {
+          created_at?: string
+          game?: string
+          id?: number
+          initials?: string
+          score?: number
+        }
+        Relationships: []
+      }
       automation_recipients: {
         Row: {
           automation_id: string
@@ -5684,6 +5708,139 @@ export type Database = {
           },
         ]
       }
+      wizard_edits: {
+        Row: {
+          author: string | null
+          created_at: string
+          device_hash: string
+          id: number
+          model: string | null
+          ops: Json
+          prompt: string | null
+          reply: string | null
+          tier: string | null
+          undone: boolean
+          world_id: string
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          device_hash: string
+          id?: never
+          model?: string | null
+          ops?: Json
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          undone?: boolean
+          world_id: string
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          device_hash?: string
+          id?: never
+          model?: string | null
+          ops?: Json
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          undone?: boolean
+          world_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wizard_edits_world_id_fkey"
+            columns: ["world_id"]
+            isOneToOne: false
+            referencedRelation: "wizard_worlds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wizard_requests: {
+        Row: {
+          author: string | null
+          created_at: string
+          device_hash: string
+          id: number
+          model: string | null
+          ms: number | null
+          prompt: string | null
+          reply: string | null
+          tier: string | null
+          verdict: string | null
+          why: string | null
+          world_id: string | null
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          device_hash: string
+          id?: never
+          model?: string | null
+          ms?: number | null
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          verdict?: string | null
+          why?: string | null
+          world_id?: string | null
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          device_hash?: string
+          id?: never
+          model?: string | null
+          ms?: number | null
+          prompt?: string | null
+          reply?: string | null
+          tier?: string | null
+          verdict?: string | null
+          why?: string | null
+          world_id?: string | null
+        }
+        Relationships: []
+      }
+      wizard_worlds: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_hash: string | null
+          owner_name: string | null
+          parent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          name: string
+          owner_hash?: string | null
+          owner_name?: string | null
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_hash?: string | null
+          owner_name?: string | null
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wizard_worlds_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "wizard_worlds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workshops: {
         Row: {
           capacity: number
@@ -6353,6 +6510,23 @@ export type Database = {
       admin_set_inquiry_status: {
         Args: { _id: string; _password: string; _status: string }
         Returns: undefined
+      }
+      arcade_board: {
+        Args: never
+        Returns: {
+          created_at: string
+          game: string
+          initials: string
+          score: number
+        }[]
+      }
+      arcade_game_rule: {
+        Args: { p_game: string }
+        Returns: Record<string, unknown>
+      }
+      arcade_submit_score: {
+        Args: { p_game: string; p_initials: string; p_score: number }
+        Returns: boolean
       }
       auto_join_community_as_admin: {
         Args: { target_community_id: string }
