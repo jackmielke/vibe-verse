@@ -269,6 +269,23 @@ export const PLANS = {
   dipsea: shot("/dipsea?shot", { hold: ["w"] }),
   "dunes": walk("/dunes?shot"),
   "goggles": walk("/goggles?shot"),
+  mars: walk("/mars?shot", { warmup: 20000 }),
+  "i-spy": shot("/i-spy?shot", { hold: ["Space"] }),
+  "strange-new-worlds": shot("/strange-new-worlds?shot", { warmup: 20000 }),
+  garden: walk("/garden", { warmup: 20000 }),
+  /* Fruit Ninja: slash back and forth across the middle of the screen. */
+  ninja: {
+    route: "/ninja",
+    warmup: 10000,
+    async setup(t) {
+      await t.click();
+      await t.wait(3000);
+    },
+    async input(t, i) {
+      const k = ((i + 240) % 24) - 12;
+      await t.look(k < 0 ? 40 : -40, k % 2 ? 12 : -12, true);
+    },
+  },
 };
 
 /**
