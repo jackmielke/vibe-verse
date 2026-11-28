@@ -14,6 +14,7 @@ import { Search, X } from "lucide-react";
 import { useHomeData } from "@/home/kit";
 import VibeMark from "@/components/VibeMark";
 import Account from "./Account";
+import Featured from "./Featured";
 import {
   CardArt,
   CoverFonts,
@@ -214,6 +215,9 @@ export default function Arcade() {
           </div>
         </div>
       </section>
+
+      {/* ---------------------------------------------- featured: Vibe City */}
+      <Featured />
 
       {/* -------------------------------------------------------- the worlds */}
       <main id="worlds" className="mx-auto max-w-6xl 2xl:max-w-7xl scroll-mt-2 px-4 pb-28 pt-12 sm:px-6">

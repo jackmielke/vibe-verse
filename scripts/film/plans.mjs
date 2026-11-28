@@ -105,6 +105,25 @@ export const PLANS = {
   },
 
   kart: shot("/kart?shot=1", { hold: ["w"], warmup: 20000 }),
+  /* Prism Skyway: the same kart attract mode on the rainbow road course. */
+  "rainbow-road": shot("/kart?shot=1&track=prism", { hold: ["w"], warmup: 25000 }),
+  /* VibeQuest: through its menus into Cloud Castles, running right and hopping. */
+  vibequest: {
+    route: "/vibequest",
+    viewport: [1280, 720],
+    warmup: 6000,
+    async setup(t) {
+      for (const label of ["PLAY NOW", "Classic Mode", "Witch Cat", "Confirm Witch Cat", "Cloud Castles"]) {
+        if (!(await t.clickText(label, { timeout: 15000 }))) console.log(`    (no "${label}")`);
+        await t.wait(4000);
+      }
+      await t.wait(2500);
+    },
+    async input(t, i) {
+      const k = (i + 240) % 30;
+      await t.hold(...(k < 12 ? ["ArrowRight", "ArrowUp"] : ["ArrowRight"]));
+    },
+  },
   /* Cannon Chase: Mort on your tail, a civilian car already in the air. */
   "cannon-run": {
     route: "/cannon-run?go&shot",
